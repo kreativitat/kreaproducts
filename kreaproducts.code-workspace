@@ -1,0 +1,32 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../kreaproducts1/admin"
+		},
+		{
+			"path": "../kreaproducts1/build"
+		},
+		{
+			"path": "../kreaproducts1/core"
+		},
+		{
+			"path": "../kreaproducts1/img"
+		},
+		{
+			"path": "../kreaproducts1/langs"
+		},
+		{
+			"path": "../kreaproducts1/lib"
+		},
+		{
+			"path": "../kreaproducts1/sql"
+		},
+		{
+			"path": "../kreaproducts1/test"
+		}
+	],
+	"settings": {}
+}
