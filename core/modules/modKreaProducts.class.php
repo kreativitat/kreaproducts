@@ -187,12 +187,12 @@ class modKreaProducts extends DolibarrModules
 
 		// Array to add new pages in new tabs
 		$this->tabs = array();
-		$this->tabs[] = array('data' => 'product:-subproduct');
-		$this->tabs[] = array('data' => 'product:+(4)subproduct:AssociatedProducts:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:-price');
-		$this->tabs[] = array('data' => 'product:+(2)price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:-suppliers');
-		$this->tabs[] = array('data' => 'product:+(3)suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-subproduct');
+		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,MyProductHelper,/kreaproducts/class/myproducthelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
 		// Example:
 		// $this->tabs[] = array('data'=>'objecttype:+tabname1:Title1:mylangfile@kreaproducts:$user->hasRight('kreaproducts', 'read'):/kreaproducts/mynewtab1.php?id=__ID__');  					// To add a new tab identified by code tabname1
 		// $this->tabs[] = array('data'=>'objecttype:+tabname2:SUBSTITUTION_Title2:mylangfile@kreaproducts:$user->hasRight('othermodule', 'read'):/kreaproducts/mynewtab2.php?id=__ID__',  	// To add another new tab identified by code tabname2. Label will be result of calling all substitution functions on 'Title2' key.
@@ -458,13 +458,16 @@ class modKreaProducts extends DolibarrModules
 	 */
 	public function init($options = '')
 	{
-		global $conf, $langs;
+		global $conf, $langs, $db;
 
 		//$result = $this->_load_tables('/install/mysql/', 'kreaproducts');
 		$result = $this->_load_tables('/kreaproducts/sql/');
 		if ($result < 0) {
 			return -1; // Do not activate module if error 'not allowed' returned when loading module SQL queries (the _load_table run sql with run_sql with the error allowed parameter set to 'default')
 		}
+
+		// Enable Dolibarr Native Composed Products Feature
+		dolibarr_set_const($db, "PRODUIT_SOUSPRODUITS", 1, 'chaine', 0, '', $conf->entity);
 
 		// Create extrafields during init
 		//include_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
