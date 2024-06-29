@@ -1,19 +1,28 @@
 <?php
 /* Copyright (C) 2007-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
- * Copyright (C) 2024 SuperAdmin <marcelomarinhoaraujo@gmail.com>
+ * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
  *
+ * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+ *
+ * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Proprietary License:
+ * For commercial use, support, or if you prefer not to disclose your source code modifications,
+ * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ *
+ * For more information, visit <https://www.kreativitat.com>.
  */
 
 /**
@@ -172,7 +181,7 @@ class KreaProductsFunctionalTest extends \PHPUnit_Extensions_Selenium2TestCase
 	{
 		$this->url('/admin/modules.php');
 		$this->authenticate();
-		$module_status_image_path = '//a[contains(@href, "'.self::$module_id.'")]/img';
+		$module_status_image_path = '//a[contains(@href, "' . self::$module_id . '")]/img';
 		$module_status_image = $this->byXPath($module_status_image_path);
 		if (strstr($module_status_image->attribute('src'), 'switch_off.png')) {
 			// Enable the module

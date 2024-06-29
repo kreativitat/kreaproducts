@@ -2,20 +2,29 @@
 /* Copyright (C) 2004-2018  Laurent Destailleur     <eldy@users.sourceforge.net>
  * Copyright (C) 2018-2019  Nicolas ZABOURI         <info@inovea-conseil.com>
  * Copyright (C) 2019-2020  Frédéric France         <frederic.france@netlogic.fr>
- * Copyright (C) 2024 SuperAdmin <marcelomarinhoaraujo@gmail.com>
+ * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+ *
+ * GPL-3.0 License:
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Proprietary License:
+ * For commercial use, support, or if you prefer not to disclose your source code modifications,
+ * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ *
+ * For more information, visit <https://www.kreativitat.com>.
  */
 
 /**
@@ -26,7 +35,7 @@
  *  \ingroup    kreaproducts
  *  \brief      Description and activation file for module KreaProducts
  */
-include_once DOL_DOCUMENT_ROOT.'/core/modules/DolibarrModules.class.php';
+include_once DOL_DOCUMENT_ROOT . '/core/modules/DolibarrModules.class.php';
 
 /**
  *  Description and activation class for module KreaProducts
@@ -45,14 +54,15 @@ class modKreaProducts extends DolibarrModules
 
 		// Id for module (must be unique).
 		// Use here a free id (See in Home -> System information -> Dolibarr for list of used modules id).
-		$this->numero = 500000; // TODO Go on page https://wiki.dolibarr.org/index.php/List_of_modules_id to reserve an id number for your module
+		// ID 156550 - 156599: Kreativität Works (http://kreativitat.com)
+		$this->numero = 156550; // TODO Go on page https://wiki.dolibarr.org/index.php/List_of_modules_id to reserve an id number for your module
 
 		// Key text used to identify module (for permissions, menus, etc...)
 		$this->rights_class = 'kreaproducts';
 
 		// Family can be 'base' (core modules),'crm','financial','hr','projects','products','ecm','technic' (transverse modules),'interface' (link with external tools),'other','...'
 		// It is used to group modules by family in module setup page
-		$this->family = "other";
+		$this->family = "Kreativität Works";
 
 		// Module position in the family on 2 digits ('01', '10', '20', ...)
 		$this->module_position = '90';
@@ -77,7 +87,7 @@ class modKreaProducts extends DolibarrModules
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
 		// Key used in llx_const table to save module status enabled/disabled (where KREAPRODUCTS is value of property name of module in uppercase)
-		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
+		$this->const_name = 'MAIN_MODULE_' . strtoupper($this->name);
 
 		// Name of image file used for this module.
 		// If file is in theme/yourtheme/img directory under name object_pictovalue.png, use this->picto='pictovalue'
@@ -115,6 +125,7 @@ class modKreaProducts extends DolibarrModules
 			),
 			// Set here all hooks context managed by module. To find available hook context, make a "grep -r '>initHooks(' *" on source code. You can also set hook context to 'all'
 			'hooks' => array(
+				'hooks' => array('productcard'),
 				//   'data' => array(
 				//       'hookcontext1',
 				//       'hookcontext2',
@@ -176,6 +187,12 @@ class modKreaProducts extends DolibarrModules
 
 		// Array to add new pages in new tabs
 		$this->tabs = array();
+		$this->tabs[] = array('data' => 'product:-subproduct');
+		$this->tabs[] = array('data' => 'product:+(4)subproduct:AssociatedProducts:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-price');
+		$this->tabs[] = array('data' => 'product:+(2)price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-suppliers');
+		$this->tabs[] = array('data' => 'product:+(3)suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
 		// Example:
 		// $this->tabs[] = array('data'=>'objecttype:+tabname1:Title1:mylangfile@kreaproducts:$user->hasRight('kreaproducts', 'read'):/kreaproducts/mynewtab1.php?id=__ID__');  					// To add a new tab identified by code tabname1
 		// $this->tabs[] = array('data'=>'objecttype:+tabname2:SUBSTITUTION_Title2:mylangfile@kreaproducts:$user->hasRight('othermodule', 'read'):/kreaproducts/mynewtab2.php?id=__ID__',  	// To add another new tab identified by code tabname2. Label will be result of calling all substitution functions on 'Title2' key.
@@ -300,21 +317,21 @@ class modKreaProducts extends DolibarrModules
 		$r = 0;
 		// Add here entries to declare new menus
 		/* BEGIN MODULEBUILDER TOPMENU */
-		$this->menu[$r++] = array(
-			'fk_menu'=>'', // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'top', // This is a Top menu entry
-			'titre'=>'ModuleKreaProductsName',
-			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
-			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'',
-			'url'=>'/kreaproducts/kreaproductsindex.php',
-			'langs'=>'kreaproducts@kreaproducts', // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000 + $r,
-			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-			'perms'=>'1', // Use 'perms'=>'$user->hasRight("kreaproducts", "myobject", "read")' if you want your menu with a permission rules
-			'target'=>'',
-			'user'=>2, // 0=Menu for internal users, 1=external users, 2=both
-		);
+		//$this->menu[$r++] = array(
+		//	'fk_menu' => '', // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+		//	'type' => 'top', // This is a Top menu entry
+		//	'titre' => 'ModuleKreaProductsName',
+		//	'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle"'),
+		//	'mainmenu' => 'kreaproducts',
+		//	'leftmenu' => '',
+		//	'url' => '/kreaproducts/kreaproductsindex.php',
+		//	'langs' => 'kreaproducts@kreaproducts', // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
+		//	'position' => 1000 + $r,
+		//	'enabled' => 'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
+		//	'perms' => '1', // Use 'perms'=>'$user->hasRight("kreaproducts", "myobject", "read")' if you want your menu with a permission rules
+		//	'target' => '',
+		//	'user' => 2, // 0=Menu for internal users, 1=external users, 2=both
+		//);
 		/* END MODULEBUILDER TOPMENU */
 		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
 		/*
@@ -466,19 +483,19 @@ class modKreaProducts extends DolibarrModules
 		// Document templates
 		$moduledir = dol_sanitizeFileName('kreaproducts');
 		$myTmpObjects = array();
-		$myTmpObjects['MyObject'] = array('includerefgeneration'=>0, 'includedocgeneration'=>0);
+		$myTmpObjects['MyObject'] = array('includerefgeneration' => 0, 'includedocgeneration' => 0);
 
 		foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {
 			if ($myTmpObjectKey == 'MyObject') {
 				continue;
 			}
 			if ($myTmpObjectArray['includerefgeneration']) {
-				$src = DOL_DOCUMENT_ROOT.'/install/doctemplates/'.$moduledir.'/template_myobjects.odt';
-				$dirodt = DOL_DATA_ROOT.'/doctemplates/'.$moduledir;
-				$dest = $dirodt.'/template_myobjects.odt';
+				$src = DOL_DOCUMENT_ROOT . '/install/doctemplates/' . $moduledir . '/template_myobjects.odt';
+				$dirodt = DOL_DATA_ROOT . '/doctemplates/' . $moduledir;
+				$dest = $dirodt . '/template_myobjects.odt';
 
 				if (file_exists($src) && !file_exists($dest)) {
-					require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
+					require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 					dol_mkdir($dirodt);
 					$result = dol_copy($src, $dest, 0, 0);
 					if ($result < 0) {
@@ -489,10 +506,10 @@ class modKreaProducts extends DolibarrModules
 				}
 
 				$sql = array_merge($sql, array(
-					"DELETE FROM ".MAIN_DB_PREFIX."document_model WHERE nom = 'standard_".strtolower($myTmpObjectKey)."' AND type = '".$this->db->escape(strtolower($myTmpObjectKey))."' AND entity = ".((int) $conf->entity),
-					"INSERT INTO ".MAIN_DB_PREFIX."document_model (nom, type, entity) VALUES('standard_".strtolower($myTmpObjectKey)."', '".$this->db->escape(strtolower($myTmpObjectKey))."', ".((int) $conf->entity).")",
-					"DELETE FROM ".MAIN_DB_PREFIX."document_model WHERE nom = 'generic_".strtolower($myTmpObjectKey)."_odt' AND type = '".$this->db->escape(strtolower($myTmpObjectKey))."' AND entity = ".((int) $conf->entity),
-					"INSERT INTO ".MAIN_DB_PREFIX."document_model (nom, type, entity) VALUES('generic_".strtolower($myTmpObjectKey)."_odt', '".$this->db->escape(strtolower($myTmpObjectKey))."', ".((int) $conf->entity).")"
+					"DELETE FROM " . MAIN_DB_PREFIX . "document_model WHERE nom = 'standard_" . strtolower($myTmpObjectKey) . "' AND type = '" . $this->db->escape(strtolower($myTmpObjectKey)) . "' AND entity = " . ((int) $conf->entity),
+					"INSERT INTO " . MAIN_DB_PREFIX . "document_model (nom, type, entity) VALUES('standard_" . strtolower($myTmpObjectKey) . "', '" . $this->db->escape(strtolower($myTmpObjectKey)) . "', " . ((int) $conf->entity) . ")",
+					"DELETE FROM " . MAIN_DB_PREFIX . "document_model WHERE nom = 'generic_" . strtolower($myTmpObjectKey) . "_odt' AND type = '" . $this->db->escape(strtolower($myTmpObjectKey)) . "' AND entity = " . ((int) $conf->entity),
+					"INSERT INTO " . MAIN_DB_PREFIX . "document_model (nom, type, entity) VALUES('generic_" . strtolower($myTmpObjectKey) . "_odt', '" . $this->db->escape(strtolower($myTmpObjectKey)) . "', " . ((int) $conf->entity) . ")"
 				));
 			}
 		}

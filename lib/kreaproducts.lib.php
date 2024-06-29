@@ -1,18 +1,27 @@
 <?php
-/* Copyright (C) 2024 SuperAdmin <marcelomarinhoaraujo@gmail.com>
+/* Copyright (C) 2024	Kreativitat	<mail@kreativitat.com>
  *
+ * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+ *
+ * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Proprietary License:
+ * For commercial use, support, or if you prefer not to disclose your source code modifications,
+ * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ *
+ * For more information, visit <https://www.kreativitat.com>.
  */
 
 /**
@@ -28,7 +37,7 @@
  */
 function kreaproductsAdminPrepareHead()
 {
-	global $langs, $conf;
+	global $db, $langs, $conf, $user;
 
 	// global $db;
 	// $extrafields = new ExtraFields($db);
@@ -59,6 +68,7 @@ function kreaproductsAdminPrepareHead()
 	$head[$h][1] = $langs->trans("About");
 	$head[$h][2] = 'about';
 	$h++;
+
 
 	// Show more tabs from modules
 	// Entries must be declared in modules descriptor with line
