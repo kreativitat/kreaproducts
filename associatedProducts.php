@@ -370,23 +370,24 @@ if ($id > 0 || !empty($ref)) {
 					);
 				}
 			}
-
-			// Only display the table if there is at least one BOM
-			print '<div class="fichecenter">';
-
-			// Print the title of the section
-			print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
-
-			// Begin table structure
-			print '<table class="liste">';
-			print '<tr class="liste_titre">';
-
-			// Column headers
-			print '<td>' . $langs->trans('BOMExists') . '</td>';
-			print '<td>' . $langs->trans('OriginProduct') . '</td>';
-			print '</tr>';
-
 			if (count($boms) > 0) {
+
+				// Only display the table if there is at least one BOM
+				print '<div class="fichecenter">';
+
+				// Print the title of the section
+				print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
+
+				// Begin table structure
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+
+				// Column headers
+				print '<td>' . $langs->trans('BOMExists') . '</td>';
+				print '<td>' . $langs->trans('OriginProduct') . '</td>';
+				print '</tr>';
+
+
 				// If BOMs exist, display each one
 				foreach ($boms as $bom) {
 					print '<tr class="oddeven">';
@@ -397,16 +398,11 @@ if ($id > 0 || !empty($ref)) {
 					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . ' - ' . $bom['label'] . '</a></td>';
 					print '</tr>';
 				}
-			} else {
-				// If no BOM exists, show "No" and "None"
-				print '<tr class="oddeven">';
-				print '<td>' . $langs->trans('No') . '</td>';
-				print '<td><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
-				print '</tr>';
-			}
 
-			print '</table>';
-			print '</div>';
+
+				print '</table>';
+				print '</div>';
+			}
 		}
 
 
