@@ -338,6 +338,83 @@ if ($id > 0 || !empty($ref)) {
 
 		print '<div class="fichecenter">';
 
+		/**
+		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
+		 * If a BOM of type "disassemble" exists (where `bomtype = 1`), the script fetches and displays the **origin product** 
+		 * associated with the BOM. The origin product is displayed as a clickable link that directs the user to the product's 
+		 * detailed page. 
+		 * 
+		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
+		 */
+
+		// Check if the BOM (Bill of Materials) module is enabled before executing the code
+		if (!empty($conf->bom->enabled)) {
+
+			// Fetch BOM (Bill of Materials) information and the origin product for the current product
+			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
+                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
+                WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+
+			// Execute the SQL query to get BOM data
+			$resql_bom = $db->query($sql_bom);
+			$bomExists = false;
+			$productOrigin = null;
+
+			// If the query executes successfully
+			if ($resql_bom) {
+				$num_boms = $db->num_rows($resql_bom); // Get the number of BOMs associated with the product
+				if ($num_boms > 0) {
+					$bomExists = true; // BOM exists for the product
+					$obj_bom = $db->fetch_object($resql_bom); // Fetch the BOM information
+
+					// Store origin product details (id, reference, and label) for further use
+					$productOrigin = array(
+						'id' => $obj_bom->fk_product_origin,  // The origin product ID from the BOM
+						'ref' => $obj_bom->ref,               // The origin product reference (product code)
+						'label' => $obj_bom->label            // The origin product label (product name)
+					);
+				}
+			}
+
+			// If a BOM exists, display the relevant information
+			if ($bomExists) {
+				print '<br>';
+				print load_fiche_titre($langs->trans('ProductOriginBOM'), '', ''); // Print the title "Product Origin BOM"
+
+				// Create a table layout for displaying BOM details
+				print '<div class="fichecenter">';
+				print '<table class="ui-sortable liste nobottom">';
+
+				// Display whether the BOM exists
+				print '<tr><td class="titlefield">';
+				print $langs->trans('BOMExists'); // Field label
+				print '</td><td>';
+				print $langs->trans('Yes'); // Display "Yes" indicating BOM exists
+				print '</td></tr>';
+
+				// If the origin product is found, display it with a link
+				if ($productOrigin) {
+					print '<tr><td class="titlefield">';
+					print $langs->trans('OriginProduct'); // Field label for origin product
+					print '</td><td>';
+					// Provide a clickable link to the origin product's card page
+					print '<a href="' . dol_buildpath('/product/card.php?id=' . $productOrigin['id'], 1) . '">' . $productOrigin['ref'] . ' - ' . $productOrigin['label'] . '</a>';
+					print '</td></tr>';
+				}
+
+				print '</table>';
+				print '</div>';
+			}
+		} else {
+			// If BOM module is not enabled, display a message (optional)
+			print '<div class="fichecenter">';
+			print $langs->trans('BOMModuleNotEnabled'); // Translated message: "BOM module not enabled"
+			print '</div>';
+		}
+
+
 		print load_fiche_titre($langs->trans("ProductParentList"), '', '');
 
 		print '<table class="liste">';
@@ -378,7 +455,6 @@ if ($id > 0 || !empty($ref)) {
 
 		$atleastonenotdefined = 0;
 		print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
-
 		print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
 		print '<input type="hidden" name="token" value="' . newToken() . '" />';
 		print '<input type="hidden" name="action" value="save_composed_product" />';
@@ -836,17 +912,9 @@ if ($id > 0 || !empty($ref)) {
 			print '</div>';
 		}
 
-
-
-
-
-
-
-
-
 		// Load extrafields
 		// Define the array of field keys to display
-		$fieldsToDisplay = ['contmalerg', 'podeconteralerg', 'decnut', 'tiporefeicao', 'marque'];
+		$fieldsToDisplay = ['descricao', 'contmalerg', 'podeconteralerg', 'decnut', 'tiporefeicao', 'marque'];
 
 		foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
 			if (isset($_POST['options_' . $key])) {
