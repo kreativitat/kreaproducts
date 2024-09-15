@@ -1756,11 +1756,11 @@ if ((empty($conf->global->PRODUIT_CUSTOMER_PRICES) || $action == 'showlog_defaul
 				// Define part of HT, VAT, TTC
 				$resultarray = calcul_price_total(1, $pu, 0, $objp->tva_tx, 1, 1, 0, $objp->price_base_type, $objp->recuperableonly, $object->type, $mysoc, $localtaxarray);
 				// Calcul du total ht sans remise
-				$total_ht = $resultarray[0];
-				$total_vat = $resultarray[1];
-				$total_localtax1 = $resultarray[9];
-				$total_localtax2 = $resultarray[10];
-				$total_ttc = $resultarray[2];
+				$total_ht = $resultarray[0] ?? null;
+				$total_vat = $resultarray[1] ?? null;
+				$total_localtax1 = $resultarray[9] ?? null;
+				$total_localtax2 = $resultarray[10] ?? null;
+				$total_ttc = $resultarray[2] ?? null;
 
 				// Price
 				if (!empty($objp->fk_price_expression) && !empty($conf->dynamicprices->enabled)) {
