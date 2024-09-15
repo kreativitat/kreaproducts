@@ -333,10 +333,7 @@ if ($id > 0 || !empty($ref)) {
 
 		$nbofsubsubproducts = count($prods_arbo); // This include sub sub product into nb
 		$prodschild = $object->getChildsArbo($id, 1);
-		$nbofsubproducts = count($prodschild); // This include only first level of childs
-
-
-		print '<div class="fichecenter">';
+		$nbofsubproducts = count($prodschild); // This include only first level of child
 
 		/**
 		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
@@ -347,73 +344,79 @@ if ($id > 0 || !empty($ref)) {
 		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
 		 */
 
-		// Check if the BOM (Bill of Materials) module is enabled before executing the code
+
+		// Check if the BOM module is enabled before executing the code
 		if (!empty($conf->bom->enabled)) {
 
-			// Fetch BOM (Bill of Materials) information and the origin product for the current product
+			// Fetch all BOMs and the origin product for the current product
 			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
                 WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
 
-			// Execute the SQL query to get BOM data
 			$resql_bom = $db->query($sql_bom);
-			$bomExists = false;
-			$productOrigin = null;
+			$boms = [];
 
-			// If the query executes successfully
+			// Check if the query returns results
 			if ($resql_bom) {
-				$num_boms = $db->num_rows($resql_bom); // Get the number of BOMs associated with the product
-				if ($num_boms > 0) {
-					$bomExists = true; // BOM exists for the product
-					$obj_bom = $db->fetch_object($resql_bom); // Fetch the BOM information
-
-					// Store origin product details (id, reference, and label) for further use
-					$productOrigin = array(
-						'id' => $obj_bom->fk_product_origin,  // The origin product ID from the BOM
-						'ref' => $obj_bom->ref,               // The origin product reference (product code)
-						'label' => $obj_bom->label            // The origin product label (product name)
+				while ($obj_bom = $db->fetch_object($resql_bom)) {
+					// Store each BOM's origin product and BOM row ID
+					$boms[] = array(
+						'bom_id' => $obj_bom->rowid,        // The BOM ID
+						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
+						'ref' => $obj_bom->ref,             // The origin product reference
+						'label' => $obj_bom->label          // The origin product label
 					);
 				}
 			}
 
-			// If a BOM exists, display the relevant information
-			if ($bomExists) {
-				print '<br>';
-				print load_fiche_titre($langs->trans('ProductOriginBOM'), '', ''); // Print the title "Product Origin BOM"
-
-				// Create a table layout for displaying BOM details
-				print '<div class="fichecenter">';
-				print '<table class="ui-sortable liste nobottom">';
-
-				// Display whether the BOM exists
-				print '<tr><td class="titlefield">';
-				print $langs->trans('BOMExists'); // Field label
-				print '</td><td>';
-				print $langs->trans('Yes'); // Display "Yes" indicating BOM exists
-				print '</td></tr>';
-
-				// If the origin product is found, display it with a link
-				if ($productOrigin) {
-					print '<tr><td class="titlefield">';
-					print $langs->trans('OriginProduct'); // Field label for origin product
-					print '</td><td>';
-					// Provide a clickable link to the origin product's card page
-					print '<a href="' . dol_buildpath('/product/card.php?id=' . $productOrigin['id'], 1) . '">' . $productOrigin['ref'] . ' - ' . $productOrigin['label'] . '</a>';
-					print '</td></tr>';
-				}
-
-				print '</table>';
-				print '</div>';
-			}
-		} else {
-			// If BOM module is not enabled, display a message (optional)
+			// Only display the table if there is at least one BOM
 			print '<div class="fichecenter">';
-			print $langs->trans('BOMModuleNotEnabled'); // Translated message: "BOM module not enabled"
+
+			// Print the title of the section
+			print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
+
+			// Begin table structure
+			print '<table class="liste">';
+			print '<tr class="liste_titre">';
+
+			// Column headers
+			print '<td>' . $langs->trans('BOMExists') . '</td>';
+			print '<td>' . $langs->trans('OriginProduct') . '</td>';
+			print '</tr>';
+
+			if (count($boms) > 0) {
+				// If BOMs exist, display each one
+				foreach ($boms as $bom) {
+					print '<tr class="oddeven">';
+					// Link to the BOM (assuming there is a page that shows BOM details)
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
+
+					// Display the origin product with a link to the product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . ' - ' . $bom['label'] . '</a></td>';
+					print '</tr>';
+				}
+			} else {
+				// If no BOM exists, show "No" and "None"
+				print '<tr class="oddeven">';
+				print '<td>' . $langs->trans('No') . '</td>';
+				print '<td><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
+				print '</tr>';
+			}
+
+			print '</table>';
 			print '</div>';
 		}
 
+
+
+
+
+
+
+
+		print '<div class="fichecenter">';
 
 		print load_fiche_titre($langs->trans("ProductParentList"), '', '');
 

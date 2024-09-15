@@ -52,10 +52,12 @@ KreaProductsAbout = About KreaProducts
 KreaProductsAboutPage = KreaProducts about page
 
 #
-# Sample page
+# Associated products page
 #
-KreaProductsArea = Home KreaProducts
-MyPageName = My page name
+BOMExistsAndOriginProduct = O produto tem origem no desmatelamento de produto pai
+kreaproducts_BOM = BOM
+BOMExists = Lista de Materiais
+OriginProduct = Produto em origem
 
 #
 # Sample widget
