@@ -335,83 +335,6 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild); // This include only first level of child
 
-		/**
-		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
-		 * If a BOM of type "disassemble" exists (where `bomtype = 1`), the script fetches and displays the **origin product** 
-		 * associated with the BOM. The origin product is displayed as a clickable link that directs the user to the product's 
-		 * detailed page. 
-		 * 
-		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
-		 */
-
-
-		// Check if the BOM module is enabled before executing the code
-		if (!empty($conf->bom->enabled)) {
-
-			// Fetch all BOMs and the origin product for the current product
-			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
-                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
-                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
-                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
-                WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
-
-			$resql_bom = $db->query($sql_bom);
-			$boms = [];
-
-			// Check if the query returns results
-			if ($resql_bom) {
-				while ($obj_bom = $db->fetch_object($resql_bom)) {
-					// Store each BOM's origin product and BOM row ID
-					$boms[] = array(
-						'bom_id' => $obj_bom->rowid,        // The BOM ID
-						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
-						'ref' => $obj_bom->ref,             // The origin product reference
-						'label' => $obj_bom->label          // The origin product label
-					);
-				}
-			}
-			if (count($boms) > 0) {
-
-				// Only display the table if there is at least one BOM
-				print '<div class="fichecenter">';
-
-				// Print the title of the section
-				print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
-
-				// Begin table structure
-				print '<table class="liste">';
-				print '<tr class="liste_titre">';
-
-				// Column headers
-				print '<td>' . $langs->trans('BOMExists') . '</td>';
-				print '<td>' . $langs->trans('OriginProduct') . '</td>';
-				print '</tr>';
-
-
-				// If BOMs exist, display each one
-				foreach ($boms as $bom) {
-					print '<tr class="oddeven">';
-					// Link to the BOM (assuming there is a page that shows BOM details)
-					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
-
-					// Display the origin product with a link to the product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . ' - ' . $bom['label'] . '</a></td>';
-					print '</tr>';
-				}
-
-
-				print '</table>';
-				print '</div>';
-			}
-		}
-
-
-
-
-
-
-
-
 		print '<div class="fichecenter">';
 
 		print load_fiche_titre($langs->trans("ProductParentList"), '', '');
@@ -1010,6 +933,154 @@ if ($id > 0 || !empty($ref)) {
 
 			print '</table>';
 			print '</div>';
+		}
+
+		/**
+		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
+		 * If a BOM of type "disassemble" exists (where `bomtype = 1`), the script fetches and displays the **origin product** 
+		 * associated with the BOM. The origin product is displayed as a clickable link that directs the user to the product's 
+		 * detailed page. 
+		 * 
+		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
+		 */
+
+
+		// Check if the BOM module is enabled before executing the code
+		if (!empty($conf->bom->enabled)) {
+
+			// Fetch all BOMs and the origin product for the current product
+			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
+                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
+                WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+
+			$resql_bom = $db->query($sql_bom);
+			$boms = [];
+
+			// Check if the query returns results
+			if ($resql_bom) {
+				while ($obj_bom = $db->fetch_object($resql_bom)) {
+					// Store each BOM's origin product and BOM row ID
+					$boms[] = array(
+						'bom_id' => $obj_bom->rowid,        // The BOM ID
+						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
+						'ref' => $obj_bom->ref,             // The origin product reference
+						'label' => $obj_bom->label          // The origin product label
+					);
+				}
+			}
+			if (count($boms) > 0) {
+
+				// Only display the table if there is at least one BOM
+				print '<div class="fichecenter">';
+
+				// Print the title of the section
+				print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
+
+				// Begin table structure
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+
+				// Column headers
+				print '<td>' . $langs->trans('BOMExists') . '</td>';
+				print '<td>' . $langs->trans('OriginProduct') . '</td>';
+				print '</tr>';
+
+
+				// If BOMs exist, display each one
+				foreach ($boms as $bom) {
+					print '<tr class="oddeven">';
+					// Link to the BOM (assuming there is a page that shows BOM details)
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
+
+					// Display the origin product with a link to the product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . ' - ' . $bom['label'] . '</a></td>';
+					print '</tr>';
+				}
+
+
+				print '</table>';
+				print '</div>';
+			}
+		}
+
+		/*
+    	* This code retrieves the menus where a specific product exists in the 'niveismenu' field,
+    	* checks all JSON levels for the product code, and returns the corresponding menu details.
+    	* 
+    	* - Retrieves the current product's reference.
+    	* - Fetches all records with 'niveismenu' from the 'dolizsynch_zsproduct' and 'product' tables.
+    	* - Decodes the JSON 'niveismenu' field and iterates over the nested structure.
+    	* - If the product's code matches, the corresponding menu information is stored.
+    	* - Duplicates are removed, and the result is displayed in a table format.
+    	* - Handles invalid JSON and SQL errors.
+    	*/
+		if (!empty($conf->dolizsynch->enabled)) {
+			// Get current product's ref as codigo
+			$current_codigo = $object->ref;
+
+			// Fetch all records with niveismenu
+			$sql_menu = "SELECT b.rowid, p.rowid as product_id, p.ref, p.label, b.niveismenu";
+			$sql_menu .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct AS b";
+			$sql_menu .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product";
+
+			$resql_menu = $db->query($sql_menu);
+			$menus = [];
+
+			if ($resql_menu) {
+				while ($obj_menu = $db->fetch_object($resql_menu)) {
+					if (!empty($obj_menu->niveismenu)) {
+						$niveismenuData = json_decode($obj_menu->niveismenu, true);
+						if (json_last_error() === JSON_ERROR_NONE && is_array($niveismenuData)) {
+							foreach ($niveismenuData as $menuLevel) {
+								if (isset($menuLevel['niveismenuext']) && is_array($menuLevel['niveismenuext'])) {
+									foreach ($menuLevel['niveismenuext'] as $produto) {
+										if (isset($produto['codigo']) && (string)$produto['codigo'] == (string)$current_codigo) {
+											$menus[] = array(
+												'menu_id' => $obj_menu->product_id,
+												'ref' => $obj_menu->ref,
+												'label' => $obj_menu->label,
+												'descricao' => isset($menuLevel['descricao']) ? $menuLevel['descricao'] : 'N/A'
+											);
+											break; // Assuming a product is only once per menuLevel
+										}
+									}
+								}
+							}
+						} else {
+							dol_syslog("Invalid JSON in 'niveismenu' for product ID " . $obj_menu->rowid, LOG_ERR);
+						}
+					}
+				}
+			} else {
+				dol_syslog("Error executing SQL query for 'niveismenu': " . $db->lasterror(), LOG_ERR);
+			}
+
+			// Remove duplicate menus
+			$menus = array_unique($menus, SORT_REGULAR);
+
+			if (count($menus) > 0) {
+				// Display the table
+				print '<div class="fichecenter">';
+				print load_fiche_titre($langs->trans("MenuWhereProductExistsAndOriginProduct"), '', '');
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+				print '<td>' . $langs->trans('Reference') . '</td>';
+				print '<td>' . $langs->trans('Label') . '</td>';
+				print '</tr>';
+
+				foreach ($menus as $menu) {
+					print '<tr class="oddeven">';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . urlencode($menu['menu_id']), 1) . '" target="_blank">' . htmlspecialchars($menu['ref']) . '</a></td>';
+
+					print '<td>' . htmlspecialchars($menu['label']) . '</td>';
+					print '</tr>';
+				}
+
+				print '</table>';
+				print '</div>';
+			}
 		}
 	}
 }
