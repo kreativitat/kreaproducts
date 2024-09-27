@@ -836,7 +836,7 @@ if ($id > 0 || !empty($ref)) {
 
 		// Load extrafields
 		// Define the array of field keys to display
-		$fieldsToDisplay = ['descricao', 'contmalerg', 'podeconteralerg', 'decnut', 'tiporefeicao', 'marque'];
+		$fieldsToDisplay = ['descricao', 'contmalerg', 'podeconteralerg', 'decnut', 'tiporefeicao', 'marque', 'video'];
 
 		foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
 			if (isset($_POST['options_' . $key])) {
