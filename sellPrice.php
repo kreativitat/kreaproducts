@@ -511,6 +511,64 @@ if (empty($reshook)) {
 		}
 	}
 
+	if ($action == 'forceSync') {
+		dol_syslog("forceSync action triggered");
+
+		// Instantiate the synchronization class
+		$conf->global->bypass_product_modify_trigger = 1;
+		dol_syslog("bypass_product_modify_trigger: " . $conf->global->bypass_product_modify_trigger);
+
+		require_once DOL_DOCUMENT_ROOT . '/custom/dolizsynch/class/zsprodsynch.class.php';
+		$zsProductSync = new ZSProductSynch($db);
+
+		// Get external product details
+		$externalProductDetails = $zsProductSync->getZoneSoftProductById($object->ref);
+
+		// Log the response for debugging
+		$responseJson = json_encode($externalProductDetails, JSON_PRETTY_PRINT);
+		dol_syslog("ZSProductSync::updateDolibarrProductFromZoneSoft: log curl: " . $responseJson);
+
+		// Perform synchronization operations
+		$insertResult = $zsProductSync->insertProductToLocalTable($externalProductDetails);
+		$updateResult = $zsProductSync->updateDolibarrProductFromZoneSoft($externalProductDetails->product);
+
+		// Unset the bypass trigger
+		unset($conf->global->bypass_product_modify_trigger);
+
+		// Initialize variables to track success and collect error messages
+		$syncSuccess = true;
+		$errorMessages = [];
+
+		// Check the result of insertProductToLocalTable
+		if ($insertResult < 0) {
+			$syncSuccess = false;
+			$errorMessages[] = $zsProductSync->error;
+			if (!empty($zsProductSync->errors)) {
+				foreach ($zsProductSync->errors as $err) {
+					$errorMessages[] = $err;
+				}
+			}
+		}
+
+		// Check the result of updateDolibarrProductFromZoneSoft
+		if ($updateResult < 0) {
+			$syncSuccess = false;
+			$errorMessages[] = $zsProductSync->error;
+			if (!empty($zsProductSync->errors)) {
+				foreach ($zsProductSync->errors as $err) {
+					$errorMessages[] = $err;
+				}
+			}
+		}
+
+		// Set event messages based on synchronization outcome
+		if ($syncSuccess) {
+			setEventMessages($langs->trans("ForceSyncSuccess"), null, 'mesgs');
+		} else {
+			setEventMessages($errorMessages, null, 'errors');
+		}
+	}
+
 
 	if ($action == 'delete' && $user->rights->produit->supprimer) {
 		$result = $object->log_price_delete($user, GETPOST('lineid', 'int'));
@@ -1277,19 +1335,14 @@ print '<div style="clear:both"></div>';
 
 print dol_get_fiche_end();
 
-
-
 /*
  * Action bar
  */
 
-
 if (
-	!$action || $action == 'delete' || $action == 'showlog_customer_price' || $action == 'showlog_default_price' || $action == 'add_customer_price'
-	|| $action == 'activate_price_by_qty' || $action == 'disable_price_by_qty'
+	!$action || $action == 'delete' || $action == 'forceSync' || $action == 'showlog_customer_price' || $action == 'showlog_default_price' || $action == 'add_customer_price' || $action == 'activate_price_by_qty' || $action == 'disable_price_by_qty'
 ) {
 	print "\n" . '<div class="tabsAction">' . "\n";
-
 
 	$parameters = array();
 	$reshook = $hookmanager->executeHooks('addMoreActionsButtons', $parameters, $object, $action); // Note that $action and $object may have been
@@ -1316,6 +1369,14 @@ if (
 			}
 
 			if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {
+				if (isModEnabled("degema")) {
+					if ($user->rights->produit->creer || $user->rights->service->creer) {
+						print '<div class="inline-block divButAction"><a class="butAction" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=forceSync&token=' . newToken() . '">' . $langs->trans("ForceSynchronization") . '</a></div>';
+					} else {
+						print '<div class="inline-block divButAction"><span class="butActionRefused classfortooltip" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '">' . $langs->trans("ForceSynchronization") . '</span></div>';
+					}
+				}
+
 				if ($user->rights->produit->creer || $user->rights->service->creer) {
 					print '<div class="inline-block divButAction"><a class="butAction" href="' . $_SERVER['PHP_SELF'] . '?action=edit_vat&token=' . newToken() . '&id=' . $object->id . '">' . $langs->trans("UpdateVAT") . '</a></div>';
 				} else {
@@ -1333,8 +1394,6 @@ if (
 
 	print "\n</div>\n";
 }
-
-
 
 /*
  * Edit price area
@@ -2184,6 +2243,26 @@ if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES)) {
 		} else {
 			print $langs->trans('None');
 		}
+	} elseif ($action == 'forceSync') {
+		dol_syslog("forceSync action triggered");
+
+		// Instantiate the synchronization class
+		$conf->global->bypass_product_modify_trigger = 1;
+		dol_syslog("bypass_product_modify_trigger: " . $conf->global->bypass_product_modify_trigger);
+
+		require_once DOL_DOCUMENT_ROOT . '/custom/dolizsynch/class/zsprodsynch.class.php';
+		$zsProductSync = new ZSProductSynch($db);
+
+		// Get external product details
+		$externalProductDetails = $zsProductSync->getZoneSoftProductById($object->ref);
+
+		// Log the response for debugging
+		$responseJson = json_encode($externalProductDetails, JSON_PRETTY_PRINT);
+		dol_syslog("ZSProductSync::updateDolibarrProductFromZoneSoft: log curl: " . $responseJson);
+
+		$zsProductSync->insertProductToLocalTable($externalProductDetails);
+		$zsProductSync->updateDolibarrProductFromZoneSoft($externalProductDetails->product);
+		unset($conf->global->bypass_product_modify_trigger);
 	} elseif ($action != 'showlog_default_price' && $action != 'edit_price') {
 		// List of all prices by customers
 		print '<!-- list of all prices per customer -->' . "\n";

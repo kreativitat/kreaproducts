@@ -64,3 +64,10 @@ OriginProduct = Produto em origem
 #
 MyWidget = My widget
 MyWidgetDescription = My widget description
+
+#
+# PriceSell Page
+#
+ForceSynchronization = ZSync
+Update VAT = Actualizar IVA
+ForceSyncSuccess = Sucesso na sincronização
