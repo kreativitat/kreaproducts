@@ -1474,26 +1474,26 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			// This code hides the numeric price input if is not selected, loads the editor page if editor button is pressed
 ?>
 
-			<script type="text/javascript">
-				jQuery(document).ready(function() {
-					jQuery("#expression_editor").click(function() {
-						window.location =
-							"<?php echo DOL_URL_ROOT ?>/product/dynamic_price/editor.php?id=<?php echo $id ?>&tab=price&eid=" +
-							$("#eid").val();
-					});
-					jQuery("#eid").change(on_change);
-					on_change();
-				});
+<script type="text/javascript">
+jQuery(document).ready(function() {
+    jQuery("#expression_editor").click(function() {
+        window.location =
+            "<?php echo DOL_URL_ROOT ?>/product/dynamic_price/editor.php?id=<?php echo $id ?>&tab=price&eid=" +
+            $("#eid").val();
+    });
+    jQuery("#eid").change(on_change);
+    on_change();
+});
 
-				function on_change() {
-					if ($("#eid").val() == 0) {
-						jQuery("#price_numeric").show();
-					} else {
-						jQuery("#price_numeric").hide();
-					}
-				}
-			</script>
-		<?php
+function on_change() {
+    if ($("#eid").val() == 0) {
+        jQuery("#price_numeric").show();
+    } else {
+        jQuery("#price_numeric").hide();
+    }
+}
+</script>
+<?php
 		}
 
 		// Price
@@ -1540,26 +1540,26 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 	} else {
 		print '<!-- Edit price per level -->' . "\n";
 		?>
-		<script>
-			var showHidePriceRules = function() {
-				var otherPrices = $('div.fiche form table tbody tr:not(:first)');
-				var minPrice1 = $('div.fiche form input[name="price_min[1]"]');
+<script>
+var showHidePriceRules = function() {
+    var otherPrices = $('div.fiche form table tbody tr:not(:first)');
+    var minPrice1 = $('div.fiche form input[name="price_min[1]"]');
 
-				if (jQuery('input#usePriceRules').prop('checked')) {
-					otherPrices.hide();
-					minPrice1.hide();
-				} else {
-					otherPrices.show();
-					minPrice1.show();
-				}
-			};
+    if (jQuery('input#usePriceRules').prop('checked')) {
+        otherPrices.hide();
+        minPrice1.hide();
+    } else {
+        otherPrices.show();
+        minPrice1.show();
+    }
+};
 
-			jQuery(document).ready(function() {
-				showHidePriceRules();
+jQuery(document).ready(function() {
+    showHidePriceRules();
 
-				jQuery('input#usePriceRules').click(showHidePriceRules);
-			});
-		</script>
+    jQuery('input#usePriceRules').click(showHidePriceRules);
+});
+</script>
 <?php
 
 		print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
@@ -1584,26 +1584,91 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		} else {
 			print '<td></td>';
 		}
-
 		print '<td class="center">' . $langs->trans("SellingPrice") . '</td>';
-
+		print '<td class="center">' . $langs->trans("CalculatePriceOnCost") . '</td>';
 		print '<td class="center">' . $langs->trans("MinPrice") . '</td>';
-
 		if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 			print '<td></td>';
 		}
 		print '</tr></thead>';
-
 		print '<tbody>';
+
+		$cost_price_output = $object->cost_price;
+		$tva_tx_output = $object->tva_tx;
+		print '<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        console.log("DOM fully loaded and parsed");
+
+        // Retrieve the cost price and TVA from PHP
+        const costPrice = ' . json_encode($cost_price_output) . ';
+        const tvaTx = ' . json_encode($tva_tx_output) . ';
+        console.log("Cost Price:", costPrice, "TVA:", tvaTx);
+
+        // Function to calculate and update the price
+        function calculatePrice(i) {
+            const percentageInput = document.getElementById("percentage_" + i);
+            const priceOutput = document.getElementById("price_" + i);
+            const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
+
+            if (percentageInput && priceOutput && htTtcSelect) {
+                const percentageValue = parseFloat(percentageInput.value) || 0;
+                const baseType = htTtcSelect.value;
+                console.log(`i=${i}, percentage=${percentageValue}, baseType=${baseType}`);
+
+                let priceValue;
+                if (baseType === "TTC") {
+                    priceValue = (costPrice * (1 + percentageValue / 100) * (1 + tvaTx / 100)).toFixed(2);
+                } else {
+                    priceValue = (costPrice * (1 + percentageValue / 100)).toFixed(2);
+                }
+
+                console.log(`Computed price_${i} value: ${priceValue}`);
+                priceOutput.value = priceValue;
+            } else {
+                console.warn(`Elements for percentage_${i}, price_${i}, or select_multiprices_base_type[${i}] not found.`);
+            }
+        }
+
+        // Loop through the predefined set of inputs
+        [1, 2, 3].forEach(i => {
+            const percentageInput = document.getElementById("percentage_" + i);
+            const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
+
+            if (percentageInput && htTtcSelect) {
+                console.log(`Adding event listeners for percentage_${i} and select_multiprices_base_type[${i}]`);
+
+                // Event listener for percentage input
+                percentageInput.addEventListener("input", () => {
+                    console.log(`Input event triggered for percentage_${i}`);
+                    calculatePrice(i);
+                });
+
+                // Event listener for HT/TTC select
+                htTtcSelect.addEventListener("change", () => {
+                    console.log(`Change event triggered for select_multiprices_base_type[${i}]`);
+                    calculatePrice(i);
+                });
+
+                // Initial calculation on page load
+                calculatePrice(i);
+            } else {
+                console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
+            }
+        });
+    });
+</script>';
+
 
 		for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
 			print '<tr class="oddeven">';
+
+			// Selling Price Label with Tooltip
 			print '<td>';
 			$text = $langs->trans('SellingPrice') . ' ' . $i;
 			print $form->textwithpicto($text, $langs->trans("PrecisionUnitIsLimitedToXDecimals", $conf->global->MAIN_MAX_DECIMALS_UNIT), 1, 1);
 			print '</td>';
 
-			// VAT
+			// VAT Handling
 			if (empty($conf->global->PRODUIT_MULTIPRICES_USE_VAT_PER_LEVEL)) {
 				print '<td>';
 				print '<input type="hidden" name="tva_tx[' . $i . ']" value="' . ($object->default_vat_code ? $object->tva_tx . ' (' . $object->default_vat_code . ')' : $object->tva_tx) . '">';
@@ -1620,22 +1685,36 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 				print '</td>';
 			}
 
-			// Selling price
+			// Selling Price Input Field with Unique ID and Data Attributes
 			print '<td style="text-align: center">';
 			if ($object->multiprices_base_type[$i] == 'TTC') {
-				print '<input name="price[' . $i . ']" size="10" value="' . price($object->multiprices_ttc[$i]) . '">';
+				$cost_price = $object->cost_price;
+				// Store the base price (current price before percentage) in a data attribute
+				print '<input type="text" name="price[' . $i . ']" id="price_' . $i . '" size="10" value="' . price($object->multiprices_ttc[$i]) . '" data-base-price="' . price($object->multiprices_ttc[$i]) . '">';
+				print '&nbsp;' . $form->selectPriceBaseType($object->multiprices_base_type[$i], "multiprices_base_type[" . $i . "]");
+				print '</td>';
+				// Percentage Input Field with Unique ID and Data Attributes
+				print '<td style="text-align: center">';
+				print '<input type="text" style="width: 75px;" id="costprice_' . $i . '" value="' . price($cost_price) . '" disabled>&nbsp&nbsp+&nbsp&nbsp<input type="number" name="percentage[' . $i . ']" id="percentage_' . $i . '" placeholder="0" min="0" step="0.1" size="2" style="width: 50px;">%';
+				print '</td>';
 			} else {
-				print '<input name="price[' . $i . ']" size="10" value="' . price($object->multiprices[$i]) . '">';
+				print '<input type="text" name="price[' . $i . ']" id="price_' . $i . '" size="10" value="' . price($object->multiprices[$i]) . '" data-base-price="' . price($object->multiprices[$i]) . '">';
+				print '&nbsp;' . $form->selectPriceBaseType($object->multiprices_base_type[$i], "multiprices_base_type[" . $i . "]");
+				print '</td>';
+				print '<td style="text-align: center">';
+				print '<input type="text" style="width: 75px;" id="costprice_' . $i . '" value="' . price($cost_price) . '" disabled>&nbsp&nbsp+&nbsp&nbsp<input type="number" name="percentage[' . $i . ']" id="percentage_' . $i . '" placeholder="0" min="0" step="0.1" size="2" style="width: 50px;">%';
+				print '</td>';
 			}
-			print '&nbsp;' . $form->selectPriceBaseType($object->multiprices_base_type[$i], "multiprices_base_type[" . $i . "]");
-			print '</td>';
 
-			// Min price
+
+
+
+			// Minimum Price Input Field
 			print '<td style="text-align: center">';
 			if ($object->multiprices_base_type[$i] == 'TTC') {
-				print '<input name="price_min[' . $i . ']" size="10" value="' . price($object->multiprices_min_ttc[$i]) . '">';
+				print '<input type="text" name="price_min[' . $i . ']" id="price_min_' . $i . '" size="10" value="' . price($object->multiprices_min_ttc[$i]) . '">';
 			} else {
-				print '<input name="price_min[' . $i . ']" size="10" value="' . price($object->multiprices_min[$i]) . '">';
+				print '<input type="text" name="price_min[' . $i . ']" id="price_min_' . $i . '" size="10" value="' . price($object->multiprices_min[$i]) . '">';
 			}
 			if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 				print '<td class="left">' . $langs->trans("MinimumRecommendedPrice", price($maxpricesupplier, 0, '', 1, -1, -1, 'auto')) . ' ' . img_warning() . '</td>';
@@ -1644,6 +1723,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 
 			print '</tr>';
 		}
+
 
 		print '</tbody>';
 

@@ -70,4 +70,5 @@ MyWidgetDescription = My widget description
 #
 ForceSynchronization = ZSync
 Update VAT = Actualizar IVA
-ForceSyncSuccess = Sucesso na sincronização
+ForceSyncSuccess = Sincronizado com sucesso
+CalculatePriceOnCost = Percentagem sobre custo
