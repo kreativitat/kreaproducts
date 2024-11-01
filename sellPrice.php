@@ -1474,26 +1474,26 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			// This code hides the numeric price input if is not selected, loads the editor page if editor button is pressed
 ?>
 
-<script type="text/javascript">
-jQuery(document).ready(function() {
-    jQuery("#expression_editor").click(function() {
-        window.location =
-            "<?php echo DOL_URL_ROOT ?>/product/dynamic_price/editor.php?id=<?php echo $id ?>&tab=price&eid=" +
-            $("#eid").val();
-    });
-    jQuery("#eid").change(on_change);
-    on_change();
-});
+			<script type="text/javascript">
+				jQuery(document).ready(function() {
+					jQuery("#expression_editor").click(function() {
+						window.location =
+							"<?php echo DOL_URL_ROOT ?>/product/dynamic_price/editor.php?id=<?php echo $id ?>&tab=price&eid=" +
+							$("#eid").val();
+					});
+					jQuery("#eid").change(on_change);
+					on_change();
+				});
 
-function on_change() {
-    if ($("#eid").val() == 0) {
-        jQuery("#price_numeric").show();
-    } else {
-        jQuery("#price_numeric").hide();
-    }
-}
-</script>
-<?php
+				function on_change() {
+					if ($("#eid").val() == 0) {
+						jQuery("#price_numeric").show();
+					} else {
+						jQuery("#price_numeric").hide();
+					}
+				}
+			</script>
+		<?php
 		}
 
 		// Price
@@ -1540,26 +1540,26 @@ function on_change() {
 	} else {
 		print '<!-- Edit price per level -->' . "\n";
 		?>
-<script>
-var showHidePriceRules = function() {
-    var otherPrices = $('div.fiche form table tbody tr:not(:first)');
-    var minPrice1 = $('div.fiche form input[name="price_min[1]"]');
+		<script>
+			var showHidePriceRules = function() {
+				var otherPrices = $('div.fiche form table tbody tr:not(:first)');
+				var minPrice1 = $('div.fiche form input[name="price_min[1]"]');
 
-    if (jQuery('input#usePriceRules').prop('checked')) {
-        otherPrices.hide();
-        minPrice1.hide();
-    } else {
-        otherPrices.show();
-        minPrice1.show();
-    }
-};
+				if (jQuery('input#usePriceRules').prop('checked')) {
+					otherPrices.hide();
+					minPrice1.hide();
+				} else {
+					otherPrices.show();
+					minPrice1.show();
+				}
+			};
 
-jQuery(document).ready(function() {
-    showHidePriceRules();
+			jQuery(document).ready(function() {
+				showHidePriceRules();
 
-    jQuery('input#usePriceRules').click(showHidePriceRules);
-});
-</script>
+				jQuery('input#usePriceRules').click(showHidePriceRules);
+			});
+		</script>
 <?php
 
 		print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
@@ -1629,8 +1629,11 @@ jQuery(document).ready(function() {
             }
         }
 
-        // Loop through the predefined set of inputs
-        [1, 2, 3].forEach(i => {
+		// Generate the levels array dynamically based on PRODUIT_MULTIPRICES_LIMIT
+        const levels = ' . json_encode(range(1, $conf->global->PRODUIT_MULTIPRICES_LIMIT)) . ';
+
+        // Loop through the dynamic set of inputs
+        levels.forEach(i => {
             const percentageInput = document.getElementById("percentage_" + i);
             const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
 
@@ -1650,7 +1653,7 @@ jQuery(document).ready(function() {
                 });
 
                 // Initial calculation on page load
-                calculatePrice(i);
+                //calculatePrice(i);
             } else {
                 console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
             }
