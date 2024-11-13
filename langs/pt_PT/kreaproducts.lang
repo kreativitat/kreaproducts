@@ -55,8 +55,11 @@ KreaProductsAboutPage = KreaProducts about page
 # Associated products page
 #
 BOMExistsAndOriginProduct = O produto tem origem no desmatelamento de produto pai
+ComponentsOfProduct = O produto dá origem após o desmatelamento aos produtos
+ComponentProduct =O produto dá origem após o desmatelamento aos produtos
 kreaproducts_BOM = BOM
 BOMExists = Lista de Materiais
+BOMReference = Lista de Materiais
 OriginProduct = Produto em origem
 
 #

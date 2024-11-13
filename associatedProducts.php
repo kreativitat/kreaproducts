@@ -1005,6 +1005,91 @@ if ($id > 0 || !empty($ref)) {
 			}
 		}
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+		/**
+		 * This code snippet checks if the current product acts as a parent in any **assemble BOM** (Bill of Materials) in the system.
+		 * If a BOM of type "assemble" exists (where `bomtype = 0`), the script fetches and displays the **components (sons)**
+		 * associated with the BOM. Each component is displayed as a clickable link that directs the user to the component's
+		 * detailed page.
+		 *
+		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
+		 */
+
+		// Check if the BOM module is enabled before executing the code
+		if (!empty($conf->bom->enabled)) {
+
+			// Fetch all BOMs and the components for the current product
+			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype, bl.fk_product AS fk_product_component, p.ref, p.label
+                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
+                WHERE b.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+
+			$resql_bom = $db->query($sql_bom);
+			$components = [];
+
+			// Check if the query returns results
+			if ($resql_bom) {
+				while ($obj_bom = $db->fetch_object($resql_bom)) {
+					// Store each component's product details and BOM ID
+					$components[] = array(
+						'bom_id' => $obj_bom->bom_id,                  // The BOM ID
+						'product_id' => $obj_bom->fk_product_component, // The component product ID
+						'ref' => $obj_bom->ref,                        // The component product reference
+						'label' => $obj_bom->label                     // The component product label
+					);
+				}
+			}
+			if (count($components) > 0) {
+
+				// Only display the table if there is at least one component
+				print '<div class="fichecenter">';
+
+				// Print the title of the section
+				print load_fiche_titre($langs->trans("ComponentsOfProduct"), '', '');
+
+				// Begin table structure
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+
+				// Column headers
+				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+				print '<td>' . $langs->trans('BOMReference') . '</td>';
+				print '</tr>';
+
+				// Display each component
+				foreach ($components as $component) {
+					print '<tr class="oddeven">';
+					// Display the component product with a link to its product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . ' - ' . $component['label'] . '</a></td>';
+					// Link to the BOM (assuming there is a page that shows BOM details)
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
+					print '</tr>';
+				}
+
+				print '</table>';
+				print '</div>';
+			}
+		}
+
+
+
+
+
+
+
 		/*
     	* This code retrieves the menus where a specific product exists in the 'niveismenu' field,
     	* checks all JSON levels for the product code, and returns the corresponding menu details.
