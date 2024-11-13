@@ -1005,19 +1005,6 @@ if ($id > 0 || !empty($ref)) {
 			}
 		}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 		/**
 		 * This code snippet checks if the current product acts as a parent in any **assemble BOM** (Bill of Materials) in the system.
 		 * If a BOM of type "assemble" exists (where `bomtype = 0`), the script fetches and displays the **components (sons)**
@@ -1065,17 +1052,18 @@ if ($id > 0 || !empty($ref)) {
 				print '<tr class="liste_titre">';
 
 				// Column headers
-				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
 				print '<td>' . $langs->trans('BOMReference') . '</td>';
+				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+
 				print '</tr>';
 
 				// Display each component
 				foreach ($components as $component) {
 					print '<tr class="oddeven">';
-					// Display the component product with a link to its product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . ' - ' . $component['label'] . '</a></td>';
 					// Link to the BOM (assuming there is a page that shows BOM details)
 					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
+					// Display the component product with a link to its product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . ' - ' . $component['label'] . '</a></td>';
 					print '</tr>';
 				}
 
@@ -1083,12 +1071,6 @@ if ($id > 0 || !empty($ref)) {
 				print '</div>';
 			}
 		}
-
-
-
-
-
-
 
 		/*
     	* This code retrieves the menus where a specific product exists in the 'niveismenu' field,
