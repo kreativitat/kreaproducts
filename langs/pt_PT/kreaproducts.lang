@@ -54,13 +54,15 @@ KreaProductsAboutPage = KreaProducts about page
 #
 # Associated products page
 #
-BOMExistsAndOriginProduct = O produto tem origem no desmatelamento de produto pai
-ComponentsOfProduct = O produto dá origem após o desmatelamento aos produtos
-ComponentProduct = Componentes
+BOMExistsAndOriginProduct = MRP (Material Requirements Planning), Produtos Pai
+ComponentsOfProduct = MRP (Material Requirements Planning), Produtos Filho
+OriginProductId = Componentes
+ComponentProductId = Componentes
+ComponentProduct = Etiqueta
 kreaproducts_BOM = BOM
 BOMExists = Lista de Materiais
 BOMReference = Lista de Materiais
-OriginProduct = Componentes
+OriginProduct = Etiqueta
 
 #
 # Sample widget

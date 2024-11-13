@@ -984,6 +984,7 @@ if ($id > 0 || !empty($ref)) {
 
 				// Column headers
 				print '<td>' . $langs->trans('BOMExists') . '</td>';
+				print '<td>' . $langs->trans('OriginProductId') . '</td>';
 				print '<td>' . $langs->trans('OriginProduct') . '</td>';
 				print '</tr>';
 
@@ -995,7 +996,8 @@ if ($id > 0 || !empty($ref)) {
 					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
 
 					// Display the origin product with a link to the product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . ' - ' . $bom['label'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['label'] . '</a></td>';
 					print '</tr>';
 				}
 
@@ -1022,7 +1024,7 @@ if ($id > 0 || !empty($ref)) {
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
-                WHERE b.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+                WHERE b.fk_product = " . (int)$object->id; // . " AND b.bomtype = 1";
 
 			$resql_bom = $db->query($sql_bom);
 			$components = [];
@@ -1053,6 +1055,7 @@ if ($id > 0 || !empty($ref)) {
 
 				// Column headers
 				print '<td>' . $langs->trans('BOMReference') . '</td>';
+				print '<td>' . $langs->trans('ComponentProductId') . '</td>';
 				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
 
 				print '</tr>';
@@ -1062,8 +1065,10 @@ if ($id > 0 || !empty($ref)) {
 					print '<tr class="oddeven">';
 					// Link to the BOM (assuming there is a page that shows BOM details)
 					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
-					// Display the component product with a link to its product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . ' - ' . $component['label'] . '</a></td>';
+					// Display the component product reference with a link to its product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . '</a></td>';
+					// Display the component product label
+					print '<td>' . $component['label'] . '</td>';
 					print '</tr>';
 				}
 
