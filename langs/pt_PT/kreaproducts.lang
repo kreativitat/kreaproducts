@@ -63,6 +63,7 @@ kreaproducts_BOM = BOM
 BOMExists = Lista de Materiais
 BOMReference = Lista de Materiais
 OriginProduct = Etiqueta
+MenuWhereProductExistsAndOriginProduct = Menus onde este produto faz parte
 
 #
 # Sample widget
