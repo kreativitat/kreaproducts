@@ -117,7 +117,7 @@ class modKreaProducts extends DolibarrModules
 			// Set this to 1 if module has its own barcode directory (core/modules/barcode)
 			'barcode' => 0,
 			// Set this to 1 if module has its own models directory (core/modules/xxx)
-			'models' => 0,
+			'models' => 1,
 			// Set this to 1 if module has its own printing directory (core/modules/printing)
 			'printing' => 0,
 			// Set this to 1 if module has its own theme directory (theme)
@@ -276,8 +276,8 @@ class modKreaProducts extends DolibarrModules
 			//  0 => array(
 			//      'label' => 'MyJob label',
 			//      'jobtype' => 'method',
-			//      'class' => '/kreaproducts/class/myobject.class.php',
-			//      'objectname' => 'MyObject',
+			//      'class' => '/kreaproducts/class/allergens.class.php',
+			//      'objectname' => 'Allergens',
 			//      'method' => 'doScheduledJob',
 			//      'parameters' => '',
 			//      'comment' => 'Comment',
@@ -299,24 +299,22 @@ class modKreaProducts extends DolibarrModules
 		$r = 0;
 		// Add here entries to declare new permissions
 		/* BEGIN MODULEBUILDER PERMISSIONS */
-		/*
-		$o = 1;
-		$this->rights[$r][0] = $this->numero . sprintf("%02d", ($o * 10) + 1); // Permission id (must not be already used)
-		$this->rights[$r][1] = 'Read objects of KreaProducts'; // Permission label
-		$this->rights[$r][4] = 'myobject';
-		$this->rights[$r][5] = 'read'; // In php code, permission will be checked by test if ($user->hasRight('kreaproducts', 'myobject', 'read'))
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
+		$this->rights[$r][1] = 'Read Allergens object of KreaProducts';
+		$this->rights[$r][4] = 'allergens';
+		$this->rights[$r][5] = 'read';
 		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf("%02d", ($o * 10) + 2); // Permission id (must not be already used)
-		$this->rights[$r][1] = 'Create/Update objects of KreaProducts'; // Permission label
-		$this->rights[$r][4] = 'myobject';
-		$this->rights[$r][5] = 'write'; // In php code, permission will be checked by test if ($user->hasRight('kreaproducts', 'myobject', 'write'))
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
+		$this->rights[$r][1] = 'Create/Update Allergens object of KreaProducts';
+		$this->rights[$r][4] = 'allergens';
+		$this->rights[$r][5] = 'write';
 		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf("%02d", ($o * 10) + 3); // Permission id (must not be already used)
-		$this->rights[$r][1] = 'Delete objects of KreaProducts'; // Permission label
-		$this->rights[$r][4] = 'myobject';
-		$this->rights[$r][5] = 'delete'; // In php code, permission will be checked by test if ($user->hasRight('kreaproducts', 'myobject', 'delete'))
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
+		$this->rights[$r][1] = 'Delete Allergens object of KreaProducts';
+		$this->rights[$r][4] = 'allergens';
+		$this->rights[$r][5] = 'delete';
 		$r++;
-		*/
+
 		/* END MODULEBUILDER PERMISSIONS */
 
 		// Main menu entries to add
@@ -335,53 +333,149 @@ class modKreaProducts extends DolibarrModules
 		//	'langs' => 'kreaproducts@kreaproducts', // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 		//	'position' => 1000 + $r,
 		//	'enabled' => 'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-		//	'perms' => '1', // Use 'perms'=>'$user->hasRight("kreaproducts", "myobject", "read")' if you want your menu with a permission rules
+		//	'perms' => '1', // Use 'perms'=>'$user->hasRight("kreaproducts", "allergens", "read")' if you want your menu with a permission rules
 		//	'target' => '',
 		//	'user' => 2, // 0=Menu for internal users, 1=external users, 2=both
 		//);
 		/* END MODULEBUILDER TOPMENU */
+		/* BEGIN MODULEBUILDER LEFTMENU ALLERGENS */
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts',
+			'type' => 'left',
+			'titre' => 'Allergens',
+			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'allergens',
+			'url' => '/kreaproducts/allergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "allergens", "read")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'Allergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',
+			'type' => 'left',
+			'titre' => 'List Allergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_allergens_list',
+			'url' => '/kreaproducts/allergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "allergens", "read")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'Allergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',
+			'type' => 'left',
+			'titre' => 'New Allergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_allergens_new',
+			'url' => '/kreaproducts/allergens_card.php?action=create',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "allergens", "write")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'Allergens'
+		);
+		/* END MODULEBUILDER LEFTMENU ALLERGENS */
+		/* BEGIN MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts',
+			'type' => 'left',
+			'titre' => 'ProductAllergens',
+			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'productallergens',
+			'url' => '/kreaproducts/productallergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
+			'type' => 'left',
+			'titre' => 'List ProductAllergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_productallergens_list',
+			'url' => '/kreaproducts/productallergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
+			'type' => 'left',
+			'titre' => 'New ProductAllergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_productallergens_new',
+			'url' => '/kreaproducts/productallergens_card.php?action=create',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '1',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		/* END MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
 		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
 		/*
 		$this->menu[$r++]=array(
 			'fk_menu'=>'fk_mainmenu=kreaproducts',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
 			'type'=>'left',                          // This is a Left menu entry
-			'titre'=>'MyObject',
+			'titre'=>'Allergens',
 			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
 			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'myobject',
+			'leftmenu'=>'allergens',
 			'url'=>'/kreaproducts/kreaproductsindex.php',
 			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
 			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-			'perms'=>'$user->hasRight("kreaproducts", "myobject", "read")',
+			'perms'=>'$user->hasRight("kreaproducts", "allergens", "read")',
 			'target'=>'',
 			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
 		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=myobject',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
 			'type'=>'left',			                // This is a Left menu entry
-			'titre'=>'New_MyObject',
+			'titre'=>'New_Allergens',
 			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'kreaproducts_myobject_new',
-			'url'=>'/kreaproducts/myobject_card.php?action=create',
+			'leftmenu'=>'kreaproducts_allergens_new',
+			'url'=>'/kreaproducts/allergens_card.php?action=create',
 			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
 			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled. Use '$leftmenu==\'system\'' to show if leftmenu system is selected.
-			'perms'=>'$user->hasRight("kreaproducts", "myobject", "write")'
+			'perms'=>'$user->hasRight("kreaproducts", "allergens", "write")'
 			'target'=>'',
 			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
 		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=myobject',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
+			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
 			'type'=>'left',			                // This is a Left menu entry
-			'titre'=>'List_MyObject',
+			'titre'=>'List_Allergens',
 			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'kreaproducts_myobject_list',
-			'url'=>'/kreaproducts/myobject_list.php',
+			'leftmenu'=>'kreaproducts_allergens_list',
+			'url'=>'/kreaproducts/allergens_list.php',
 			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
 			'position'=>1000+$r,
 			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-			'perms'=>'$user->hasRight("kreaproducts", "myobject", "read")'
+			'perms'=>'$user->hasRight("kreaproducts", "allergens", "read")'
 			'target'=>'',
 			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
 		);
@@ -393,28 +487,28 @@ class modKreaProducts extends DolibarrModules
 		/*
 		$langs->load("kreaproducts@kreaproducts");
 		$this->export_code[$r]=$this->rights_class.'_'.$r;
-		$this->export_label[$r]='MyObjectLines';	// Translation key (used only if key ExportDataset_xxx_z not found)
-		$this->export_icon[$r]='myobject@kreaproducts';
+		$this->export_label[$r]='AllergensLines';	// Translation key (used only if key ExportDataset_xxx_z not found)
+		$this->export_icon[$r]='allergens@kreaproducts';
 		// Define $this->export_fields_array, $this->export_TypeFields_array and $this->export_entities_array
-		$keyforclass = 'MyObject'; $keyforclassfile='/kreaproducts/class/myobject.class.php'; $keyforelement='myobject@kreaproducts';
+		$keyforclass = 'Allergens'; $keyforclassfile='/kreaproducts/class/allergens.class.php'; $keyforelement='allergens@kreaproducts';
 		include DOL_DOCUMENT_ROOT.'/core/commonfieldsinexport.inc.php';
 		//$this->export_fields_array[$r]['t.fieldtoadd']='FieldToAdd'; $this->export_TypeFields_array[$r]['t.fieldtoadd']='Text';
 		//unset($this->export_fields_array[$r]['t.fieldtoremove']);
-		//$keyforclass = 'MyObjectLine'; $keyforclassfile='/kreaproducts/class/myobject.class.php'; $keyforelement='myobjectline@kreaproducts'; $keyforalias='tl';
+		//$keyforclass = 'AllergensLine'; $keyforclassfile='/kreaproducts/class/allergens.class.php'; $keyforelement='allergensline@kreaproducts'; $keyforalias='tl';
 		//include DOL_DOCUMENT_ROOT.'/core/commonfieldsinexport.inc.php';
-		$keyforselect='myobject'; $keyforaliasextra='extra'; $keyforelement='myobject@kreaproducts';
+		$keyforselect='allergens'; $keyforaliasextra='extra'; $keyforelement='allergens@kreaproducts';
 		include DOL_DOCUMENT_ROOT.'/core/extrafieldsinexport.inc.php';
-		//$keyforselect='myobjectline'; $keyforaliasextra='extraline'; $keyforelement='myobjectline@kreaproducts';
+		//$keyforselect='allergensline'; $keyforaliasextra='extraline'; $keyforelement='allergensline@kreaproducts';
 		//include DOL_DOCUMENT_ROOT.'/core/extrafieldsinexport.inc.php';
-		//$this->export_dependencies_array[$r] = array('myobjectline'=>array('tl.rowid','tl.ref')); // To force to activate one or several fields if we select some fields that need same (like to select a unique key if we ask a field of a child to avoid the DISTINCT to discard them, or for computed field than need several other fields)
+		//$this->export_dependencies_array[$r] = array('allergensline'=>array('tl.rowid','tl.ref')); // To force to activate one or several fields if we select some fields that need same (like to select a unique key if we ask a field of a child to avoid the DISTINCT to discard them, or for computed field than need several other fields)
 		//$this->export_special_array[$r] = array('t.field'=>'...');
 		//$this->export_examplevalues_array[$r] = array('t.field'=>'Example');
 		//$this->export_help_array[$r] = array('t.field'=>'FieldDescHelp');
 		$this->export_sql_start[$r]='SELECT DISTINCT ';
-		$this->export_sql_end[$r]  =' FROM '.MAIN_DB_PREFIX.'myobject as t';
-		//$this->export_sql_end[$r]  =' LEFT JOIN '.MAIN_DB_PREFIX.'myobject_line as tl ON tl.fk_myobject = t.rowid';
+		$this->export_sql_end[$r]  =' FROM '.MAIN_DB_PREFIX.'allergens as t';
+		//$this->export_sql_end[$r]  =' LEFT JOIN '.MAIN_DB_PREFIX.'allergens_line as tl ON tl.fk_allergens = t.rowid';
 		$this->export_sql_end[$r] .=' WHERE 1 = 1';
-		$this->export_sql_end[$r] .=' AND t.entity IN ('.getEntity('myobject').')';
+		$this->export_sql_end[$r] .=' AND t.entity IN ('.getEntity('allergens').')';
 		$r++; */
 		/* END MODULEBUILDER EXPORT MYOBJECT */
 
@@ -424,27 +518,27 @@ class modKreaProducts extends DolibarrModules
 		/*
 		$langs->load("kreaproducts@kreaproducts");
 		$this->import_code[$r]=$this->rights_class.'_'.$r;
-		$this->import_label[$r]='MyObjectLines';	// Translation key (used only if key ExportDataset_xxx_z not found)
-		$this->import_icon[$r]='myobject@kreaproducts';
-		$this->import_tables_array[$r] = array('t' => MAIN_DB_PREFIX.'kreaproducts_myobject', 'extra' => MAIN_DB_PREFIX.'kreaproducts_myobject_extrafields');
+		$this->import_label[$r]='AllergensLines';	// Translation key (used only if key ExportDataset_xxx_z not found)
+		$this->import_icon[$r]='allergens@kreaproducts';
+		$this->import_tables_array[$r] = array('t' => MAIN_DB_PREFIX.'kreaproducts_allergens', 'extra' => MAIN_DB_PREFIX.'kreaproducts_allergens_extrafields');
 		$this->import_tables_creator_array[$r] = array('t' => 'fk_user_author'); // Fields to store import user id
 		$import_sample = array();
-		$keyforclass = 'MyObject'; $keyforclassfile='/kreaproducts/class/myobject.class.php'; $keyforelement='myobject@kreaproducts';
+		$keyforclass = 'Allergens'; $keyforclassfile='/kreaproducts/class/allergens.class.php'; $keyforelement='allergens@kreaproducts';
 		include DOL_DOCUMENT_ROOT.'/core/commonfieldsinimport.inc.php';
 		$import_extrafield_sample = array();
-		$keyforselect='myobject'; $keyforaliasextra='extra'; $keyforelement='myobject@kreaproducts';
+		$keyforselect='allergens'; $keyforaliasextra='extra'; $keyforelement='allergens@kreaproducts';
 		include DOL_DOCUMENT_ROOT.'/core/extrafieldsinimport.inc.php';
-		$this->import_fieldshidden_array[$r] = array('extra.fk_object' => 'lastrowid-'.MAIN_DB_PREFIX.'kreaproducts_myobject');
+		$this->import_fieldshidden_array[$r] = array('extra.fk_object' => 'lastrowid-'.MAIN_DB_PREFIX.'kreaproducts_allergens');
 		$this->import_regex_array[$r] = array();
 		$this->import_examplevalues_array[$r] = array_merge($import_sample, $import_extrafield_sample);
 		$this->import_updatekeys_array[$r] = array('t.ref' => 'Ref');
 		$this->import_convertvalue_array[$r] = array(
 			't.ref' => array(
 				'rule'=>'getrefifauto',
-				'class'=>(!getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON') ? 'mod_myobject_standard' : getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')),
-				'path'=>"/core/modules/commande/".(!getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON') ? 'mod_myobject_standard' : getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')).'.php'
-				'classobject'=>'MyObject',
-				'pathobject'=>'/kreaproducts/class/myobject.class.php',
+				'class'=>(!getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON') ? 'mod_allergens_standard' : getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')),
+				'path'=>"/core/modules/commande/".(!getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON') ? 'mod_allergens_standard' : getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')).'.php'
+				'classobject'=>'Allergens',
+				'pathobject'=>'/kreaproducts/class/allergens.class.php',
 			),
 			't.fk_soc' => array('rule' => 'fetchidfromref', 'file' => '/societe/class/societe.class.php', 'class' => 'Societe', 'method' => 'fetch', 'element' => 'ThirdParty'),
 			't.fk_user_valid' => array('rule' => 'fetchidfromref', 'file' => '/user/class/user.class.php', 'class' => 'User', 'method' => 'fetch', 'element' => 'user'),
@@ -493,16 +587,16 @@ class modKreaProducts extends DolibarrModules
 		// Document templates
 		$moduledir = dol_sanitizeFileName('kreaproducts');
 		$myTmpObjects = array();
-		$myTmpObjects['MyObject'] = array('includerefgeneration' => 0, 'includedocgeneration' => 0);
+		$myTmpObjects['Allergens'] = array('includerefgeneration' => 0, 'includedocgeneration' => 0);
 
 		foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {
-			if ($myTmpObjectKey == 'MyObject') {
+			if ($myTmpObjectKey == 'Allergens') {
 				continue;
 			}
 			if ($myTmpObjectArray['includerefgeneration']) {
-				$src = DOL_DOCUMENT_ROOT . '/install/doctemplates/' . $moduledir . '/template_myobjects.odt';
+				$src = DOL_DOCUMENT_ROOT . '/install/doctemplates/' . $moduledir . '/template_allergenss.odt';
 				$dirodt = DOL_DATA_ROOT . '/doctemplates/' . $moduledir;
-				$dest = $dirodt . '/template_myobjects.odt';
+				$dest = $dirodt . '/template_allergenss.odt';
 
 				if (file_exists($src) && !file_exists($dest)) {
 					require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
