@@ -22,6 +22,7 @@ CREATE TABLE llx_kreaproducts_productallergens(
 	fk_user_creat integer NOT NULL, 
 	fk_user_modif integer, 
 	fk_product integer, 
-	fk_allergen integer
+	fk_allergen integer, 
+	traces integer
 	-- END MODULEBUILDER FIELDS
 ) ENGINE=innodb;

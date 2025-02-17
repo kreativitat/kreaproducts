@@ -89,7 +89,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '1.10';
+		$this->version = '1.12';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -132,12 +132,7 @@ class modKreaProducts extends DolibarrModules
 			),
 			// Set here all hooks context managed by module. To find available hook context, make a "grep -r '>initHooks(' *" on source code. You can also set hook context to 'all'
 			'hooks' => array(
-				'hooks' => array('productcard'),
-				//   'data' => array(
-				//       'hookcontext1',
-				//       'hookcontext2',
-				//   ),
-				//   'entity' => '0',
+				'data' => array('productcard',)
 			),
 			// Set this to 1 if features of module are opened to external users
 			'moduleforexternal' => 0,
@@ -253,7 +248,19 @@ class modKreaProducts extends DolibarrModules
 		 );
 		 */
 		/* BEGIN MODULEBUILDER DICTIONARIES */
-		$this->dictionaries = array();
+		$this->dictionaries = array(
+			'langs' => 'kreaproducts@kreaproducts',
+			'tabname' => array('c_allergens'),
+			'tablib' => array('Allergens'),
+			'tabsql' => array('SELECT t.rowid as rowid, t.code, t.label, t.icon, t.active FROM llxnm_c_allergens as t'),
+			'tabsqlsort' => array('rowid ASC'),
+			'tabfield' => array('code,label,icon'),
+			'tabfieldvalue' => array('code,label,icon'),
+			'tabfieldinsert' => array('code,label,icon'),
+			'tabrowid' => array('rowid'),
+			'tabcond' => array(isModEnabled('kreaproducts')),
+			'tabhelp' => array(array('code' => $langs->trans('CodeTooltipHelp'), 'field2' => 'field2tooltip')),
+		);
 		/* END MODULEBUILDER DICTIONARIES */
 
 		// Boxes/Widgets
@@ -299,21 +306,6 @@ class modKreaProducts extends DolibarrModules
 		$r = 0;
 		// Add here entries to declare new permissions
 		/* BEGIN MODULEBUILDER PERMISSIONS */
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
-		$this->rights[$r][1] = 'Read Allergens object of KreaProducts';
-		$this->rights[$r][4] = 'allergens';
-		$this->rights[$r][5] = 'read';
-		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
-		$this->rights[$r][1] = 'Create/Update Allergens object of KreaProducts';
-		$this->rights[$r][4] = 'allergens';
-		$this->rights[$r][5] = 'write';
-		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
-		$this->rights[$r][1] = 'Delete Allergens object of KreaProducts';
-		$this->rights[$r][4] = 'allergens';
-		$this->rights[$r][5] = 'delete';
-		$r++;
 
 		/* END MODULEBUILDER PERMISSIONS */
 
@@ -338,102 +330,7 @@ class modKreaProducts extends DolibarrModules
 		//	'user' => 2, // 0=Menu for internal users, 1=external users, 2=both
 		//);
 		/* END MODULEBUILDER TOPMENU */
-		/* BEGIN MODULEBUILDER LEFTMENU ALLERGENS */
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts',
-			'type' => 'left',
-			'titre' => 'Allergens',
-			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'allergens',
-			'url' => '/kreaproducts/allergens_list.php',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '$user->hasRight("kreaproducts", "allergens", "read")',
-			'target' => '',
-			'user' => 2,
-			'object' => 'Allergens'
-		);
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',
-			'type' => 'left',
-			'titre' => 'List Allergens',
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'kreaproducts_allergens_list',
-			'url' => '/kreaproducts/allergens_list.php',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '$user->hasRight("kreaproducts", "allergens", "read")',
-			'target' => '',
-			'user' => 2,
-			'object' => 'Allergens'
-		);
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',
-			'type' => 'left',
-			'titre' => 'New Allergens',
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'kreaproducts_allergens_new',
-			'url' => '/kreaproducts/allergens_card.php?action=create',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '$user->hasRight("kreaproducts", "allergens", "write")',
-			'target' => '',
-			'user' => 2,
-			'object' => 'Allergens'
-		);
-		/* END MODULEBUILDER LEFTMENU ALLERGENS */
-		/* BEGIN MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts',
-			'type' => 'left',
-			'titre' => 'ProductAllergens',
-			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'productallergens',
-			'url' => '/kreaproducts/productallergens_list.php',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '1',
-			'target' => '',
-			'user' => 2,
-			'object' => 'ProductAllergens'
-		);
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
-			'type' => 'left',
-			'titre' => 'List ProductAllergens',
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'kreaproducts_productallergens_list',
-			'url' => '/kreaproducts/productallergens_list.php',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '1',
-			'target' => '',
-			'user' => 2,
-			'object' => 'ProductAllergens'
-		);
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
-			'type' => 'left',
-			'titre' => 'New ProductAllergens',
-			'mainmenu' => 'kreaproducts',
-			'leftmenu' => 'kreaproducts_productallergens_new',
-			'url' => '/kreaproducts/productallergens_card.php?action=create',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts")',
-			'perms' => '1',
-			'target' => '',
-			'user' => 2,
-			'object' => 'ProductAllergens'
-		);
-		/* END MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
+
 		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
 		/*
 		$this->menu[$r++]=array(

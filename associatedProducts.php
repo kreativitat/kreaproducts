@@ -795,145 +795,7 @@ if ($id > 0 || !empty($ref)) {
 			print '</form>';
 		}
 
-		// Preparação
 
-		// Load extrafields
-		if (isset($_POST['options_preparacao'])) {
-			$extrafield_value = $_POST['options_preparacao'];
-			// If the input is empty, set the value to null
-			if ($extrafield_value === '') {
-				$extrafield_value = null;
-			}
-			// Update the object's extrafield value
-			$object->array_options['options_preparacao'] = $extrafield_value;
-			// Save the changes to the database
-			$object->insertExtraFields();
-		} else {
-			// Fetch the existing value from the object
-			$extrafield_value = $object->array_options['options_preparacao'];
-		}
-
-		// Fetch the labels for extrafields
-		$extrafields = new ExtraFields($db);
-		$extrafields->fetch_name_optionals_label($object->table_element);
-
-		if (isset($object->array_options)) {
-			print '<br>';
-			print load_fiche_titre('Preparação do produto', '', '');
-
-			print '<div class="fichecenter">';
-			print '<table class="ui-sortable liste nobottom">';
-
-			print '<tr><td class="titlefield">';
-			print $form->editfieldkey("Preparacao", 'options_preparacao', $extrafield_value, $object, $usercancreate, 'ckeditor');
-			print '</td><td>';
-			print $form->editfieldval("Preparacao", 'options_preparacao', $extrafield_value, $object, $usercancreate, 'ckeditor');
-			print '</td></tr>';
-
-			print '</table>';
-			print '</div>';
-		}
-
-		// Load extrafields
-		// Define the array of field keys to display
-		$fieldsToDisplay = ['descricao', 'contmalerg', 'podeconteralerg', 'decnut', 'tiporefeicao', 'marque', 'video'];
-
-		foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
-			if (isset($_POST['options_' . $key])) {
-				$extrafield_value = $_POST['options_' . $key];
-				// If the input is empty, set the value to null
-				if ($extrafield_value === '') {
-					$extrafield_value = null;
-				}
-				// Update the object's extrafield value
-				$object->array_options['options_' . $key] = $extrafield_value;
-			} else {
-				// Fetch the existing value from the object
-				$extrafield_value = $object->array_options['options_' . $key];
-			}
-		}
-
-		// Save the changes to the database
-		$object->insertExtraFields();
-
-		if (isset($object->array_options)) {
-			print '<br>';
-			print load_fiche_titre('Campos extra', '', '');
-
-			print '<div class="fichecenter">';
-			print '<table class="ui-sortable liste nobottom">';
-
-			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
-				if (in_array($key, $fieldsToDisplay)) {
-					$type = $extrafields->attributes[$object->table_element]['type'][$key];
-					// Determine the appropriate editor type based on the extrafield type
-					switch ($type) {
-						case 'varchar':
-							$editorType = 'string';
-							break;
-						case 'int':
-						case 'integer':
-							$editorType = 'numeric';
-							break;
-						case 'double':
-						case 'float':
-							$editorType = 'amount:99';
-							break;
-						case 'text':
-							$editorType = 'textarea';
-							break;
-						case 'date':
-							$editorType = 'datepicker';
-							break;
-						case 'datetime':
-							$editorType = 'datehourpicker';
-							break;
-						case 'boolean':
-							$editorType = 'checkbox';
-							break;
-						case 'email':
-							$editorType = 'email';
-							break;
-
-						case 'select':
-							// Check if 'param' key exists and is an array
-							if (isset($extrafields->attributes['product']['param'][$key]['options']) && is_array($extrafields->attributes['product']['param'][$key]['options'])) {
-								// Access the options array
-								$options = $extrafields->attributes['product']['param'][$key]['options'];
-
-								// Add an empty option at the beginning
-								$options = ['' => ''] + $options;
-
-								if (!empty($options)) {
-									$editorType = 'select;' . implode(',', array_map(function ($k, $v) {
-										return "$k:$v";
-									}, array_keys($options), $options));
-								} else {
-									// Handle case where options are empty
-									$editorType = 'select;';
-								}
-							} else {
-								// Handle case where 'options' key is missing or not an array
-								echo "'options' key is missing or not an array.";
-								$editorType = 'select;';
-							}
-							break;
-						default:
-							$editorType = 'string';
-							break;
-					}
-
-					print '<tr><td class="titlefield">';
-					print $form->editfieldkey($label, 'options_' . $key, $object->array_options['options_' . $key], $object, $usercancreate, $editorType);
-					print '</td><td>';
-					print $form->editfieldval($label, 'options_' . $key, $object->array_options['options_' . $key], $object, $usercancreate, $editorType);
-					print '</td></tr>';
-				}
-			}
-
-			print '</table>';
-			print '</div>';
-		}
 
 		/**
 		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
@@ -1153,6 +1015,203 @@ if ($id > 0 || !empty($ref)) {
 				print '</table>';
 				print '</div>';
 			}
+		}
+
+
+
+		// Preparação
+
+		// Load extrafields
+		if (isset($_POST['options_preparacao'])) {
+			$extrafield_value = $_POST['options_preparacao'];
+			// If the input is empty, set the value to null
+			if ($extrafield_value === '') {
+				$extrafield_value = null;
+			}
+			// Update the object's extrafield value
+			$object->array_options['options_preparacao'] = $extrafield_value;
+			// Save the changes to the database
+			$object->insertExtraFields();
+		} else {
+			// Fetch the existing value from the object
+			$extrafield_value = $object->array_options['options_preparacao'];
+		}
+
+		// Fetch the labels for extrafields
+		$extrafields = new ExtraFields($db);
+		$extrafields->fetch_name_optionals_label($object->table_element);
+
+		if (isset($object->array_options)) {
+			print '<br>';
+			print load_fiche_titre('Preparação do produto', '', '');
+
+			print '<div class="fichecenter">';
+			print '<table class="ui-sortable liste nobottom">';
+
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey("Preparacao", 'options_preparacao', $extrafield_value, $object, $usercancreate, 'ckeditor');
+			print '</td><td>';
+			print $form->editfieldval("Preparacao", 'options_preparacao', $extrafield_value, $object, $usercancreate, 'ckeditor');
+			print '</td></tr>';
+
+			print '</table>';
+			print '</div>';
+		}
+
+		// Load extrafields
+		// Define the array of field keys to display
+		$fieldsToDisplay = ['descricao', 'decnut', 'tiporefeicao', 'marque', 'video'];
+
+		foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
+			if (isset($_POST['options_' . $key])) {
+				$extrafield_value = $_POST['options_' . $key];
+				// If the input is empty, set the value to null
+				if ($extrafield_value === '') {
+					$extrafield_value = null;
+				}
+				// Update the object's extrafield value
+				$object->array_options['options_' . $key] = $extrafield_value;
+			} else {
+				// Fetch the existing value from the object
+				$extrafield_value = $object->array_options['options_' . $key];
+			}
+		}
+
+		// Save the changes to the database
+		$object->insertExtraFields();
+
+		if (isset($object->array_options)) {
+			print '<br>';
+			print load_fiche_titre('Campos extra', '', '');
+
+			print '<div class="fichecenter">';
+			print '<table class="ui-sortable liste nobottom">';
+
+			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
+				if (in_array($key, $fieldsToDisplay)) {
+					$type = $extrafields->attributes[$object->table_element]['type'][$key];
+					// Determine the appropriate editor type based on the extrafield type
+					switch ($type) {
+						case 'varchar':
+							$editorType = 'string';
+							break;
+						case 'int':
+						case 'integer':
+							$editorType = 'numeric';
+							break;
+						case 'double':
+						case 'float':
+							$editorType = 'amount:99';
+							break;
+						case 'text':
+							$editorType = 'textarea';
+							break;
+						case 'date':
+							$editorType = 'datepicker';
+							break;
+						case 'datetime':
+							$editorType = 'datehourpicker';
+							break;
+						case 'boolean':
+							$editorType = 'checkbox';
+							break;
+						case 'email':
+							$editorType = 'email';
+							break;
+
+						case 'select':
+							// Check if 'param' key exists and is an array
+							if (isset($extrafields->attributes['product']['param'][$key]['options']) && is_array($extrafields->attributes['product']['param'][$key]['options'])) {
+								// Access the options array
+								$options = $extrafields->attributes['product']['param'][$key]['options'];
+
+								// Add an empty option at the beginning
+								$options = ['' => ''] + $options;
+
+								if (!empty($options)) {
+									$editorType = 'select;' . implode(',', array_map(function ($k, $v) {
+										return "$k:$v";
+									}, array_keys($options), $options));
+								} else {
+									// Handle case where options are empty
+									$editorType = 'select;';
+								}
+							} else {
+								// Handle case where 'options' key is missing or not an array
+								echo "'options' key is missing or not an array.";
+								$editorType = 'select;';
+							}
+							break;
+						default:
+							$editorType = 'string';
+							break;
+					}
+
+					print '<tr><td class="titlefield">';
+					print $form->editfieldkey($label, 'options_' . $key, $object->array_options['options_' . $key], $object, $usercancreate, $editorType);
+					print '</td><td>';
+					print $form->editfieldval($label, 'options_' . $key, $object->array_options['options_' . $key], $object, $usercancreate, $editorType);
+					print '</td></tr>';
+				}
+			}
+
+			// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
+			$savedAllergensArray = array();
+			$savedAllergensTraces = array();
+
+			// Get saved allergens for this product from our relation table
+			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+			$resql = $db->query($sql);
+			if ($resql) {
+				while ($obj = $db->fetch_object($resql)) {
+					if ($obj->traces == 1) {
+						$savedAllergensTracesArray[] = $obj->fk_allergen;
+					} else {
+						$savedAllergensArray[] = $obj->fk_allergen;
+					}
+				}
+			}
+
+			// Read-only view: Display selected allergens
+			print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+			if (!empty($savedAllergensArray)) {
+				foreach ($savedAllergensArray as $allergenId) {
+					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+					$resql = $db->query($sql);
+					if ($resql && $obj = $db->fetch_object($resql)) {
+						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+						print '</div>';
+					}
+				}
+			} else {
+				print $langs->trans("NoneSelected");
+			}
+			print '</td></tr>';
+
+			// Read-only view: Display selected allergens
+			print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+			if (!empty($savedAllergensTracesArray)) {
+				foreach ($savedAllergensTracesArray as $allergenId) {
+					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+					$resql = $db->query($sql);
+					if ($resql && $obj = $db->fetch_object($resql)) {
+						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+						print '</div>';
+					}
+				}
+			} else {
+				print $langs->trans("NoneSelected");
+			}
+			print '</td></tr>';
+
+			print '</table>';
+			print '</div>';
 		}
 	}
 }

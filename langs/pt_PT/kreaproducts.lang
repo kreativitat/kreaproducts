@@ -52,6 +52,13 @@ KreaProductsAbout = About KreaProducts
 KreaProductsAboutPage = KreaProducts about page
 
 #
+# Products card
+#
+NoneSelected = Nenhum selecionado
+Allergens = Alergenios
+AllergensTraces = Vestigios de alergenios
+
+#
 # Associated products page
 #
 BOMExistsAndOriginProduct = MRP (Material Requirements Planning), Produtos Pai

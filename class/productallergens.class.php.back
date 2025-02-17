@@ -117,6 +117,7 @@ class ProductAllergens extends CommonObject
 		"fk_user_modif" => array("type" => "integer:User:user/class/user.class.php", "label" => "UserModif", "picto" => "user", "enabled" => "1", 'position' => 511, 'notnull' => -1, "visible" => "-2", "csslist" => "tdoverflowmax150",),
 		"fk_product" => array("type" => "integer", "label" => "fk_product", "enabled" => "1", 'position' => 50, 'notnull' => 0, "visible" => "-2",),
 		"fk_allergen" => array("type" => "integer", "label" => "fk_allergen", "enabled" => "1", 'position' => 51, 'notnull' => 0, "visible" => "-2",),
+		"traces" => array("type" => "integer", "label" => "Traces", "enabled" => "1", 'position' => 55, 'notnull' => 0, "visible" => "-2",),
 	);
 	public $rowid;
 	public $date_creation;
@@ -125,6 +126,7 @@ class ProductAllergens extends CommonObject
 	public $fk_user_modif;
 	public $fk_product;
 	public $fk_allergen;
+	public $traces;
 	// END MODULEBUILDER PROPERTIES
 
 
