@@ -347,6 +347,7 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
+		/*
 		global $conf, $user, $langs;
 
 		$error = 0; // Error counter
@@ -425,6 +426,7 @@ class ActionsKreaProducts extends CommonHookActions
 			$this->errors[] = 'Error saving allergens';
 			return -1;
 		}
+		*/
 	}
 
 	/**
@@ -442,6 +444,7 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
+		/*
 		global $db, $langs, $conf, $form;
 
 		$this->resprints = '';
@@ -532,6 +535,7 @@ class ActionsKreaProducts extends CommonHookActions
 			}
 		}
 		return 0;
+		*/
 	}
 
 	/* Add other hook methods here... */

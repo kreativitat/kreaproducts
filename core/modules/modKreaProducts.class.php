@@ -90,7 +90,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '1.13';
+		$this->version = '1.14';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -249,19 +249,7 @@ class modKreaProducts extends DolibarrModules
 		 );
 		 */
 		/* BEGIN MODULEBUILDER DICTIONARIES */
-		$this->dictionaries = array(
-			'langs' => 'kreaproducts@kreaproducts',
-			'tabname' => array('c_allergens'),
-			'tablib' => array('Allergens'),
-			'tabsql' => array('SELECT t.rowid as rowid, t.code, t.label, t.icon, t.active FROM llxnm_c_allergens as t'),
-			'tabsqlsort' => array('rowid ASC'),
-			'tabfield' => array('code,label,icon'),
-			'tabfieldvalue' => array('code,label,icon'),
-			'tabfieldinsert' => array('code,label,icon'),
-			'tabrowid' => array('rowid'),
-			'tabcond' => array(isModEnabled('kreaproducts')),
-			'tabhelp' => array(array('code' => $langs->trans('CodeTooltipHelp'), 'field2' => 'field2tooltip')),
-		);
+		$this->dictionaries = array();
 		/* END MODULEBUILDER DICTIONARIES */
 
 		// Boxes/Widgets

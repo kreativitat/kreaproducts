@@ -1158,60 +1158,62 @@ if ($id > 0 || !empty($ref)) {
 				}
 			}
 
-			// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
-			$savedAllergensArray = array();
-			$savedAllergensTraces = array();
+			if (isModEnabled('kreallergens')) {
+				// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
+				$savedAllergensArray = array();
+				$savedAllergensTraces = array();
 
-			// Get saved allergens for this product from our relation table
-			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					if ($obj->traces == 1) {
-						$savedAllergensTracesArray[] = $obj->fk_allergen;
-					} else {
-						$savedAllergensArray[] = $obj->fk_allergen;
+				// Get saved allergens for this product from our relation table
+				$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+				$resql = $db->query($sql);
+				if ($resql) {
+					while ($obj = $db->fetch_object($resql)) {
+						if ($obj->traces == 1) {
+							$savedAllergensTracesArray[] = $obj->fk_allergen;
+						} else {
+							$savedAllergensArray[] = $obj->fk_allergen;
+						}
 					}
 				}
-			}
 
-			// Read-only view: Display selected allergens
-			print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-			if (!empty($savedAllergensArray)) {
-				foreach ($savedAllergensArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
-					$resql = $db->query($sql);
-					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
-						print '</div>';
+				// Read-only view: Display selected allergens
+				print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+				if (!empty($savedAllergensArray)) {
+					foreach ($savedAllergensArray as $allergenId) {
+						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+							print '</div>';
+						}
 					}
+				} else {
+					print $langs->trans("NoneSelected");
 				}
-			} else {
-				print $langs->trans("NoneSelected");
-			}
-			print '</td></tr>';
+				print '</td></tr>';
 
-			// Read-only view: Display selected allergens
-			print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-			if (!empty($savedAllergensTracesArray)) {
-				foreach ($savedAllergensTracesArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
-					$resql = $db->query($sql);
-					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
-						print '</div>';
+				// Read-only view: Display selected allergens
+				print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+				if (!empty($savedAllergensTracesArray)) {
+					foreach ($savedAllergensTracesArray as $allergenId) {
+						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+							print '</div>';
+						}
 					}
+				} else {
+					print $langs->trans("NoneSelected");
 				}
-			} else {
-				print $langs->trans("NoneSelected");
+				print '</td></tr>';
 			}
-			print '</td></tr>';
 
 			print '</table>';
 			print '</div>';
