@@ -315,7 +315,7 @@ if ($id > 0 || !empty($ref)) {
 		print dol_get_fiche_end();
 
 
-		print '<br><br>';
+
 
 		$prodsfather = $object->getFather(); // Parent Products
 		$object->get_sousproduits_arbo(); // Load $object->sousprods
@@ -335,42 +335,7 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild); // This include only first level of child
 
-		print '<div class="fichecenter">';
 
-		print load_fiche_titre($langs->trans("ProductParentList"), '', '');
-
-		print '<table class="liste">';
-		print '<tr class="liste_titre">';
-		print '<td>' . $langs->trans('ParentProducts') . '</td>';
-		print '<td>' . $langs->trans('Label') . '</td>';
-		print '<td class="right">' . $langs->trans('Qty') . '</td>';
-		print '</td>';
-		if (count($prodsfather) > 0) {
-			foreach ($prodsfather as $value) {
-				$idprod = $value["id"];
-				$productstatic->id = $idprod; // $value["id"];
-				$productstatic->type = $value["fk_product_type"];
-				$productstatic->ref = $value['ref'];
-				$productstatic->label = $value['label'];
-				$productstatic->entity = $value['entity'];
-				$productstatic->status = $value['status'];
-				$productstatic->status_buy = $value['status_buy'];
-
-				print '<tr class="oddeven">';
-				print '<td>' . $productstatic->getNomUrl(1, 'composition') . '</td>';
-				print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
-				print '<td class="right">' . dol_escape_htmltag($value['qty']) . '</td>';
-				print '</tr>';
-			}
-		} else {
-			print '<tr class="oddeven">';
-			print '<td colspan="3"><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
-			print '</tr>';
-		}
-		print '</table>';
-		print '</div>';
-
-		print '<br>' . "\n";
 
 
 		print '<div class="fichecenter">';
@@ -638,7 +603,7 @@ if ($id > 0 || !empty($ref)) {
 
 		// Form with product to add
 		if ((empty($action) || $action == 'view' || $action == 'edit' || $action == 'search' || $action == 're-edit') && ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'))) {
-			print '<br>';
+			//print '<br>';
 
 			$rowspan = 1;
 			if (isModEnabled('categorie')) {
@@ -796,6 +761,44 @@ if ($id > 0 || !empty($ref)) {
 		}
 
 
+
+		// Lista de kits com este produto como componente
+
+		if (count($prodsfather) > 0) {
+			print '<br><br>';
+			print '<div class="fichecenter">';
+
+			print load_fiche_titre($langs->trans("ProductParentList"), '', '');
+
+			print '<table class="liste">';
+			print '<tr class="liste_titre">';
+			print '<td>' . $langs->trans('ParentProducts') . '</td>';
+			print '<td>' . $langs->trans('Label') . '</td>';
+			print '<td class="right">' . $langs->trans('Qty') . '</td>';
+			print '</td>';
+
+			foreach ($prodsfather as $value) {
+				$idprod = $value["id"];
+				$productstatic->id = $idprod; // $value["id"];
+				$productstatic->type = $value["fk_product_type"];
+				$productstatic->ref = $value['ref'];
+				$productstatic->label = $value['label'];
+				$productstatic->entity = $value['entity'];
+				$productstatic->status = $value['status'];
+				$productstatic->status_buy = $value['status_buy'];
+
+				print '<tr class="oddeven">';
+				print '<td>' . $productstatic->getNomUrl(1, 'composition') . '</td>';
+				print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
+				print '<td class="right">' . dol_escape_htmltag($value['qty']) . '</td>';
+				print '</tr>';
+			}
+
+			print '</table>';
+			print '</div>';
+		}
+
+		//print '<br>' . "\n";
 
 		/**
 		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
