@@ -427,8 +427,6 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 	}
 
-
-
 	/**
 	 * Render additional form options for product allergens.
 	 *

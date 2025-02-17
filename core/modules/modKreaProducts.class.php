@@ -62,6 +62,7 @@ class modKreaProducts extends DolibarrModules
 		// ID 156555 kreatools
 		// ID 156556 kreaml
 		// ID 156558 dolizsynch
+		// ID 156559 kreallergens
 		$this->numero = 156550; // TODO Go on page https://wiki.dolibarr.org/index.php/List_of_modules_id to reserve an id number for your module
 
 		// Key text used to identify module (for permissions, menus, etc...)
