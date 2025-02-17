@@ -1164,7 +1164,7 @@ if ($id > 0 || !empty($ref)) {
 				$savedAllergensTraces = array();
 
 				// Get saved allergens for this product from our relation table
-				$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+				$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreallergens_productallergens WHERE fk_product = " . (int)$object->id;
 				$resql = $db->query($sql);
 				if ($resql) {
 					while ($obj = $db->fetch_object($resql)) {
@@ -1180,10 +1180,10 @@ if ($id > 0 || !empty($ref)) {
 				print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
 				if (!empty($savedAllergensArray)) {
 					foreach ($savedAllergensArray as $allergenId) {
-						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreallergens WHERE rowid = " . (int)$allergenId;
 						$resql = $db->query($sql);
 						if ($resql && $obj = $db->fetch_object($resql)) {
-							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							$iconPath = DOL_URL_ROOT . '/custom/kreallergens/img/' . $obj->icon;
 							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
 							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
 							print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
@@ -1199,10 +1199,10 @@ if ($id > 0 || !empty($ref)) {
 				print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
 				if (!empty($savedAllergensTracesArray)) {
 					foreach ($savedAllergensTracesArray as $allergenId) {
-						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreallergens WHERE rowid = " . (int)$allergenId;
 						$resql = $db->query($sql);
 						if ($resql && $obj = $db->fetch_object($resql)) {
-							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							$iconPath = DOL_URL_ROOT . '/custom/kreallergens/img/' . $obj->icon;
 							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
 							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
 							print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
