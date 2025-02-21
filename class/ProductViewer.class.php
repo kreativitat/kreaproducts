@@ -536,6 +536,151 @@ class ProductHierarchy
 
         return $html;
     }
+
+
+
+
+
+
+    // ---------------------------------------------------------------
+    // Single line printing with “tree” indentation
+    // ---------------------------------------------------------------
+    /**
+     * Print a single line for a product, with a "prefix" array that indicates
+     * which levels should have a vertical line. If $level=0 => no indentation.
+     *
+     * We do either '┣━━ ' or '┗━━ ' depending on $isLast, plus for each ancestor level
+     * we do either '┃   ' if $prefix[i]=true or '    ' if false.
+     *
+     * @param int    $productId
+     * @param float  $qty
+     * @param int    $level
+     * @param array  $prefix   Boolean array for each level
+     * @param bool   $isLast
+     * @param int    $index
+     * @param int    $count
+     * @param string $mode
+     */
+    private static function printLine($productId, $qty, $level, array $prefix, $isLast, $index, $count, $mode)
+    {
+        global $db, $langs, $conf;
+
+        $lp = self::getLocalProduct($productId);
+        if (!$lp) return;
+
+        require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+        $prod = new \Product($db);
+        if ($prod->fetch($productId) < 0) return;
+
+        // Build indentation
+        $indent = '';
+        for ($i = 0; $i < $level; $i++) {
+            // if prefix[i] => we have siblings => "┃   " else "    "
+            if (!empty($prefix[$i])) {
+                $indent .= '┃   ';
+            } else {
+                $indent .= '    ';
+            }
+        }
+
+        // Then the corner: if level>0
+        if ($level > 0) {
+            $indent .= ($isLast ? '┗━━ ' : '┣━━ ');
+        }
+
+        // Association text
+        $assoc = '';
+        if ($qty > 0) {
+            $assoc = 'quantidade : ' . number_format($qty, 3, '.', '');
+        } else if (!empty($lp->children)) {
+            $assoc = count($lp->children) . ' Subprodutos';
+        } else if (!empty($lp->parents)) {
+            $assoc = count($lp->parents) . ' Pais';
+        }
+
+        $typeStr = (!empty($lp->children)) ? 'Ficha Técnica' : '';
+        $priceStr = price($lp->buyprice, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE;
+
+        print '<tr>';
+        print '<td>' . $indent . $prod->getNomUrl(1) . '</td>';
+        print '<td>' . htmlspecialchars($lp->label, ENT_QUOTES) . '</td>';
+        print '<td>' . $assoc . '</td>';
+        print '<td>' . $typeStr . '</td>';
+        print '<td>' . $priceStr . '</td>';
+        print '</tr>';
+    }
+
+    // ---------------------------------------------------------------
+    // CHILD RECURSION with fancy lines
+    // ---------------------------------------------------------------
+    private static function fancyChildRecursive($productId, $level, $maxLevel, array &$visited, array $prefix)
+    {
+        // Avoid duplicates
+        if (in_array($productId, $visited, true)) {
+            return;
+        }
+        $visited[] = $productId;
+
+        $lp = self::getLocalProduct($productId);
+        if (!$lp) return;
+
+        $childIds = array_keys($lp->children);
+        $numKids = count($childIds);
+
+        for ($i = 0; $i < $numKids; $i++) {
+            $childId = $childIds[$i];
+            $qty = $lp->children[$childId];
+            $isLast = ($i == $numKids - 1);
+
+            // Copy the prefix array
+            $childPrefix = $prefix;
+            // If not last => we keep vertical line at this level
+            $childPrefix[$level] = !$isLast;
+
+            // Print line
+            self::printLine($childId, $qty, $level + 1, $childPrefix, $isLast, $i, $numKids, 'child');
+
+            if (($level + 1) < $maxLevel) {
+                self::fancyChildRecursive($childId, $level + 1, $maxLevel, $visited, $childPrefix);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // PARENT RECURSION with fancy lines
+    // ---------------------------------------------------------------
+    private static function fancyParentRecursive($productId, $level, $maxLevel, array &$visited, array $prefix)
+    {
+        if (in_array($productId, $visited, true)) {
+            return;
+        }
+        $visited[] = $productId;
+
+        $lp = self::getLocalProduct($productId);
+        if (!$lp) return;
+
+        $parents = $lp->parents;
+        $numPar = count($parents);
+
+        for ($i = 0; $i < $numPar; $i++) {
+            $parentId = $parents[$i];
+            // Avoid cycles
+            if (in_array($parentId, $visited, true)) {
+                continue;
+            }
+            $isLast = ($i == $numPar - 1);
+
+            $parentPrefix = $prefix;
+            $parentPrefix[$level] = !$isLast;
+
+            // Print line
+            self::printLine($parentId, 0, $level + 1, $parentPrefix, $isLast, $i, $numPar, 'parent');
+
+            if (($level + 1) < $maxLevel) {
+                self::fancyParentRecursive($parentId, $level + 1, $maxLevel, $visited, $parentPrefix);
+            }
+        }
+    }
 }
 
 /**
