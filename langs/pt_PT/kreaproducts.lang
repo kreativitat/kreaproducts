@@ -72,6 +72,7 @@ MenuWhereProductExistsAndOriginProduct = Menus onde este produto faz parte
 #
 # Products tree card
 #
+ProductTree = Arvore
 FichaTecnica = Ficha técnica
 PrecoCusto = Preço de custo
 Reference = Referencia
@@ -79,6 +80,7 @@ Designation = Designação
 Qty = Qunt.
 Type = Tipo
 CostPrice = Custo
+
 
 #
 # Sample widget

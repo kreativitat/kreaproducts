@@ -227,13 +227,16 @@ class ProductHierarchy
             return;
         }
 
+
+
         $indentStr = '';
-        for ($i = 0; $i < $level; $i++) {
-            if ($i == $level - 1) {
-                $indentStr .= 'O---- ';
-            } else {
-                $indentStr .= '|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
+        if ($level > 0) {
+            // For each level EXCEPT the last, add "┃   "
+            for ($i = 0; $i < $level - 1; $i++) {
+                $indentStr .= '┃&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
             }
+            // For the final "branch" at this level, add "┗━━ "
+            $indentStr .= '┗━━ ';
         }
 
         $refHtml = $indentStr . $prod->getNomUrl(1);
@@ -383,6 +386,155 @@ class ProductHierarchy
         } else {
             dol_syslog("updateProductAttributes: #$productId has neither children nor parents => no cost update");
         }
+    }
+
+
+
+
+
+
+
+    public static function getCollapsibleTreeHTML($productId)
+    {
+        global $db;
+
+        // 1) Build or rebuild the product map
+        self::$productMap = array();
+        self::$visited    = array();
+        self::buildMap($productId);  // your existing buildMap logic
+
+        // 2) Check if product exists in map
+        $rootLP = self::getLocalProduct($productId);
+        if (!$rootLP) {
+            return '<p style="color:red;">Product #' . $productId . ' not found in map.</p>';
+        }
+
+        // 3) Start building the HTML output
+        ob_start();
+
+?>
+        <!-- Minimal styling for tree toggles -->
+        <style>
+            .tree ul {
+                list-style-type: none;
+                /* Remove normal bullet points */
+                margin: 0;
+                padding: 0 20px;
+                /* Indent sub-lists */
+                display: none;
+                /* Hidden by default, toggled by JS */
+            }
+
+            .tree li {
+                margin: 4px 0;
+                cursor: pointer;
+                /* So the user sees a pointer on hover */
+                position: relative;
+            }
+
+            .tree li::before {
+                content: "▶";
+                /* Triangle icon */
+                display: inline-block;
+                margin-right: 5px;
+                transition: transform 0.2s ease;
+            }
+
+            .tree li.expanded::before {
+                transform: rotate(90deg);
+                /* Rotate the triangle when expanded */
+            }
+
+            /* Show the top-level UL by default */
+            .tree ul.top-level {
+                display: block !important;
+            }
+
+            /* Make text unselectable if you prefer */
+            .tree li,
+            .tree li * {
+                user-select: none;
+            }
+        </style>
+
+        <!-- JavaScript to handle expand/collapse -->
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Add click listeners to <li> elements that have a nested <ul>
+                document.querySelectorAll('.tree li').forEach(function(li) {
+                    var childUl = li.querySelector(':scope > ul');
+                    if (childUl) {
+                        // Show a pointer or do something to indicate it can expand/collapse
+                        li.addEventListener('click', function(e) {
+                            // Prevent the click from toggling parents
+                            e.stopPropagation();
+
+                            // Toggle "expanded" class
+                            li.classList.toggle('expanded');
+                            if (childUl.style.display === 'block') {
+                                childUl.style.display = 'none';
+                            } else {
+                                childUl.style.display = 'block';
+                            }
+                        });
+                    }
+                });
+            });
+        </script>
+
+        <div class="tree">
+            <?php
+            // 4) Print a top-level <ul> with a special "top-level" class so it’s initially shown
+            echo '<ul class="top-level">';
+            // 5) Recursively build the nested <ul> structure (CHILD direction in this example)
+            echo self::buildNestedList($productId);
+            echo '</ul>';
+            ?>
+        </div>
+<?php
+
+        return ob_get_clean();
+    }
+
+    /**
+     * Build a nested <ul><li> structure for the children of a given product ID.
+     * If you want to do parent→child or child→parent, just adapt the logic.
+     */
+    private static function buildNestedList($productId, $level = 0, &$visited = array())
+    {
+        // Avoid cycles
+        if (in_array($productId, $visited, true)) {
+            return '';
+        }
+        $visited[] = $productId;
+
+        $lp = self::getLocalProduct($productId);
+        if (!$lp) {
+            return '';
+        }
+
+        // Each <li> may have a nested <ul> if it has children
+        // For demonstration, let's show: [Ref] - [Label] - [Cost Price]
+        $html = '';
+        $html .= '<li>';
+
+        // Show node text
+        $html .= '<strong>' . htmlspecialchars($lp->ref) . '</strong> &mdash; ';
+        $html .= htmlspecialchars($lp->label) . ' &mdash; ';
+        $html .= 'Cost: ' . number_format($lp->buyprice, 2) . ' ';
+
+        // If it has children, recursively build the sub-list
+        if (!empty($lp->children)) {
+            $html .= '<ul>';
+            foreach ($lp->children as $childId => $qty) {
+                $html .= self::buildNestedList($childId, $level + 1, $visited);
+            }
+            $html .= '</ul>';
+        }
+
+        $html .= '</li>';
+
+        return $html;
     }
 }
 
