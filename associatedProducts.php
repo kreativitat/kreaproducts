@@ -227,16 +227,14 @@ if (GETPOST("type") == '1' || ($object->type == Product::TYPE_SERVICE)) {
 	$help_url = 'EN:Module_Services_En|FR:Module_Services|ES:M&oacute;dulo_Servicios|DE:Modul_Leistungen';
 }
 
-llxHeader('', $title, $help_url);
-
-
+llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-card_krea_subproduct');
 
 $head = product_prepare_head($object);
 
 $titre = $langs->trans("CardProduct" . $object->type);
 $picto = ($object->type == Product::TYPE_SERVICE ? 'service' : 'product');
 
-print dol_get_fiche_head($head, 'subproduct', $titre, -1, $picto);
+print dol_get_fiche_head($head, 'krea_subproduct', $titre, -1, $picto);
 
 
 if ($id > 0 || !empty($ref)) {

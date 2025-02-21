@@ -938,14 +938,14 @@ if (GETPOST("type") == '1' || ($object->type == Product::TYPE_SERVICE)) {
 	$helpurl = 'EN:Module_Services_En|FR:Module_Services|ES:M&oacute;dulo_Servicios';
 }
 
-llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'classforhorizontalscrolloftabs');
+llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-card_krea_price');
 
 $head = product_prepare_head($object);
 //$head = product_prepare_head($product);
 $titre = $langs->trans("CardProduct" . $object->type);
 $picto = ($object->type == Product::TYPE_SERVICE ? 'service' : 'product');
 
-print dol_get_fiche_head($head, 'price', $titre, -1, $picto);
+print dol_get_fiche_head($head, 'krea_price', $titre, -1, $picto);
 
 $linkback = '<a href="' . DOL_URL_ROOT . '/product/list.php?restore_lastsearch_values=1">' . $langs->trans("BackToList") . '</a>';
 $object->next_prev_filter = " fk_product_type = " . $object->type;

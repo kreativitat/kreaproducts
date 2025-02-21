@@ -380,7 +380,7 @@ if (GETPOST("type") == '1' || ($object->type == Product::TYPE_SERVICE)) {
 	$helpurl = 'EN:Module_Services_En|FR:Module_Services|ES:M&oacute;dulo_Servicios|DE:Modul_Lesitungen';
 }
 
-llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'classforhorizontalscrolloftabs');
+llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-card_krea_suppliers');
 
 if ($id > 0 || $ref) {
 	if ($result) {
@@ -395,7 +395,7 @@ if ($id > 0 || $ref) {
 			$titre = $langs->trans("CardProduct" . $object->type);
 			$picto = ($object->type == Product::TYPE_SERVICE ? 'service' : 'product');
 
-			print dol_get_fiche_head($head, 'suppliers', $titre, -1, $picto);
+			print dol_get_fiche_head($head, 'krea_suppliers', $titre, -1, $picto);
 
 			$linkback = '<a href="' . DOL_URL_ROOT . '/product/list.php?restore_lastsearch_values=1">' . $langs->trans("BackToList") . '</a>';
 			$object->next_prev_filter = " fk_product_type = " . $object->type;
@@ -977,7 +977,8 @@ END;
 							if (!empty($extrafields->attributes["product_fournisseur_price"]['list'][$key]) && $extrafields->attributes["product_fournisseur_price"]['list'][$key] != 3) {
 								$extratitle = $langs->trans($value);
 								$arrayfields['ef.' . $key] = array(
-									'label'    => $extratitle, 'checked' => 0,
+									'label'    => $extratitle,
+									'checked' => 0,
 									'position' => (end($arrayfields)['position'] + 1),
 									'langfile' => $extrafields->attributes["product_fournisseur_price"]['langfile'][$key],
 									'help'     => $extrafields->attributes["product_fournisseur_price"]['help'][$key]

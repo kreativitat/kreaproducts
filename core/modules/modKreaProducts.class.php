@@ -189,13 +189,7 @@ class modKreaProducts extends DolibarrModules
 		}
 
 		// Array to add new pages in new tabs
-		$this->tabs = array();
-		$this->tabs[] = array('data' => 'product:-price');
-		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:-suppliers');
-		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:-subproduct');
-		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,MyProductHelper,/kreaproducts/class/myproducthelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
+
 		// Example:
 		// $this->tabs[] = array('data'=>'objecttype:+tabname1:Title1:mylangfile@kreaproducts:$user->hasRight('kreaproducts', 'read'):/kreaproducts/mynewtab1.php?id=__ID__');  					// To add a new tab identified by code tabname1
 		// $this->tabs[] = array('data'=>'objecttype:+tabname2:SUBSTITUTION_Title2:mylangfile@kreaproducts:$user->hasRight('othermodule', 'read'):/kreaproducts/mynewtab2.php?id=__ID__',  	// To add another new tab identified by code tabname2. Label will be result of calling all substitution functions on 'Title2' key.
@@ -221,6 +215,16 @@ class modKreaProducts extends DolibarrModules
 		// 'stock'            to add a tab in stock view
 		// 'thirdparty'       to add a tab in third party view
 		// 'user'             to add a tab in user view
+
+		$this->tabs = array();
+		$this->tabs[] = array('data' => 'product:-price');
+		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-suppliers');
+		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-subproduct');
+		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(5)krea_producttree:ProductTree:kreaproducts@kreaproducts:1:/kreaproducts/productTree.php?id=__ID__');
+
 
 		// Dictionaries
 		/* Example:

@@ -2,7 +2,7 @@
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 
-class MyProductHelper
+class AssociatedProductsHelper
 {
     /**
      * Generate label with number of child products

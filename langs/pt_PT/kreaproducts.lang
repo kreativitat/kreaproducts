@@ -56,7 +56,7 @@ KreaProductsAboutPage = KreaProducts about page
 #
 
 #
-# Associated products page
+# Associated products card
 #
 BOMExistsAndOriginProduct = MRP (Material Requirements Planning), Produtos Pai
 ComponentsOfProduct = MRP (Material Requirements Planning), Produtos Filho
@@ -68,6 +68,17 @@ BOMExists = Lista de Materiais
 BOMReference = Lista de Materiais
 OriginProduct = Etiqueta
 MenuWhereProductExistsAndOriginProduct = Menus onde este produto faz parte
+
+#
+# Products tree card
+#
+FichaTecnica = Ficha técnica
+PrecoCusto = Preço de custo
+Reference = Referencia
+Designation = Designação
+Qty = Qunt.
+Type = Tipo
+CostPrice = Custo
 
 #
 # Sample widget
