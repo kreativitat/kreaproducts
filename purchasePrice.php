@@ -1,4 +1,9 @@
 <?php
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+
 /* Copyright (C) 2001-2007 Rodolphe Quiedeville <rodolphe@quiedeville.org>
  * Copyright (C) 2004-2021 Laurent Destailleur  <eldy@users.sourceforge.net>
  * Copyright (C) 2004      Eric Seigne          <eric.seigne@ryxeo.com>
