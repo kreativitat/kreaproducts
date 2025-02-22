@@ -26,13 +26,13 @@ class ProductHierarchy
     {
         global $db, $langs, $conf;
 
-        // 1) Clear map & do BFS building
+        // 1) Clear map & build BFS tree
         self::$productMap = array();
         self::buildMapBFS($productId);
 
         // 2) Load top-level product from Dolibarr
         require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
-        $prod = new \Product($db);
+        $prod = new Product($db);
         if ($prod->fetch($productId) <= 0) {
             return '<p style="color:red;">Erro: produto #' . $productId . ' não encontrado.</p>';
         }
@@ -44,7 +44,9 @@ class ProductHierarchy
         print '<div class="fichecenter">';
         print '<div class="underbanner clearboth"></div>';
         print '<table class="border tableforfield centpercent">';
-        print '<tr><td class="titlefield">' . $langs->trans("Ref") . '</td><td colspan="3">' . $prod->ref . '</td></tr>';
+        // Use getNomUrl(1) to generate a clickable reference link
+        $linkRef = $prod->getNomUrl(1);
+        print '<tr><td class="titlefield">' . $langs->trans("Ref") . '</td><td colspan="3">' . $linkRef . '</td></tr>';
 
         $lp = self::getLocalProduct($productId);
         $nbChildren = $lp ? count($lp->children) : 0;
@@ -61,7 +63,7 @@ class ProductHierarchy
         print '<table class="noborder" width="100%">';
         self::printChildParentTableHead($langs);
 
-        // Print top-level row, then fancy recursion for children
+        // Print top-level row, then recursively display children
         self::printLine($productId, 0, 0, array(), true, 0, 1, 'child');
         $visitedChildren = array();
         self::fancyChildRecursive($productId, 1, 5, $visitedChildren, array());
@@ -83,7 +85,8 @@ class ProductHierarchy
         print '<p><strong>' . $langs->trans("FichaTecnica") . '</strong></p>';
         print '<table class="noborder" width="100%">';
         print '<tr class="liste_titre">';
-        print '<td width="50%">' . $langs->trans("Reference") . '</td>';
+        print '<td width="10%">' . $langs->trans("Reference") . '</td>';
+        print '<td width="50%">' . $langs->trans("Label") . '</td>';
         print '<td width="20%">Qty</td>';
         print '<td width="20%">Tipo</td>';
         print '<td width="10%">CostPrice</td>';
@@ -94,7 +97,12 @@ class ProductHierarchy
             foreach ($lp->children as $childId => $qty) {
                 $childLP = self::getLocalProduct($childId);
                 if (!$childLP) continue;
+                $ref = new Product($db);
+                $ref->fetch($childId);
+                $linkRef = $ref->getNomUrl(1);
+
                 print '<tr style="font-style: italic;">';
+                print '<td>' . $linkRef . '</td>';
                 print '<td>' . htmlspecialchars($childLP->label, ENT_QUOTES) . '</td>';
                 print '<td>x ' . number_format($qty, 3, '.', '') . '</td>';
                 print '<td>' . $langs->trans('Subprodutos') . '</td>';
@@ -107,12 +115,12 @@ class ProductHierarchy
 
             $sumBuy = self::computeRecursivePrice($lp, 'buyprice');
             print '<tr style="font-style: italic;">';
-            print '<td>' . $langs->trans('TotaisEstimadosDoProduto') . '</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>';
+            print '<td colspan=5>' . $langs->trans('TotaisEstimadosDoProduto') . '</td>';
             print '<td>' . price($sumBuy, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE . '</td>';
             print '</tr>';
 
             print '<tr style="font-weight: bold;font-size:1.1em;">';
-            print '<td>' . $langs->trans('PrecoCusto') . '</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>';
+            print '<td colspan=5>' . $langs->trans('PrecoCusto') . '</td>';
             print '<td>' . price($lp->buyprice, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE;
             print self::compareIcon($sumBuy, $lp->buyprice);
             print '</td>';
@@ -123,6 +131,7 @@ class ProductHierarchy
 
         return ob_get_clean();
     }
+
 
     /**
      * Build a product map (father/child) using BFS to avoid infinite recursion.
@@ -250,7 +259,7 @@ class ProductHierarchy
         if (!$lp) return;
 
         require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
-        $pr = new \Product($db);
+        $pr = new Product($db);
         if ($pr->fetch($productId) < 0) return;
 
         // Build indentation
@@ -429,7 +438,7 @@ class ProductHierarchy
         if (!empty($lp->children)) {
             $newCost = self::computeRecursivePrice($lp, 'buyprice');
             require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
-            $prod = new \Product($db);
+            $prod = new Product($db);
             if ($prod->fetch($productId) > 0) {
                 $prod->cost_price = $newCost;
                 $prod->buyprice = $newCost;
