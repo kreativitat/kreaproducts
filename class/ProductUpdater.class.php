@@ -52,6 +52,32 @@ class ProductHierarchy
      */
     public static function updateProductAttributes($productId, $user)
     {
+
+        global $db;
+
+        require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+        require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+
+        $extrafields = new ExtraFields($db);
+        $extraFieldKey = 'kreap_spread_buyprice';
+
+        // Load product extra fields
+        $product = new Product($db);
+        if ($product->fetch($productId) <= 0) {
+            dol_syslog("updateProductAttributes: Failed to fetch product ID $productId", LOG_ERR);
+            return 0; // Exit if product is not found
+        }
+
+        $product->fetch_optionals($productId, $extrafields); // Load extra fields
+
+        // Check if the extra field is enabled for this product
+        if (empty($product->array_options["options_" . $extraFieldKey])) {
+            dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is not enabled for product ID $productId. Exiting.", LOG_WARNING);
+            return 0; // Exit without making changes
+        }
+
+        dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is enabled. Proceeding with update.", LOG_DEBUG);
+
         // dol_syslog("updateProductAttributes: Starting update for product ID $productId");
 
         // Reset and rebuild the association map.

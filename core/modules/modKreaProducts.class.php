@@ -461,8 +461,55 @@ class modKreaProducts extends DolibarrModules
 		dolibarr_set_const($db, "PRODUIT_SOUSPRODUITS", 1, 'chaine', 0, '', $conf->entity);
 
 		// Create extrafields during init
-		//include_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
-		//$extrafields = new ExtraFields($this->db);
+		/**
+		 *  Add a new extra field parameter
+		 *
+		 *  $attrname           Code of attribute
+		 *  $label              label of attribute
+		 *  $type               Type of attribute ('boolean','int','varchar','text','html','date','datetime','price', 'pricecy', 'phone','mail','password','url','select','checkbox','separate',...)
+		 *  $pos                Position of attribute
+		 *  $size               Size/length definition of attribute ('5', '24,8', ...). For float, it contains 2 numeric separated with a comma.
+		 *  $elementtype        Element type. Same value than object->table_element (Example 'member', 'product', 'thirdparty', ...)
+		 *  $unique				Is field unique or not
+		 *  $required			Is field required or not
+		 *  $default_value		Defaulted value (In database. use the default_value feature for default value on screen. Example: '', '0', 'null', 'avalue')
+		 *  $param				Params for field (ex for select list : array('options' => array(value'=>'label of option')) )
+		 *  $alwayseditable		Is attribute always editable regardless of the document status
+		 *  $perms				Permission to check
+		 *  $list				Visibility ('0'=never visible, '1'=visible on list+forms, '2'=list only, '3'=form only or 'eval string')
+		 *  $help				Text with help tooltip
+		 *  $computed           Computed value
+		 *  $entity    		 	Entity of extrafields (for multicompany modules)
+		 *  $langfile  		 	Language file
+		 *  $enabled  		 	Condition to have the field enabled or not
+		 *  $totalizable		Is a measure. Must show a total on lists
+		 *  $printable          Is extrafield displayed on PDF
+		 *  $moreparams			More parameters. Example: array('css'=>, 'csslist'=>Css on list, 'cssview'=>...)
+		 *        				Return integer <=0 if KO, >0 if OK
+		 */
+		include_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+		$extrafields = new ExtraFields($db);
+
+		$field_name = "kreap_spread_buyprice";
+		$field_label = $langs->trans("kreap_spread_buyprice");
+		$field_help = $langs->trans("");
+		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts');
+
+		$field_label = $langs->trans("procuctRecipe");
+		$result2 = $extrafields->addExtraField('recipe', $field_label, 'varchar', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_label = $langs->trans("productBrand");
+		$result2 = $extrafields->addExtraField('productBrand', $field_label, 'varchar', 301, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_label = $langs->trans("productDescription");
+		$result3 = $extrafields->addExtraField('productDescription', $field_label, 'varchar', 302, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		//$field_label = $langs->trans("mealType");
+		//$result4 = $extrafields->addExtraField('mealType', $field_label, 'select', 303, 90, 'product', 0, 0, '', 'a:1:{s:7:"options";a:2:{i:123;s:0:"";s:6:"121eqw";N;}}', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_label = $langs->trans("procuctVideo");
+		$result5 = $extrafields->addExtraField('procuctVideo', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result3=$extrafields->addExtraField('kreaproducts_myattr3', "New Attr 3 label", 'varchar', 1, 10, 'bank_account', 0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

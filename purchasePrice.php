@@ -72,6 +72,7 @@ $contextpage = GETPOST('contextpage', 'aZ') ? GETPOST('contextpage', 'aZ') : 'pr
 
 $socid = GETPOST('socid', 'int');
 $cost_price = price2num(GETPOST('cost_price', 'alpha'), '', 2);
+$kreap_spread_buyprice = GETPOST('kreap_spread_buyprice') ? 1 : 0;
 $pmp = price2num(GETPOST('pmp', 'alpha'), '', 2);
 
 $backtopage = GETPOST('backtopage', 'alpha');
@@ -165,6 +166,22 @@ if (empty($reshook)) {
 			}
 		}
 	}
+	if ($action == 'setkreap_spread_buyprice') {
+		if ($id) {
+			$result = $object->fetch($id);
+			$extrafields->fetch_name_optionals_label($object->table_element);
+			$object->array_options['options_kreap_spread_buyprice'] = $kreap_spread_buyprice;
+			$result = $object->update($object->id, $user);
+			if ($result > 0) {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+				$action = '';
+			} else {
+				$error++;
+				setEventMessages($object->error, $object->errors, 'errors');
+			}
+		}
+	}
+
 	if ($action == 'setpmp') {
 		if ($id) {
 			$result = $object->fetch($id);
@@ -436,6 +453,17 @@ if ($id > 0 || $ref) {
 			print '</td><td>';
 			print $form->editfieldval($text, 'cost_price', $object->cost_price, $object, $usercancreate, 'amount:6');
 			print '</td></tr>';
+
+			// Propagate buy price
+			if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
+				print '<tr><td>';
+				$textdesc = $langs->trans("kreap_spread_buyprice");
+				$text = $form->textwithpicto($langs->trans("kreap_spread_buyprice"), $textdesc, 1, 'help', '');
+				print $form->editfieldkey($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
+				print '</td><td>';
+				print $form->editfieldval($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
+				print '</td></tr>';
+			}
 
 			// PMP
 			$usercaneditpmp = 0;

@@ -38,11 +38,7 @@ ModuleKreaProductsDesc = KreaProducts description
 KreaProductsSetup = KreaProducts setup
 Settings = Settings
 KreaProductsSetupPage = KreaProducts setup page
-KREAPRODUCTS_MYPARAM1 = My param 1
-KREAPRODUCTS_MYPARAM1Tooltip = My param 1 tooltip
-KREAPRODUCTS_MYPARAM2=My param 2
-KREAPRODUCTS_MYPARAM2Tooltip=My param 2 tooltip
-
+KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto synch cost price
 
 #
 # About page
@@ -54,6 +50,8 @@ KreaProductsAboutPage = KreaProducts about page
 #
 # Products card
 #
+kreap_spread_buyprice = Propagar recalculo de preço de custo
+kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 
 #
 # Associated products card
@@ -68,6 +66,23 @@ BOMExists = Lista de Materiais
 BOMReference = Lista de Materiais
 OriginProduct = Etiqueta
 MenuWhereProductExistsAndOriginProduct = Menus onde este produto faz parte
+Kreanut_Energy_kcal = Energia (kcal/100g)
+Kreanut_Energy_kj = Energia (kj/100g)
+Kreanut_Fat = Gordura (g/100g)
+Kreanut_Saturates = Gorduras saturadas (g/100g)
+Kreanut_Carbohydrates = Carboidratos (g/100g)
+Kreanut_Sugars = Açucares (g/100g)
+Kreanut_Protein = Proteina (g/100g)
+Kreanut_Salt = Sal (g/100g)
+Kreanut_Fiber = Fibra (g/100g)
+KreallergensTableTitle = Tabela de alergénios
+KreanutTableTitle = Tabela nutricional
+productBrand = Marca do produto
+productDescription = Descrição do produto
+productRecipe = Receita do produto
+procuctVideo = Video do produto
+productRecipeTitle = Modo de preparação do produto
+productRecipeInline = Preparação
 
 #
 # Products tree card

@@ -55,12 +55,22 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				// PRODUCT modification triggers
 			case 'PRODUCT_MODIFY':
 			case 'PRODUCT_PRICE_MODIFY':
-				dol_syslog(
-					"Trigger kreaproducts for action '" . $action . "' on object ID=" . $object->id,
-					LOG_INFO
-				);
+				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 
-				ProductHierarchy::updateProductAttributes($object->id, $user);
+					dol_syslog(
+						"Trigger kreaproducts for action '" . $action . "' on object ID=" . $object->id,
+						LOG_INFO
+					);
+
+					ProductHierarchy::updateProductAttributes($object->id, $user);
+				} else {
+					dol_syslog(
+						"Trigger kreaproducts for action '" . $action . "' on object ID=" . $object->id . " is disabled",
+						LOG_DEBUG
+					);
+					return 0;
+				}
+
 
 				return 1;
 

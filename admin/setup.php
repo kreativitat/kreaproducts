@@ -103,7 +103,10 @@ if (!class_exists('FormSetup')) {
 }
 $formSetup = new FormSetup($db);
 
+// Auto synch buy price
+$formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
 
+/*
 // Enter here all parameters in your setup page
 
 // Setup conf for selection of an URL
@@ -169,7 +172,7 @@ $item->helpText = $langs->transnoentities('AnHelpMessage');
 //$item->fieldOverride = false; // set this var to override field output will override $fieldInputOverride and $fieldOutputOverride too
 //$item->fieldInputOverride = false; // set this var to override field input
 //$item->fieldOutputOverride = false; // set this var to override field output
-
+*/
 
 $setupnotempty += count($formSetup->items);
 
