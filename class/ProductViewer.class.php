@@ -79,7 +79,7 @@ class ProductHierarchy
 
         print '</table><br>';
 
-        // -- SECTION 4: Estratégia de Sincronização
+        // -- SECTION 4: Ficha Tecnica
         print '<p><strong>' . $langs->trans("FichaTecnica") . '</strong></p>';
         print '<table class="noborder" width="100%">';
         print '<tr class="liste_titre">';
@@ -87,6 +87,7 @@ class ProductHierarchy
         print '<td width="20%">Qty</td>';
         print '<td width="20%">Tipo</td>';
         print '<td width="10%">CostPrice</td>';
+        print '<td width="10%">Subtotal</td>';
         print '</tr>';
 
         if ($lp) {
@@ -96,20 +97,22 @@ class ProductHierarchy
                 print '<tr style="font-style: italic;">';
                 print '<td>' . htmlspecialchars($childLP->label, ENT_QUOTES) . '</td>';
                 print '<td>x ' . number_format($qty, 3, '.', '') . '</td>';
-                print '<td>Subprodutos</td>';
+                print '<td>' . $langs->trans('Subprodutos') . '</td>';
                 $buyVal = price($childLP->buyprice, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE;
                 print '<td>' . $buyVal . '</td>';
+                $subTotal = price($qty * $childLP->buyprice, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE;
+                print '<td>' . $subTotal . '</td>';
                 print '</tr>';
             }
 
             $sumBuy = self::computeRecursivePrice($lp, 'buyprice');
             print '<tr style="font-style: italic;">';
-            print '<td>Totais Estimados do Produto</td><td>&nbsp;</td><td>&nbsp;</td>';
+            print '<td>' . $langs->trans('TotaisEstimadosDoProduto') . '</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>';
             print '<td>' . price($sumBuy, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE . '</td>';
             print '</tr>';
 
             print '<tr style="font-weight: bold;font-size:1.1em;">';
-            print '<td>PrecoCusto</td><td>&nbsp;</td><td>&nbsp;</td>';
+            print '<td>' . $langs->trans('PrecoCusto') . '</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>';
             print '<td>' . price($lp->buyprice, '', '', 0, 3, 3, '') . ' ' . $conf->global->MAIN_MONNAIE;
             print self::compareIcon($sumBuy, $lp->buyprice);
             print '</td>';
