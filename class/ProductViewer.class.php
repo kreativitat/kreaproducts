@@ -1,16 +1,27 @@
 <?php
 
+/**
+ * Class ProductHierarchy
+ *
+ * Provides methods to build a non‐recursive map of product associations, display
+ * a fancy ASCII tree of children/parents, and recalculate cost prices.
+ */
 class ProductHierarchy
 {
-    // ----------------------------------------------------------------------------------
-    // Storage
-    // ----------------------------------------------------------------------------------
+
     /** @var LocalProduct[]  productMap[productId] */
     private static $productMap = array();
 
-    // ----------------------------------------------------------------------------------
-    // Public: getCompletePage
-    // ----------------------------------------------------------------------------------
+    /**
+     * Generate the complete HTML page with:
+     *   1) Header (Ref, # subproducts, # parents)
+     *   2) Children table
+     *   3) Parents table
+     *   4) Estratégia de Sincronização table
+     *
+     * @param int $productId ID of the product to display
+     * @return string        HTML output
+     */
     public static function getCompletePage($productId)
     {
         global $db, $langs, $conf;
@@ -110,9 +121,12 @@ class ProductHierarchy
         return ob_get_clean();
     }
 
-    // ----------------------------------------------------------------------------------
-    //  BFS BUILD MAP (Non-Recursive)
-    // ----------------------------------------------------------------------------------
+    /**
+     * Build a product map (father/child) using BFS to avoid infinite recursion.
+     *
+     * @param int $startId  The product ID from which to start BFS
+     * @return void
+     */
     private static function buildMapBFS($startId)
     {
         global $db;
@@ -182,31 +196,49 @@ class ProductHierarchy
         }
     }
 
-    // ----------------------------------------------------------------------------------
-    // getLocalProduct
-    // ----------------------------------------------------------------------------------
+    /**
+     * Retrieve a LocalProduct from the internal map by ID.
+     *
+     * @param int $id Product ID
+     * @return LocalProduct|null
+     */
     private static function getLocalProduct($id)
     {
         return isset(self::$productMap[$id]) ? self::$productMap[$id] : null;
     }
 
-    // ----------------------------------------------------------------------------------
-    // Printing: Table Head
-    // ----------------------------------------------------------------------------------
+    /**
+     * Print table headers for the children/parents listing:
+     * columns: Reference, Designation, Qty, Type, CostPrice.
+     *
+     * @param \Translate $langs Dolibarr translation object
+     * @return void
+     */
     private static function printChildParentTableHead($langs)
     {
         print '<tr class="liste_titre">';
         print '<td width="20%">' . $langs->trans("Reference") . '</td>';
         print '<td width="35%">' . $langs->trans("Designation") . '</td>';
-        print '<td width="10%">' . $langs->trans("Qty") . '</td>';
+        print '<td width="10%">' . $langs->trans("Subproducts") . '</td>';
         print '<td width="10%">' . $langs->trans("Type") . '</td>';
         print '<td width="5%">' . $langs->trans("CostPrice") . '</td>';
         print '</tr>';
     }
 
-    // ----------------------------------------------------------------------------------
-    // SINGLE-LINE Print with Box-Chars
-    // ----------------------------------------------------------------------------------
+    /**
+     * Print a single row (line) in the tree, with fancy ASCII indentation
+     * based on level, prefix array, and whether this is the last sibling.
+     *
+     * @param int    $productId ID of the product to print
+     * @param float  $qty       Quantity used by parent
+     * @param int    $level     Current depth level
+     * @param array  $prefix    Boolean array telling which levels have a vertical line
+     * @param bool   $isLast    Whether this is the last sibling
+     * @param int    $index     Index of this sibling
+     * @param int    $count     Total number of siblings at this level
+     * @param string $mode      Either 'child' or 'parent'
+     * @return void
+     */
     private static function printLine($productId, $qty, $level, array $prefix, bool $isLast, int $index, int $count, string $mode)
     {
         global $db, $langs, $conf;
@@ -234,9 +266,9 @@ class ProductHierarchy
         // Build assoc
         $assoc = '';
         if ($qty > 0) {
-            $assoc = 'quantidade : ' . number_format($qty, 3, '.', '');
+            $assoc = number_format($qty, 3, '.', '');
         } else if (!empty($lp->children)) {
-            $assoc = count($lp->children) . ' Subprodutos';
+            $assoc = count($lp->children);
         } else if (!empty($lp->parents)) {
             $assoc = count($lp->parents) . ' Pais';
         }
@@ -253,9 +285,17 @@ class ProductHierarchy
         print '</tr>';
     }
 
-    // ----------------------------------------------------------------------------------
-    // fancyChildRecursive
-    // ----------------------------------------------------------------------------------
+    /**
+     * Recursively display children using ASCII lines, controlling
+     * vertical bars via a prefix array of booleans.
+     *
+     * @param int   $productId ID of the current product
+     * @param int   $level     Current depth
+     * @param int   $maxLevel  Maximum depth allowed
+     * @param array $visited   Products already displayed
+     * @param array $prefix    Boolean array for line drawing
+     * @return void
+     */
     private static function fancyChildRecursive($productId, int $level, int $maxLevel, array &$visited, array $prefix)
     {
         if (in_array($productId, $visited, true)) return;
@@ -283,9 +323,17 @@ class ProductHierarchy
         }
     }
 
-    // ----------------------------------------------------------------------------------
-    // fancyParentRecursive
-    // ----------------------------------------------------------------------------------
+    /**
+     * Recursively display parents (kits) using ASCII lines,
+     * controlling vertical bars via a prefix array of booleans.
+     *
+     * @param int   $productId ID of the current product
+     * @param int   $level     Current depth
+     * @param int   $maxLevel  Maximum depth allowed
+     * @param array $visited   Products already displayed
+     * @param array $prefix    Boolean array for line drawing
+     * @return void
+     */
     private static function fancyParentRecursive($productId, int $level, int $maxLevel, array &$visited, array $prefix)
     {
         if (in_array($productId, $visited, true)) return;
@@ -313,9 +361,14 @@ class ProductHierarchy
         }
     }
 
-    // ----------------------------------------------------------------------------------
-    // COST
-    // ----------------------------------------------------------------------------------
+    /**
+     * Recursively compute either the "price" or "buyprice" for a product,
+     * summing subproducts if there are children.
+     *
+     * @param LocalProduct $lp  The product node
+     * @param string       $key 'price' or 'buyprice'
+     * @return float
+     */
     private static function computeRecursivePrice(LocalProduct $lp, string $key)
     {
         if (empty($lp->children)) {
@@ -331,6 +384,14 @@ class ProductHierarchy
         return $sum;
     }
 
+    /**
+     * Compare two floating‐point values and return an HTML icon
+     * ('tick.png' or 'error.png') to indicate if they are close.
+     *
+     * @param float $val1
+     * @param float $val2
+     * @return string HTML <img> tag
+     */
     private static function compareIcon($val1, $val2)
     {
         if (abs($val1 - $val2) < 1E-2) {
@@ -340,9 +401,15 @@ class ProductHierarchy
         }
     }
 
-    // ----------------------------------------------------------------------------------
-    // Update cost from children or from parents
-    // ----------------------------------------------------------------------------------
+    /**
+     * Update the cost_price (buyprice) of a product by:
+     *  - Summing the cost of its children, if any
+     *  - Otherwise, updating each parent if this product has no children
+     *
+     * @param int  $productId ID of the product to update
+     * @param User $user      Dolibarr user performing the action
+     * @return void
+     */
     public static function updateProductAttributes($productId, $user)
     {
         global $db;
@@ -378,7 +445,7 @@ class ProductHierarchy
 }
 
 /**
- * Local container for each product's data
+ * Simple container class for a product's essential data.
  */
 class LocalProduct
 {
@@ -393,6 +460,15 @@ class LocalProduct
     /** @var int[]   parentId[] */
     public $parents  = array();
 
+    /**
+     * Constructor
+     *
+     * @param int    $id       Product ID
+     * @param string $label    Product label/name
+     * @param string $ref      Product reference
+     * @param float  $price    Product sale price
+     * @param float  $buyprice Product cost price
+     */
     public function __construct($id, $label, $ref, $price, $buyprice)
     {
         $this->id       = (int)$id;
