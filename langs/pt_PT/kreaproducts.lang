@@ -77,12 +77,11 @@ Kreanut_Salt = Sal (g/100g)
 Kreanut_Fiber = Fibra (g/100g)
 KreallergensTableTitle = Tabela de alergénios
 KreanutTableTitle = Tabela nutricional
-productBrand = Marca do produto
-productDescription = Descrição do produto
-productRecipe = Receita do produto
-procuctVideo = Video do produto
 productRecipeTitle = Modo de preparação do produto
 productRecipeInline = Preparação
+kreap_productbrand = Marca do produto
+kreap_description = Descrição do produto
+kreap_video = Video do produto
 
 #
 # Products tree card

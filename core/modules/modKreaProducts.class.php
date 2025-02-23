@@ -225,7 +225,6 @@ class modKreaProducts extends DolibarrModules
 		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:+(5)krea_producttree:ProductTree:kreaproducts@kreaproducts:1:/kreaproducts/productTree.php?id=__ID__');
 
-
 		// Dictionaries
 		/* Example:
 		 $this->dictionaries=array(
@@ -495,20 +494,17 @@ class modKreaProducts extends DolibarrModules
 		$field_help = $langs->trans("");
 		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		$field_label = $langs->trans("procuctRecipe");
-		$result2 = $extrafields->addExtraField('recipe', $field_label, 'varchar', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_label = $langs->trans("kreap_recipe");
+		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'varchar', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		$field_label = $langs->trans("productBrand");
-		$result2 = $extrafields->addExtraField('productBrand', $field_label, 'varchar', 301, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_label = $langs->trans("kreap_brand");
+		$result2 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		$field_label = $langs->trans("productDescription");
-		$result3 = $extrafields->addExtraField('productDescription', $field_label, 'varchar', 302, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_label = $langs->trans("kreap_description");
+		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'varchar', 302, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		//$field_label = $langs->trans("mealType");
-		//$result4 = $extrafields->addExtraField('mealType', $field_label, 'select', 303, 90, 'product', 0, 0, '', 'a:1:{s:7:"options";a:2:{i:123;s:0:"";s:6:"121eqw";N;}}', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
-
-		$field_label = $langs->trans("procuctVideo");
-		$result5 = $extrafields->addExtraField('procuctVideo', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_label = $langs->trans("kreap_video");
+		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
