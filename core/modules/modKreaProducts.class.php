@@ -493,7 +493,7 @@ class modKreaProducts extends DolibarrModules
 		$field_name = "kreap_spread_buyprice";
 		$field_label = $langs->trans("kreap_spread_buyprice");
 		$field_help = $langs->trans("");
-		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts');
+		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("procuctRecipe");
 		$result2 = $extrafields->addExtraField('recipe', $field_label, 'varchar', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
