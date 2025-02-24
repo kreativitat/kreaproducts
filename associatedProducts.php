@@ -775,7 +775,7 @@ if ($id > 0 || !empty($ref)) {
 			print '</div>';
 		}
 
-		if (isModEnabled('kreanut') && $conf->global->KREANUT_NUTRITIONAL_TABLE_TAB == 1) {
+		if (isModEnabled('kreanut') && $conf->global->KREANUT_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreanut_calc_nut'] == 1) {
 			$langs->load("kreanut@kreanut");
 			require_once DOL_DOCUMENT_ROOT . '/custom/kreanut/class/KreaNutNutritionalCalculator.class.php';
 			KreaNutNutritionalCalculator::computeAndDisplayNutritional($object->id);
