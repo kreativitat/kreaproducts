@@ -79,9 +79,10 @@ KreallergensTableTitle = Tabela de alergénios
 KreanutTableTitle = Tabela nutricional
 productRecipeTitle = Modo de preparação do produto
 productRecipeInline = Preparação
-kreap_productbrand = Marca do produto
 kreap_description = Descrição do produto
 kreap_video = Video do produto
+kreap_brand = Marca do produto
+NoneSelected = Nenhum selecionado
 
 #
 # Products tree card
