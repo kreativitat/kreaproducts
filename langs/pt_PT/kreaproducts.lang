@@ -83,6 +83,8 @@ kreap_description = Descrição do produto
 kreap_video = Video do produto
 kreap_brand = Marca do produto
 NoneSelected = Nenhum selecionado
+Allergens = Alergénios
+AllergensTraces = Vestigios de alergénios
 
 #
 # Products tree card
