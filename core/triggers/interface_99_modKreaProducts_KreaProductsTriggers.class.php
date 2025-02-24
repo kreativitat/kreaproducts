@@ -26,9 +26,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		parent::__construct($db);
 
 		// Basic trigger info
-		$this->family      = "demo";                   // For example
-		$this->description = "KreaProducts triggers."; // Your description
-		$this->version     = self::VERSIONS['dev'];    // 'development', 'experimental', ...
+		$this->family      = "Kreativität Works";
+		$this->description = "KreaProducts triggers.";
+		$this->version     = self::VERSIONS['dev'];
 		$this->picto       = 'kreaproducts@kreaproducts';
 	}
 
