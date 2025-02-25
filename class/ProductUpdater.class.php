@@ -228,7 +228,7 @@ class ProductHierarchy
 
         // Now load the association details for all these IDs.
         $ids_string = implode(",", array_map('intval', $all_ids));
-        $sql  = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, pa.syncbuyprice as syncbuyprice, 
+        $sql  = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, 
                        p.label as p_label, p.ref as p_ref, p.cost_price as p_buyprice, 
                        f.label as f_label, f.ref as f_ref, f.cost_price as f_buyprice 
                  FROM " . MAIN_DB_PREFIX . "product_association as pa, " .
