@@ -160,6 +160,12 @@ if (empty($reshook)) {
 if ($action == 'save_kreanut_nutrition') {
 	dol_syslog("Starting save_kreanut_nutrition action for product ID: " . (int) $object->id);
 
+	// Function to convert comma to dot in numeric values
+	function convertToFloat($value)
+	{
+		return isset($value) ? (float) str_replace(',', '.', $value) : null;
+	}
+
 	// Check if a nutritional record already exists for this product.
 	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int) $object->id;
 	dol_syslog("Executing SQL: " . $sql);
@@ -182,19 +188,18 @@ if ($action == 'save_kreanut_nutrition') {
 	}
 	$db->free($resql); // Free query result
 
-
 	// Get all input values and validate them
 	$data = [
 		'fk_product'     => (int) $object->id,
-		'energy_kcal'    => isset($_POST['nutritional_energy_kcal']) && is_numeric($_POST['nutritional_energy_kcal']) ? (float) $_POST['nutritional_energy_kcal'] : null,
-		'energy_kj'      => isset($_POST['nutritional_energy_kj']) && is_numeric($_POST['nutritional_energy_kj']) ? (float) $_POST['nutritional_energy_kj'] : null,
-		'fat'            => isset($_POST['nutritional_fat']) && is_numeric($_POST['nutritional_fat']) ? (float) $_POST['nutritional_fat'] : null,
-		'saturates'      => isset($_POST['nutritional_saturates']) && is_numeric($_POST['nutritional_saturates']) ? (float) $_POST['nutritional_saturates'] : null,
-		'carbohydrates'  => isset($_POST['nutritional_carbohydrates']) && is_numeric($_POST['nutritional_carbohydrates']) ? (float) $_POST['nutritional_carbohydrates'] : null,
-		'sugars'         => isset($_POST['nutritional_sugars']) && is_numeric($_POST['nutritional_sugars']) ? (float) $_POST['nutritional_sugars'] : null,
-		'protein'        => isset($_POST['nutritional_protein']) && is_numeric($_POST['nutritional_protein']) ? (float) $_POST['nutritional_protein'] : null,
-		'salt'           => isset($_POST['nutritional_salt']) && is_numeric($_POST['nutritional_salt']) ? (float) $_POST['nutritional_salt'] : null,
-		'fiber'          => isset($_POST['nutritional_fiber']) && is_numeric($_POST['nutritional_fiber']) ? (float) $_POST['nutritional_fiber'] : null
+		'energy_kcal'    => convertToFloat($_POST['nutritional_energy_kcal'] ?? null),
+		'energy_kj'      => convertToFloat($_POST['nutritional_energy_kj'] ?? null),
+		'fat'            => convertToFloat($_POST['nutritional_fat'] ?? null),
+		'saturates'      => convertToFloat($_POST['nutritional_saturates'] ?? null),
+		'carbohydrates'  => convertToFloat($_POST['nutritional_carbohydrates'] ?? null),
+		'sugars'         => convertToFloat($_POST['nutritional_sugars'] ?? null),
+		'protein'        => convertToFloat($_POST['nutritional_protein'] ?? null),
+		'salt'           => convertToFloat($_POST['nutritional_salt'] ?? null),
+		'fiber'          => convertToFloat($_POST['nutritional_fiber'] ?? null)
 	];
 
 	// Construct the SQL query
@@ -202,8 +207,9 @@ if ($action == 'save_kreanut_nutrition') {
 		// Update existing record
 		$sql = "UPDATE " . MAIN_DB_PREFIX . "kreanut_nutritional SET ";
 		foreach ($data as $key => $value) {
-			$sql .= "$key = " . $db->escape($value) . ", ";
+			$sql .= is_null($value) ? "$key = NULL, " : "$key = '" . $db->escape($value) . "', ";
 		}
+
 		$sql = rtrim($sql, ", ") . " WHERE rowid = " . (int) $existing_rowid;
 
 		dol_syslog("Executing UPDATE SQL: " . $sql);
@@ -234,6 +240,7 @@ if ($action == 'save_kreanut_nutrition') {
 		}
 	}
 }
+
 
 /*
  * View
