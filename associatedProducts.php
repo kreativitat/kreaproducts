@@ -157,6 +157,84 @@ if (empty($reshook)) {
 	}
 }
 
+if ($action == 'save_kreanut_nutrition') {
+	dol_syslog("Starting save_kreanut_nutrition action for product ID: " . (int) $object->id);
+
+	// Check if a nutritional record already exists for this product.
+	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int) $object->id;
+	dol_syslog("Executing SQL: " . $sql);
+
+	$resql = $db->query($sql);
+
+	if (!$resql) {
+		dol_syslog("SQL Error: " . $db->lasterror(), LOG_ERR);
+		setEventMessages($langs->trans("ErrorFetchingData") . ": " . $db->lasterror(), null, 'errors');
+		return;
+	}
+
+	$existing_rowid = null;
+	if ($db->num_rows($resql) > 0) {
+		$obj = $db->fetch_object($resql);
+		$existing_rowid = $obj->rowid;
+		dol_syslog("Existing nutrition record found: " . $existing_rowid);
+	} else {
+		dol_syslog("No existing nutrition record found. Creating a new one.");
+	}
+	$db->free($resql); // Free query result
+
+
+	// Get all input values and validate them
+	$data = [
+		'fk_product'     => (int) $object->id,
+		'energy_kcal'    => isset($_POST['nutritional_energy_kcal']) && is_numeric($_POST['nutritional_energy_kcal']) ? (float) $_POST['nutritional_energy_kcal'] : null,
+		'energy_kj'      => isset($_POST['nutritional_energy_kj']) && is_numeric($_POST['nutritional_energy_kj']) ? (float) $_POST['nutritional_energy_kj'] : null,
+		'fat'            => isset($_POST['nutritional_fat']) && is_numeric($_POST['nutritional_fat']) ? (float) $_POST['nutritional_fat'] : null,
+		'saturates'      => isset($_POST['nutritional_saturates']) && is_numeric($_POST['nutritional_saturates']) ? (float) $_POST['nutritional_saturates'] : null,
+		'carbohydrates'  => isset($_POST['nutritional_carbohydrates']) && is_numeric($_POST['nutritional_carbohydrates']) ? (float) $_POST['nutritional_carbohydrates'] : null,
+		'sugars'         => isset($_POST['nutritional_sugars']) && is_numeric($_POST['nutritional_sugars']) ? (float) $_POST['nutritional_sugars'] : null,
+		'protein'        => isset($_POST['nutritional_protein']) && is_numeric($_POST['nutritional_protein']) ? (float) $_POST['nutritional_protein'] : null,
+		'salt'           => isset($_POST['nutritional_salt']) && is_numeric($_POST['nutritional_salt']) ? (float) $_POST['nutritional_salt'] : null,
+		'fiber'          => isset($_POST['nutritional_fiber']) && is_numeric($_POST['nutritional_fiber']) ? (float) $_POST['nutritional_fiber'] : null
+	];
+
+	// Construct the SQL query
+	if ($existing_rowid) {
+		// Update existing record
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "kreanut_nutritional SET ";
+		foreach ($data as $key => $value) {
+			$sql .= "$key = " . $db->escape($value) . ", ";
+		}
+		$sql = rtrim($sql, ", ") . " WHERE rowid = " . (int) $existing_rowid;
+
+		dol_syslog("Executing UPDATE SQL: " . $sql);
+		$res = $db->query($sql);
+
+		if ($res) {
+			dol_syslog("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
+			setEventMessages($langs->trans("NutritionalDataUpdated"), null, 'mesgs');
+		} else {
+			dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+		}
+	} else {
+		// Insert new record
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreanut_nutritional (";
+		$sql .= implode(", ", array_keys($data)) . ") VALUES ('";
+		$sql .= implode("', '", array_map([$db, 'escape'], array_values($data))) . "')";
+
+		dol_syslog("Executing INSERT SQL: " . $sql);
+		$res = $db->query($sql);
+
+		if ($res) {
+			dol_syslog("Nutritional data successfully inserted (Row ID: " . $db->last_insert_id(MAIN_DB_PREFIX . "kreanut_nutritional") . ")");
+			setEventMessages($langs->trans("NutritionalDataSaved"), null, 'mesgs');
+		} else {
+			dol_syslog("Error inserting nutritional data: " . $db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
+		}
+	}
+}
+
 /*
  * View
  */
@@ -732,11 +810,14 @@ if ($id > 0 || !empty($ref)) {
 			print '</div>';
 		}
 
-		if (isModEnabled('kreanut') && !$object->array_options['options_kreanut_calc_nut'] == 1) {
+		if (isModEnabled('kreanut') && $object->array_options['options_kreanut_calc_nut'] != 1) {
 			print '<br>';
 			print load_fiche_titre($langs->trans("KreanutTableTitle"), '', '');
 			print '<div class="fichecenter">';
+			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+			print '<input type="hidden" name="action" value="save_kreanut_nutrition">';
 			print '<table class="ui-sortable liste nobottom">';
+
 			$nutritionalFields = array(
 				'Kreanut_Energy_kcal'   => 'energy_kcal',
 				'Kreanut_Energy_kj'     => 'energy_kj',
@@ -748,32 +829,39 @@ if ($id > 0 || !empty($ref)) {
 				'Kreanut_Salt'          => 'salt',
 				'Kreanut_Fiber'         => 'fiber',
 			);
+
 			$sqlColumns = implode(', ', $nutritionalFields);
 			$sql = "SELECT $sqlColumns FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int)$object->id;
 			$resql = $db->query($sql);
+
 			$nutritionalData = new stdClass();
 			foreach ($nutritionalFields as $dbField) {
 				$nutritionalData->$dbField = '';
 			}
+
 			if ($resql && $db->num_rows($resql) > 0) {
 				$obj = $db->fetch_object($resql);
 				foreach ($nutritionalFields as $dbField) {
 					$nutritionalData->$dbField = isset($obj->$dbField) ? $obj->$dbField : '';
 				}
 			}
+
 			foreach ($nutritionalFields as $label => $dbField) {
 				$fieldName = 'nutritional_' . $dbField;
 				$object->array_options[$fieldName] = $nutritionalData->$dbField;
-				$editorType = 'string';
 				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans($label), $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+				print '<label for="' . $fieldName . '">' . $langs->trans($label) . '</label>';
 				print '</td><td>';
-				print $form->editfieldval($langs->trans($label), $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+				print '<input type="text" name="' . $fieldName . '" value="' . dol_escape_htmltag($object->array_options[$fieldName]) . '">';
 				print '</td></tr>';
 			}
+
 			print '</table>';
+			print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+			print '</form>';
 			print '</div>';
 		}
+
 
 		if (isModEnabled('kreanut') && $conf->global->KREANUT_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreanut_calc_nut'] == 1) {
 			$langs->load("kreanut@kreanut");
