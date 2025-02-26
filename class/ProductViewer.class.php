@@ -264,11 +264,11 @@ class ProductHierarchy
 
         // Build indentation
         $indent = '';
-        for ($i = 0; $i < $level; $i++) {
+        for ($i = 1; $i < $level; $i++) {
             if (!empty($prefix[$i])) {
                 $indent .= '┃&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
             } else {
-                $indent .= '';
+                $indent .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
             }
         }
         if ($level > 0) {
