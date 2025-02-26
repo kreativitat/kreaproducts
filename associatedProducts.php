@@ -44,6 +44,7 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/kreanut/class/KreaNutNutrientUpdater.class.php';
 
 // Load translation files required by the page
 $langs->loadLangs(array('bills', 'products', 'stocks'));
@@ -161,79 +162,83 @@ if ($action == 'save_kreanut_nutrition') {
 	dol_syslog("Starting save_kreanut_nutrition action for product ID: " . (int) $object->id);
 
 	// Check if a nutritional record already exists for this product.
-	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int) $object->id;
-	dol_syslog("Executing SQL: " . $sql);
-
+	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int)$object->id;
 	$resql = $db->query($sql);
 
-	if (!$resql) {
-		dol_syslog("SQL Error: " . $db->lasterror(), LOG_ERR);
-		setEventMessages($langs->trans("ErrorFetchingData") . ": " . $db->lasterror(), null, 'errors');
-		return;
-	}
-
 	$existing_rowid = null;
-	if ($db->num_rows($resql) > 0) {
+	if ($resql && $db->num_rows($resql) > 0) {
 		$obj = $db->fetch_object($resql);
 		$existing_rowid = $obj->rowid;
 		dol_syslog("Existing nutrition record found: " . $existing_rowid);
-	} else {
-		dol_syslog("No existing nutrition record found. Creating a new one.");
 	}
-	$db->free($resql); // Free query result
+	$db->free($resql);
 
-
-	// Get all input values and validate them
-	$data = [
-		'fk_product'     => (int) $object->id,
-		'energy_kcal'    => isset($_POST['nutritional_energy_kcal']) && is_numeric($_POST['nutritional_energy_kcal']) ? (float) $_POST['nutritional_energy_kcal'] : null,
-		'energy_kj'      => isset($_POST['nutritional_energy_kj']) && is_numeric($_POST['nutritional_energy_kj']) ? (float) $_POST['nutritional_energy_kj'] : null,
-		'fat'            => isset($_POST['nutritional_fat']) && is_numeric($_POST['nutritional_fat']) ? (float) $_POST['nutritional_fat'] : null,
-		'saturates'      => isset($_POST['nutritional_saturates']) && is_numeric($_POST['nutritional_saturates']) ? (float) $_POST['nutritional_saturates'] : null,
-		'carbohydrates'  => isset($_POST['nutritional_carbohydrates']) && is_numeric($_POST['nutritional_carbohydrates']) ? (float) $_POST['nutritional_carbohydrates'] : null,
-		'sugars'         => isset($_POST['nutritional_sugars']) && is_numeric($_POST['nutritional_sugars']) ? (float) $_POST['nutritional_sugars'] : null,
-		'protein'        => isset($_POST['nutritional_protein']) && is_numeric($_POST['nutritional_protein']) ? (float) $_POST['nutritional_protein'] : null,
-		'salt'           => isset($_POST['nutritional_salt']) && is_numeric($_POST['nutritional_salt']) ? (float) $_POST['nutritional_salt'] : null,
-		'fiber'          => isset($_POST['nutritional_fiber']) && is_numeric($_POST['nutritional_fiber']) ? (float) $_POST['nutritional_fiber'] : null
+	// Mandatory fields only for initial insertion.
+	$mandatoryData = [
+		'fk_product'    => (int) $object->id,
+		'date_creation' => date('Y-m-d H:i:s'),
+		'fk_user_creat' => $user->id,
 	];
 
-	// Construct the SQL query
-	if ($existing_rowid) {
-		// Update existing record
-		$sql = "UPDATE " . MAIN_DB_PREFIX . "kreanut_nutritional SET ";
-		foreach ($data as $key => $value) {
-			$sql .= "$key = " . $db->escape($value) . ", ";
-		}
-		$sql = rtrim($sql, ", ") . " WHERE rowid = " . (int) $existing_rowid;
-
-		dol_syslog("Executing UPDATE SQL: " . $sql);
-		$res = $db->query($sql);
-
-		if ($res) {
-			dol_syslog("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
-			setEventMessages($langs->trans("NutritionalDataUpdated"), null, 'mesgs');
-		} else {
-			dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
-			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
-		}
-	} else {
-		// Insert new record
+	// If no record exists, create one with just the mandatory fields.
+	if (!$existing_rowid) {
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreanut_nutritional (";
-		$sql .= implode(", ", array_keys($data)) . ") VALUES ('";
-		$sql .= implode("', '", array_map([$db, 'escape'], array_values($data))) . "')";
-
+		$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
+		$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
 		dol_syslog("Executing INSERT SQL: " . $sql);
 		$res = $db->query($sql);
-
 		if ($res) {
-			dol_syslog("Nutritional data successfully inserted (Row ID: " . $db->last_insert_id(MAIN_DB_PREFIX . "kreanut_nutritional") . ")");
-			setEventMessages($langs->trans("NutritionalDataSaved"), null, 'mesgs');
+			$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreanut_nutritional");
+			dol_syslog("Nutritional record created with mandatory fields (Row ID: " . $existing_rowid . ")");
 		} else {
-			dol_syslog("Error inserting nutritional data: " . $db->lasterror(), LOG_ERR);
+			dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
 			setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
+			return;
 		}
 	}
+
+	// Prepare additional nutritional data from the POST values.
+	$updateData = [
+		'energy_kcal'   => (isset($_POST['nutritional_energy_kcal']) && is_numeric($_POST['nutritional_energy_kcal'])) ? (float) $_POST['nutritional_energy_kcal'] : null,
+		'energy_kj'     => (isset($_POST['nutritional_energy_kj']) && is_numeric($_POST['nutritional_energy_kj'])) ? (float) $_POST['nutritional_energy_kj'] : null,
+		'fat'           => (isset($_POST['nutritional_fat']) && is_numeric($_POST['nutritional_fat'])) ? (float) $_POST['nutritional_fat'] : null,
+		'saturates'     => (isset($_POST['nutritional_saturates']) && is_numeric($_POST['nutritional_saturates'])) ? (float) $_POST['nutritional_saturates'] : null,
+		'carbohydrates' => (isset($_POST['nutritional_carbohydrates']) && is_numeric($_POST['nutritional_carbohydrates'])) ? (float) $_POST['nutritional_carbohydrates'] : null,
+		'sugars'        => (isset($_POST['nutritional_sugars']) && is_numeric($_POST['nutritional_sugars'])) ? (float) $_POST['nutritional_sugars'] : null,
+		'protein'       => (isset($_POST['nutritional_protein']) && is_numeric($_POST['nutritional_protein'])) ? (float) $_POST['nutritional_protein'] : null,
+		'salt'          => (isset($_POST['nutritional_salt']) && is_numeric($_POST['nutritional_salt'])) ? (float) $_POST['nutritional_salt'] : null,
+		'fiber'         => (isset($_POST['nutritional_fiber']) && is_numeric($_POST['nutritional_fiber'])) ? (float) $_POST['nutritional_fiber'] : null,
+	];
+
+	// Build and execute the UPDATE SQL query.
+	$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreanut_nutritional SET ";
+	$setClauses = [];
+	foreach ($updateData as $field => $value) {
+		// If value is null, we explicitly set it to NULL, otherwise use the escaped value.
+		$setClauses[] = ($value === null) ? "$field = NULL" : "$field = " . $db->escape($value);
+	}
+	$updateSQL .= implode(", ", $setClauses);
+	$updateSQL .= " WHERE rowid = " . (int)$existing_rowid;
+
+	dol_syslog("Executing UPDATE SQL: " . $updateSQL);
+	$resUpdate = $db->query($updateSQL);
+	if ($resUpdate) {
+		dol_syslog("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
+		setEventMessages($langs->trans("NutritionalDataUpdated"), null, 'mesgs');
+	} else {
+		dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
+		setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+	}
+
+	// Call the updater method; $user is provided by the Dolibarr environment.
+	$result = KreaNutNutrientUpdater::updateNutrientAttributes($object->id, $user);
+	if ($result < 0) {
+		$message = "Error updating nutritional attributes for product ID $object->id.";
+	} else {
+		$message = "Nutritional attributes updated successfully for product ID $object->id.";
+	}
 }
+
 
 /*
  * View
