@@ -85,6 +85,7 @@ kreap_productbrand = Marca do produto
 NoneSelected = Nenhum selecionado
 Allergens = Alergénios
 AllergensTraces = Vestigios de alergénios
+kreap_brand = Marca do produto
 
 #
 # Products tree card
@@ -113,3 +114,8 @@ ForceSynchronization = ZSync
 Update VAT = Actualizar IVA
 ForceSyncSuccess = Sincronizado com sucesso
 CalculatePriceOnCost = Percentagem sobre custo
+
+#
+# PurchasePrice Page
+#
+spreadCostPrice = Propagar Custo

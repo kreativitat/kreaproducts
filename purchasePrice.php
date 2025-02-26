@@ -57,6 +57,7 @@ require_once DOL_DOCUMENT_ROOT . '/comm/propal/class/propal.class.php';
 require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_expression.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_parser.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
 if (isModEnabled('barcode')) {
 	dol_include_once('/core/class/html.formbarcode.class.php');
 }
@@ -151,237 +152,244 @@ if ($reshook < 0) {
 	setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
 }
 
-if (empty($reshook)) {
-	if ($action == 'setcost_price') {
-		if ($id) {
-			$result = $object->fetch($id);
-			$object->cost_price = price2num($cost_price);
-			$result = $object->update($object->id, $user);
-			if ($result > 0) {
-				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
-				$action = '';
-			} else {
-				$error++;
-				setEventMessages($object->error, $object->errors, 'errors');
-			}
-		}
-	}
-	if ($action == 'setkreap_spread_buyprice') {
-		if ($id) {
-			$result = $object->fetch($id);
-			$extrafields->fetch_name_optionals_label($object->table_element);
-			$object->array_options['options_kreap_spread_buyprice'] = $kreap_spread_buyprice;
-			$result = $object->update($object->id, $user);
-			if ($result > 0) {
-				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
-				$action = '';
-			} else {
-				$error++;
-				setEventMessages($object->error, $object->errors, 'errors');
-			}
-		}
-	}
 
-	if ($action == 'setpmp') {
-		if ($id) {
-			$result = $object->fetch($id);
-			$object->pmp = price2num($pmp);
-			$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET pmp = " . ((float) $object->pmp) . " WHERE rowid = " . ((int) $id);
-			$resql = $db->query($sql);
-			//$result = $object->update($object->id, $user);
-			if ($resql) {
-				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
-				$action = '';
-			} else {
-				$error++;
-				setEventMessages($object->error, $object->errors, 'errors');
-			}
-		}
-	}
-
-	if ($action == 'confirm_remove_pf') {
-		if ($rowid) {	// id of product supplier price to remove
+if ($action == 'setcost_price') {
+	if ($id) {
+		$result = $object->fetch($id);
+		$object->cost_price = price2num($cost_price);
+		$result = $object->update($object->id, $user);
+		if ($result > 0) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
 			$action = '';
-			$result = $object->remove_product_fournisseur_price($rowid);
-			if ($result > 0) {
-				$db->query("DELETE FROM " . MAIN_DB_PREFIX . "product_fournisseur_price_extrafields WHERE fk_object = " . ((int) $rowid));
-				setEventMessages($langs->trans("PriceRemoved"), null, 'mesgs');
-			} else {
-				$error++;
-				setEventMessages($object->error, $object->errors, 'errors');
-			}
+		} else {
+			$error++;
+			setEventMessages($object->error, $object->errors, 'errors');
+		}
+		ProductHierarchy::updateProductAttributes($object->id, $user);
+	}
+}
+if ($action == 'setkreap_spread_buyprice') {
+	if ($id) {
+		$result = $object->fetch($id);
+		$extrafields->fetch_name_optionals_label($object->table_element);
+		$object->array_options['options_kreap_spread_buyprice'] = $kreap_spread_buyprice;
+		$result = $object->update($object->id, $user);
+		if ($result > 0) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			$action = '';
+		} else {
+			$error++;
+			setEventMessages($object->error, $object->errors, 'errors');
+		}
+	}
+}
+
+if ($action == 'setpmp') {
+	if ($id) {
+		$result = $object->fetch($id);
+		$object->pmp = price2num($pmp);
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product SET pmp = " . ((float) $object->pmp) . " WHERE rowid = " . ((int) $id);
+		$resql = $db->query($sql);
+		//$result = $object->update($object->id, $user);
+		if ($resql) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			$action = '';
+		} else {
+			$error++;
+			setEventMessages($object->error, $object->errors, 'errors');
+		}
+	}
+}
+
+if ($action == 'confirm_remove_pf') {
+	if ($rowid) {	// id of product supplier price to remove
+		$action = '';
+		$result = $object->remove_product_fournisseur_price($rowid);
+		if ($result > 0) {
+			$db->query("DELETE FROM " . MAIN_DB_PREFIX . "product_fournisseur_price_extrafields WHERE fk_object = " . ((int) $rowid));
+			setEventMessages($langs->trans("PriceRemoved"), null, 'mesgs');
+		} else {
+			$error++;
+			setEventMessages($object->error, $object->errors, 'errors');
+		}
+	}
+}
+
+if ($action == 'save_price') {
+	$id_fourn = GETPOST("id_fourn");
+	if (empty($id_fourn)) {
+		$id_fourn = GETPOST("search_id_fourn");
+	}
+	$ref_fourn = GETPOST("ref_fourn");
+	if (empty($ref_fourn)) {
+		$ref_fourn = GETPOST("search_ref_fourn");
+	}
+	$ref_fourn_old = GETPOST("ref_fourn_old");
+	if (empty($ref_fourn_old)) {
+		$ref_fourn_old = $ref_fourn;
+	}
+	$quantity = price2num(GETPOST("qty", 'alphanohtml'), 'MS');
+	$remise_percent = price2num(GETPOST('remise_percent', 'alpha'));
+
+	$npr = preg_match('/\*/', GETPOST('tva_tx', 'alpha')) ? 1 : 0;
+	$tva_tx = str_replace('*', '', GETPOST('tva_tx', 'alpha'));
+	if (!preg_match('/\((.*)\)/', $tva_tx)) {
+		$tva_tx = price2num($tva_tx);
+	}
+
+	$price_expression = GETPOST('eid', 'int') ? GETPOST('eid', 'int') : ''; // Discard expression if not in expression mode
+	$delivery_time_days = GETPOST('delivery_time_days', 'int') ? GETPOST('delivery_time_days', 'int') : '';
+	$supplier_reputation = GETPOST('supplier_reputation');
+	$supplier_description = GETPOST('supplier_description', 'restricthtml');
+	$barcode = GETPOST('barcode', 'alpha');
+	$fk_barcode_type = GETPOST('fk_barcode_type', 'int');
+	$packaging = price2num(GETPOST("packaging", 'alphanohtml'), 'MS');
+
+	if ($tva_tx == '') {
+		$error++;
+		$langs->load("errors");
+		setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("VATRateForSupplierProduct")), null, 'errors');
+	}
+	if (!is_numeric($tva_tx)) {
+		$error++;
+		$langs->load("errors");
+		setEventMessages($langs->trans("ErrorFieldMustBeANumeric", $langs->transnoentities("VATRateForSupplierProduct")), null, 'errors');
+	}
+	if (empty($quantity)) {
+		$error++;
+		$langs->load("errors");
+		setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Qty")), null, 'errors');
+	}
+	if (empty($ref_fourn)) {
+		$error++;
+		$langs->load("errors");
+		setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("RefSupplier")), null, 'errors');
+	}
+	if ($id_fourn <= 0) {
+		$error++;
+		$langs->load("errors");
+		setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Supplier")), null, 'errors');
+	}
+	if (price2num(GETPOST("price")) < 0 || GETPOST("price") == '') {
+		if ($price_expression === '') {	// Return error of missing price only if price_expression not set
+			$error++;
+			$langs->load("errors");
+			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Price")), null, 'errors');
+		} else {
+			$_POST["price"] = 0;
+		}
+	}
+	if (isModEnabled("multicurrency")) {
+		if (!GETPOST("multicurrency_code")) {
+			$error++;
+			$langs->load("errors");
+			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Currency")), null, 'errors');
+		}
+		if (price2num(GETPOST("multicurrency_tx")) <= 0 || GETPOST("multicurrency_tx") == '') {
+			$error++;
+			$langs->load("errors");
+			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("CurrencyRate")), null, 'errors');
+		}
+		if (price2num(GETPOST("multicurrency_price")) < 0 || GETPOST("multicurrency_price") == '') {
+			$error++;
+			$langs->load("errors");
+			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("PriceCurrency")), null, 'errors');
 		}
 	}
 
-	if ($action == 'save_price') {
-		$id_fourn = GETPOST("id_fourn");
-		if (empty($id_fourn)) {
-			$id_fourn = GETPOST("search_id_fourn");
-		}
-		$ref_fourn = GETPOST("ref_fourn");
-		if (empty($ref_fourn)) {
-			$ref_fourn = GETPOST("search_ref_fourn");
-		}
-		$ref_fourn_old = GETPOST("ref_fourn_old");
-		if (empty($ref_fourn_old)) {
-			$ref_fourn_old = $ref_fourn;
-		}
-		$quantity = price2num(GETPOST("qty", 'alphanohtml'), 'MS');
-		$remise_percent = price2num(GETPOST('remise_percent', 'alpha'));
+	if (!$error) {
+		$db->begin();
 
-		$npr = preg_match('/\*/', GETPOST('tva_tx', 'alpha')) ? 1 : 0;
-		$tva_tx = str_replace('*', '', GETPOST('tva_tx', 'alpha'));
-		if (!preg_match('/\((.*)\)/', $tva_tx)) {
-			$tva_tx = price2num($tva_tx);
-		}
+		if (!$error) {
+			$ret = $object->add_fournisseur($user, $id_fourn, $ref_fourn_old, $quantity); // This insert record with no value for price. Values are update later with update_buyprice
+			if ($ret == -3) {
+				$error++;
 
-		$price_expression = GETPOST('eid', 'int') ? GETPOST('eid', 'int') : ''; // Discard expression if not in expression mode
-		$delivery_time_days = GETPOST('delivery_time_days', 'int') ? GETPOST('delivery_time_days', 'int') : '';
-		$supplier_reputation = GETPOST('supplier_reputation');
-		$supplier_description = GETPOST('supplier_description', 'restricthtml');
-		$barcode = GETPOST('barcode', 'alpha');
-		$fk_barcode_type = GETPOST('fk_barcode_type', 'int');
-		$packaging = price2num(GETPOST("packaging", 'alphanohtml'), 'MS');
+				$tmpobject = new Product($db);
+				$tmpobject->fetch($object->product_id_already_linked);
+				$productLink = $tmpobject->getNomUrl(1, 'supplier');
 
-		if ($tva_tx == '') {
-			$error++;
-			$langs->load("errors");
-			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("VATRateForSupplierProduct")), null, 'errors');
-		}
-		if (!is_numeric($tva_tx)) {
-			$error++;
-			$langs->load("errors");
-			setEventMessages($langs->trans("ErrorFieldMustBeANumeric", $langs->transnoentities("VATRateForSupplierProduct")), null, 'errors');
-		}
-		if (empty($quantity)) {
-			$error++;
-			$langs->load("errors");
-			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Qty")), null, 'errors');
-		}
-		if (empty($ref_fourn)) {
-			$error++;
-			$langs->load("errors");
-			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("RefSupplier")), null, 'errors');
-		}
-		if ($id_fourn <= 0) {
-			$error++;
-			$langs->load("errors");
-			setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Supplier")), null, 'errors');
-		}
-		if (price2num(GETPOST("price")) < 0 || GETPOST("price") == '') {
-			if ($price_expression === '') {	// Return error of missing price only if price_expression not set
+				$texttoshow = $langs->trans("ReferenceSupplierIsAlreadyAssociatedWithAProduct", '{s1}');
+				$texttoshow = str_replace('{s1}', $productLink, $texttoshow);
+				setEventMessages($texttoshow, null, 'errors');
+			} elseif ($ret < 0) {
 				$error++;
-				$langs->load("errors");
-				setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Price")), null, 'errors');
-			} else {
-				$_POST["price"] = 0;
-			}
-		}
-		if (isModEnabled("multicurrency")) {
-			if (!GETPOST("multicurrency_code")) {
-				$error++;
-				$langs->load("errors");
-				setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("Currency")), null, 'errors');
-			}
-			if (price2num(GETPOST("multicurrency_tx")) <= 0 || GETPOST("multicurrency_tx") == '') {
-				$error++;
-				$langs->load("errors");
-				setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("CurrencyRate")), null, 'errors');
-			}
-			if (price2num(GETPOST("multicurrency_price")) < 0 || GETPOST("multicurrency_price") == '') {
-				$error++;
-				$langs->load("errors");
-				setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentities("PriceCurrency")), null, 'errors');
+				setEventMessages($object->error, $object->errors, 'errors');
 			}
 		}
 
 		if (!$error) {
-			$db->begin();
-
-			if (!$error) {
-				$ret = $object->add_fournisseur($user, $id_fourn, $ref_fourn_old, $quantity); // This insert record with no value for price. Values are update later with update_buyprice
-				if ($ret == -3) {
-					$error++;
-
-					$tmpobject = new Product($db);
-					$tmpobject->fetch($object->product_id_already_linked);
-					$productLink = $tmpobject->getNomUrl(1, 'supplier');
-
-					$texttoshow = $langs->trans("ReferenceSupplierIsAlreadyAssociatedWithAProduct", '{s1}');
-					$texttoshow = str_replace('{s1}', $productLink, $texttoshow);
-					setEventMessages($texttoshow, null, 'errors');
-				} elseif ($ret < 0) {
-					$error++;
-					setEventMessages($object->error, $object->errors, 'errors');
-				}
+			$supplier = new Fournisseur($db);
+			$result = $supplier->fetch($id_fourn);
+			if (GETPOSTISSET('ref_fourn_price_id')) {
+				$object->fetch_product_fournisseur_price(GETPOST('ref_fourn_price_id', 'int'));
 			}
+			$extralabels = $extrafields->fetch_name_optionals_label("product_fournisseur_price");
+			$extrafield_values = $extrafields->getOptionalsFromPost("product_fournisseur_price");
 
-			if (!$error) {
-				$supplier = new Fournisseur($db);
-				$result = $supplier->fetch($id_fourn);
-				if (GETPOSTISSET('ref_fourn_price_id')) {
-					$object->fetch_product_fournisseur_price(GETPOST('ref_fourn_price_id', 'int'));
-				}
-				$extralabels = $extrafields->fetch_name_optionals_label("product_fournisseur_price");
-				$extrafield_values = $extrafields->getOptionalsFromPost("product_fournisseur_price");
+			$newprice = price2num(GETPOST("price", "alpha"));
 
-				$newprice = price2num(GETPOST("price", "alpha"));
-
-				if (empty($packaging)) {
-					$packaging = 1;
-				}
-				/* We can have a puchase ref that need to buy 100 min for a given price and with a packaging of 50.
+			if (empty($packaging)) {
+				$packaging = 1;
+			}
+			/* We can have a puchase ref that need to buy 100 min for a given price and with a packaging of 50.
 				if ($packaging < $quantity) {
 					$packaging = $quantity;
 				}*/
-				$object->packaging = $packaging;
+			$object->packaging = $packaging;
 
-				if (isModEnabled("multicurrency")) {
-					$multicurrency_tx = price2num(GETPOST("multicurrency_tx", 'alpha'));
-					$multicurrency_price = price2num(GETPOST("multicurrency_price", 'alpha'));
-					$multicurrency_code = GETPOST("multicurrency_code", 'alpha');
+			if (isModEnabled("multicurrency")) {
+				$multicurrency_tx = price2num(GETPOST("multicurrency_tx", 'alpha'));
+				$multicurrency_price = price2num(GETPOST("multicurrency_price", 'alpha'));
+				$multicurrency_code = GETPOST("multicurrency_code", 'alpha');
 
-					$ret = $object->update_buyprice($quantity, $newprice, $user, GETPOST("price_base_type"), $supplier, GETPOST("oselDispo"), $ref_fourn, $tva_tx, GETPOST("charges"), $remise_percent, 0, $npr, $delivery_time_days, $supplier_reputation, array(), '', $multicurrency_price, GETPOST("multicurrency_price_base_type"), $multicurrency_tx, $multicurrency_code, $supplier_description, $barcode, $fk_barcode_type, $extrafield_values);
-				} else {
-					$ret = $object->update_buyprice($quantity, $newprice, $user, GETPOST("price_base_type"), $supplier, GETPOST("oselDispo"), $ref_fourn, $tva_tx, GETPOST("charges"), $remise_percent, 0, $npr, $delivery_time_days, $supplier_reputation, array(), '', 0, 'HT', 1, '', $supplier_description, $barcode, $fk_barcode_type, $extrafield_values);
-				}
-				if ($ret < 0) {
-					$error++;
-					setEventMessages($object->error, $object->errors, 'errors');
-				} else {
-					if (isModEnabled('dynamicprices') && $price_expression !== '') {
-						//Check the expression validity by parsing it
-						require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_parser.class.php';
-						$priceparser = new PriceParser($db);
-						$object->fk_supplier_price_expression = $price_expression;
-						$price_result = $priceparser->parseProductSupplier($object);
-						if ($price_result < 0) { //Expression is not valid
-							$error++;
-							setEventMessages($priceparser->translatedError(), null, 'errors');
-						}
-					}
-					if (!$error && isModEnabled('dynamicprices')) {
-						//Set the price expression for this supplier price
-						$ret = $object->setSupplierPriceExpression($price_expression);
-						if ($ret < 0) {
-							$error++;
-							setEventMessages($object->error, $object->errors, 'errors');
-						}
-					}
-				}
-			}
-
-			if (!$error) {
-				$db->commit();
-				$action = '';
+				$ret = $object->update_buyprice($quantity, $newprice, $user, GETPOST("price_base_type"), $supplier, GETPOST("oselDispo"), $ref_fourn, $tva_tx, GETPOST("charges"), $remise_percent, 0, $npr, $delivery_time_days, $supplier_reputation, array(), '', $multicurrency_price, GETPOST("multicurrency_price_base_type"), $multicurrency_tx, $multicurrency_code, $supplier_description, $barcode, $fk_barcode_type, $extrafield_values);
 			} else {
-				$db->rollback();
+				$ret = $object->update_buyprice($quantity, $newprice, $user, GETPOST("price_base_type"), $supplier, GETPOST("oselDispo"), $ref_fourn, $tva_tx, GETPOST("charges"), $remise_percent, 0, $npr, $delivery_time_days, $supplier_reputation, array(), '', 0, 'HT', 1, '', $supplier_description, $barcode, $fk_barcode_type, $extrafield_values);
 			}
-		} else {
-			$action = 'add_price';
+			if ($ret < 0) {
+				$error++;
+				setEventMessages($object->error, $object->errors, 'errors');
+			} else {
+				if (isModEnabled('dynamicprices') && $price_expression !== '') {
+					//Check the expression validity by parsing it
+					require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_parser.class.php';
+					$priceparser = new PriceParser($db);
+					$object->fk_supplier_price_expression = $price_expression;
+					$price_result = $priceparser->parseProductSupplier($object);
+					if ($price_result < 0) { //Expression is not valid
+						$error++;
+						setEventMessages($priceparser->translatedError(), null, 'errors');
+					}
+				}
+				if (!$error && isModEnabled('dynamicprices')) {
+					//Set the price expression for this supplier price
+					$ret = $object->setSupplierPriceExpression($price_expression);
+					if ($ret < 0) {
+						$error++;
+						setEventMessages($object->error, $object->errors, 'errors');
+					}
+				}
+			}
 		}
+
+		if (!$error) {
+			$db->commit();
+			$action = '';
+		} else {
+			$db->rollback();
+		}
+	} else {
+		$action = 'add_price';
 	}
 }
+
+
+if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
+	// Make sure you have proper security checks here.
+	ProductHierarchy::updateProductAttributes($object->id, $user);
+}
+
 
 
 /*
@@ -445,14 +453,25 @@ if ($id > 0 || $ref) {
 			}
 
 			// Cost price. Can be used for margin module for option "calculate margin on explicit cost price
-			print '<tr><td>';
+			print '<tr>';
+			print '<td>';
 			$textdesc = $langs->trans("CostPriceDescription");
 			$textdesc .= "<br>" . $langs->trans("CostPriceUsage");
 			$text = $form->textwithpicto($langs->trans("CostPrice"), $textdesc, 1, 'help', '');
 			print $form->editfieldkey($text, 'cost_price', $object->cost_price, $object, $usercancreate, 'amount:6');
-			print '</td><td>';
+			print '</td>';
+			print '<td>';
 			print $form->editfieldval($text, 'cost_price', $object->cost_price, $object, $usercancreate, 'amount:6');
-			print '</td></tr>';
+			print '</td>';
+			print '<td align="right">';
+			print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '">';
+			print '<input type="hidden" name="action" value="updateProductAttributes">';
+			print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
+			print '</form>';
+			print '</td>';
+			print '</tr>';
+
+
 
 			// Propagate buy price
 			if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {

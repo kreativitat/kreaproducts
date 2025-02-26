@@ -53,7 +53,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		// We only handle two actions in the switch
 		switch ($action) {
 				// PRODUCT modification triggers
-			case 'PRODUCT_MODIFY':
+				//case 'PRODUCT_MODIFY': // Desligado porque torna o sistema lento
 			case 'PRODUCT_PRICE_MODIFY':
 				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 

@@ -4,8 +4,8 @@
  * Minimal ProductHierarchy Class with Debug Logging
  *
  * This class builds the full connected graph (associations) for a given product,
- * collects all its ancestor (parent) products, and then updates each ancestor's
- * cost_price (buyprice) as the sum of (child cost_price × quantity) for its immediate children.
+ * computes a “height” for each node (leaf = 0; parent = max(child height) + 1),
+ * and then updates each non‑leaf product's cost_price (buyprice) in bottom‑up order.
  *
  */
 class ProductHierarchy
@@ -42,17 +42,19 @@ class ProductHierarchy
     /**
      * Main entry point.
      *
-     * Given a product ID (assumed to be a leaf in the tree), this method:
+     * Given a product ID (which may be a leaf or have children), this method:
      *  1. Builds the full connected association map.
-     *  2. Recursively collects all ancestor (parent) products (with depth).
-     *  3. For each ancestor, recalculates its cost_price as the sum over its children.
+     *  2. Computes a height for each node (leaf = 0).
+     *  3. Updates each non‑leaf node’s cost_price (buyprice) in order from the bottom up.
+     *
+     * This ensures that if you update a leaf (which isn’t recalculated), its parent's
+     * cost is recalculated after the leaf’s new value is set.
      *
      * @param int  $productId The starting product ID.
      * @param User $user      The Dolibarr user performing the update.
      */
     public static function updateProductAttributes($productId, $user)
     {
-
         global $db;
 
         require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
@@ -61,100 +63,112 @@ class ProductHierarchy
         $extrafields = new ExtraFields($db);
         $extraFieldKey = 'kreap_spread_buyprice';
 
-        // Load product extra fields
+        // Load product extra fields for the starting product.
         $product = new Product($db);
         if ($product->fetch($productId) <= 0) {
             dol_syslog("updateProductAttributes: Failed to fetch product ID $productId", LOG_ERR);
             return 0; // Exit if product is not found
         }
-
         $product->fetch_optionals($productId, $extrafields); // Load extra fields
 
-        // Check if the extra field is enabled for this product
+        // Check if the extra field is enabled for this product.
         if (empty($product->array_options["options_" . $extraFieldKey])) {
             dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is not enabled for product ID $productId. Exiting.", LOG_WARNING);
             return 0; // Exit without making changes
         }
-
         dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is enabled. Proceeding with update.", LOG_DEBUG);
-
-        // dol_syslog("updateProductAttributes: Starting update for product ID $productId");
 
         // Reset and rebuild the association map.
         self::$mapLoaded  = false;
         self::$productMap = array();
         self::buildMap($productId);
-        // dol_syslog("updateProductAttributes: Completed buildMap. Full map: " . print_r(self::$productMap, true));
 
-        // Collect all ancestors (parents, grandparents, etc.) along with their depth.
-        $ancestors = self::getAncestors($productId);
-        // dol_syslog("updateProductAttributes: Collected ancestors: " . print_r($ancestors, true));
-        asort($ancestors);
-        // dol_syslog("updateProductAttributes: Sorted ancestors: " . print_r($ancestors, true));
+        // Compute heights for each node (leaf = 0; parent's height = max(child height)+1)
+        $heights = self::computeHeights();
+        // Sort nodes by height in ascending order (so that when we update a node,
+        // all its children—with lower heights—have already been updated)
+        asort($heights);
 
-        // For each ancestor, recalculate its cost_price.
-        foreach ($ancestors as $ancId => $depth) {
-            if (!isset(self::$productMap[$ancId])) {
-                // dol_syslog("updateProductAttributes: Ancestor ID $ancId not found in map.");
-                continue;
-            }
-            $product = self::$productMap[$ancId];
-            $newCost = 0;
-            foreach ($product->children as $childId => $qty) {
-                if (isset(self::$productMap[$childId])) {
-                    $child = self::$productMap[$childId];
-                    $childCost = isset($child->data['cost_price']) ? floatval($child->data['cost_price']) : 0;
-                    $newCost += $childCost * floatval($qty);
-                }
-            }
-            $oldCost = isset($product->data['cost_price']) ? floatval($product->data['cost_price']) : 0;
-            // dol_syslog("updateProductAttributes: Ancestor {$product->ref} (ID $ancId, depth $depth): old cost = $oldCost, new cost = $newCost");
+        // Iterate over all nodes in the map in this order.
+        // We only update non‑leaf nodes (i.e. nodes that have children).
+        foreach ($heights as $nodeId => $height) {
+            // Skip leaf nodes
+            if ($height == 0) continue;
+            if (!isset(self::$productMap[$nodeId])) continue;
+            $node = self::$productMap[$nodeId];
 
-            if (abs($newCost - $oldCost) > 0.0001) {
-                global $db;
-                require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
-                $prod = new Product($db);
-                if ($prod->fetch($product->id) > 0) {
-                    $prod->cost_price = $newCost;
-                    $prod->buyprice   = $newCost;
-                    $res = $prod->update($product->id, $user);
-                    if ($res > 0) {
-                        // dol_syslog("updateProductAttributes: Updated product {$product->ref} (ID $ancId) to cost $newCost");
-                        $product->data['cost_price'] = $newCost;
-                    } else {
-                        // dol_syslog("updateProductAttributes: FAILED to update product {$product->ref} (ID $ancId)", LOG_ERR);
+            if (!empty($node->children)) {
+                $newCost = 0;
+                foreach ($node->children as $childId => $qty) {
+                    if (isset(self::$productMap[$childId])) {
+                        $child = self::$productMap[$childId];
+                        $childCost = isset($child->data['cost_price']) ? floatval($child->data['cost_price']) : 0;
+                        $newCost += $childCost * floatval($qty);
                     }
-                } else {
-                    // dol_syslog("updateProductAttributes: FAILED to fetch product {$product->ref} (ID $ancId)", LOG_ERR);
+                }
+                $oldCost = isset($node->data['cost_price']) ? floatval($node->data['cost_price']) : 0;
+                if (abs($newCost - $oldCost) > 0.0001) {
+                    $prod = new Product($db);
+                    if ($prod->fetch($node->id) > 0) {
+                        $prod->cost_price = $newCost;
+                        $prod->buyprice   = $newCost;
+                        $res = $prod->update($node->id, $user);
+                        if ($res > 0) {
+                            dol_syslog("updateProductAttributes: Updated product {$node->ref} (ID {$node->id}) from cost $oldCost to $newCost", LOG_DEBUG);
+                            $node->data['cost_price'] = $newCost;
+                        } else {
+                            dol_syslog("updateProductAttributes: FAILED to update product {$node->ref} (ID {$node->id})", LOG_ERR);
+                        }
+                    } else {
+                        dol_syslog("updateProductAttributes: FAILED to fetch product {$node->ref} (ID {$node->id})", LOG_ERR);
+                    }
                 }
             }
         }
-        // dol_syslog("updateProductAttributes: Completed updating ancestors.");
+        dol_syslog("updateProductAttributes: Completed updating products bottom-up.", LOG_DEBUG);
     }
 
     /**
-     * Recursively collect all ancestors (parents) for the given product.
+     * Computes and returns an associative array of heights for all nodes in the map.
      *
-     * Returns an associative array: [productId => depth]
+     * Height is defined as:
+     *   - 0 for leaf nodes (no children)
+     *   - max(child height) + 1 for nodes with children.
      *
-     * @param int   $productId The starting product ID.
-     * @param int   $depth     Current depth (default 0).
-     * @param array $ancestors Accumulator.
-     * @return array
+     * @return array  [productId => height]
      */
-    private static function getAncestors($productId, $depth = 0, &$ancestors = array())
+    private static function computeHeights()
     {
-        if (!isset(self::$productMap[$productId])) return $ancestors;
-        $product = self::$productMap[$productId];
-        foreach ($product->parents as $pid) {
-            $newDepth = $depth + 1;
-            if (!isset($ancestors[$pid]) || $newDepth < $ancestors[$pid]) {
-                $ancestors[$pid] = $newDepth;
-                // dol_syslog("getAncestors: Product ID $productId has parent $pid at depth $newDepth");
-                self::getAncestors($pid, $newDepth, $ancestors);
+        $heights = array();
+        foreach (self::$productMap as $nodeId => $node) {
+            self::getHeight($nodeId, $heights);
+        }
+        return $heights;
+    }
+
+    /**
+     * Recursively computes the height of a node.
+     *
+     * @param int   $nodeId
+     * @param array $heights  Memoization array.
+     * @return int
+     */
+    private static function getHeight($nodeId, &$heights)
+    {
+        if (isset($heights[$nodeId])) return $heights[$nodeId];
+        if (!isset(self::$productMap[$nodeId]) || empty(self::$productMap[$nodeId]->children)) {
+            $heights[$nodeId] = 0;
+            return 0;
+        }
+        $maxChildHeight = 0;
+        foreach (self::$productMap[$nodeId]->children as $childId => $qty) {
+            $childHeight = self::getHeight($childId, $heights);
+            if ($childHeight > $maxChildHeight) {
+                $maxChildHeight = $childHeight;
             }
         }
-        return $ancestors;
+        $heights[$nodeId] = $maxChildHeight + 1;
+        return $heights[$nodeId];
     }
 
     /**
