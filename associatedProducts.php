@@ -950,6 +950,9 @@ if ($id > 0 || !empty($ref)) {
 						case 'url':
 							$editorType = 'url';
 							break;
+						case 'ckeditor':
+							$editorType = 'ckeditor';
+							break;
 						case 'select':
 							if (
 								isset($extrafields->attributes['product']['param'][$key]['options'])

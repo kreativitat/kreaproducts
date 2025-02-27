@@ -145,12 +145,12 @@ NaoEUmAlimento = Não é um alimento
 #
 # Products tree card
 #
-ProductTree = Arvore
+ProductTree = Árvore
 FichaTecnica = Ficha técnica
 PrecoCusto = Preço de custo
 Reference = Referencia
 Designation = Designação
-Qty = Qunt.
+Qty = Quant.
 Type = Tipo
 CostPrice = Custo
 Subproducts = Subprodutos

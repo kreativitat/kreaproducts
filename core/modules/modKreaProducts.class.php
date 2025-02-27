@@ -587,13 +587,13 @@ class modKreaProducts extends DolibarrModules
 		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_recipe");
-		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'varchar', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_brand");
 		$result2 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_description");
-		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'varchar', 302, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'text', 302, 1000, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_video");
 		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
