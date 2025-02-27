@@ -54,8 +54,6 @@ class KreaProductsNutritionalCalculator
         self::gatherSubProducts($productId, $subList);
 
         // 4) Begin outputting the table.
-        print '<br>';
-        print load_fiche_titre($langs->trans("KreaProductsProductAssociations"), '', '');
         print '<table class="noborder" width="100%">';
         print '<tr class="liste_titre">';
         print '<td width="5%">' . $langs->trans("KreaProductsTableProductRef") . '</td>';
