@@ -33,7 +33,7 @@
  */
 
 /**
- *  \file       htdocs/product/composition/card.php
+ *  \file       htdocs/custom/kreaproducts/associatedProducts.php
  *  \ingroup    product
  *  \brief      Page of product file
  */
@@ -44,7 +44,7 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreanut/class/KreaNutNutrientUpdater.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrientUpdater.class.php';
 
 // Load translation files required by the page
 $langs->loadLangs(array('bills', 'products', 'stocks'));
@@ -158,11 +158,11 @@ if (empty($reshook)) {
 	}
 }
 
-if ($action == 'save_kreanut_nutrition') {
-	dol_syslog("Starting save_kreanut_nutrition action for product ID: " . (int) $object->id);
+if ($action == 'save_kreaproducts_nutrition') {
+	dol_syslog("Starting save_kreaproducts_nutrition action for product ID: " . (int) $object->id);
 
 	// Check if a nutritional record already exists for this product.
-	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int)$object->id;
+	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
 	$resql = $db->query($sql);
 
 	$existing_rowid = null;
@@ -182,13 +182,13 @@ if ($action == 'save_kreanut_nutrition') {
 
 	// If no record exists, create one with just the mandatory fields.
 	if (!$existing_rowid) {
-		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreanut_nutritional (";
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (";
 		$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
 		$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
 		dol_syslog("Executing INSERT SQL: " . $sql);
 		$res = $db->query($sql);
 		if ($res) {
-			$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreanut_nutritional");
+			$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
 			dol_syslog("Nutritional record created with mandatory fields (Row ID: " . $existing_rowid . ")");
 		} else {
 			dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
@@ -211,7 +211,7 @@ if ($action == 'save_kreanut_nutrition') {
 	];
 
 	// Build and execute the UPDATE SQL query.
-	$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreanut_nutritional SET ";
+	$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET ";
 	$setClauses = [];
 	foreach ($updateData as $field => $value) {
 		// If value is null, we explicitly set it to NULL, otherwise use the escaped value.
@@ -231,7 +231,7 @@ if ($action == 'save_kreanut_nutrition') {
 	}
 
 	// Call the updater method; $user is provided by the Dolibarr environment.
-	$result = KreaNutNutrientUpdater::updateNutrientAttributes($object->id, $user);
+	$result = KreaProductsNutrientUpdater::updateNutrientAttributes($object->id, $user);
 	if ($result < 0) {
 		$message = "Error updating nutritional attributes for product ID $object->id.";
 	} else {
@@ -562,7 +562,7 @@ if ($id > 0 || !empty($ref)) {
 				$rowspan++;
 			}
 			print load_fiche_titre($langs->trans("ProductToAddSearch"), '', '');
-			print '<form action="' . DOL_URL_ROOT . '/product/composition/card.php?id=' . $id . '" method="POST">';
+			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="POST">';
 			print '<input type="hidden" name="action" value="search">';
 			print '<input type="hidden" name="id" value="' . $id . '">';
 			print '<div class="inline-block">';
@@ -585,7 +585,7 @@ if ($id > 0 || !empty($ref)) {
 		// List of products (search results)
 		if ($action == 'search') {
 			print '<br>';
-			print '<form action="' . DOL_URL_ROOT . '/product/composition/card.php?id=' . $id . '" method="post">';
+			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="post">';
 			print '<input type="hidden" name="token" value="' . newToken() . '">';
 			print '<input type="hidden" name="action" value="add_prod">';
 			print '<input type="hidden" name="id" value="' . $id . '">';
@@ -759,14 +759,14 @@ if ($id > 0 || !empty($ref)) {
 		// Save the changes to the database (one call for all extra–fields)
 		$object->insertExtraFields();
 
-		if (isModEnabled('kreallergens')) {
+		if (isModEnabled('kreaproducts')) {
 			print '<br>';
-			print load_fiche_titre($langs->trans("KreallergensTableTitle"), '', '');
+			print load_fiche_titre($langs->trans("KreaProductsTableTitle"), '', '');
 			print '<div class="fichecenter">';
 			print '<table class="ui-sortable liste nobottom">';
 			$savedAllergensArray = array();
 			$savedAllergensTraces = array();
-			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreallergens_productallergens WHERE fk_product = " . (int)$object->id;
+			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
 			$resql = $db->query($sql);
 			if ($resql) {
 				while ($obj = $db->fetch_object($resql)) {
@@ -780,10 +780,10 @@ if ($id > 0 || !empty($ref)) {
 			print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
 			if (!empty($savedAllergensArray)) {
 				foreach ($savedAllergensArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreallergens WHERE rowid = " . (int)$allergenId;
+					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
 					$resql = $db->query($sql);
 					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreallergens/img/' . $obj->icon;
+						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
 						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
 						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
 						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
@@ -797,10 +797,10 @@ if ($id > 0 || !empty($ref)) {
 			print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
 			if (!empty($savedAllergensTracesArray)) {
 				foreach ($savedAllergensTracesArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreallergens WHERE rowid = " . (int)$allergenId;
+					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
 					$resql = $db->query($sql);
 					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreallergens/img/' . $obj->icon;
+						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
 						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
 						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
 						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
@@ -815,28 +815,28 @@ if ($id > 0 || !empty($ref)) {
 			print '</div>';
 		}
 
-		if (isModEnabled('kreanut') && $object->array_options['options_kreanut_calc_nut'] != 1) {
+		if (isModEnabled('kreaproducts') && $object->array_options['options_kreap_calc_nut'] != 1) {
 			print '<br>';
-			print load_fiche_titre($langs->trans("KreanutTableTitle"), '', '');
+			print load_fiche_titre($langs->trans("KreaProductsTableTitle"), '', '');
 			print '<div class="fichecenter">';
 			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-			print '<input type="hidden" name="action" value="save_kreanut_nutrition">';
+			print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
 			print '<table class="ui-sortable liste nobottom">';
 
 			$nutritionalFields = array(
-				'Kreanut_Energy_kcal'   => 'energy_kcal',
-				'Kreanut_Energy_kj'     => 'energy_kj',
-				'Kreanut_Fat'           => 'fat',
-				'Kreanut_Saturates'     => 'saturates',
-				'Kreanut_Carbohydrates' => 'carbohydrates',
-				'Kreanut_Sugars'        => 'sugars',
-				'Kreanut_Protein'       => 'protein',
-				'Kreanut_Salt'          => 'salt',
-				'Kreanut_Fiber'         => 'fiber',
+				'KreaProducts_Energy_kcal'   => 'energy_kcal',
+				'KreaProducts_Energy_kj'     => 'energy_kj',
+				'KreaProducts_Fat'           => 'fat',
+				'KreaProducts_Saturates'     => 'saturates',
+				'KreaProducts_Carbohydrates' => 'carbohydrates',
+				'KreaProducts_Sugars'        => 'sugars',
+				'KreaProducts_Protein'       => 'protein',
+				'KreaProducts_Salt'          => 'salt',
+				'KreaProducts_Fiber'         => 'fiber',
 			);
 
 			$sqlColumns = implode(', ', $nutritionalFields);
-			$sql = "SELECT $sqlColumns FROM " . MAIN_DB_PREFIX . "kreanut_nutritional WHERE fk_product = " . (int)$object->id;
+			$sql = "SELECT $sqlColumns FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
 			$resql = $db->query($sql);
 
 			$nutritionalData = new stdClass();
@@ -868,10 +868,10 @@ if ($id > 0 || !empty($ref)) {
 		}
 
 
-		if (isModEnabled('kreanut') && $conf->global->KREANUT_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreanut_calc_nut'] == 1) {
-			$langs->load("kreanut@kreanut");
-			require_once DOL_DOCUMENT_ROOT . '/custom/kreanut/class/KreaNutNutritionalCalculator.class.php';
-			KreaNutNutritionalCalculator::computeAndDisplayNutritional($object->id);
+		if (isModEnabled('kreaproducts') && $conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreap_calc_nut'] == 1) {
+			$langs->load("kreaproducts@kreaproducts");
+			require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
+			KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
 		}
 
 		if (isset($object->array_options)) {

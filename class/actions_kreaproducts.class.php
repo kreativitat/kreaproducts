@@ -347,16 +347,77 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
-		/*
-		global $conf, $user, $langs;
+		global $db, $conf, $langs, $user;
 
 		$error = 0; // Error counter
 
-		// Process only when action is 'create' or 'update' and object is a product
+		// Process only when action is 'create' or 'update', object is a product, and product has an ID.
 		if (($action == 'create' || $action == 'update') && $object->element == 'product' && !empty($object->id)) {
+			// NUTRITIONAL DECLARATION
+			// Retrieve nutritional values from the submitted form.
+			$energy_kcal     = isset($_POST['KreaProductsEnergy_kcal']) && is_numeric($_POST['KreaProductsEnergy_kcal']) ? $_POST['KreaProductsEnergy_kcal'] : null;
+			$energy_kj       = isset($_POST['KreaProductsEnergy_kj']) && is_numeric($_POST['KreaProductsEnergy_kj']) ? $_POST['KreaProductsEnergy_kj'] : null;
+			$fat             = isset($_POST['KreaProductsFat']) && is_numeric($_POST['KreaProductsFat']) ? $_POST['KreaProductsFat'] : null;
+			$saturates       = isset($_POST['KreaProductsSaturates']) && is_numeric($_POST['KreaProductsSaturates']) ? $_POST['KreaProductsSaturates'] : null;
+			$carbohydrates   = isset($_POST['KreaProductsCarbohydrates']) && is_numeric($_POST['KreaProductsCarbohydrates']) ? $_POST['KreaProductsCarbohydrates'] : null;
+			$sugars          = isset($_POST['KreaProductsSugars']) && is_numeric($_POST['KreaProductsSugars']) ? $_POST['KreaProductsSugars'] : null;
+			$protein         = isset($_POST['KreaProductsProtein']) && is_numeric($_POST['KreaProductsProtein']) ? $_POST['KreaProductsProtein'] : null;
+			$salt            = isset($_POST['KreaProductsSalt']) && is_numeric($_POST['KreaProductsSalt']) ? $_POST['KreaProductsSalt'] : null;
+			$fiber           = isset($_POST['KreaProductsFiber']) && is_numeric($_POST['KreaProductsFiber']) ? $_POST['KreaProductsFiber'] : null;
+
+			// If energy values are not provided, calculate them.
+			if ($energy_kcal <= 0) {
+				$energy_kcal = ($fat * 9) + ($carbohydrates * 4) + ($protein * 4);
+			}
+			if ($energy_kj <= 0) {
+				$energy_kj = $energy_kcal * 4.184;
+			}
+
+			// Include and instantiate the Nutritional class.
+			dol_include_once('/kreaproducts/class/nutritional.class.php');
+			$nutritional = new Nutritional($this->db);
+
+			// Check if a nutritional record already exists for this product.
+			$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
+			$resql = $this->db->query($sql);
+			if ($resql && $this->db->num_rows($resql) > 0) {
+				$obj = $this->db->fetch_object($resql);
+				// Load the existing nutritional record.
+				$nutritional->fetch($obj->rowid);
+			}
+
+			// Set (or update) nutritional fields.
+			$nutritional->fk_product     = $object->id;
+			$nutritional->energy_kcal    = $energy_kcal;
+			$nutritional->energy_kj      = $energy_kj;
+			$nutritional->fat            = $fat;
+			$nutritional->saturates      = $saturates;
+			$nutritional->carbohydrates  = $carbohydrates;
+			$nutritional->sugars         = $sugars;
+			$nutritional->protein        = $protein;
+			$nutritional->salt           = $salt;
+			$nutritional->fiber          = $fiber;
+
+			// If the record doesn't exist (no id loaded), create a new one; otherwise update.
+			if (empty($nutritional->id)) {
+				$res = $nutritional->create($user);
+				if ($res < 0) {
+					$this->errors[] = $nutritional->error;
+					$error++;
+				}
+			} else {
+				$res = $nutritional->update($user);
+				if ($res < 0) {
+					$this->errors[] = $nutritional->error;
+					$error++;
+				}
+			}
+
+
+			// ALLERGENS
 			// Retrieve allergen IDs from the submitted form (adjust field names as needed)
-			$selectedAllergens = GETPOST('KREA_PRODUCTS_ALLERGENS', 'array');
-			$selectedAllergensTraces = GETPOST('KREA_PRODUCTS_ALLERGENS_TRACES', 'array');
+			$selectedAllergens = GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
+			$selectedAllergensTraces = GETPOST('KREAPRODUCTS_ALLERGENS_TRACES', 'array');
 
 			// Merge arrays to check if there's more than one unique allergen selected.
 			$mergedAllergens = array_unique(array_merge($selectedAllergens, $selectedAllergensTraces));
@@ -376,7 +437,7 @@ class ActionsKreaProducts extends CommonHookActions
 
 			// Then, if there are selected allergens (non-traces), save each association using the ProductAllergens class
 			if (!$error && !empty($selectedAllergens) && is_array($selectedAllergens)) {
-				require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productallergens.class.php';
+				dol_include_once('/kreaproducts/class/productallergens.class.php');
 				foreach ($selectedAllergens as $allergenId) {
 					$allergenId = (int)$allergenId;
 					if ($allergenId > 0) {
@@ -395,8 +456,10 @@ class ActionsKreaProducts extends CommonHookActions
 
 			// Now, if there are selected allergens for traces, save each association with traces flag set to 1.
 			// Skip those allergens that are already saved in the non-traces array.
-			if (!$error && !empty($selectedAllergensTraces) && is_array($selectedAllergensTraces)) {
-				require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productallergens.class.php';
+			if (
+				!$error && !empty($selectedAllergensTraces) && is_array($selectedAllergensTraces)
+			) {
+				dol_include_once('/kreaproducts/class/productallergens.class.php');
 				foreach ($selectedAllergensTraces as $allergenId) {
 					$allergenId = (int)$allergenId;
 					// Skip if this allergen was already processed in the non-traces list.
@@ -420,38 +483,46 @@ class ActionsKreaProducts extends CommonHookActions
 
 		if (!$error) {
 			$this->results = array('myreturn' => 999);
-			$this->resprints = 'Allergens saved successfully';
-			return 0; // Continue standard processing
+			$this->resprints = 'Nutritional declaration saved successfully';
+			return 0; // Continue standard processing.
 		} else {
-			$this->errors[] = 'Error saving allergens';
+			$this->errors[] = 'Error saving nutritional declaration';
 			return -1;
 		}
-		*/
 	}
 
 	/**
-	 * Render additional form options for product allergens.
+	 * Render additional form options for product nutritional declaration using the Nutritional class.
 	 *
-	 * This method displays an allergens selector on the product card. In create/edit mode, it shows a multi‐select field
-	 * populated with active allergens from the dictionary table (llx_c_allergens). In view (read-only) mode, it displays the
-	 * allergens associated with the product.
+	 * This method displays nutritional fields on the product card. In create/edit mode it shows input fields
+	 * populated with existing data (if any) from the nutritional table. In view (read-only) mode it displays the values.
 	 *
-	 * @param array        $parameters   Hook parameters. Should contain a key 'context' (e.g., "productcard").
-	 * @param CommonObject $object       The product object.
-	 * @param string       $action       Current action ("create", "edit", or view).
-	 * @param HookManager  $hookmanager  Hook manager object.
-	 * @return int                       0 on success.
+	 * @param array $parameters Hook parameters (should contain a key 'context', e.g., "productcard")
+	 * @param CommonObject $object The product object.
+	 * @param string $action Current action ("create", "edit", or view)
+	 * @param HookManager $hookmanager Hook manager object.
+	 * @return int 0 on success.
 	 */
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
-		/*
 		global $db, $langs, $conf, $form;
 
 		$this->resprints = '';
 
+		// Include and instantiate the Nutritional class.
+		dol_include_once('/kreaproducts/class/nutritional.class.php');
+		$nutritional = new Nutritional($db);
+
+		// Attempt to load the nutritional record for this product.
+		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
+		$resql = $db->query($sql);
+		if ($resql && $db->num_rows($resql) > 0) {
+			$obj = $db->fetch_object($resql);
+			$nutritional->fetch($obj->rowid);
+		}
+
 		// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
 		$savedAllergensArray = array();
-		$savedAllergensTraces = array();
 
 		// Get saved allergens for this product from our relation table
 		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
@@ -466,46 +537,159 @@ class ActionsKreaProducts extends CommonHookActions
 			}
 		}
 
+		// Check that we are on the product card.
 		if (in_array('productcard', explode(':', $parameters['context']))) {
-
 			if ($action == 'create' || $action == 'edit') {
+				if ($object->array_options['options_kreap_calc_nut'] != 1) {
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsNutritionalDeclaration") . '</strong></td></tr>' . "\n";
+
+					// Energy (kcal)
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kcal") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kcal" value="' . (!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Energy (kj)
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kj") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kj" value="' . (!empty($nutritional->energy_kj) ? $nutritional->energy_kj : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Fat
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFat") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFat" value="' . (!empty($nutritional->fat) ? $nutritional->fat : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Saturates
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSaturates") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSaturates" value="' . (!empty($nutritional->saturates) ? $nutritional->saturates : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Carbohydrates
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsCarbohydrates") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsCarbohydrates" value="' . (!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Sugars
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSugars") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSugars" value="' . (!empty($nutritional->sugars) ? $nutritional->sugars : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Protein
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsProtein") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsProtein" value="' . (!empty($nutritional->protein) ? $nutritional->protein : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Salt
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSalt") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSalt" value="' . (!empty($nutritional->salt) ? $nutritional->salt : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					// Fiber
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFiber") . '</td><td colspan="3">';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFiber" value="' . (!empty($nutritional->fiber) ? $nutritional->fiber : '') . '" size="10" />';
+					$this->resprints .= '</td></tr>';
+
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+				}
+
+				// Allergens
 
 				// Retrieve active allergens from dictionary table
 				$TAllergens = array();
-				$sql = "SELECT rowid, label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE active = 1 ORDER BY label";
+				$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
 				$resql = $db->query($sql);
 				if ($resql) {
 					while ($obj = $db->fetch_object($resql)) {
-						$TAllergens[$obj->rowid] = $obj->label;
+						$TAllergens[$obj->rowid] = $langs->trans($obj->code);
 					}
 				}
 
-				$this->resprints .= '<tr><td></td><td colspan="3" class="maxwidthonsmartphone">' . "\n";
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsProductsCardTitle") . '</strong></td></tr>' . "\n";
 
 				// Allergens selector
-				$this->resprints .= '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+				$this->resprints .= '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
 				// Use a multiselect field (change the field name as needed)
-				$this->resprints .= $form->multiselectarray('KREA_PRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREA_PRODUCTS_ALLERGENS"');
+				$this->resprints .= $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
 				$this->resprints .= '</td></tr>';
 
 				// Allergens traces selector
-				$this->resprints .= '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+				$this->resprints .= '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
 				// Use a multiselect field (change the field name as needed)
-				$this->resprints .= $form->multiselectarray('KREA_PRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREA_PRODUCTS_ALLERGENS_TRACES"');
+				$this->resprints .= $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
 				$this->resprints .= '</td></tr>';
+
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
 			} else {
+				if ($object->array_options['options_kreap_calc_nut'] != 1) {
+					// Read-only view mode.
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsNutritionalDeclaration") . '</strong></td></tr>' . "\n";
+
+					// Energy (kcal)
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kcal") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Energy (kj)
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kj") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kj) ? $nutritional->energy_kj : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Fat
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFat") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->fat) ? $nutritional->fat : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Saturates
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSaturates") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->saturates) ? $nutritional->saturates : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Carbohydrates
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsCarbohydrates") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Sugars
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSugars") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->sugars) ? $nutritional->sugars : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Protein
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsProtein") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->protein) ? $nutritional->protein : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Salt
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSalt") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->salt) ? $nutritional->salt : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					// Fiber
+					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFiber") . '</td><td colspan="3">';
+					$this->resprints .= htmlspecialchars(!empty($nutritional->fiber) ? $nutritional->fiber : $langs->trans("None"));
+					$this->resprints .= '</td></tr>';
+
+					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+				}
+
+				// Allergens
+
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsProductsCardTitle") . '</strong></td></tr>' . "\n";
 
 				// Read-only view: Display selected allergens
-				$this->resprints .= '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+				$this->resprints .= '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
 				if (!empty($savedAllergensArray)) {
 					foreach ($savedAllergensArray as $allergenId) {
-						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$sql = "SELECT code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
 						$resql = $db->query($sql);
 						if ($resql && $obj = $db->fetch_object($resql)) {
 							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
 							$this->resprints .= '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-							$this->resprints .= '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-							$this->resprints .= '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+							$this->resprints .= '<img src="' . $iconPath . '" alt="' . $langs->trans($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							$this->resprints .= '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
 							$this->resprints .= '</div>';
 						}
 					}
@@ -515,16 +699,16 @@ class ActionsKreaProducts extends CommonHookActions
 				$this->resprints .= '</td></tr>';
 
 				// Read-only view: Display selected allergens
-				$this->resprints .= '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+				$this->resprints .= '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
 				if (!empty($savedAllergensTracesArray)) {
 					foreach ($savedAllergensTracesArray as $allergenId) {
-						$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_allergens WHERE rowid = " . (int)$allergenId;
+						$sql = "SELECT code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
 						$resql = $db->query($sql);
 						if ($resql && $obj = $db->fetch_object($resql)) {
 							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
 							$this->resprints .= '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-							$this->resprints .= '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-							$this->resprints .= '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+							$this->resprints .= '<img src="' . $iconPath . '" alt="' . $langs->trans($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							$this->resprints .= '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
 							$this->resprints .= '</div>';
 						}
 					}
@@ -532,10 +716,11 @@ class ActionsKreaProducts extends CommonHookActions
 					$this->resprints .= $langs->trans("NoneSelected");
 				}
 				$this->resprints .= '</td></tr>';
+
+				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
 			}
 		}
 		return 0;
-		*/
 	}
 
 	/* Add other hook methods here... */

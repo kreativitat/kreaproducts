@@ -106,6 +106,24 @@ $formSetup = new FormSetup($db);
 // Auto synch buy price
 $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
 
+// Setup weight unit with unique labels only
+$sql = "SELECT DISTINCT unit_type FROM " . MAIN_DB_PREFIX . "c_units ORDER BY unit_type DESC";
+$resql = $db->query($sql);
+$TField = array();
+if ($resql) {
+	while ($obj = $db->fetch_object($resql)) {
+		$TField[$obj->unit_type] = $obj->unit_type;
+	}
+} else {
+	dol_print_error($db);
+}
+$item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
+$item->setAsSelect($TField);
+$item->defaultFieldValue = '';
+
+// Tabela nutricional dentro da aba das fichas técnicas dos produtos
+$formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
+
 /*
 // Enter here all parameters in your setup page
 

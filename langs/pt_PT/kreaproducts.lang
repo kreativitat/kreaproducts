@@ -29,15 +29,18 @@
 
 # Module label 'ModuleKreaProductsName'
 ModuleKreaProductsName = KreaProducts
+
 # Module description 'ModuleKreaProductsDesc'
 ModuleKreaProductsDesc = KreaProducts description
 
 #
 # Admin page
 #
-KreaProductsSetup = KreaProducts setup
-Settings = Settings
-KreaProductsSetupPage = KreaProducts setup page
+KreaProductsSetup = KreaProducts Configuração
+Settings = Definições
+KreaProductsSetupPage = KreaProducts Página de Configuração
+KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configurar classe de unidades de peso existentes no dicionario "Unidades de medição"
+KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabela nutricional dentro da aba da ficha técnica
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto synch cost price
 
 #
@@ -52,6 +55,36 @@ KreaProductsAboutPage = KreaProducts about page
 #
 kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
+kreaproducts_nuttable = Tabela nutricional
+NutritionalCard = Tabela nutricional
+kreap_calc_nut = Tabela nutricional calculada
+KreaProductsNutritionalDeclaration = KreaProducts Nutritional Declaration
+KreaProductsEnergy_kcal = Energia (kcal/100g)
+KreaProductsEnergy_kj = Energia (kj/100g)
+KreaProductsFat = Gordura (g/100g)
+KreaProductsSaturates = Gorduras saturadas (g/100g)
+KreaProductsCarbohydrates = Carboidratos (g/100g)
+KreaProductsSugars = Açucares (g/100g)
+KreaProductsProtein = Proteina (g/100g)
+KreaProductsSalt = Sal (g/100g)
+KreaProductsFiber = Fibra (g/100g)
+KreaProductsProductAssociations = Tabela nutricional
+KreaProductsTableProductRef = Ref.
+KreaProductsTableProductName = Designação
+KreaProductsTableProductWeight = Peso do produto
+KreaProductsTableProductQuantity = Quant.
+KreaProductsTableQuantityWeight = Peso da quant. (g)
+KreaProductsTableEnergy_kcal = Energia (kcal)
+KreaProductsTableEnergy_kj = Energia (kj)
+KreaProductsTableFat = Gordura (g)
+KreaProductsTableSaturates = Gorduras saturadas (g)
+KreaProductsTableCarbohydrates = Carboidratos (g)
+KreaProductsTableSugars = Açucares (g)
+KreaProductsTableProtein = Proteina (g)
+KreaProductsTableSalt = Sal (g)
+KreaProductsTableFiber = Fibra (g)
+AverageValuesPer100g = Valores Médios para 100g
+EstimatedTotalsForTheProduct = Totais Estimados do Produto
 
 #
 # Associated products card
@@ -66,17 +99,17 @@ BOMExists = Lista de Materiais
 BOMReference = Lista de Materiais
 OriginProduct = Etiqueta
 MenuWhereProductExistsAndOriginProduct = Menus onde este produto faz parte
-Kreanut_Energy_kcal = Energia (kcal/100g)
-Kreanut_Energy_kj = Energia (kj/100g)
-Kreanut_Fat = Gordura (g/100g)
-Kreanut_Saturates = Gorduras saturadas (g/100g)
-Kreanut_Carbohydrates = Carboidratos (g/100g)
-Kreanut_Sugars = Açucares (g/100g)
-Kreanut_Protein = Proteina (g/100g)
-Kreanut_Salt = Sal (g/100g)
-Kreanut_Fiber = Fibra (g/100g)
-KreallergensTableTitle = Tabela de alergénios
-KreanutTableTitle = Tabela nutricional
+KreaProducts_Energy_kcal = Energia (kcal/100g)
+KreaProducts_Energy_kj = Energia (kj/100g)
+KreaProducts_Fat = Gordura (g/100g)
+KreaProducts_Saturates = Gorduras saturadas (g/100g)
+KreaProducts_Carbohydrates = Carboidratos (g/100g)
+KreaProducts_Sugars = Açucares (g/100g)
+KreaProducts_Protein = Proteina (g/100g)
+KreaProducts_Salt = Sal (g/100g)
+KreaProducts_Fiber = Fibra (g/100g)
+KreaProductsTableTitle = Tabela de alergénios
+KreaProductsTableTitle = Tabela nutricional
 productRecipeTitle = Modo de preparação do produto
 productRecipeInline = Preparação
 kreap_description = Descrição do produto
@@ -86,6 +119,25 @@ NoneSelected = Nenhum selecionado
 Allergens = Alergénios
 AllergensTraces = Vestigios de alergénios
 kreap_brand = Marca do produto
+KreaProductsProductsCardTitle = KreaProducts Products Allergens
+Krea_Products_Allergens = Alérgenos
+Krea_Products_AllergensTraces = Vestígios de alérgenos
+NoneSelected = Não selecionado
+NOAL = Sem alérgenos
+CELE = Aipo
+PEAN = Amendoim
+CRUS = Crustáceos
+TNUT = Frutos de casca rija
+GLUT = Trigo
+LEIT = Leite
+MOLU = Moluscos
+MUST = Mostarda
+EGGS = Ovos
+FISH = Peixe
+SESA = Sementes de sésamo
+SOYA = Soja
+SULP = Sulfitos
+LUPI = Tremoço
 
 #
 # Products tree card

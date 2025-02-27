@@ -57,12 +57,10 @@ class modKreaProducts extends DolibarrModules
 		// ID 156550 - 156599: Kreativität Works (http://kreativitat.com)
 		// ID 156550 kreaproducts
 		// ID 156551 degema
-		// ID 156552 kreagenproduct
 		// ID 156554 kreareports
 		// ID 156555 kreatools
 		// ID 156556 kreaml
 		// ID 156558 dolizsynch
-		// ID 156559 kreallergens
 		$this->numero = 156550; // TODO Go on page https://wiki.dolibarr.org/index.php/List_of_modules_id to reserve an id number for your module
 
 		// Key text used to identify module (for permissions, menus, etc...)
@@ -175,7 +173,10 @@ class modKreaProducts extends DolibarrModules
 		// Example: $this->const=array(1 => array('KREAPRODUCTS_MYNEWCONST1', 'chaine', 'myvalue', 'This is a constant to add', 1),
 		//                             2 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1)
 		// );
-		$this->const = array();
+		$this->const = array(
+			1 => array('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL', 'chaine', 'weight', '', 0, 'allentities', 1),
+			//	2 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
+		);
 
 		// Some keys to add into the overwriting translation tables
 		/*$this->overwrite_translation = array(
@@ -223,7 +224,9 @@ class modKreaProducts extends DolibarrModules
 		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:-subproduct');
 		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:+(5)krea_producttree:ProductTree:kreaproducts@kreaproducts:1:/kreaproducts/productTree.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:1:/kreaproducts/productTree.php?id=__ID__');
+
 
 		// Dictionaries
 		/* Example:
@@ -252,7 +255,19 @@ class modKreaProducts extends DolibarrModules
 		 );
 		 */
 		/* BEGIN MODULEBUILDER DICTIONARIES */
-		$this->dictionaries = array();
+		$this->dictionaries = array(
+			'langs' => 'kreaproducts@kreaproducts',
+			'tabname' => array('c_kreaproducts'),
+			'tablib' => array('KreaProducts'),
+			'tabsql' => array('SELECT t.rowid as rowid, t.code, t.label, t.icon, t.active FROM llxnm_c_kreaproducts as t'),
+			'tabsqlsort' => array('rowid ASC'),
+			'tabfield' => array('code,label,icon'),
+			'tabfieldvalue' => array('code,label,icon'),
+			'tabfieldinsert' => array('code,label,icon'),
+			'tabrowid' => array('rowid'),
+			'tabcond' => array(isModEnabled('kreaproducts')),
+			'tabhelp' => array(array('code' => $langs->trans('CodeTooltipHelp'), 'field2' => 'field2tooltip')),
+		);
 		/* END MODULEBUILDER DICTIONARIES */
 
 		// Boxes/Widgets
@@ -298,7 +313,36 @@ class modKreaProducts extends DolibarrModules
 		$r = 0;
 		// Add here entries to declare new permissions
 		/* BEGIN MODULEBUILDER PERMISSIONS */
-
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
+		$this->rights[$r][1] = 'Read Nutritional object of KreaProducts';
+		$this->rights[$r][4] = 'nutritional';
+		$this->rights[$r][5] = 'read';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
+		$this->rights[$r][1] = 'Create/Update Nutritional object of KreaProducts';
+		$this->rights[$r][4] = 'nutritional';
+		$this->rights[$r][5] = 'write';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
+		$this->rights[$r][1] = 'Delete Nutritional object of KreaProducts';
+		$this->rights[$r][4] = 'nutritional';
+		$this->rights[$r][5] = 'delete';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
+		$this->rights[$r][1] = 'Read ProductAllergens object of KreaProducts';
+		$this->rights[$r][4] = 'productallergens';
+		$this->rights[$r][5] = 'read';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
+		$this->rights[$r][1] = 'Create/Update ProductAllergens object of KreaProducts';
+		$this->rights[$r][4] = 'productallergens';
+		$this->rights[$r][5] = 'write';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
+		$this->rights[$r][1] = 'Delete ProductAllergens object of KreaProducts';
+		$this->rights[$r][4] = 'productallergens';
+		$this->rights[$r][5] = 'delete';
+		$r++;
 		/* END MODULEBUILDER PERMISSIONS */
 
 		// Main menu entries to add
@@ -323,6 +367,54 @@ class modKreaProducts extends DolibarrModules
 		//);
 		/* END MODULEBUILDER TOPMENU */
 
+		/* BEGIN MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts',
+			'type' => 'left',
+			'titre' => 'ProductAllergens',
+			'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'productallergens',
+			'url' => '/kreaproducts/productallergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
+			'type' => 'left',
+			'titre' => 'List ProductAllergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_productallergens_list',
+			'url' => '/kreaproducts/productallergens_list.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
+			'type' => 'left',
+			'titre' => 'New ProductAllergens',
+			'mainmenu' => 'kreaproducts',
+			'leftmenu' => 'kreaproducts_productallergens_new',
+			'url' => '/kreaproducts/productallergens_card.php?action=create',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts")',
+			'perms' => '$user->hasRight("kreaproducts", "productallergens", "write")',
+			'target' => '',
+			'user' => 2,
+			'object' => 'ProductAllergens'
+		);
+		/* END MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
 		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
 		/*
 		$this->menu[$r++]=array(
@@ -505,6 +597,17 @@ class modKreaProducts extends DolibarrModules
 
 		$field_label = $langs->trans("kreap_video");
 		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_name = "kreap_calc_nut";
+		$field_label = $langs->trans("kreap_calc_nut");
+		$field_help = $langs->trans("");
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 1, 3, 'product', 0, 0, '', '', 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_name = "kreap_void_nut";
+		$field_label = $langs->trans("kreap_void_nut");
+		$field_help = $langs->trans("");
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 1, 3, 'product', 0, 0, '', '', 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
