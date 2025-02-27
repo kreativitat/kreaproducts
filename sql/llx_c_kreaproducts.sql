@@ -24,10 +24,10 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
--- Estrutura da tabela `llxnm_c_kreaproducts`
+-- Estrutura da tabela `llx_c_kreaproducts`
 --
 
-CREATE TABLE `llxnm_c_kreaproducts` (
+CREATE TABLE `llx_c_kreaproducts` (
   `rowid` int(11) NOT NULL AUTO_INCREMENT,
   `code` varchar(5) NOT NULL,
   `label` varchar(255) NOT NULL,
@@ -41,7 +41,7 @@ CREATE TABLE `llxnm_c_kreaproducts` (
 -- Inserindo dados corrigidos
 --
 
-INSERT INTO `llxnm_c_kreaproducts` (`label`, `icon`, `active`, `code`) VALUES
+INSERT INTO `llx_c_kreaproducts` (`label`, `icon`, `active`, `code`) VALUES
 ('No allergens', 'noallergens.png', 0, 'NOAL'),
 ('Celery', 'celery.png', 1, 'CELE'),
 ('Peanut', 'peanut.png', 1, 'PEAN'),
@@ -63,9 +63,9 @@ INSERT INTO `llxnm_c_kreaproducts` (`label`, `icon`, `active`, `code`) VALUES
 --
 
 --
--- Índices para tabela `llxnm_c_kreaproducts`
+-- Índices para tabela `llx_c_kreaproducts`
 --
-ALTER TABLE `llxnm_c_kreaproducts`
+ALTER TABLE `llx_c_kreaproducts`
   ADD PRIMARY KEY (`rowid`);
 
 --
@@ -73,9 +73,9 @@ ALTER TABLE `llxnm_c_kreaproducts`
 --
 
 --
--- AUTO_INCREMENT de tabela `llxnm_c_kreaproducts`
+-- AUTO_INCREMENT de tabela `llx_c_kreaproducts`
 --
-ALTER TABLE `llxnm_c_kreaproducts`
+ALTER TABLE `llx_c_kreaproducts`
   MODIFY `rowid` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 COMMIT;
 

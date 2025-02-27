@@ -72,7 +72,7 @@ class KreaProductsNutrientUpdater
 
                 // Fetch child's nutritional data (per 100g) from your table.
                 $sql = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber
-                        FROM llxnm_kreaproducts_nutritional
+                        FROM  " . MAIN_DB_PREFIX . "kreaproducts_nutritional
                         WHERE fk_product = " . (int)$childId . " LIMIT 1";
                 $resql = $db->query($sql);
                 $nut = ($resql) ? $db->fetch_object($resql) : null;

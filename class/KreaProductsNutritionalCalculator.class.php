@@ -11,7 +11,7 @@
  *  - Retrieves the base weight (and unit) from the product table.
  *  - Converts that weight to grams.
  *  - Multiplies by the aggregated quantity (from associations) to get the total weight (in g) contributed.
- *  - Computes nutrient contributions based on the “per 100 g” values from llxnm_kreaproducts_nutritional.
+ *  - Computes nutrient contributions based on the “per 100 g” values from llx_kreaproducts_nutritional.
  *
  * Finally, the recipe’s overall nutrient totals are normalized to a 100 g basis.
  *
@@ -138,7 +138,7 @@ class KreaProductsNutritionalCalculator
 
             // Fetch nutritional data (values per 100 g) from custom table.
             $sql = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber
-                    FROM llxnm_kreaproducts_nutritional
+                    FROM  " . MAIN_DB_PREFIX . "kreaproducts_nutritional
                     WHERE fk_product = " . (int)$childId . " LIMIT 1";
             $resql = $db->query($sql);
             $nut = ($resql) ? $db->fetch_object($resql) : null;
@@ -332,7 +332,7 @@ class KreaProductsNutritionalCalculator
     }
 
     /**
-     * Gathers subproducts for a given product by querying llxnm_product_association.
+     * Gathers subproducts for a given product by querying llx_product_association.
      * This version simply retrieves the child product IDs (using fk_product_fils)
      * and their associated quantities (qty) for the specified parent product.
      *
@@ -343,10 +343,19 @@ class KreaProductsNutritionalCalculator
     private static function gatherSubProducts($parentId, &$results)
     {
         global $db;
-        $sql = "SELECT fk_product_fils AS childId, qty 
-            FROM llxnm_product_association 
-            WHERE fk_product_pere = " . (int)$parentId . "
-            ORDER BY rang ASC";
+
+        $sql = "SELECT 
+            pa.fk_product_fils AS childId, 
+            pa.qty 
+        FROM " . MAIN_DB_PREFIX . "product_association pa
+        LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe 
+            ON pa.fk_product_fils = pe.fk_object
+        WHERE 
+            pa.fk_product_pere = " . (int)$parentId . " 
+            AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
+        ORDER BY pa.rang ASC";
+
+
         $resql = $db->query($sql);
         if ($resql) {
             while ($obj = $db->fetch_object($resql)) {
@@ -467,9 +476,9 @@ class KreaProductsNutritionalCalculator
             $baseWeightInGrams = self::convertToGrams($rawWeight, $weightUnit);
             $subWeightInGrams  = $finalQty * $baseWeightInGrams;
 
-            // Fetch nutritional data (values per 100 g) from llxnm_kreaproducts_nutritional.
+            // Fetch nutritional data (values per 100 g) from llx_kreaproducts_nutritional.
             $sqlNut  = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber
-                    FROM llxnm_kreaproducts_nutritional
+                    FROM  " . MAIN_DB_PREFIX . "kreaproducts_nutritional
                     WHERE fk_product = " . (int)$childId . " LIMIT 1";
             $resNut = $db->query($sqlNut);
             $nut = ($resNut) ? $db->fetch_object($resNut) : null;
@@ -588,7 +597,7 @@ class KreaProductsNutritionalCalculator
 
             // Retrieve nutritional data (per 100g) for this subproduct.
             $sql = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber
-                FROM llxnm_kreaproducts_nutritional
+                FROM  " . MAIN_DB_PREFIX . "kreaproducts_nutritional
                 WHERE fk_product = " . (int)$childId . " LIMIT 1";
             $resql = $db->query($sql);
             $nut = ($resql) ? $db->fetch_object($resql) : null;

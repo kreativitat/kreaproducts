@@ -57,7 +57,7 @@ kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 kreaproducts_nuttable = Tabela nutricional
 NutritionalCard = Tabela nutricional
-kreap_calc_nut = Tabela nutricional calculada
+kreap_calc_nut = Tabela nutricional
 KreaProductsNutritionalDeclaration = KreaProducts Nutritional Declaration
 KreaProductsEnergy_kcal = Energia (kcal/100g)
 KreaProductsEnergy_kj = Energia (kj/100g)
@@ -138,6 +138,9 @@ SESA = Sementes de sésamo
 SOYA = Soja
 SULP = Sulfitos
 LUPI = Tremoço
+TabelaNutricionalInserida = Tabela nutricional inserida
+TabelaNutricionalCalculada = Tabela nutricional calculada
+NaoEUmAlimento = Não é um alimento
 
 #
 # Products tree card

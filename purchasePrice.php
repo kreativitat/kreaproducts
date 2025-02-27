@@ -1392,13 +1392,13 @@ END;
   pfp_log.price AS Preco,
   pfp_log.datec AS DataModificacao
 FROM
-  llxnm_societe s
+   " . MAIN_DB_PREFIX . "societe s
 JOIN
-  llxnm_product_fournisseur_price pfp
+   " . MAIN_DB_PREFIX . "product_fournisseur_price pfp
 ON
   s.rowid = pfp.fk_soc
 JOIN
-  llxnm_product_fournisseur_price_log pfp_log
+   " . MAIN_DB_PREFIX . "product_fournisseur_price_log pfp_log
 ON
   pfp.rowid = pfp_log.fk_product_fournisseur
 WHERE
@@ -1456,32 +1456,29 @@ LIMIT 10";
 					print '</table>';
 					print '</div>';
 
-
 					// COMPRAS
-
 					$sql = "SELECT
-    e.label AS 'Loja',
-    f.datef AS 'DataCompra',
-    s.nom AS 'Fornecedores',
-    f.ref_supplier AS 'Factura',
-    d.ref AS 'VendorSKU',
-    d.qty AS 'Quantidade',
-    d.tva_tx AS 'IVA',
-    d.multicurrency_total_ht AS 'Preco'
-FROM
-    llxnm_facture_fourn f
-JOIN
-    llxnm_facture_fourn_det d ON f.rowid = d.fk_facture_fourn
-JOIN
-    llxnm_entity e ON f.entity = e.rowid
-JOIN
-    llxnm_societe s ON f.fk_soc = s.rowid
-WHERE
-    d.fk_product = $product_id
-ORDER BY
-    f.datef DESC
-LIMIT 100";
-
+							    e.label AS 'Loja',
+							    f.datef AS 'DataCompra',
+							    s.nom AS 'Fornecedores',
+							    f.ref_supplier AS 'Factura',
+							    d.ref AS 'VendorSKU',
+							    d.qty AS 'Quantidade',
+							    d.tva_tx AS 'IVA',
+							    d.multicurrency_total_ht AS 'Preco'
+							FROM
+							     " . MAIN_DB_PREFIX . "facture_fourn f
+							JOIN
+							     " . MAIN_DB_PREFIX . "facture_fourn_det d ON f.rowid = d.fk_facture_fourn
+							JOIN
+							     " . MAIN_DB_PREFIX . "entity e ON f.entity = e.rowid
+							JOIN
+							     " . MAIN_DB_PREFIX . "societe s ON f.fk_soc = s.rowid
+							WHERE
+							    d.fk_product = $product_id
+							ORDER BY
+							    f.datef DESC
+							LIMIT 100";
 
 					$resql = $db->query($sql);
 

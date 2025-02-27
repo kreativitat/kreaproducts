@@ -259,7 +259,7 @@ class modKreaProducts extends DolibarrModules
 			'langs' => 'kreaproducts@kreaproducts',
 			'tabname' => array('c_kreaproducts'),
 			'tablib' => array('KreaProducts'),
-			'tabsql' => array('SELECT t.rowid as rowid, t.code, t.label, t.icon, t.active FROM llxnm_c_kreaproducts as t'),
+			'tabsql' => array('SELECT t.rowid as rowid, t.code, t.label, t.icon, t.active FROM  ' . MAIN_DB_PREFIX . 'c_kreaproducts as t'),
 			'tabsqlsort' => array('rowid ASC'),
 			'tabfield' => array('code,label,icon'),
 			'tabfieldvalue' => array('code,label,icon'),
@@ -601,13 +601,7 @@ class modKreaProducts extends DolibarrModules
 		$field_name = "kreap_calc_nut";
 		$field_label = $langs->trans("kreap_calc_nut");
 		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 1, 3, 'product', 0, 0, '', '', 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
-
-		$field_name = "kreap_void_nut";
-		$field_label = $langs->trans("kreap_void_nut");
-		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 1, 3, 'product', 0, 0, '', '', 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
-
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 1, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

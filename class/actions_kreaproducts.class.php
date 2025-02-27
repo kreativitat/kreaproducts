@@ -353,66 +353,68 @@ class ActionsKreaProducts extends CommonHookActions
 
 		// Process only when action is 'create' or 'update', object is a product, and product has an ID.
 		if (($action == 'create' || $action == 'update') && $object->element == 'product' && !empty($object->id)) {
-			// NUTRITIONAL DECLARATION
-			// Retrieve nutritional values from the submitted form.
-			$energy_kcal     = isset($_POST['KreaProductsEnergy_kcal']) && is_numeric($_POST['KreaProductsEnergy_kcal']) ? $_POST['KreaProductsEnergy_kcal'] : null;
-			$energy_kj       = isset($_POST['KreaProductsEnergy_kj']) && is_numeric($_POST['KreaProductsEnergy_kj']) ? $_POST['KreaProductsEnergy_kj'] : null;
-			$fat             = isset($_POST['KreaProductsFat']) && is_numeric($_POST['KreaProductsFat']) ? $_POST['KreaProductsFat'] : null;
-			$saturates       = isset($_POST['KreaProductsSaturates']) && is_numeric($_POST['KreaProductsSaturates']) ? $_POST['KreaProductsSaturates'] : null;
-			$carbohydrates   = isset($_POST['KreaProductsCarbohydrates']) && is_numeric($_POST['KreaProductsCarbohydrates']) ? $_POST['KreaProductsCarbohydrates'] : null;
-			$sugars          = isset($_POST['KreaProductsSugars']) && is_numeric($_POST['KreaProductsSugars']) ? $_POST['KreaProductsSugars'] : null;
-			$protein         = isset($_POST['KreaProductsProtein']) && is_numeric($_POST['KreaProductsProtein']) ? $_POST['KreaProductsProtein'] : null;
-			$salt            = isset($_POST['KreaProductsSalt']) && is_numeric($_POST['KreaProductsSalt']) ? $_POST['KreaProductsSalt'] : null;
-			$fiber           = isset($_POST['KreaProductsFiber']) && is_numeric($_POST['KreaProductsFiber']) ? $_POST['KreaProductsFiber'] : null;
 
-			// If energy values are not provided, calculate them.
-			if ($energy_kcal <= 0) {
-				$energy_kcal = ($fat * 9) + ($carbohydrates * 4) + ($protein * 4);
-			}
-			if ($energy_kj <= 0) {
-				$energy_kj = $energy_kcal * 4.184;
-			}
+			if ($object->array_options['options_kreap_calc_nut'] != 2) {
+				// NUTRITIONAL DECLARATION
+				// Retrieve nutritional values from the submitted form.
+				$energy_kcal     = isset($_POST['KreaProductsEnergy_kcal']) && is_numeric($_POST['KreaProductsEnergy_kcal']) ? $_POST['KreaProductsEnergy_kcal'] : null;
+				$energy_kj       = isset($_POST['KreaProductsEnergy_kj']) && is_numeric($_POST['KreaProductsEnergy_kj']) ? $_POST['KreaProductsEnergy_kj'] : null;
+				$fat             = isset($_POST['KreaProductsFat']) && is_numeric($_POST['KreaProductsFat']) ? $_POST['KreaProductsFat'] : null;
+				$saturates       = isset($_POST['KreaProductsSaturates']) && is_numeric($_POST['KreaProductsSaturates']) ? $_POST['KreaProductsSaturates'] : null;
+				$carbohydrates   = isset($_POST['KreaProductsCarbohydrates']) && is_numeric($_POST['KreaProductsCarbohydrates']) ? $_POST['KreaProductsCarbohydrates'] : null;
+				$sugars          = isset($_POST['KreaProductsSugars']) && is_numeric($_POST['KreaProductsSugars']) ? $_POST['KreaProductsSugars'] : null;
+				$protein         = isset($_POST['KreaProductsProtein']) && is_numeric($_POST['KreaProductsProtein']) ? $_POST['KreaProductsProtein'] : null;
+				$salt            = isset($_POST['KreaProductsSalt']) && is_numeric($_POST['KreaProductsSalt']) ? $_POST['KreaProductsSalt'] : null;
+				$fiber           = isset($_POST['KreaProductsFiber']) && is_numeric($_POST['KreaProductsFiber']) ? $_POST['KreaProductsFiber'] : null;
 
-			// Include and instantiate the Nutritional class.
-			dol_include_once('/kreaproducts/class/nutritional.class.php');
-			$nutritional = new Nutritional($this->db);
-
-			// Check if a nutritional record already exists for this product.
-			$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
-			$resql = $this->db->query($sql);
-			if ($resql && $this->db->num_rows($resql) > 0) {
-				$obj = $this->db->fetch_object($resql);
-				// Load the existing nutritional record.
-				$nutritional->fetch($obj->rowid);
-			}
-
-			// Set (or update) nutritional fields.
-			$nutritional->fk_product     = $object->id;
-			$nutritional->energy_kcal    = $energy_kcal;
-			$nutritional->energy_kj      = $energy_kj;
-			$nutritional->fat            = $fat;
-			$nutritional->saturates      = $saturates;
-			$nutritional->carbohydrates  = $carbohydrates;
-			$nutritional->sugars         = $sugars;
-			$nutritional->protein        = $protein;
-			$nutritional->salt           = $salt;
-			$nutritional->fiber          = $fiber;
-
-			// If the record doesn't exist (no id loaded), create a new one; otherwise update.
-			if (empty($nutritional->id)) {
-				$res = $nutritional->create($user);
-				if ($res < 0) {
-					$this->errors[] = $nutritional->error;
-					$error++;
+				// If energy values are not provided, calculate them.
+				if ($energy_kcal <= 0) {
+					$energy_kcal = ($fat * 9) + ($carbohydrates * 4) + ($protein * 4);
 				}
-			} else {
-				$res = $nutritional->update($user);
-				if ($res < 0) {
-					$this->errors[] = $nutritional->error;
-					$error++;
+				if ($energy_kj <= 0) {
+					$energy_kj = $energy_kcal * 4.184;
+				}
+
+				// Include and instantiate the Nutritional class.
+				dol_include_once('/kreaproducts/class/nutritional.class.php');
+				$nutritional = new Nutritional($this->db);
+
+				// Check if a nutritional record already exists for this product.
+				$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
+				$resql = $this->db->query($sql);
+				if ($resql && $this->db->num_rows($resql) > 0) {
+					$obj = $this->db->fetch_object($resql);
+					// Load the existing nutritional record.
+					$nutritional->fetch($obj->rowid);
+				}
+
+				// Set (or update) nutritional fields.
+				$nutritional->fk_product     = $object->id;
+				$nutritional->energy_kcal    = $energy_kcal;
+				$nutritional->energy_kj      = $energy_kj;
+				$nutritional->fat            = $fat;
+				$nutritional->saturates      = $saturates;
+				$nutritional->carbohydrates  = $carbohydrates;
+				$nutritional->sugars         = $sugars;
+				$nutritional->protein        = $protein;
+				$nutritional->salt           = $salt;
+				$nutritional->fiber          = $fiber;
+
+				// If the record doesn't exist (no id loaded), create a new one; otherwise update.
+				if (empty($nutritional->id)) {
+					$res = $nutritional->create($user);
+					if ($res < 0) {
+						$this->errors[] = $nutritional->error;
+						$error++;
+					}
+				} else {
+					$res = $nutritional->update($user);
+					if ($res < 0) {
+						$this->errors[] = $nutritional->error;
+						$error++;
+					}
 				}
 			}
-
 
 			// ALLERGENS
 			// Retrieve allergen IDs from the submitted form (adjust field names as needed)
@@ -509,38 +511,38 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$this->resprints = '';
 
-		// Include and instantiate the Nutritional class.
-		dol_include_once('/kreaproducts/class/nutritional.class.php');
-		$nutritional = new Nutritional($db);
-
-		// Attempt to load the nutritional record for this product.
-		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
-		$resql = $db->query($sql);
-		if ($resql && $db->num_rows($resql) > 0) {
-			$obj = $db->fetch_object($resql);
-			$nutritional->fetch($obj->rowid);
-		}
-
-		// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
-		$savedAllergensArray = array();
-
-		// Get saved allergens for this product from our relation table
-		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-		$resql = $db->query($sql);
-		if ($resql) {
-			while ($obj = $db->fetch_object($resql)) {
-				if ($obj->traces == 1) {
-					$savedAllergensTracesArray[] = $obj->fk_allergen;
-				} else {
-					$savedAllergensArray[] = $obj->fk_allergen;
-				}
-			}
-		}
-
 		// Check that we are on the product card.
 		if (in_array('productcard', explode(':', $parameters['context']))) {
+
+			// Include and instantiate the Nutritional class.
+			dol_include_once('/kreaproducts/class/nutritional.class.php');
+			$nutritional = new Nutritional($db);
+
+			// Attempt to load the nutritional record for this product.
+			$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
+			$resql = $db->query($sql);
+			if ($resql && $db->num_rows($resql) > 0) {
+				$obj = $db->fetch_object($resql);
+				$nutritional->fetch($obj->rowid);
+			}
+
+			// In our case we do not need the ZS stores stuff so we simply initialize saved allergen data.
+			$savedAllergensArray = array();
+
+			// Get saved allergens for this product from our relation table
+			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+			$resql = $db->query($sql);
+			if ($resql) {
+				while ($obj = $db->fetch_object($resql)) {
+					if ($obj->traces == 1) {
+						$savedAllergensTracesArray[] = $obj->fk_allergen;
+					} else {
+						$savedAllergensArray[] = $obj->fk_allergen;
+					}
+				}
+			}
 			if ($action == 'create' || $action == 'edit') {
-				if ($object->array_options['options_kreap_calc_nut'] != 1) {
+				if (empty($object->array_options['options_kreap_calc_nut'])) {
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsNutritionalDeclaration") . '</strong></td></tr>' . "\n";
 
@@ -621,7 +623,7 @@ class ActionsKreaProducts extends CommonHookActions
 
 				$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
 			} else {
-				if ($object->array_options['options_kreap_calc_nut'] != 1) {
+				if (empty($object->array_options['options_kreap_calc_nut'])) {
 					// Read-only view mode.
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><strong>' . $langs->trans("KreaProductsNutritionalDeclaration") . '</strong></td></tr>' . "\n";

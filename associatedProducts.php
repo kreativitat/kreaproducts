@@ -759,63 +759,63 @@ if ($id > 0 || !empty($ref)) {
 		// Save the changes to the database (one call for all extra–fields)
 		$object->insertExtraFields();
 
-		if (isModEnabled('kreaproducts')) {
-			print '<br>';
-			print load_fiche_titre($langs->trans("KreaProductsTableTitle"), '', '');
-			print '<div class="fichecenter">';
-			print '<table class="ui-sortable liste nobottom">';
-			$savedAllergensArray = array();
-			$savedAllergensTraces = array();
-			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					if ($obj->traces == 1) {
-						$savedAllergensTracesArray[] = $obj->fk_allergen;
-					} else {
-						$savedAllergensArray[] = $obj->fk_allergen;
-					}
+		//if (isModEnabled('kreaproducts')) {
+		print '<br>';
+		print load_fiche_titre($langs->trans("KreaProductsTableTitle"), '', '');
+		print '<div class="fichecenter">';
+		print '<table class="ui-sortable liste nobottom">';
+		$savedAllergensArray = array();
+		$savedAllergensTraces = array();
+		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				if ($obj->traces == 1) {
+					$savedAllergensTracesArray[] = $obj->fk_allergen;
+				} else {
+					$savedAllergensArray[] = $obj->fk_allergen;
 				}
 			}
-			print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-			if (!empty($savedAllergensArray)) {
-				foreach ($savedAllergensArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-					$resql = $db->query($sql);
-					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
-						print '</div>';
-					}
-				}
-			} else {
-				print $langs->trans("NoneSelected");
-			}
-			print '</td></tr>';
-			print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-			if (!empty($savedAllergensTracesArray)) {
-				foreach ($savedAllergensTracesArray as $allergenId) {
-					$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-					$resql = $db->query($sql);
-					if ($resql && $obj = $db->fetch_object($resql)) {
-						$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-						print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-						print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-						print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
-						print '</div>';
-					}
-				}
-			} else {
-				print $langs->trans("NoneSelected");
-			}
-			print '</td></tr>';
-			print '</table>';
-			print '</div>';
 		}
+		print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+		if (!empty($savedAllergensArray)) {
+			foreach ($savedAllergensArray as $allergenId) {
+				$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+				$resql = $db->query($sql);
+				if ($resql && $obj = $db->fetch_object($resql)) {
+					$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+					print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+					print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+					print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+					print '</div>';
+				}
+			}
+		} else {
+			print $langs->trans("NoneSelected");
+		}
+		print '</td></tr>';
+		print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+		if (!empty($savedAllergensTracesArray)) {
+			foreach ($savedAllergensTracesArray as $allergenId) {
+				$sql = "SELECT label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+				$resql = $db->query($sql);
+				if ($resql && $obj = $db->fetch_object($resql)) {
+					$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+					print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+					print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->label) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+					print '<span class="multiselect-selected-title-text">' . htmlspecialchars($obj->label) . '</span>';
+					print '</div>';
+				}
+			}
+		} else {
+			print $langs->trans("NoneSelected");
+		}
+		print '</td></tr>';
+		print '</table>';
+		print '</div>';
+		//}
 
-		if (isModEnabled('kreaproducts') && $object->array_options['options_kreap_calc_nut'] != 1) {
+		if ($object->array_options['options_kreap_calc_nut'] == 0) {
 			print '<br>';
 			print load_fiche_titre($langs->trans("KreaProductsTableTitle"), '', '');
 			print '<div class="fichecenter">';
@@ -868,7 +868,7 @@ if ($id > 0 || !empty($ref)) {
 		}
 
 
-		if (isModEnabled('kreaproducts') && $conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreap_calc_nut'] == 1) {
+		if ($conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreap_calc_nut'] == 1) {
 			$langs->load("kreaproducts@kreaproducts");
 			require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
 			KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
