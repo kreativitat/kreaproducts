@@ -548,47 +548,47 @@ class ActionsKreaProducts extends CommonHookActions
 
 					// Energy (kcal)
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kcal") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kcal" value="' . (!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kcal" value="' . (!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Energy (kj)
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kj") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kj" value="' . (!empty($nutritional->energy_kj) ? $nutritional->energy_kj : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsEnergy_kj" value="' . (!empty($nutritional->energy_kj) ? $nutritional->energy_kj : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Fat
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFat") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFat" value="' . (!empty($nutritional->fat) ? $nutritional->fat : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFat" value="' . (!empty($nutritional->fat) ? $nutritional->fat : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Saturates
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSaturates") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSaturates" value="' . (!empty($nutritional->saturates) ? $nutritional->saturates : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSaturates" value="' . (!empty($nutritional->saturates) ? $nutritional->saturates : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Carbohydrates
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsCarbohydrates") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsCarbohydrates" value="' . (!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsCarbohydrates" value="' . (!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Sugars
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSugars") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSugars" value="' . (!empty($nutritional->sugars) ? $nutritional->sugars : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSugars" value="' . (!empty($nutritional->sugars) ? $nutritional->sugars : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Protein
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsProtein") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsProtein" value="' . (!empty($nutritional->protein) ? $nutritional->protein : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsProtein" value="' . (!empty($nutritional->protein) ? $nutritional->protein : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Salt
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSalt") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSalt" value="' . (!empty($nutritional->salt) ? $nutritional->salt : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsSalt" value="' . (!empty($nutritional->salt) ? $nutritional->salt : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					// Fiber
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFiber") . '</td><td colspan="3">';
-					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFiber" value="' . (!empty($nutritional->fiber) ? $nutritional->fiber : '') . '" size="10" />';
+					$this->resprints .= '<input type="text" class="flat" name="KreaProductsFiber" value="' . (!empty($nutritional->fiber) ? $nutritional->fiber : '0') . '" size="10" />';
 					$this->resprints .= '</td></tr>';
 
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";
@@ -630,47 +630,47 @@ class ActionsKreaProducts extends CommonHookActions
 
 					// Energy (kcal)
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kcal") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kcal) ? $nutritional->energy_kcal : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Energy (kj)
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsEnergy_kj") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kj) ? $nutritional->energy_kj : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->energy_kj) ? $nutritional->energy_kj : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Fat
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFat") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->fat) ? $nutritional->fat : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->fat) ? $nutritional->fat : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Saturates
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSaturates") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->saturates) ? $nutritional->saturates : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->saturates) ? $nutritional->saturates : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Carbohydrates
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsCarbohydrates") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->carbohydrates) ? $nutritional->carbohydrates : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Sugars
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSugars") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->sugars) ? $nutritional->sugars : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->sugars) ? $nutritional->sugars : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Protein
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsProtein") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->protein) ? $nutritional->protein : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->protein) ? $nutritional->protein : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Salt
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsSalt") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->salt) ? $nutritional->salt : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->salt) ? $nutritional->salt : '0');
 					$this->resprints .= '</td></tr>';
 
 					// Fiber
 					$this->resprints .= '<tr><td>' . $langs->trans("KreaProductsFiber") . '</td><td colspan="3">';
-					$this->resprints .= htmlspecialchars(!empty($nutritional->fiber) ? $nutritional->fiber : $langs->trans("None"));
+					$this->resprints .= htmlspecialchars(!empty($nutritional->fiber) ? $nutritional->fiber : '0');
 					$this->resprints .= '</td></tr>';
 
 					$this->resprints .= '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>' . "\n";

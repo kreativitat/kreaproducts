@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.1';
+		$this->version = '2.2';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -602,6 +602,11 @@ class modKreaProducts extends DolibarrModules
 		$field_label = $langs->trans("kreap_calc_nut");
 		$field_help = $langs->trans("");
 		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 1, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_name = "kreap_calc_allergens";
+		$field_label = $langs->trans("kreap_calc_allergens");
+		$field_help = $langs->trans("");
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 2, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaAllergensInserida"), 1 => $langs->trans("TabelaAllergensCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

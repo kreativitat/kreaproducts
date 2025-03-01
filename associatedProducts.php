@@ -45,6 +45,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrientUpdater.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllergenUpdater.class.php';
 
 // Load translation files required by the page
 $langs->loadLangs(array('bills', 'products', 'stocks'));
@@ -240,6 +241,24 @@ if ($action == 'save_kreaproducts_nutrition') {
 }
 
 
+
+
+
+
+
+if ($action == 'updateAllergens') {
+	KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0);
+	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
+}
+
+
+
+
+
+
+
+
+
 /*
  * View
  */
@@ -367,6 +386,77 @@ if ($id > 0 || !empty($ref)) {
 		}
 		print dol_get_fiche_end();
 
+		print '<br>';
+
+		/**
+		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
+		 * If a BOM of type "disassemble" exists (where `bomtype = 1`), the script fetches and displays the **origin product** 
+		 * associated with the BOM. The origin product is displayed as a clickable link that directs the user to the product's 
+		 * detailed page. 
+		 * 
+		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
+		 */
+		if (!empty($conf->bom->enabled)) {
+
+			// Fetch all BOMs and the origin product for the current product
+			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
+                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
+                WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+
+			$resql_bom = $db->query($sql_bom);
+			$boms = [];
+
+			// Check if the query returns results
+			if ($resql_bom) {
+				while ($obj_bom = $db->fetch_object($resql_bom)) {
+					// Store each BOM's origin product and BOM row ID
+					$boms[] = array(
+						'bom_id' => $obj_bom->rowid,        // The BOM ID
+						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
+						'ref' => $obj_bom->ref,             // The origin product reference
+						'label' => $obj_bom->label          // The origin product label
+					);
+				}
+			}
+			if (count($boms) > 0) {
+
+				// Only display the table if there is at least one BOM
+				print '<div class="fichecenter">';
+
+				// Print the title of the section
+				print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
+
+				// Begin table structure
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+
+				// Column headers
+				print '<td>' . $langs->trans('BOMExists') . '</td>';
+				print '<td>' . $langs->trans('OriginProductId') . '</td>';
+				print '<td>' . $langs->trans('OriginProduct') . '</td>';
+				print '</tr>';
+
+
+				// If BOMs exist, display each one
+				foreach ($boms as $bom) {
+					print '<tr class="oddeven">';
+					// Link to the BOM (assuming there is a page that shows BOM details)
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
+
+					// Display the origin product with a link to the product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['label'] . '</a></td>';
+					print '</tr>';
+				}
+
+
+				print '</table>';
+				print '</div>';
+			}
+		}
+
 		$prodsfather = $object->getFather(); // Parent Products
 		$object->get_sousproduits_arbo(); // Load $object->sousprods
 		$parent_label = $object->label;
@@ -429,7 +519,7 @@ if ($id > 0 || !empty($ref)) {
 					$notdefined = 0;
 					$nb_of_subproduct = $value['nb'];
 					// Product ref
-					print '<td>' . $productstatic->getNomUrl(1, 'composition') . '</td>';
+					print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 					// Product label
 					print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
 					// Best buying price
@@ -490,7 +580,7 @@ if ($id > 0 || !empty($ref)) {
 					for ($i = 0; $i < $value['level']; $i++) {
 						print ' &nbsp; &nbsp; ';
 					}
-					print $productstatic->getNomUrl(1, 'composition');
+					print $productstatic->getNomUrl(1, 'auto');
 					print '</td>';
 					// Product label
 					print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
@@ -584,7 +674,7 @@ if ($id > 0 || !empty($ref)) {
 
 		// List of products (search results)
 		if ($action == 'search') {
-			print '<br>';
+			//print '<br>';
 			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="post">';
 			print '<input type="hidden" name="token" value="' . newToken() . '">';
 			print '<input type="hidden" name="action" value="add_prod">';
@@ -682,6 +772,76 @@ if ($id > 0 || !empty($ref)) {
 			print '</form>';
 		}
 
+		/**
+		 * This code snippet checks if the current product acts as a parent in any **assemble BOM** (Bill of Materials) in the system.
+		 * If a BOM of type "assemble" exists (where `bomtype = 0`), the script fetches and displays the **components (sons)**
+		 * associated with the BOM. Each component is displayed as a clickable link that directs the user to the component's
+		 * detailed page.
+		 *
+		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
+		 */
+		if (!empty($conf->bom->enabled)) {
+
+			// Fetch all BOMs and the components for the current product
+			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype, bl.fk_product AS fk_product_component, p.ref, p.label
+                FROM " . MAIN_DB_PREFIX . "bom_bom AS b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
+                WHERE b.fk_product = " . (int)$object->id; // . " AND b.bomtype = 1";
+
+			$resql_bom = $db->query($sql_bom);
+			$components = [];
+
+			// Check if the query returns results
+			if ($resql_bom) {
+				while ($obj_bom = $db->fetch_object($resql_bom)) {
+					// Store each component's product details and BOM ID
+					$components[] = array(
+						'bom_id' => $obj_bom->bom_id,                  // The BOM ID
+						'product_id' => $obj_bom->fk_product_component, // The component product ID
+						'ref' => $obj_bom->ref,                        // The component product reference
+						'label' => $obj_bom->label                     // The component product label
+					);
+				}
+			}
+			if (count($components) > 0) {
+
+				//print '<br>';
+
+				// Only display the table if there is at least one component
+				print '<div class="fichecenter">';
+
+				// Print the title of the section
+				print load_fiche_titre($langs->trans("ComponentsOfProduct"), '', '');
+
+				// Begin table structure
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+
+				// Column headers
+				print '<td>' . $langs->trans('BOMReference') . '</td>';
+				print '<td>' . $langs->trans('ComponentProductId') . '</td>';
+				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+
+				print '</tr>';
+
+				// Display each component
+				foreach ($components as $component) {
+					print '<tr class="oddeven">';
+					// Link to the BOM (assuming there is a page that shows BOM details)
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
+					// Display the component product reference with a link to its product card
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . '</a></td>';
+					// Display the component product label
+					print '<td>' . $component['label'] . '</td>';
+					print '</tr>';
+				}
+
+				print '</table>';
+				print '</div>';
+			}
+		}
+
 		// Lista de kits com este produto como componente
 		if (count($prodsfather) > 0) {
 			print '<br><br>';
@@ -703,7 +863,7 @@ if ($id > 0 || !empty($ref)) {
 				$productstatic->status = $value['status'];
 				$productstatic->status_buy = $value['status_buy'];
 				print '<tr class="oddeven">';
-				print '<td>' . $productstatic->getNomUrl(1, 'composition') . '</td>';
+				print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 				print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
 				print '<td class="right">' . dol_escape_htmltag($value['qty']) . '</td>';
 				print '</tr>';
@@ -712,7 +872,85 @@ if ($id > 0 || !empty($ref)) {
 			print '</div>';
 		}
 
-		// --- EXTRA FIELDS SECTION ---
+		/*
+    	* This code retrieves the menus where a specific product exists in the 'niveismenu' field,
+    	* checks all JSON levels for the product code, and returns the corresponding menu details.
+    	* 
+    	* - Retrieves the current product's reference.
+    	* - Fetches all records with 'niveismenu' from the 'dolizsynch_zsproduct' and 'product' tables.
+    	* - Decodes the JSON 'niveismenu' field and iterates over the nested structure.
+    	* - If the product's code matches, the corresponding menu information is stored.
+    	* - Duplicates are removed, and the result is displayed in a table format.
+    	* - Handles invalid JSON and SQL errors.
+    	*/
+		if (!empty($conf->dolizsynch->enabled)) {
+			// Get current product's ref as codigo
+			$current_codigo = $object->ref;
+
+			// Fetch all records with niveismenu
+			$sql_menu = "SELECT b.rowid, p.rowid as product_id, p.ref, p.label, b.niveismenu";
+			$sql_menu .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct AS b";
+			$sql_menu .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product";
+
+			$resql_menu = $db->query($sql_menu);
+			$menus = [];
+
+			if ($resql_menu) {
+				while ($obj_menu = $db->fetch_object($resql_menu)) {
+					if (!empty($obj_menu->niveismenu)) {
+						$niveismenuData = json_decode($obj_menu->niveismenu, true);
+						if (json_last_error() === JSON_ERROR_NONE && is_array($niveismenuData)) {
+							foreach ($niveismenuData as $menuLevel) {
+								if (isset($menuLevel['niveismenuext']) && is_array($menuLevel['niveismenuext'])) {
+									foreach ($menuLevel['niveismenuext'] as $produto) {
+										if (isset($produto['codigo']) && (string)$produto['codigo'] == (string)$current_codigo) {
+											$menus[] = array(
+												'menu_id' => $obj_menu->product_id,
+												'ref' => $obj_menu->ref,
+												'label' => $obj_menu->label,
+												'descricao' => isset($menuLevel['descricao']) ? $menuLevel['descricao'] : 'N/A'
+											);
+											break; // Assuming a product is only once per menuLevel
+										}
+									}
+								}
+							}
+						} else {
+							dol_syslog("Invalid JSON in 'niveismenu' for product ID " . $obj_menu->rowid, LOG_ERR);
+						}
+					}
+				}
+			} else {
+				dol_syslog("Error executing SQL query for 'niveismenu': " . $db->lasterror(), LOG_ERR);
+			}
+
+			// Remove duplicate menus
+			$menus = array_unique($menus, SORT_REGULAR);
+
+			if (count($menus) > 0) {
+				// Display the table
+				//print '<br>';
+				print '<div class="fichecenter">';
+				print load_fiche_titre($langs->trans("MenuWhereProductExistsAndOriginProduct"), '', '');
+				print '<table class="liste">';
+				print '<tr class="liste_titre">';
+				print '<td>' . $langs->trans('Reference') . '</td>';
+				print '<td>' . $langs->trans('Label') . '</td>';
+				print '</tr>';
+
+				foreach ($menus as $menu) {
+					print '<tr class="oddeven">';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . urlencode($menu['menu_id']), 1) . '" target="_blank">' . htmlspecialchars($menu['ref']) . '</a></td>';
+
+					print '<td>' . htmlspecialchars($menu['label']) . '</td>';
+					print '</tr>';
+				}
+
+				print '</table>';
+				print '</div>';
+			}
+		}
+
 		// Process the recipe extra–field
 		if (isset($_POST['options_kreap_recipe'])) {
 			$extrafield_value = trim($_POST['options_kreap_recipe']);
@@ -759,9 +997,66 @@ if ($id > 0 || !empty($ref)) {
 		// Save the changes to the database (one call for all extra–fields)
 		$object->insertExtraFields();
 
+
 		// Allergens table
 		print '<br>';
 		print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		print '<div>';
+		print '<table class="ui-sortable liste nobottom">';
+		$key = 'kreap_calc_allergens';
+		$fieldName = 'options_' . $key;
+		$label = $extrafields->attributes['product']['label'][$key];
+		dol_syslog('label: ' . $label, LOG_DEBUG);
+		$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
+		$editorType = 'select;' . implode(',', array_map(
+			function ($k, $v) {
+				global $langs;
+				$langs->load("kreaproducts@kreaproducts");
+				return "$k:" . $langs->trans($v);
+			},
+			array_keys($options),
+			$options
+		));
+
+		print '<tr><td class="titlefield">';
+		print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+		print '</td><td>';
+		print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+		print '</td></tr>';
+		print '</table>';
+		print '</div>';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 		print '<div class="fichecenter">';
 		print '<table class="ui-sortable liste nobottom">';
 		$savedAllergensArray = array();
@@ -812,7 +1107,40 @@ if ($id > 0 || !empty($ref)) {
 		}
 		print '</td></tr>';
 		print '</table>';
+
+
+
+
+
+
+
+
+
+
+		print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+		print '<input type="hidden" name="action" value="updateAllergens">';
+
+
+		print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("updateAllergens") . '"></div>';
+		print '</form>';
 		print '</div>';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 		// Nutritional table
 		print '<br>';
@@ -987,5 +1315,10 @@ if ($id > 0 || !empty($ref)) {
 		}
 	}
 }
+
+
+
+
+
 llxFooter();
 $db->close();
