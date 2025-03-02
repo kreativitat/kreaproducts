@@ -240,16 +240,104 @@ if ($action == 'save_kreaproducts_nutrition') {
 	}
 }
 
-
-
-
-
-
-
 if ($action == 'updateAllergens') {
 	KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0);
 	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if ($action == 'saveAllergens' && $usercancreate) {
+	// Retrieve submitted allergens (non-traces and traces)
+	$selectedAllergens       = GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
+	$selectedAllergensTraces = GETPOST('KREAPRODUCTS_ALLERGENS_TRACES', 'array');
+
+	// Example: merge arrays and adjust if "Sem alergenios" (id 1) is selected along with others
+	$mergedAllergens = array_unique(array_merge($selectedAllergens, $selectedAllergensTraces));
+	if (count($mergedAllergens) > 1 && in_array(1, $mergedAllergens)) {
+		$selectedAllergens = array_diff($selectedAllergens, array(1));
+		$selectedAllergensTraces = array_diff($selectedAllergensTraces, array(1));
+	}
+
+	// Remove previous allergen associations for this product
+	$sql = "DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+	$resql = $db->query($sql);
+	if (!$resql) {
+		$this->errors[] = $db->error();
+	}
+
+	// Insert new associations (non-traces)
+	if (!empty($selectedAllergens) && is_array($selectedAllergens)) {
+		dol_include_once('/kreaproducts/class/productallergens.class.php');
+		foreach ($selectedAllergens as $allergenId) {
+			$allergenId = (int)$allergenId;
+			if ($allergenId > 0) {
+				$prodAllergen = new ProductAllergens($db);
+				$prodAllergen->fk_product = $object->id;
+				$prodAllergen->fk_allergen  = $allergenId;
+				$prodAllergen->traces       = 0;
+				$res = $prodAllergen->create($user);
+				if ($res < 0) {
+					$this->errors[] = $prodAllergen->error;
+				}
+			}
+		}
+	}
+
+	// Insert associations for allergens with traces (skip duplicates)
+	if (!empty($selectedAllergensTraces) && is_array($selectedAllergensTraces)) {
+		dol_include_once('/kreaproducts/class/productallergens.class.php');
+		foreach ($selectedAllergensTraces as $allergenId) {
+			$allergenId = (int)$allergenId;
+			if (!empty($selectedAllergens) && in_array($allergenId, $selectedAllergens)) {
+				continue;
+			}
+			if ($allergenId > 0) {
+				$prodAllergenTraces = new ProductAllergens($db);
+				$prodAllergenTraces->fk_product = $object->id;
+				$prodAllergenTraces->fk_allergen  = $allergenId;
+				$prodAllergenTraces->traces       = 1;
+				$res = $prodAllergenTraces->create($user);
+				if ($res < 0) {
+					$this->errors[] = $prodAllergenTraces->error;
+				}
+			}
+		}
+	}
+	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
+	// After saving, you might want to switch back to view mode.
+	$action = '';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -966,7 +1054,7 @@ if ($id > 0 || !empty($ref)) {
 		if (isset($object->array_options)) {
 			print '<br>';
 			print load_fiche_titre($langs->trans("productRecipeTitle"), '', '');
-			print '<div class="fichecenter">';
+			print '<div class="fichecenter" id="myAllergenButtons">';
 			print '<table class="ui-sortable liste nobottom">';
 			print '<tr><td class="titlefield">';
 			print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $extrafield_value, $object, $usercancreate, 'ckeditor');
@@ -999,23 +1087,38 @@ if ($id > 0 || !empty($ref)) {
 
 
 		// Allergens table
+		// Load available allergens from dictionary
+		$TAllergens = array();
+		$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				// Use the code translation as the display value
+				$TAllergens[$obj->rowid] = $langs->trans($obj->code);
+			}
+		} else {
+			dol_syslog("Error loading allergens dictionary: " . $db->error());
+		}
+
+		// Reload saved allergen associations for current product
+		$savedAllergensArray = array();
+		$savedAllergensTracesArray = array();
+		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				if ($obj->traces == 1) {
+					$savedAllergensTracesArray[] = $obj->fk_allergen;
+				} else {
+					$savedAllergensArray[] = $obj->fk_allergen;
+				}
+			}
+		} else {
+			dol_syslog("Error retrieving saved allergens: " . $db->error());
+		}
+
 		print '<br>';
 		print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 		print '<div>';
 		print '<table class="ui-sortable liste nobottom">';
 		$key = 'kreap_calc_allergens';
@@ -1041,105 +1144,89 @@ if ($id > 0 || !empty($ref)) {
 		print '</table>';
 		print '</div>';
 
+		if ($object->array_options['options_kreap_calc_allergens'] != 2) {
+			// Check if we are in edit mode and the user has rights to edit
+			if ($usercancreate && $action == 'edit_allergens') {
 
+				// Start the form
+				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+				print '<input type="hidden" name="action" value="saveAllergens">';
 
+				// Multiselect for allergens
+				print '<table class="ui-sortable liste nobottom">';
+				print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
+				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
+				print '</td></tr>';
 
+				// Multiselect for allergens traces
+				print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
+				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
+				print '</td></tr>';
 
+				print '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>';
+				print '</table>';
 
-
-
-
-
-
-
-
-
-
-
-
-		print '<div class="fichecenter">';
-		print '<table class="ui-sortable liste nobottom">';
-		$savedAllergensArray = array();
-		$savedAllergensTraces = array();
-		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-		$resql = $db->query($sql);
-		if ($resql) {
-			while ($obj = $db->fetch_object($resql)) {
-				if ($obj->traces == 1) {
-					$savedAllergensTracesArray[] = $obj->fk_allergen;
+				// Save button
+				print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+				print '</form>';
+			} else {
+				// View mode (read-only display)
+				print '<table class="ui-sortable liste nobottom">';
+				print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+				if (!empty($savedAllergensArray)) {
+					foreach ($savedAllergensArray as $allergenId) {
+						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+							print '</div>';
+						}
+					}
 				} else {
-					$savedAllergensArray[] = $obj->fk_allergen;
+					print $langs->trans("NoneSelected");
 				}
-			}
-		}
-		print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-		if (!empty($savedAllergensArray)) {
-			foreach ($savedAllergensArray as $allergenId) {
-				$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-				$resql = $db->query($sql);
-				if ($resql && $obj = $db->fetch_object($resql)) {
-					$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-					print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-					print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-					print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+				print '</td></tr>';
+
+				print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+				if (!empty($savedAllergensTracesArray)) {
+					foreach ($savedAllergensTracesArray as $allergenId) {
+						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+							print '</div>';
+						}
+					}
+				} else {
+					print $langs->trans("NoneSelected");
+				}
+				print '</td></tr>';
+				print '</table>';
+
+				if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
+					print '<div class="center" style="margin-top:10px;">';
+					print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
+					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+					print '<input type="hidden" name="action" value="updateAllergens">';
+					print '</form>';
+					print '</div>';
+				} else {
+					print '<div class="center" style="margin-top:10px;">';
+					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+					print '<input type="hidden" name="action" value="updateAllergens">';
+					print '</form>';
 					print '</div>';
 				}
 			}
-		} else {
-			print $langs->trans("NoneSelected");
 		}
-		print '</td></tr>';
-		print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-		if (!empty($savedAllergensTracesArray)) {
-			foreach ($savedAllergensTracesArray as $allergenId) {
-				$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-				$resql = $db->query($sql);
-				if ($resql && $obj = $db->fetch_object($resql)) {
-					$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-					print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-					print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-					print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-					print '</div>';
-				}
-			}
-		} else {
-			print $langs->trans("NoneSelected");
-		}
-		print '</td></tr>';
-		print '</table>';
-
-
-
-
-
-
-
-
-
-
-		print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-		print '<input type="hidden" name="action" value="updateAllergens">';
-
-
-		print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("updateAllergens") . '"></div>';
-		print '</form>';
-		print '</div>';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 		// Nutritional table

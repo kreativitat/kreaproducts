@@ -242,10 +242,3 @@ class LocalProductAllergen
         $this->id = (int)$id;
     }
 }
-
-// Important Notes:
-// 1. Requires allergen with ID 999 to exist in your database
-// 2. Verify table names match your schema:
-//    - product_association (standard Dolibarr table)
-//    - kreaproducts_productallergens (custom table)
-// 3. Ensure extrafield 'options_kreap_calc_allergens' exists

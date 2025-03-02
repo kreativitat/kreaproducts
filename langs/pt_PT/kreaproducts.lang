@@ -141,7 +141,11 @@ LUPI = Tremoço
 TabelaNutricionalInserida = Tabela nutricional inserida
 TabelaNutricionalCalculada = Tabela nutricional calculada
 NaoEUmAlimento = Não é um alimento
+TabelaAllergensInserida = Tabela de alergénios inserida
+TabelaAllergensCalculada = Tabela de alergénios calculada
 updateAllergens = Actualizar Alergénios
+kreap_calc_allergens = Tabela de alergénios
+AllergenUpdateFired = Actualização de alergénios iniciada
 
 #
 # Products tree card
