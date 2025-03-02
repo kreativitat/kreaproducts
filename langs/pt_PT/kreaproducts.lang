@@ -42,6 +42,7 @@ KreaProductsSetupPage = KreaProducts Página de Configuração
 KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configurar classe de unidades de peso existentes no dicionario "Unidades de medição"
 KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabela nutricional dentro da aba da ficha técnica
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagar preço de custo
+KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
 
 #
 # About page
@@ -128,7 +129,7 @@ CELE = Aipo
 PEAN = Amendoim
 CRUS = Crustáceos
 TNUT = Frutos de casca rija
-GLUT = Trigo
+GLUT = Gluten
 LEIT = Leite
 MOLU = Moluscos
 MUST = Mostarda

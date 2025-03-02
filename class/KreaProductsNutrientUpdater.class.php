@@ -20,26 +20,38 @@ class KreaProductsNutrientUpdater
     {
         global $db, $langs, $conf;
 
+        // Log start of the process.
+        dol_syslog("Starting updateNutrientAttributes for productId: " . $productId, LOG_DEBUG);
+
         // 1. Build the full association map (using a BFS approach).
         $productMap = self::buildProductMap($productId);
+        dol_syslog("Product map built: " . json_encode($productMap), LOG_DEBUG);
 
         // 2. Compute heights for all nodes so that children are updated first.
         $heights = self::computeHeights($productMap);
         asort($heights); // Process from lowest (leaf) to highest.
+        dol_syslog("Computed node heights: " . json_encode($heights), LOG_DEBUG);
 
         // 3. Loop through non‑leaf nodes and update their nutritional values.
         foreach ($heights as $nodeId => $height) {
             // Skip leaf nodes
             if ($height == 0) {
+                dol_syslog("Skipping leaf node: " . $nodeId, LOG_DEBUG);
                 continue;
             }
             // Retrieve the node’s details from the map.
-            if (!isset($productMap[$nodeId])) continue;
+            if (!isset($productMap[$nodeId])) {
+                dol_syslog("Node " . $nodeId . " not found in productMap", LOG_DEBUG);
+                continue;
+            }
             $node = $productMap[$nodeId];
 
             // Gather children associations for the node.
-            // Here, children is an array of childId => aggregatedQty.
-            if (empty($node->children)) continue;
+            if (empty($node->children)) {
+                dol_syslog("No children for node " . $nodeId, LOG_DEBUG);
+                continue;
+            }
+            dol_syslog("Processing node " . $nodeId . " with height " . $height, LOG_DEBUG);
 
             // Initialize nutrient totals and overall weight.
             $totals = array(
@@ -57,25 +69,38 @@ class KreaProductsNutrientUpdater
 
             // Process each child.
             foreach ($node->children as $childId => $qty) {
-                if (!isset($productMap[$childId])) continue;
+                if (!isset($productMap[$childId])) {
+                    dol_syslog("Child node " . $childId . " not found in productMap", LOG_DEBUG);
+                    continue;
+                }
                 $child = $productMap[$childId];
 
                 // Get child's weight (default to 1 if not set) and unit.
                 $rawWeight  = ($child->weight) ? $child->weight : 1;
                 $weightUnit = $child->weight_units;
+                dol_syslog("Child " . $childId . " weight: " . $rawWeight . " " . $weightUnit, LOG_DEBUG);
 
                 // Convert the base weight to grams.
                 $baseWeightInGrams = self::convertToGrams($rawWeight, $weightUnit);
+                dol_syslog("Child " . $childId . " converted weight: " . $baseWeightInGrams . "g", LOG_DEBUG);
+
                 // Total weight contribution by this child.
                 $childTotalWeight = $qty * $baseWeightInGrams;
                 $totalWeightInGrams += $childTotalWeight;
+                dol_syslog("Child " . $childId . " total weight contribution: " . $childTotalWeight . "g (Qty: " . $qty . ")", LOG_DEBUG);
 
                 // Fetch child's nutritional data (per 100g) from your table.
                 $sql = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber
-                        FROM  " . MAIN_DB_PREFIX . "kreaproducts_nutritional
-                        WHERE fk_product = " . (int)$childId . " LIMIT 1";
+                    FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional
+                    WHERE fk_product = " . (int)$childId . " LIMIT 1";
+                dol_syslog("Executing SQL for child " . $childId . ": " . $sql, LOG_DEBUG);
                 $resql = $db->query($sql);
                 $nut = ($resql) ? $db->fetch_object($resql) : null;
+                if (!$nut) {
+                    dol_syslog("No nutritional data found for child " . $childId, LOG_DEBUG);
+                } else {
+                    dol_syslog("Nutritional data for child " . $childId . ": " . json_encode($nut), LOG_DEBUG);
+                }
 
                 // Compute absolute contributions for each nutrient.
                 if ($nut) {
@@ -88,6 +113,7 @@ class KreaProductsNutrientUpdater
                     $totals['protein']       += ($nut->protein       / 100) * $childTotalWeight;
                     $totals['salt']          += ($nut->salt          / 100) * $childTotalWeight;
                     $totals['fiber']         += ($nut->fiber         / 100) * $childTotalWeight;
+                    dol_syslog("Updated totals for node " . $nodeId . " after processing child " . $childId . ": " . json_encode($totals), LOG_DEBUG);
                 }
             }
 
@@ -102,37 +128,55 @@ class KreaProductsNutrientUpdater
                 $normProt   = ($totals['protein']       / $totalWeightInGrams) * 100;
                 $normSalt   = ($totals['salt']          / $totalWeightInGrams) * 100;
                 $normFiber  = ($totals['fiber']         / $totalWeightInGrams) * 100;
+                dol_syslog("Normalized values for node " . $nodeId . ": Kcal=" . $normKcal . ", Kj=" . $normKj . ", Fat=" . $normFat, LOG_DEBUG);
             } else {
                 $normKcal = $normKj = $normFat = $normSatur = $normCarbs = $normSugars = $normProt = $normSalt = $normFiber = 0;
+                dol_syslog("Total weight is zero for node " . $nodeId . ". Setting normalized values to 0.", LOG_DEBUG);
             }
 
-            // 5. Update (or create) the parent's nutritional record.
-            require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/nutritional.class.php';
-            $nutritional = new Nutritional($db);
-            $nutritional->fk_product    = $nodeId;
-            $nutritional->energy_kcal   = round($normKcal, 2);
-            $nutritional->energy_kj     = round($normKj, 2);
-            $nutritional->fat           = round($normFat, 2);
-            $nutritional->saturates     = round($normSatur, 2);
-            $nutritional->carbohydrates = round($normCarbs, 2);
-            $nutritional->sugars        = round($normSugars, 2);
-            $nutritional->protein       = round($normProt, 2);
-            $nutritional->salt          = round($normSalt, 2);
-            $nutritional->fiber         = round($normFiber, 2);
-
-            // Check if a record exists; update if so, or create otherwise.
-            $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$nodeId;
-            $resql = $db->query($sql);
-            if ($resql && $db->num_rows($resql) > 0) {
-                $obj = $db->fetch_object($resql);
-                $nutritional->fetch($obj->rowid);
-                $result = $nutritional->update($user, 0);
+            // 5. Update (or create) the parent's nutritional record using SQL.
+            // Check if a record exists.
+            $sqlCheck = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$nodeId;
+            dol_syslog("Executing SQL to check record for node " . $nodeId . ": " . $sqlCheck, LOG_DEBUG);
+            $resqlCheck = $db->query($sqlCheck);
+            if ($resqlCheck && $db->num_rows($resqlCheck) > 0) {
+                // Record exists, perform update.
+                $sqlUpdate = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET 
+                            energy_kcal = " . round($normKcal, 2) . ", 
+                            energy_kj = " . round($normKj, 2) . ", 
+                            fat = " . round($normFat, 2) . ", 
+                            saturates = " . round($normSatur, 2) . ", 
+                            carbohydrates = " . round($normCarbs, 2) . ", 
+                            sugars = " . round($normSugars, 2) . ", 
+                            protein = " . round($normProt, 2) . ", 
+                            salt = " . round($normSalt, 2) . ", 
+                            fiber = " . round($normFiber, 2) . " 
+                          WHERE fk_product = " . (int)$nodeId;
+                dol_syslog("Executing SQL to update record for node " . $nodeId . ": " . $sqlUpdate, LOG_DEBUG);
+                $resqlUpdate = $db->query($sqlUpdate);
+                if (!$resqlUpdate) {
+                    dol_syslog("Error updating nutritional record for node " . $nodeId . ": " . $db->lasterror(), LOG_ERR);
+                } else {
+                    dol_syslog("Updated nutritional record for node " . $nodeId, LOG_DEBUG);
+                }
             } else {
-                $result = $nutritional->create($user, 0);
+                // No record exists, perform insert.
+                $sqlInsert = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional 
+                          (fk_product, energy_kcal, energy_kj, fat, saturates, carbohydrates, sugars, protein, salt, fiber)
+                          VALUES (" . (int)$nodeId . ", " . round($normKcal, 2) . ", " . round($normKj, 2) . ", " . round($normFat, 2) . ", " . round($normSatur, 2) . ", " . round($normCarbs, 2) . ", " . round($normSugars, 2) . ", " . round($normProt, 2) . ", " . round($normSalt, 2) . ", " . round($normFiber, 2) . ")";
+                dol_syslog("Executing SQL to insert record for node " . $nodeId . ": " . $sqlInsert, LOG_DEBUG);
+                $resqlInsert = $db->query($sqlInsert);
+                if (!$resqlInsert) {
+                    dol_syslog("Error inserting nutritional record for node " . $nodeId . ": " . $db->lasterror(), LOG_ERR);
+                } else {
+                    dol_syslog("Inserted nutritional record for node " . $nodeId, LOG_DEBUG);
+                }
             }
         }
         dol_syslog("updateNutrientAttributes: Completed updating nutritional records bottom-up.", LOG_DEBUG);
     }
+
+
 
     // ---------------------------------------------------------------------
     // Helper functions

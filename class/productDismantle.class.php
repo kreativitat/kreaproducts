@@ -133,11 +133,12 @@ class ProductDismantleController extends CommonObject
                 }
 
                 // Determine the direction of stock movement
-                $qty = $item['qty'] * $qtyMovement;
+                $qty = $item['qty']; // * $qtyMovement;
 
                 if ($arrayname == 'arraytoconsume') {
                     // Update cost price for the origin product being consumed
                     $product->cost_price = $priceMovement;
+                    dol_syslog("Quantity: $qty, Cost Price: $product->cost_price", LOG_ERR);
 
                     // Consume product (remove from stock)
                     $result = $stockmove->livraison(
@@ -165,6 +166,7 @@ class ProductDismantleController extends CommonObject
                     if ($qty > 0) {
                         $costPerUnit = $priceMovement / $qty; // Divide total cost by produced quantity
                         $product->cost_price = $costPerUnit;
+                        dol_syslog("Quantity: $qty, Cost per unit: $costPerUnit", LOG_ERR);
                     } else {
                         dol_syslog("Cannot divide by zero. Invalid quantity for product ID " . $item['objectid'], LOG_ERR);
                         $error++;
