@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.12';
+		$this->version = '2.14';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -587,26 +587,26 @@ class modKreaProducts extends DolibarrModules
 		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_recipe");
-		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_brand");
-		$result2 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result2 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_description");
-		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'text', 302, 1000, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'html', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_video");
-		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 90, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_name = "kreap_calc_nut";
 		$field_label = $langs->trans("kreap_calc_nut");
 		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 1, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 11, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_name = "kreap_calc_allergens";
 		$field_label = $langs->trans("kreap_calc_allergens");
 		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 2, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaAllergensInserida"), 1 => $langs->trans("TabelaAllergensCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 3, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 12, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaAllergensInserida"), 1 => $langs->trans("TabelaAllergensCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

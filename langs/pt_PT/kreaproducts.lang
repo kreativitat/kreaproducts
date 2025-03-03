@@ -113,9 +113,6 @@ KreaProductAllergensTableTitle = Tabela de alergénios
 KreaProductsTableTitle = Tabela nutricional
 productRecipeTitle = Modo de preparação do produto
 productRecipeInline = Preparação
-kreap_description = Descrição do produto
-kreap_video = Video do produto
-kreap_productbrand = Marca do produto
 NoneSelected = Nenhum selecionado
 Allergens = Alergénios
 AllergensTraces = Vestigios de alergénios
@@ -147,6 +144,9 @@ TabelaAllergensCalculada = Tabela de alergénios calculada
 updateAllergens = Actualizar Alergénios
 kreap_calc_allergens = Tabela de alergénios
 AllergenUpdateFired = Actualização de alergénios iniciada
+kreap_brand_Inline = Marca do produto
+kreap_video_Inline = Video do produto
+kreap_description_Inline = Descrição do produto
 
 #
 # Products tree card

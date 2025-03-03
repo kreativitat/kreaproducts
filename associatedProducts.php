@@ -1321,9 +1321,84 @@ if ($id > 0 || !empty($ref)) {
 			print '<div class="fichecenter">';
 			print '<table class="ui-sortable liste nobottom">';
 
-			// Define the keys you want to display
-			$fieldsToDisplay = ['kreap_brand', 'kreap_description', 'kreap_video'];
 
+
+
+			// Process the brand extra–field
+			if (isset($_POST['kreap_brand'])) {
+				$extrafield_value = trim($_POST['options_kreap_brand']);
+				if ($extrafield_value === '') {
+					$extrafield_value = null;
+				}
+				$object->array_options['options_kreap_brand'] = $extrafield_value;
+			} else {
+				$extrafield_value = $object->array_options['options_kreap_brand'];
+			}
+			$extrafields = new ExtraFields($db);
+			$extrafields->fetch_name_optionals_label($object->table_element);
+			if (isset($object->array_options)) {
+				print '<br>';
+				print load_fiche_titre($langs->trans("productRecipeTitle"), '', '');
+				print '<div class="fichecenter" id="myAllergenButtons">';
+				print '<table class="ui-sortable liste nobottom">';
+				print '<tr><td class="titlefield">';
+				print $form->editfieldkey($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $extrafield_value, $object, $usercancreate, 'string');
+				print '</td><td>';
+				print $form->editfieldval($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $extrafield_value, $object, $usercancreate, 'string');
+				print '</td></tr>';
+			}
+
+			// Process the video extra–field
+			if (isset($_POST['kreap_video'])) {
+				$extrafield_value = trim($_POST['options_kreap_video']);
+				if ($extrafield_value === '') {
+					$extrafield_value = null;
+				}
+				$object->array_options['options_kreap_video'] = $extrafield_value;
+			} else {
+				$extrafield_value = $object->array_options['options_kreap_video'];
+			}
+			$extrafields = new ExtraFields($db);
+			$extrafields->fetch_name_optionals_label($object->table_element);
+			if (isset($object->array_options)) {
+
+				print '<tr><td class="titlefield">';
+				print $form->editfieldkey($langs->trans("kreap_video_Inline"), 'options_kreap_video', $extrafield_value, $object, $usercancreate, 'url');
+				print '</td><td>';
+				print $form->editfieldval($langs->trans("kreap_video_Inline"), 'options_kreap_video', $extrafield_value, $object, $usercancreate, 'url');
+				print '</td></tr>';
+			}
+
+			// Process the video extra–field
+			if (isset($_POST['kreap_description'])) {
+				$extrafield_value = trim($_POST['options_kreap_description']);
+				if ($extrafield_value === '') {
+					$extrafield_value = null;
+				}
+				$object->array_options['options_kreap_description'] = $extrafield_value;
+			} else {
+				$extrafield_value = $object->array_options['options_kreap_description'];
+			}
+			$extrafields = new ExtraFields($db);
+			$extrafields->fetch_name_optionals_label($object->table_element);
+			if (isset($object->array_options)) {
+
+				print '<tr><td class="titlefield">';
+				print $form->editfieldkey($langs->trans("kreap_description_Inline"), 'options_kreap_description', $extrafield_value, $object, $usercancreate, 'ckeditor');
+				print '</td><td>';
+				print $form->editfieldval($langs->trans("kreap_description_Inline"), 'options_kreap_description', $extrafield_value, $object, $usercancreate, 'ckeditor');
+				print '</td></tr>';
+				print '</table>';
+				print '</div>';
+			}
+
+
+
+
+
+			// Define the keys you want to display
+			/*
+			$fieldsToDisplay = ['kreap_brand', 'kreap_description', 'kreap_video'];
 			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
 				// Only process the keys you want
 				if (in_array($key, $fieldsToDisplay)) {
@@ -1397,6 +1472,8 @@ if ($id > 0 || !empty($ref)) {
 					print '</td></tr>';
 				}
 			}
+			*/
+
 			print '</table>';
 			print '</div>';
 		}
