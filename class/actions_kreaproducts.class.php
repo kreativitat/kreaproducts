@@ -31,320 +31,321 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/commonhookactions.class.php';
  */
 class ActionsKreaProducts extends CommonHookActions
 {
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
+    /**
+     * @var DoliDB Database handler.
+     */
+    public $db;
 
-	/**
-	 * @var string Error code (or message)
-	 */
-	public $error = '';
+    /**
+     * @var string Error code (or message)
+     */
+    public $error = '';
 
-	/**
-	 * @var string[] Errors
-	 */
-	public $errors = array();
-
-
-	/**
-	 * @var mixed[] Hook results. Propagated to $hookmanager->resArray for later reuse
-	 */
-	public $results = array();
-
-	/**
-	 * @var ?string String displayed by executeHook() immediately after return
-	 */
-	public $resprints;
-
-	/**
-	 * @var int		Priority of hook (50 is used if value is not defined)
-	 */
-	public $priority;
+    /**
+     * @var string[] Errors
+     */
+    public $errors = array();
 
 
-	/**
-	 * Constructor
-	 *
-	 *  @param	DoliDB	$db      Database handler
-	 */
-	public function __construct($db)
-	{
-		$this->db = $db;
-	}
+    /**
+     * @var mixed[] Hook results. Propagated to $hookmanager->resArray for later reuse
+     */
+    public $results = array();
+
+    /**
+     * @var ?string String displayed by executeHook() immediately after return
+     */
+    public $resprints;
+
+    /**
+     * @var int		Priority of hook (50 is used if value is not defined)
+     */
+    public $priority;
 
 
-	/**
-	 * Execute action
-	 *
-	 * @param	array<string,mixed>	$parameters	Array of parameters
-	 * @param	CommonObject		$object		The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	string				$action		'add', 'update', 'view'
-	 * @return	int								Return integer <0 if KO,
-	 *                           				=0 if OK but we want to process standard actions too,
-	 *											>0 if OK and we want to replace standard actions.
-	 */
-	public function getNomUrl($parameters, &$object, &$action)
-	{
-		global $db, $langs, $conf, $user;
-		$this->resprints = '';
-		return 0;
-	}
+    /**
+     * Constructor
+     *
+     *  @param	DoliDB	$db      Database handler
+     */
+    public function __construct($db)
+    {
+        $this->db = $db;
+    }
 
-	/**
-	 * Overload the doMassActions function : replacing the parent's function with the one below
-	 *
-	 * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
-	 * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	?string				$action			Current action (if set). Generally create or edit or null
-	 * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
-	 */
-	public function doMassActions($parameters, &$object, &$action, $hookmanager)
-	{
-		global $conf, $user, $langs;
 
-		$error = 0; // Error counter
+    /**
+     * Execute action
+     *
+     * @param	array<string,mixed>	$parameters	Array of parameters
+     * @param	CommonObject		$object		The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+     * @param	string				$action		'add', 'update', 'view'
+     * @return	int								Return integer <0 if KO,
+     *                           				=0 if OK but we want to process standard actions too,
+     *											>0 if OK and we want to replace standard actions.
+     */
+    public function getNomUrl($parameters, &$object, &$action)
+    {
+        global $db, $langs, $conf, $user;
+        $this->resprints = '';
+        return 0;
+    }
 
-		/* print_r($parameters); print_r($object); echo "action: " . $action; */
-		if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {		// do something only for the context 'somecontext1' or 'somecontext2'
-			// @phan-suppress-next-line PhanPluginEmptyStatementForeachLoop
-			foreach ($parameters['toselect'] as $objectid) {
-				// Do action on each object id
-			}
-		}
+    /**
+     * Overload the doMassActions function : replacing the parent's function with the one below
+     *
+     * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
+     * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+     * @param	?string				$action			Current action (if set). Generally create or edit or null
+     * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
+     * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
+     */
+    public function doMassActions($parameters, &$object, &$action, $hookmanager)
+    {
+        global $conf, $user, $langs;
 
-		if (!$error) {
-			$this->results = array('myreturn' => 999);
-			$this->resprints = 'A text to show';
-			return 0; // or return 1 to replace standard code
-		} else {
-			$this->errors[] = 'Error message';
-			return -1;
-		}
-	}
+        $error = 0; // Error counter
 
-	/**
-	 * Overload the addMoreMassActions function : replacing the parent's function with the one below
-	 *
-	 * @param	array<string,mixed>	$parameters     Hook metadata (context, etc...)
-	 * @param	CommonObject		$object         The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	?string	$action						Current action (if set). Generally create or edit or null
-	 * @param	HookManager	$hookmanager			Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
-	 */
-	public function addMoreMassActions($parameters, &$object, &$action, $hookmanager)
-	{
-		global $conf, $user, $langs;
+        /* print_r($parameters); print_r($object); echo "action: " . $action; */
+        if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {        // do something only for the context 'somecontext1' or 'somecontext2'
+            // @phan-suppress-next-line PhanPluginEmptyStatementForeachLoop
+            foreach ($parameters['toselect'] as $objectid) {
+                // Do action on each object id
+            }
+        }
 
-		$error = 0; // Error counter
-		$disabled = 1;
+        if (!$error) {
+            $this->results = array('myreturn' => 999);
+            $this->resprints = 'A text to show';
+            return 0; // or return 1 to replace standard code
+        } else {
+            $this->errors[] = 'Error message';
+            return -1;
+        }
+    }
 
-		/* print_r($parameters); print_r($object); echo "action: " . $action; */
-		if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {		// do something only for the context 'somecontext1' or 'somecontext2'
-			$this->resprints = '<option value="0"' . ($disabled ? ' disabled="disabled"' : '') . '>' . $langs->trans("KreaProductsMassAction") . '</option>';
-		}
+    /**
+     * Overload the addMoreMassActions function : replacing the parent's function with the one below
+     *
+     * @param	array<string,mixed>	$parameters     Hook metadata (context, etc...)
+     * @param	CommonObject		$object         The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+     * @param	?string	$action						Current action (if set). Generally create or edit or null
+     * @param	HookManager	$hookmanager			Hook manager propagated to allow calling another hook
+     * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
+     */
+    public function addMoreMassActions($parameters, &$object, &$action, $hookmanager)
+    {
+        global $conf, $user, $langs;
 
-		if (!$error) {
-			return 0; // or return 1 to replace standard code
-		} else {
-			$this->errors[] = 'Error message';
-			return -1;
-		}
-	}
+        $error = 0; // Error counter
+        $disabled = 1;
 
-	/**
-	 * Execute action before PDF (document) creation
-	 *
-	 * @param	array<string,mixed>	$parameters	Array of parameters
-	 * @param	CommonObject		$object		Object output on PDF
-	 * @param	string				$action		'add', 'update', 'view'
-	 * @return	int								Return integer <0 if KO,
-	 *											=0 if OK but we want to process standard actions too,
-	 *											>0 if OK and we want to replace standard actions.
-	 */
-	public function beforePDFCreation($parameters, &$object, &$action)
-	{
-		global $conf, $user, $langs;
-		global $hookmanager;
+        /* print_r($parameters); print_r($object); echo "action: " . $action; */
+        if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {        // do something only for the context 'somecontext1' or 'somecontext2'
+            $this->resprints = '<option value="0"' . ($disabled ? ' disabled="disabled"' : '') . '>' . $langs->trans("KreaProductsMassAction") . '</option>';
+        }
 
-		$outputlangs = $langs;
+        if (!$error) {
+            return 0; // or return 1 to replace standard code
+        } else {
+            $this->errors[] = 'Error message';
+            return -1;
+        }
+    }
 
-		$ret = 0;
-		$deltemp = array();
-		dol_syslog(get_class($this) . '::executeHooks action=' . $action);
+    /**
+     * Execute action before PDF (document) creation
+     *
+     * @param	array<string,mixed>	$parameters	Array of parameters
+     * @param	CommonObject		$object		Object output on PDF
+     * @param	string				$action		'add', 'update', 'view'
+     * @return	int								Return integer <0 if KO,
+     *											=0 if OK but we want to process standard actions too,
+     *											>0 if OK and we want to replace standard actions.
+     */
+    public function beforePDFCreation($parameters, &$object, &$action)
+    {
+        global $conf, $user, $langs;
+        global $hookmanager;
 
-		/* print_r($parameters); print_r($object); echo "action: " . $action; */
-		// @phan-suppress-next-line PhanPluginEmptyStatementIf
-		if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {		// do something only for the context 'somecontext1' or 'somecontext2'
-		}
+        $outputlangs = $langs;
 
-		return $ret;
-	}
+        $ret = 0;
+        $deltemp = array();
+        dol_syslog(get_class($this) . '::executeHooks action=' . $action);
 
-	/**
-	 * Execute action after PDF (document) creation
-	 *
-	 * @param	array<string,mixed>	$parameters	Array of parameters
-	 * @param	CommonDocGenerator	$pdfhandler	PDF builder handler
-	 * @param	string				$action		'add', 'update', 'view'
-	 * @return	int								Return integer <0 if KO,
-	 * 											=0 if OK but we want to process standard actions too,
-	 *											>0 if OK and we want to replace standard actions.
-	 */
-	public function afterPDFCreation($parameters, &$pdfhandler, &$action)
-	{
-		global $conf, $user, $langs;
-		global $hookmanager;
+        /* print_r($parameters); print_r($object); echo "action: " . $action; */
+        // @phan-suppress-next-line PhanPluginEmptyStatementIf
+        if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {        // do something only for the context 'somecontext1' or 'somecontext2'
+        }
 
-		$outputlangs = $langs;
+        return $ret;
+    }
 
-		$ret = 0;
-		$deltemp = array();
-		dol_syslog(get_class($this) . '::executeHooks action=' . $action);
+    /**
+     * Execute action after PDF (document) creation
+     *
+     * @param	array<string,mixed>	$parameters	Array of parameters
+     * @param	CommonDocGenerator	$pdfhandler	PDF builder handler
+     * @param	string				$action		'add', 'update', 'view'
+     * @return	int								Return integer <0 if KO,
+     * 											=0 if OK but we want to process standard actions too,
+     *											>0 if OK and we want to replace standard actions.
+     */
+    public function afterPDFCreation($parameters, &$pdfhandler, &$action)
+    {
+        global $conf, $user, $langs;
+        global $hookmanager;
 
-		/* print_r($parameters); print_r($object); echo "action: " . $action; */
-		// @phan-suppress-next-line PhanPluginEmptyStatementIf
-		if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {
-			// do something only for the context 'somecontext1' or 'somecontext2'
-		}
+        $outputlangs = $langs;
 
-		return $ret;
-	}
+        $ret = 0;
+        $deltemp = array();
+        dol_syslog(get_class($this) . '::executeHooks action=' . $action);
 
-	/**
-	 * Overload the loadDataForCustomReports function : returns data to complete the customreport tool
-	 *
-	 * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
-	 * @param	?string				$action 		Current action (if set). Generally create or edit or null
-	 * @param	HookManager			$hookmanager    Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
-	 */
-	public function loadDataForCustomReports($parameters, &$action, $hookmanager)
-	{
-		global $langs;
+        /* print_r($parameters); print_r($object); echo "action: " . $action; */
+        // @phan-suppress-next-line PhanPluginEmptyStatementIf
+        if (in_array($parameters['currentcontext'], array('somecontext1', 'somecontext2'))) {
+            // do something only for the context 'somecontext1' or 'somecontext2'
+        }
 
-		$langs->load("kreaproducts@kreaproducts");
+        return $ret;
+    }
 
-		$this->results = array();
+    /**
+     * Overload the loadDataForCustomReports function : returns data to complete the customreport tool
+     *
+     * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
+     * @param	?string				$action 		Current action (if set). Generally create or edit or null
+     * @param	HookManager			$hookmanager    Hook manager propagated to allow calling another hook
+     * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
+     */
+    public function loadDataForCustomReports($parameters, &$action, $hookmanager)
+    {
+        global $langs;
 
-		$head = array();
-		$h = 0;
+        $langs->load("kreaproducts@kreaproducts");
 
-		if ($parameters['tabfamily'] == 'kreaproducts') {
-			$head[$h][0] = dol_buildpath('/module/index.php', 1);
-			$head[$h][1] = $langs->trans("Home");
-			$head[$h][2] = 'home';
-			$h++;
+        $this->results = array();
 
-			$this->results['title'] = $langs->trans("KreaProducts");
-			$this->results['picto'] = 'kreaproducts@kreaproducts';
-		}
+        $head = array();
+        $h = 0;
 
-		$head[$h][0] = 'customreports.php?objecttype=' . $parameters['objecttype'] . (empty($parameters['tabfamily']) ? '' : '&tabfamily=' . $parameters['tabfamily']);
-		$head[$h][1] = $langs->trans("CustomReports");
-		$head[$h][2] = 'customreports';
+        if ($parameters['tabfamily'] == 'kreaproducts') {
+            $head[$h][0] = dol_buildpath('/module/index.php', 1);
+            $head[$h][1] = $langs->trans("Home");
+            $head[$h][2] = 'home';
+            $h++;
 
-		$this->results['head'] = $head;
+            $this->results['title'] = $langs->trans("KreaProducts");
+            $this->results['picto'] = 'kreaproducts@kreaproducts';
+        }
 
-		$arrayoftypes = array();
-		//$arrayoftypes['kreaproducts_myobject'] = array('label' => 'MyObject', 'picto'=>'myobject@kreaproducts', 'ObjectClassName' => 'MyObject', 'enabled' => isModEnabled('kreaproducts'), 'ClassPath' => "/kreaproducts/class/myobject.class.php", 'langs'=>'kreaproducts@kreaproducts')
+        $head[$h][0] = 'customreports.php?objecttype=' . $parameters['objecttype'] . (empty($parameters['tabfamily']) ? '' : '&tabfamily=' . $parameters['tabfamily']);
+        $head[$h][1] = $langs->trans("CustomReports");
+        $head[$h][2] = 'customreports';
 
-		$this->results['arrayoftype'] = $arrayoftypes;
+        $this->results['head'] = $head;
 
-		return 0;
-	}
+        $arrayoftypes = array();
+        //$arrayoftypes['kreaproducts_myobject'] = array('label' => 'MyObject', 'picto'=>'myobject@kreaproducts', 'ObjectClassName' => 'MyObject', 'enabled' => isModEnabled('kreaproducts'), 'ClassPath' => "/kreaproducts/class/myobject.class.php", 'langs'=>'kreaproducts@kreaproducts')
 
-	/**
-	 * Overload the restrictedArea function : check permission on an object
-	 *
-	 * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
-	 * @param	string				$action			Current action (if set). Generally create or edit or null
-	 * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer <0 if KO,
-	 *												=0 if OK but we want to process standard actions too,
-	 *												>0 if OK and we want to replace standard actions.
-	 */
-	public function restrictedArea($parameters, &$action, $hookmanager)
-	{
-		global $user;
+        $this->results['arrayoftype'] = $arrayoftypes;
 
-		if ($parameters['features'] == 'myobject') {
-			if ($user->hasRight('kreaproducts', 'myobject', 'read')) {
-				$this->results['result'] = 1;
-				return 1;
-			} else {
-				$this->results['result'] = 0;
-				return 1;
-			}
-		}
+        return 0;
+    }
 
-		return 0;
-	}
+    /**
+     * Overload the restrictedArea function : check permission on an object
+     *
+     * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
+     * @param	string				$action			Current action (if set). Generally create or edit or null
+     * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
+     * @return	int									Return integer <0 if KO,
+     *												=0 if OK but we want to process standard actions too,
+     *												>0 if OK and we want to replace standard actions.
+     */
+    public function restrictedArea($parameters, &$action, $hookmanager)
+    {
+        global $user;
 
-	/**
-	 * Execute action completeTabsHead
-	 *
-	 * @param	array<string,mixed>	$parameters		Array of parameters
-	 * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	string				$action			'add', 'update', 'view'
-	 * @param	Hookmanager			$hookmanager	Hookmanager
-	 * @return	int									Return integer <0 if KO,
-	 *												=0 if OK but we want to process standard actions too,
-	 *												>0 if OK and we want to replace standard actions.
-	 */
-	public function completeTabsHead(&$parameters, &$object, &$action, $hookmanager)
-	{
-		global $langs, $conf, $user;
+        if ($parameters['features'] == 'myobject') {
+            if ($user->hasRight('kreaproducts', 'myobject', 'read')) {
+                $this->results['result'] = 1;
+                return 1;
+            } else {
+                $this->results['result'] = 0;
+                return 1;
+            }
+        }
 
-		if (!isset($parameters['object']->element)) {
-			return 0;
-		}
-		if ($parameters['mode'] == 'remove') {
-			// used to make some tabs removed
-			return 0;
-		} elseif ($parameters['mode'] == 'add') {
-			$langs->load('kreaproducts@kreaproducts');
-			// used when we want to add some tabs
-			$counter = count($parameters['head']);
-			$element = $parameters['object']->element;
-			$id = $parameters['object']->id;
-			// verifier le type d'onglet comme member_stats où ça ne doit pas apparaitre
-			// if (in_array($element, ['societe', 'member', 'contrat', 'fichinter', 'project', 'propal', 'commande', 'facture', 'order_supplier', 'invoice_supplier'])) {
-			if (in_array($element, ['context1', 'context2'])) {
-				$datacount = 0;
+        return 0;
+    }
 
-				$parameters['head'][$counter][0] = dol_buildpath('/kreaproducts/kreaproducts_tab.php', 1) . '?id=' . $id . '&amp;module=' . $element;
-				$parameters['head'][$counter][1] = $langs->trans('KreaProductsTab');
-				if ($datacount > 0) {
-					$parameters['head'][$counter][1] .= '<span class="badge marginleftonlyshort">' . $datacount . '</span>';
-				}
-				$parameters['head'][$counter][2] = 'kreaproductsemails';
-				$counter++;
-			}
-			if ($counter > 0 && (int) DOL_VERSION < 14) {
-				$this->results = $parameters['head'];
-				// return 1 to replace standard code
-				return 1;
-			} else {
-				// From V14 onwards, $parameters['head'] is modifiable by referende
-				return 0;
-			}
-		} else {
-			// Bad value for $parameters['mode']
-			return -1;
-		}
-	}
+    /**
+     * Execute action completeTabsHead
+     *
+     * @param	array<string,mixed>	$parameters		Array of parameters
+     * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+     * @param	string				$action			'add', 'update', 'view'
+     * @param	Hookmanager			$hookmanager	Hookmanager
+     * @return	int									Return integer <0 if KO,
+     *												=0 if OK but we want to process standard actions too,
+     *												>0 if OK and we want to replace standard actions.
+     */
+    public function completeTabsHead(&$parameters, &$object, &$action, $hookmanager)
+    {
+        global $langs, $conf, $user;
 
-	/**
-	 * Overload the doActions function : replacing the parent's function with the one below
-	 *
-	 * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
-	 * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	?string				$action			Current action (if set). Generally create or edit or null
-	 * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
-	 */
+        if (!isset($parameters['object']->element)) {
+            return 0;
+        }
+        if ($parameters['mode'] == 'remove') {
+            // used to make some tabs removed
+            return 0;
+        } elseif ($parameters['mode'] == 'add') {
+            $langs->load('kreaproducts@kreaproducts');
+            // used when we want to add some tabs
+            $counter = count($parameters['head']);
+            $element = $parameters['object']->element;
+            $id = $parameters['object']->id;
+            // verifier le type d'onglet comme member_stats où ça ne doit pas apparaitre
+            // if (in_array($element, ['societe', 'member', 'contrat', 'fichinter', 'project', 'propal', 'commande', 'facture', 'order_supplier', 'invoice_supplier'])) {
+            if (in_array($element, ['context1', 'context2'])) {
+                $datacount = 0;
+
+                $parameters['head'][$counter][0] = dol_buildpath('/kreaproducts/kreaproducts_tab.php', 1) . '?id=' . $id . '&amp;module=' . $element;
+                $parameters['head'][$counter][1] = $langs->trans('KreaProductsTab');
+                if ($datacount > 0) {
+                    $parameters['head'][$counter][1] .= '<span class="badge marginleftonlyshort">' . $datacount . '</span>';
+                }
+                $parameters['head'][$counter][2] = 'kreaproductsemails';
+                $counter++;
+            }
+            if ($counter > 0 && (int) DOL_VERSION < 14) {
+                $this->results = $parameters['head'];
+                // return 1 to replace standard code
+                return 1;
+            } else {
+                // From V14 onwards, $parameters['head'] is modifiable by referende
+                return 0;
+            }
+        } else {
+            // Bad value for $parameters['mode']
+            return -1;
+        }
+    }
+
+    /**
+     * Overload the doActions function : replacing the parent's function with the one below
+     *
+     * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
+     * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
+     * @param	?string				$action			Current action (if set). Generally create or edit or null
+     * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
+     * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
+     */
+    /*
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
 		global $db, $conf, $langs, $user;
@@ -492,19 +493,21 @@ class ActionsKreaProducts extends CommonHookActions
 			return -1;
 		}
 	}
+    */
 
-	/**
-	 * Render additional form options for product nutritional declaration using the Nutritional class.
-	 *
-	 * This method displays nutritional fields on the product card. In create/edit mode it shows input fields
-	 * populated with existing data (if any) from the nutritional table. In view (read-only) mode it displays the values.
-	 *
-	 * @param array $parameters Hook parameters (should contain a key 'context', e.g., "productcard")
-	 * @param CommonObject $object The product object.
-	 * @param string $action Current action ("create", "edit", or view)
-	 * @param HookManager $hookmanager Hook manager object.
-	 * @return int 0 on success.
-	 */
+    /**
+     * Render additional form options for product nutritional declaration using the Nutritional class.
+     *
+     * This method displays nutritional fields on the product card. In create/edit mode it shows input fields
+     * populated with existing data (if any) from the nutritional table. In view (read-only) mode it displays the values.
+     *
+     * @param array $parameters Hook parameters (should contain a key 'context', e.g., "productcard")
+     * @param CommonObject $object The product object.
+     * @param string $action Current action ("create", "edit", or view)
+     * @param HookManager $hookmanager Hook manager object.
+     * @return int 0 on success.
+     */
+    /*
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
 		global $db, $langs, $conf, $form;
@@ -724,6 +727,7 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 		return 0;
 	}
+    */
 
-	/* Add other hook methods here... */
+    /* Add other hook methods here... */
 }
