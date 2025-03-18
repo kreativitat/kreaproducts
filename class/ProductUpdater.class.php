@@ -1,38 +1,57 @@
 <?php
 
 /**
- * ProductHierarchy Class with Iterative Topological Sorting, Cycle Protection,
- * Upward-Only BFS Tree Construction, and Debug Logging.
+ * ProductHierarchy Class (Iterative BFS Cost Update for Dolibarr)
  *
- * This class builds the upward (ancestor) graph for a given product using BFS,
- * then updates each non‑leaf product's cost_price (buyprice) from the bottom‑up via
- * a topological order.
+ * 1) Builds a graph of products (parent <-> child) from a given product ID outward.
+ * 2) Uses Kahn's Algorithm (a queue-based, bottom-up approach) to recalc cost_price:
+ *    - All leaves (no children) go into the queue initially.
+ *    - When a node leaves the queue, we decrement the in-degree of its parents.
+ *    - Once a parent’s in-degree hits 0, we recalc its cost (sum of child cost*qty) and push it into the queue.
  *
- * Assumptions:
- * - The product associations (kits) form a directed structure upward.
- * - Each product's parent's cost is calculated as the sum of its children’s cost_price multiplied by quantity.
+ * This prevents excessive recursion depth and detects cycles (which shouldn't exist in a valid BOM structure).
  */
+
 class ProductHierarchy
 {
-    // Public static map of all ProductHierarchy objects (indexed by product ID)
+    /** @var ProductHierarchy[] All loaded nodes, keyed by productId */
     public static $productMap = array();
+
+    /** @var bool Whether the graph structure is built yet */
     private static $mapLoaded = false;
 
+    // -------------------------------------------------------------------
     // Instance properties
+    // -------------------------------------------------------------------
+    /** @var int Dolibarr product rowid */
     public $id;
+    /** @var string Product label */
     public $label;
+    /** @var string Product reference */
     public $ref;
-    public $data;               // must include 'cost_price'
-    public $children = array(); // Format: [childId => quantity]
-    public $parents  = array(); // Format: array of parent IDs
+    /**
+     * @var array Associative data: e.g. ['cost_price' => 123.45, ...]
+     */
+    public $data = array();
 
     /**
-     * Constructor.
+     * @var array Child relationships: [childId => quantity]
+     *            "This product is made from N units of childId"
+     */
+    public $children = array();
+
+    /**
+     * @var int[] Parents: list of product IDs that include this product as a child
+     */
+    public $parents = array();
+
+    /**
+     * Constructor
      *
-     * @param int    $id
-     * @param string $label
-     * @param string $ref
-     * @param array  $data  e.g., ['cost_price' => ...]
+     * @param int    $id    Product ID
+     * @param string $label Product label
+     * @param string $ref   Product reference
+     * @param array  $data  e.g. [ 'cost_price' => 123.45 ]
      */
     public function __construct($id, $label, $ref, $data = array())
     {
@@ -42,241 +61,270 @@ class ProductHierarchy
         $this->data  = $data;
     }
 
+    // -------------------------------------------------------------------
+    // Public: Main entry point
+    // -------------------------------------------------------------------
+
     /**
-     * Main entry point.
+     * Update cost_price from the bottom up, starting at $productId.
      *
-     * Given a product ID (which may be a leaf or have ancestors), this method:
-     *  1. Builds the upward association map using BFS (ancestors only).
-     *  2. Uses an iterative topological sort (Kahn's algorithm) to order nodes from leaves upward.
-     *  3. Updates each non‑leaf node’s cost_price (buyprice) in that order.
+     * 1) Build the graph of connected products (fk_product_pere, fk_product_fils).
+     * 2) Perform BFS update using Kahn’s Algorithm (topological sort).
      *
-     * @param int  $productId The starting product ID.
-     * @param User $user      The Dolibarr user performing the update.
+     * @param int  $productId The product to recalc
+     * @param User $user      The Dolibarr user performing the update
+     * @return int            1 if done, 0 if failed/aborted
      */
     public static function updateProductAttributes($productId, $user)
     {
         global $db;
 
-        require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+        // Load Dolibarr classes
         require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+        require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 
-        $extrafields = new ExtraFields($db);
+        // Optional: check if extra field 'kreap_spread_buyprice' is active
+        $extrafields   = new ExtraFields($db);
         $extraFieldKey = 'kreap_spread_buyprice';
 
-        // Load product extra fields for the starting product.
-        $product = new Product($db);
-        if ($product->fetch($productId) <= 0) {
-            dol_syslog("updateProductAttributes: Failed to fetch product ID $productId", LOG_ERR);
-            return 0; // Exit if product is not found
-        }
-        $product->fetch_optionals($productId, $extrafields); // Load extra fields
-
-        // Check if the extra field is enabled for this product.
-        if (empty($product->array_options["options_" . $extraFieldKey])) {
-            dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is not enabled for product ID $productId. Exiting.", LOG_WARNING);
-            return 0; // Exit without making changes
-        }
-        dol_syslog("updateProductAttributes: Extra field 'kreap_spread_buyprice' is enabled. Proceeding with update.", LOG_DEBUG);
-
-        // Reset and rebuild the upward association map using BFS.
-        self::$mapLoaded  = false;
-        self::$productMap = array();
-        self::buildMapUpward($productId);
-
-        // ----- Step 2: Build a Topological Order Using Kahn's Algorithm -----
-        $inDegree = array();
-        // Initialize in-degrees for all nodes in our upward map.
-        foreach (self::$productMap as $nodeId => $node) {
-            $inDegree[$nodeId] = 0;
-        }
-        // For each edge child -> parent, increment parent's in-degree.
-        foreach (self::$productMap as $nodeId => $node) {
-            foreach ($node->parents as $parentId) {
-                if (isset($inDegree[$parentId])) {
-                    $inDegree[$parentId]++;
-                } else {
-                    $inDegree[$parentId] = 1;
-                }
-            }
-        }
-        // Build the queue of nodes with in-degree 0 (leaves, i.e. products with no ancestors in this chain).
-        $queue = array();
-        foreach ($inDegree as $nodeId => $deg) {
-            if ($deg == 0) {
-                $queue[] = $nodeId;
-            }
-        }
-
-        $topoOrder = array();
-        $iteration = 0;
-        $maxIterations = 5000; // safety threshold
-        while (!empty($queue)) {
-            $iteration++;
-            if ($iteration > $maxIterations) {
-                dol_syslog("updateProductAttributes: Topological sort exceeded max iterations ($maxIterations). Aborting.", LOG_ERR);
-                break;
-            }
-            $current = array_shift($queue);
-            $topoOrder[] = $current;
-            if (isset(self::$productMap[$current])) {
-                foreach (self::$productMap[$current]->parents as $parentId) {
-                    if (isset($inDegree[$parentId])) {
-                        $inDegree[$parentId]--;
-                        if ($inDegree[$parentId] == 0) {
-                            $queue[] = $parentId;
-                        }
-                    }
-                }
-            }
-        }
-        if (count($topoOrder) != count(self::$productMap)) {
-            dol_syslog("updateProductAttributes: Cycle detected in product associations. Aborting update.", LOG_ERR);
+        $prodCheck = new Product($db);
+        if ($prodCheck->fetch($productId) <= 0) {
+            dol_syslog(__METHOD__ . ": Could not fetch product ID $productId", LOG_ERR);
             return 0;
         }
-        dol_syslog("updateProductAttributes: Topological order computed with " . count($topoOrder) . " nodes.", LOG_DEBUG);
+        $prodCheck->fetch_optionals($productId, $extrafields);
 
-        // ----- Step 3: Update Product Prices in Bottom-Up Order -----
-        $updateIteration = 0;
-        foreach ($topoOrder as $nodeId) {
-            $updateIteration++;
-            if ($updateIteration > $maxIterations) {
-                dol_syslog("updateProductAttributes: Update loop exceeded max iterations ($maxIterations). Aborting.", LOG_ERR);
-                break;
-            }
-            if (!isset(self::$productMap[$nodeId])) continue;
-            $node = self::$productMap[$nodeId];
-            // Only update non‑leaf nodes (those with children in this upward chain)
-            if (!empty($node->children)) {
-                $newCost = 0;
-                foreach ($node->children as $childId => $qty) {
-                    if (isset(self::$productMap[$childId])) {
-                        $child = self::$productMap[$childId];
-                        $childCost = isset($child->data['cost_price']) ? floatval($child->data['cost_price']) : 0;
-                        $newCost += $childCost * floatval($qty);
-                    }
-                }
-                $oldCost = isset($node->data['cost_price']) ? floatval($node->data['cost_price']) : 0;
-                if (abs($newCost - $oldCost) > 0.0001) {
-                    $prod = new Product($db);
-                    if ($prod->fetch($node->id) > 0) {
-                        $prod->cost_price = $newCost;
-                        $prod->buyprice   = $newCost;
-                        $res = $prod->update($node->id, $user);
-                        if ($res > 0) {
-                            dol_syslog("updateProductAttributes: Updated product {$node->ref} (ID {$node->id}) from cost $oldCost to $newCost", LOG_DEBUG);
-                            $node->data['cost_price'] = $newCost;
-                        } else {
-                            dol_syslog("updateProductAttributes: FAILED to update product {$node->ref} (ID {$node->id})", LOG_ERR);
-                        }
-                    } else {
-                        dol_syslog("updateProductAttributes: FAILED to fetch product {$node->ref} (ID {$node->id})", LOG_ERR);
-                    }
-                }
-            }
+        if (empty($prodCheck->array_options["options_" . $extraFieldKey])) {
+            // If we only proceed when this custom field is set,
+            // skip if not set (or remove this check entirely if you want unconditional updates).
+            dol_syslog(__METHOD__ . ": Extra field '$extraFieldKey' not set => skipping update for product $productId", LOG_DEBUG);
+            return 0;
         }
-        dol_syslog("updateProductAttributes: Completed updating products bottom-up.", LOG_DEBUG);
+
+        // Reset static data
+        self::$productMap = array();
+        self::$mapLoaded  = false;
+
+        // Build the graph outward from $productId
+        self::buildMap($productId);
+
+        // Perform BFS (Kahn's Algorithm) to recalc cost bottom-up
+        self::bfsBottomUpCostUpdate($user);
+
+        dol_syslog(__METHOD__ . ": Done BFS cost update for product $productId", LOG_DEBUG);
+        return 1;
     }
 
-    /**
-     * Adds a child association.
-     *
-     * @param int   $childId
-     * @param float $qty
-     */
-    public function addChild($childId, $qty)
-    {
-        $this->children[$childId] = $qty;
-    }
+    // -------------------------------------------------------------------
+    // Private: BFS Implementation (Kahn's Algorithm)
+    // -------------------------------------------------------------------
 
     /**
-     * Adds a parent association.
+     * BFS (Kahn's Algorithm) to update cost_price from leaves upward.
+     * Steps:
+     *  1) inDegree[node] = number of children. Leaves => inDegree=0 => queue.
+     *  2) pop leaf from queue => for each parent => parent.inDegree--
+     *     if parent.inDegree==0 => recalc parent's cost => queue.
+     *  3) If any nodes remain with inDegree>0 => cycle or data error.
      *
-     * @param int $parentId
+     * @param User $user
      */
-    public function addParent($parentId)
-    {
-        $this->parents[] = $parentId;
-    }
-
-    /**
-     * Builds the upward association map (ancestors only) for the given product using BFS.
-     *
-     * This method queries only associations where the current product appears as a child.
-     * As a result, only the ancestors (kits that include the product) are collected.
-     * Self-references (a product being both father and child) are skipped.
-     *
-     * @param int $startId The starting product ID.
-     */
-    private static function buildMapUpward($startId)
+    private static function bfsBottomUpCostUpdate($user)
     {
         global $db;
-        $iteration = 0;
-        $maxIterations = 5000; // safety threshold for BFS iterations
 
-        // Initialize queue and seen set.
-        $queue = array($startId);
-        $seen  = array($startId => true);
+        // 1) Build inDegree = # of children for each node
+        $inDegree = array();
+        foreach (self::$productMap as $pid => $node) {
+            $inDegree[$pid] = count($node->children);
+        }
 
+        // Queue holds productIds with inDegree=0 => leaves
+        $queue = array();
+        foreach ($inDegree as $pid => $deg) {
+            if ($deg === 0) {
+                $queue[] = $pid; // leaf node
+            }
+        }
+
+        $processedCount = 0;
         while (!empty($queue)) {
-            $iteration++;
-            if ($iteration > $maxIterations) {
-                dol_syslog("buildMapUpward: Exceeded max iterations ($maxIterations). Breaking out.", LOG_ERR);
-                break;
-            }
-            $current = array_shift($queue);
+            $childId = array_shift($queue);
+            $processedCount++;
 
-            // Query only for associations where $current is a child
-            // (i.e. kits that include $current)
-            $sql  = "SELECT pa.fk_product_pere as father, pa.fk_product_fils as child, pa.qty as qty, ";
-            $sql .= "p.label as fatherLabel, p.ref as fatherRef, p.cost_price as fatherBuy, ";
-            $sql .= "f.label as childLabel, f.ref as childRef, f.cost_price as childBuy ";
-            $sql .= "FROM " . MAIN_DB_PREFIX . "product_association pa ";
-            $sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON (p.rowid = pa.fk_product_pere) ";
-            $sql .= "JOIN " . MAIN_DB_PREFIX . "product f ON (f.rowid = pa.fk_product_fils) ";
-            $sql .= "WHERE pa.fk_product_fils = " . ((int)$current);
+            // child => see which parents use it
+            $childNode = self::$productMap[$childId];
+            foreach ($childNode->parents as $parentId) {
+                if (!isset($inDegree[$parentId])) continue;
+                $inDegree[$parentId]--;
 
-            $resql = $db->query($sql);
-            if ($resql) {
-                while ($obj = $db->fetch_object($resql)) {
-                    // Skip self-reference.
-                    if ($obj->father == $obj->child) continue;
-
-                    // Ensure father object exists.
-                    if (!isset(self::$productMap[$obj->father])) {
-                        $data = array('cost_price' => (float)$obj->fatherBuy);
-                        self::$productMap[$obj->father] = new ProductHierarchy($obj->father, $obj->fatherLabel, $obj->fatherRef, $data);
-                    }
-                    // Ensure child object exists.
-                    if (!isset(self::$productMap[$obj->child])) {
-                        $data = array('cost_price' => (float)$obj->childBuy);
-                        self::$productMap[$obj->child] = new ProductHierarchy($obj->child, $obj->childLabel, $obj->childRef, $data);
-                    }
-                    // Add association: father is an ancestor (parent) of child.
-                    if (!isset(self::$productMap[$obj->father]->children[$obj->child])) {
-                        self::$productMap[$obj->father]->children[$obj->child] = (float)$obj->qty;
-                    }
-                    if (!in_array($obj->father, self::$productMap[$obj->child]->parents, true)) {
-                        self::$productMap[$obj->child]->parents[] = $obj->father;
-                    }
-                    // Enqueue father if not already seen.
-                    if (!isset($seen[$obj->father])) {
-                        $queue[] = $obj->father;
-                        $seen[$obj->father] = true;
-                    }
+                // once parent's in-degree=0 => recalc parent's cost
+                if ($inDegree[$parentId] === 0) {
+                    self::recalcNodeCost($parentId, $user);
+                    $queue[] = $parentId;
                 }
-                $db->free($resql);
             }
         }
-        // Also ensure the starting product is in the map.
-        if (!isset(self::$productMap[$startId])) {
-            // If it was never found as a child, add it.
-            require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+
+        // Check for cycle
+        $totalNodes = count(self::$productMap);
+        if ($processedCount < $totalNodes) {
+            dol_syslog(__METHOD__ . ": Warning: processed $processedCount of $totalNodes => possible cycle in BOM data.", LOG_WARNING);
+        }
+    }
+
+    /**
+     * Sum child cost_price * child.qty => update parent cost in DB.
+     *
+     * @param int  $parentId
+     * @param User $user
+     */
+    private static function recalcNodeCost($parentId, $user)
+    {
+        global $db;
+        if (!isset(self::$productMap[$parentId])) return;
+
+        $parentNode = self::$productMap[$parentId];
+        $newCost = 0.0;
+
+        foreach ($parentNode->children as $childId => $qty) {
+            if (!isset(self::$productMap[$childId])) continue;
+            $childNode = self::$productMap[$childId];
+            $childCost = !empty($childNode->data['cost_price'])
+                ? floatval($childNode->data['cost_price'])
+                : 0.0;
+
+            $newCost += ($childCost * floatval($qty));
+        }
+
+        $oldCost = !empty($parentNode->data['cost_price'])
+            ? floatval($parentNode->data['cost_price'])
+            : 0.0;
+
+        // Only update if a real change
+        if (abs($newCost - $oldCost) > 1e-8) {
+            // update in Dolibarr
             $prod = new Product($db);
-            if ($prod->fetch($startId) > 0) {
-                $data = array('cost_price' => floatval($prod->cost_price));
-                self::$productMap[$startId] = new ProductHierarchy($startId, $prod->label, $prod->ref, $data);
+            if ($prod->fetch($parentNode->id) > 0) {
+                $prod->cost_price = $newCost;
+                $prod->buyprice   = $newCost;
+                $res = $prod->update($parentNode->id, $user);
+
+                if ($res >= 0) {
+                    dol_syslog(__METHOD__ . ": Updated product ID $parentId from cost=$oldCost to cost=$newCost", LOG_DEBUG);
+                    // store new cost in map
+                    $parentNode->data['cost_price'] = $newCost;
+                } else {
+                    dol_syslog(__METHOD__ . ": FAILED to update product ID $parentId (error code $res)", LOG_ERR);
+                }
+            } else {
+                dol_syslog(__METHOD__ . ": Could not fetch product ID $parentId", LOG_ERR);
             }
         }
-        dol_syslog("buildMapUpward: Completed with " . count(self::$productMap) . " nodes.", LOG_DEBUG);
+    }
+
+    // -------------------------------------------------------------------
+    // Private: Build Graph (both directions) for all connected products
+    // -------------------------------------------------------------------
+
+    /**
+     * buildMap($productId):
+     *  - BFS outward from $productId to discover all products connected
+     *    as either parent or child in `product_association`.
+     *  - For each discovered ID, ensure we have a ProductHierarchy node in $productMap.
+     *  - Link child->parent and parent->child relationships accordingly.
+     *
+     * @param int $productId
+     */
+    private static function buildMap($productId)
+    {
+        global $db;
+
+        $visited = array();
+        $toVisit = array($productId);
+
+        while (!empty($toVisit)) {
+            $pid = array_pop($toVisit);
+            if (isset($visited[$pid])) continue;
+            $visited[$pid] = true;
+
+            // Gather associations for this product
+            $sql = "SELECT pa.fk_product_pere  AS parent,
+                           pa.fk_product_fils  AS child,
+                           pa.qty             AS qty
+                    FROM " . MAIN_DB_PREFIX . "product_association pa
+                    WHERE pa.fk_product_pere = " . ((int)$pid) . "
+                       OR pa.fk_product_fils = " . ((int)$pid);
+            $resql = $db->query($sql);
+            if (!$resql) {
+                dol_syslog(__METHOD__ . ": SQL error: " . $db->lasterror(), LOG_ERR);
+                return;
+            }
+
+            while ($obj = $db->fetch_object($resql)) {
+                // Initialize parent/child nodes in our map if missing
+                self::initNode($obj->parent);
+                self::initNode($obj->child);
+
+                // Link them
+                self::$productMap[$obj->parent]->children[$obj->child] = (float)$obj->qty;
+                self::$productMap[$obj->child]->parents[]             = $obj->parent;
+
+                // Schedule them for BFS if not visited
+                if (empty($visited[$obj->parent])) $toVisit[] = $obj->parent;
+                if (empty($visited[$obj->child]))  $toVisit[] = $obj->child;
+            }
+        }
+
+        // Now fetch cost_price (and label/ref if desired) for each discovered product
+        self::loadCostsForNodes();
+        self::$mapLoaded = true;
+    }
+
+    /**
+     * initNode($id):
+     *   - Create an empty ProductHierarchy node for $id if not already present.
+     *
+     * @param int $id
+     */
+    private static function initNode($id)
+    {
+        if (!isset(self::$productMap[$id])) {
+            self::$productMap[$id] = new ProductHierarchy(
+                $id,
+                '',     // label
+                '',     // ref
+                array('cost_price' => 0.0)
+            );
+        }
+    }
+
+    /**
+     * loadCostsForNodes():
+     *   - Single DB query to fetch cost_price, label, ref, etc. for all known product IDs.
+     */
+    private static function loadCostsForNodes()
+    {
+        global $db;
+        $ids = array_keys(self::$productMap);
+        if (empty($ids)) return;
+
+        $listIds = implode(',', $ids);
+        $sql = "SELECT rowid, ref, label, cost_price
+                FROM " . MAIN_DB_PREFIX . "product
+                WHERE rowid IN (" . $listIds . ")";
+        $resql = $db->query($sql);
+        if (!$resql) {
+            dol_syslog(__METHOD__ . ": SQL error: " . $db->lasterror(), LOG_ERR);
+            return;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            if (isset(self::$productMap[$obj->rowid])) {
+                self::$productMap[$obj->rowid]->ref                = $obj->ref;
+                self::$productMap[$obj->rowid]->label              = $obj->label;
+                self::$productMap[$obj->rowid]->data['cost_price'] = (float)$obj->cost_price;
+            }
+        }
     }
 }
