@@ -1,12 +1,14 @@
 <?php
 
 /**
- * Minimal ProductHierarchy Class with Debug Logging
+ * ProductHierarchy Class with Iterative Topological Sorting and Cycle Protection
  *
  * This class builds the full connected graph (associations) for a given product,
- * computes a “height” for each node (leaf = 0; parent = max(child height) + 1),
- * and then updates each non‑leaf product's cost_price (buyprice) in bottom‑up order.
+ * then updates each non‑leaf product's cost_price (buyprice) from the bottom‑up.
  *
+ * Assumptions:
+ * - The association data forms a Directed Acyclic Graph (DAG). Cycle protection is in place.
+ * - Each product's parent's cost is calculated as the sum of its children’s cost_price multiplied by quantity.
  */
 class ProductHierarchy
 {
@@ -18,7 +20,7 @@ class ProductHierarchy
     public $id;
     public $label;
     public $ref;
-    public $data;              // must include 'cost_price'
+    public $data;               // must include 'cost_price'
     public $children = array(); // Format: [childId => quantity]
     public $parents  = array(); // Format: array of parent IDs
 
@@ -44,11 +46,8 @@ class ProductHierarchy
      *
      * Given a product ID (which may be a leaf or have children), this method:
      *  1. Builds the full connected association map.
-     *  2. Computes a height for each node (leaf = 0).
-     *  3. Updates each non‑leaf node’s cost_price (buyprice) in order from the bottom up.
-     *
-     * This ensures that if you update a leaf (which isn’t recalculated), its parent's
-     * cost is recalculated after the leaf’s new value is set.
+     *  2. Uses an iterative topological sort (Kahn's algorithm) to order nodes from leaves upward.
+     *  3. Updates each non‑leaf node’s cost_price (buyprice) in that order.
      *
      * @param int  $productId The starting product ID.
      * @param User $user      The Dolibarr user performing the update.
@@ -83,20 +82,61 @@ class ProductHierarchy
         self::$productMap = array();
         self::buildMap($productId);
 
-        // Compute heights for each node (leaf = 0; parent's height = max(child height)+1)
-        $heights = self::computeHeights();
-        // Sort nodes by height in ascending order (so that when we update a node,
-        // all its children—with lower heights—have already been updated)
-        asort($heights);
+        // ----- Step 2: Build a Topological Order Using Kahn's Algorithm -----
+        // In this graph, the cost of a parent depends on its children.
+        // We'll process all nodes starting from leaves (nodes with no outgoing child dependencies).
+        $inDegree = array();
+        // Initialize in-degrees
+        foreach (self::$productMap as $nodeId => $node) {
+            $inDegree[$nodeId] = 0;
+        }
+        // For each edge child -> parent, increment parent's in-degree.
+        foreach (self::$productMap as $nodeId => $node) {
+            foreach ($node->parents as $parentId) {
+                if (isset($inDegree[$parentId])) {
+                    $inDegree[$parentId]++;
+                } else {
+                    $inDegree[$parentId] = 1;
+                }
+            }
+        }
+        // Build the queue of nodes with in-degree 0 (leaves).
+        $queue = array();
+        foreach ($inDegree as $nodeId => $deg) {
+            if ($deg == 0) {
+                $queue[] = $nodeId;
+            }
+        }
 
-        // Iterate over all nodes in the map in this order.
-        // We only update non‑leaf nodes (i.e. nodes that have children).
-        foreach ($heights as $nodeId => $height) {
-            // Skip leaf nodes
-            if ($height == 0) continue;
+        // Perform the iterative topological sort.
+        $topoOrder = array();
+        while (!empty($queue)) {
+            $current = array_shift($queue);
+            $topoOrder[] = $current;
+            // For each parent of current, reduce in-degree.
+            if (isset(self::$productMap[$current])) {
+                foreach (self::$productMap[$current]->parents as $parentId) {
+                    if (isset($inDegree[$parentId])) {
+                        $inDegree[$parentId]--;
+                        if ($inDegree[$parentId] == 0) {
+                            $queue[] = $parentId;
+                        }
+                    }
+                }
+            }
+        }
+        // If topoOrder doesn't include all nodes, then a cycle might exist.
+        if (count($topoOrder) != count(self::$productMap)) {
+            dol_syslog("updateProductAttributes: Cycle detected in product associations. Aborting update.", LOG_ERR);
+            return 0;
+        }
+
+        // ----- Step 3: Update Product Prices in Bottom-Up Order -----
+        // Note: The topoOrder array starts with leaves (which are not updated) and ends with the roots.
+        foreach ($topoOrder as $nodeId) {
             if (!isset(self::$productMap[$nodeId])) continue;
             $node = self::$productMap[$nodeId];
-
+            // Only update non-leaf nodes (those with children)
             if (!empty($node->children)) {
                 $newCost = 0;
                 foreach ($node->children as $childId => $qty) {
@@ -129,49 +169,6 @@ class ProductHierarchy
     }
 
     /**
-     * Computes and returns an associative array of heights for all nodes in the map.
-     *
-     * Height is defined as:
-     *   - 0 for leaf nodes (no children)
-     *   - max(child height) + 1 for nodes with children.
-     *
-     * @return array  [productId => height]
-     */
-    private static function computeHeights()
-    {
-        $heights = array();
-        foreach (self::$productMap as $nodeId => $node) {
-            self::getHeight($nodeId, $heights);
-        }
-        return $heights;
-    }
-
-    /**
-     * Recursively computes the height of a node.
-     *
-     * @param int   $nodeId
-     * @param array $heights  Memoization array.
-     * @return int
-     */
-    private static function getHeight($nodeId, &$heights)
-    {
-        if (isset($heights[$nodeId])) return $heights[$nodeId];
-        if (!isset(self::$productMap[$nodeId]) || empty(self::$productMap[$nodeId]->children)) {
-            $heights[$nodeId] = 0;
-            return 0;
-        }
-        $maxChildHeight = 0;
-        foreach (self::$productMap[$nodeId]->children as $childId => $qty) {
-            $childHeight = self::getHeight($childId, $heights);
-            if ($childHeight > $maxChildHeight) {
-                $maxChildHeight = $childHeight;
-            }
-        }
-        $heights[$nodeId] = $maxChildHeight + 1;
-        return $heights[$nodeId];
-    }
-
-    /**
      * Adds a child association.
      *
      * @param int   $childId
@@ -199,6 +196,8 @@ class ProductHierarchy
      *
      * It first collects all connected product IDs (via parent/child links),
      * then loads all association details for these IDs.
+     *
+     * Cycle protection is implemented by remembering already processed edges.
      *
      * @param int $productId The starting product ID.
      */
@@ -256,7 +255,15 @@ class ProductHierarchy
             // dol_syslog("buildMap: Error: " . $db->error, LOG_ERR);
             return;
         }
+
+        // Track processed edges to avoid cycles (edgeKey = "parent-child")
+        $visitedEdges = array();
+
         while ($obj = $db->fetch_object($resql)) {
+            $edgeKey = $obj->parent . '-' . $obj->child;
+            if (isset($visitedEdges[$edgeKey])) continue;
+            $visitedEdges[$edgeKey] = true;
+
             if (!isset(self::$productMap[$obj->parent])) {
                 $parentData = array('cost_price' => $obj->p_buyprice);
                 self::$productMap[$obj->parent] = new ProductHierarchy($obj->parent, $obj->p_label, $obj->p_ref, $parentData);
