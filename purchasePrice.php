@@ -381,9 +381,13 @@ if ($action == 'save_price') {
 
 
 if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
-	// Make sure you have proper security checks here.
+	// Perform update; ensure proper security checks are in place.
 	ProductHierarchy::updateProductAttributes($object->id, $user);
+	// Redirect back to the same page to force a full refresh.
+	header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
+	exit;
 }
+
 
 
 
@@ -444,7 +448,7 @@ if ($id > 0 || $ref) {
 				print (empty($conf->global->PRODUCT_DENY_CHANGE_PRODUCT_TYPE)) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, 0, $typeformat) : $langs->trans('Type');
 				print '</td><td>';
 				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, 0, $typeformat);
-				print '</td></tr>';
+				print '</td><td></td></tr>';
 			}
 
 			// Cost price. Can be used for margin module for option "calculate margin on explicit cost price
@@ -466,8 +470,6 @@ if ($id > 0 || $ref) {
 			print '</td>';
 			print '</tr>';
 
-
-
 			// Propagate buy price
 			if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 				print '<tr><td>';
@@ -476,7 +478,7 @@ if ($id > 0 || $ref) {
 				print $form->editfieldkey($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
 				print '</td><td>';
 				print $form->editfieldval($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
-				print '</td></tr>';
+				print '</td><td></td></tr>';
 			}
 
 			// PMP
@@ -499,7 +501,7 @@ if ($id > 0 || $ref) {
 			if ($object->pmp > 0) {
 				print price($object->pmp).' '.$langs->trans("HT");
 			}*/
-			print '</td>';
+			print '</td><td></td>';
 			print '</tr>';
 
 			// Best buying Price
@@ -513,7 +515,7 @@ if ($id > 0 || $ref) {
 					print $langs->trans("NotDefined");
 				}
 			}
-			print '</td></tr>';
+			print '</td><td></td></tr>';
 
 			print '</table>';
 
