@@ -379,17 +379,23 @@ if ($action == 'save_price') {
 	}
 }
 
-
 if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
-	// Perform update; ensure proper security checks are in place.
-	ProductHierarchy::updateProductAttributes($object->id, $user);
-	// Redirect back to the same page to force a full refresh.
+	setEventMessages("A propagar preços de custo!", null, 'mesgs');
+	while (ob_get_level() > 0) {
+		ob_end_clean();
+	}
+	header("HTTP/1.1 302 Found");
 	header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
+	header("Content-Length: 0");
+	ignore_user_abort(true);
+	if (function_exists('fastcgi_finish_request')) {
+		fastcgi_finish_request();
+	} else {
+		flush();
+	}
+	ProductHierarchy::updateProductAttributes($object->id, $user);
 	exit;
 }
-
-
-
 
 /*
  * view
