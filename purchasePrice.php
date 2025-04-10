@@ -380,7 +380,7 @@ if ($action == 'save_price') {
 }
 
 if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
-	setEventMessages("A propagar preços de custo!", null, 'mesgs');
+	setEventMessages("Peços de custo actualizados!", null, 'mesgs');
 	while (ob_get_level() > 0) {
 		ob_end_clean();
 	}
