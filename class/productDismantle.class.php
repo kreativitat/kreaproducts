@@ -79,20 +79,19 @@ class ProductDismantleController extends CommonObject
         global $user, $conf;
 
         $defaultWarehouseId = !empty($conf->global->MAIN_DEFAULT_WAREHOUSE) ? $conf->global->MAIN_DEFAULT_WAREHOUSE : 0;
-
         $error = 0;
 
         // Load BOM
         $bom = new BOM($this->db);
         if ($bom->fetch($bomId) <= 0) {
             dol_syslog("Failed to fetch BOM details", LOG_ERR);
-            return -1; // Handle error appropriately
+            return -1;
         }
 
-        // Fetch BOM lines for components to consume
+        // Ensure BOM has lines
         if (!is_array($bom->lines) || empty($bom->lines)) {
             dol_syslog("BOM has no lines", LOG_WARNING);
-            return -1; // Handle error appropriately
+            return -1;
         }
 
         $arraytoconsume = [];
@@ -100,125 +99,147 @@ class ProductDismantleController extends CommonObject
 
         $finalProductQty = $bom->qty;
 
-        // Add the main product (origin product) to consumption
+        // Add main product to consume
         $arraytoconsume[] = [
-            'objectid' => $bom->fk_product,
-            'qty' => $finalProductQty,
+            'objectid'    => $bom->fk_product,
+            'qty'         => $finalProductQty,
             'fk_warehouse' => $defaultWarehouseId,
         ];
         dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
 
-        // Add products to produce (from BOM lines)
+        // Add BOM components to produce
         foreach ($bom->lines as $line) {
             $arraytoproduce[] = [
-                'objectid' => $line->fk_product,
-                'qty' => $line->qty,
+                'objectid'    => $line->fk_product,
+                'qty'         => $line->qty,
                 'fk_warehouse' => $defaultWarehouseId,
             ];
         }
         dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
 
-        // Initialize stock movement object
+        // Initialize stock movement handler
         $stockmove = new MouvementStock($this->db);
 
-        // Process consumption and production
-        foreach (array('arraytoconsume', 'arraytoproduce') as $arrayname) {
+        // Process consumption and production arrays
+        foreach (['arraytoconsume', 'arraytoproduce'] as $arrayname) {
             foreach (${$arrayname} as $item) {
-                // Fetch product
                 $product = new Product($this->db);
                 if ($product->fetch($item['objectid']) <= 0) {
                     dol_syslog("Failed to fetch product with ID " . $item['objectid'], LOG_ERR);
                     $error++;
-                    break; // Exit on error
+                    break;
                 }
 
-                // Determine the direction of stock movement
-                $qty = $item['qty']; // * $qtyMovement;
+                // Calculate signed and absolute quantities
+                $rawQty = $item['qty'] * $qtyMovement;
+                $qty    = abs($rawQty);
 
-                if ($arrayname == 'arraytoconsume') {
-                    // Update cost price for the origin product being consumed
+                // Update cost price
+                if ($arrayname === 'arraytoconsume') {
                     $product->cost_price = $priceMovement;
-                    dol_syslog("Quantity: $qty, Cost Price: $product->cost_price", LOG_ERR);
-
-                    // Consume product (remove from stock)
-                    $result = $stockmove->livraison(
-                        $user,
-                        $item['objectid'],
-                        $item['fk_warehouse'],
-                        $qty,
-                        $product->cost_price,
-                        "Consume for MO ($originRef)",
-                        dol_now(),
-                        '',    // Eat-by date (not used here)
-                        '',    // Sell-by date (not used here)
-                        '',    // Batch (not used here)
-                        $originId, // Origin ID
-                        $originType // Origin Type
-                    );
-
-                    if ($product->update($product->id, $user) <= 0) {
-                        dol_syslog("Failed to update cost_price for consumed product ID " . $item['objectid'], LOG_ERR);
+                } else {
+                    if ($qty > 0) {
+                        $product->cost_price = $priceMovement / $qty;
+                    } else {
+                        dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
                         $error++;
                         break;
+                    }
+                }
+                if ($product->update($product->id, $user) <= 0) {
+                    dol_syslog("Failed to update cost_price for product ID " . $item['objectid'], LOG_ERR);
+                    $error++;
+                    break;
+                }
+
+                // Perform the correct stock movement:
+                if ($arrayname === 'arraytoconsume') {
+                    if ($rawQty >= 0) {
+                        // Normal consumption: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Consume for MO ($originRef)",
+                            dol_now(),
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
+                    } else {
+                        // Reverse consumption: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse consume for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            dol_now(),
+                            $originId,
+                            $originType
+                        );
                     }
                 } else {
-                    // Update cost price for the produced product
-                    if ($qty > 0) {
-                        $costPerUnit = $priceMovement / $qty; // Divide total cost by produced quantity
-                        $product->cost_price = $costPerUnit;
-                        dol_syslog("Quantity: $qty, Cost per unit: $costPerUnit", LOG_ERR);
+                    if ($rawQty >= 0) {
+                        // Normal production: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Produce for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            dol_now(),
+                            $originId,
+                            $originType
+                        );
                     } else {
-                        dol_syslog("Cannot divide by zero. Invalid quantity for product ID " . $item['objectid'], LOG_ERR);
-                        $error++;
-                        break;
-                    }
-
-                    // Produce product (add to stock)
-                    $result = $stockmove->reception(
-                        $user,
-                        $item['objectid'],
-                        $item['fk_warehouse'],
-                        $qty,
-                        $product->cost_price,
-                        "Produce for MO ($originRef)",
-                        '',
-                        '',    // Eat-by date (not used here)
-                        '',    // Sell-by date (not used here)
-                        '',    // Batch (not used here)
-                        dol_now(),
-                        $originId, // Origin ID
-                        $originType // Origin Type
-                    );
-
-                    // Set the origin for the stock movement
-                    $stockmove->setOrigin($originType, $originId);
-
-                    if ($product->update($product->id, $user) <= 0) {
-                        dol_syslog("Failed to update cost_price for produced product ID " . $item['objectid'], LOG_ERR);
-                        $error++;
-                        break;
+                        // Reverse production: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse produce for MO ($originRef)",
+                            dol_now(),
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
                     }
                 }
 
+                // Link origin and check for errors
+                $stockmove->setOrigin($originType, $originId);
                 if ($result <= 0) {
                     dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
                     $error++;
-                    break; // Exit on error
+                    break;
                 }
             }
-
-            if ($error) break; // Exit if there was an error processing any item
+            if ($error) break;
         }
 
         if ($error) {
-            // Rollback transaction on error
             dol_syslog("Errors encountered, rolling back.", LOG_ERR);
-            return -1; // Indicate failure
-        } else {
-            dol_syslog("MO processed successfully, transaction committed.", LOG_DEBUG);
-            // Update MO status here as needed
+            return -1;
         }
 
-        return 0; // Success
+        dol_syslog("MO processed successfully, transaction committed.", LOG_DEBUG);
+        return 0;
     }
 }
