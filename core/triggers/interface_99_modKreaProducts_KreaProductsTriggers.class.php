@@ -53,8 +53,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		// We only handle two actions in the switch
 		switch ($action) {
-				// PRODUCT modification triggers
-				//case 'PRODUCT_MODIFY': // Desligado porque torna o sistema lento
+			// PRODUCT modification triggers
+			//case 'PRODUCT_MODIFY': // Desligado porque torna o sistema lento
 			case 'PRODUCT_PRICE_MODIFY':
 				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 
@@ -110,12 +110,12 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 				if (!empty($conf->global->KREAGENPRODUCT_AUTO_DISMATLE_PRODUCTS_FROM_BOM)) {
 					// Check if the movement is a result of invoice validation
-					if ($object->origintype == 'invoice_supplier') {
+					if ($object->origin_type == 'invoice_supplier') {
 						$dismantleController = new ProductDismantleController($this->db);
 						if ($dismantleController->productInDismantleCategory($object->product_id)) {
 							$bomId = $dismantleController->findBom($object->product_id);
 							if ($bomId) {
-								$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->fk_origin, $object->origin_type);
+								$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type);
 								if ($result != 0) {
 									return -1;
 								}
