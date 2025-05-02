@@ -54,6 +54,9 @@ KreaProductsAboutPage = KreaProducts about page
 #
 # Products card
 #
+StockableProduct = Gerir Stocks
+StockableProductDescription = Se esta opção estiver ativada, a modificação de stock deste elemento é mantida. Se estiver desativada, a modificação de stock deste elemento não é mantida.
+
 kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 kreaproducts_nuttable = Tabela nutricional

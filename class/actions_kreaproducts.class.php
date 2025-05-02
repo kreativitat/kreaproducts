@@ -349,37 +349,31 @@ class ActionsKreaProducts extends CommonHookActions
 	{
 		global $db, $conf, $langs, $user;
 
-		$error = 0; // Error counter
+		$error = 0;
 
-		// Process only when action is 'create' or 'update', object is a product, and product has an ID.
-		if (($action == 'create' || $action == 'update') && $object->element == 'product' && !empty($object->id)) {
-
-			// === BATCH MANAGEMENT TOGGLE ===
-			if (! empty($conf->productbatch->enabled)) {
-				require_once DOL_DOCUMENT_ROOT . '/productbatch/class/batch.class.php';
-				$batch = new ProductBatch($db);
-				$on    = (int) GETPOST('lotmanaged', 'int');
-
-				if ($on) {
-					$batch->enableForProduct($object->id);
-				} else {
-					$batch->disableForProduct($object->id);
+		// Only on create/update of a saved product
+		if (
+			($action === 'create' || $action === 'update')
+			&& $object->element === 'product'
+			&& ! empty($object->id)
+		) {
+			// === SAVE STOCKABLE_PRODUCT VALUE ===
+			if (isset($_POST['stockable_product'])) {
+				$val = GETPOST('stockable_product', 'int') ? 1 : 0;
+				$sql = "UPDATE " . MAIN_DB_PREFIX . "product
+                    SET stockable_product=" . $val . "
+                    WHERE rowid=" . (int)$object->id;
+				if ($this->db->query($sql) === false) {
+					$this->errors[] = $this->db->error();
+					$error++;
 				}
 			}
-			// === END BATCH MANAGEMENT ===
+			// === END SAVE STOCKABLE_PRODUCT ===
 
-			// ... your existing nutritional & allergen code goes here ...
-
+			// … your existing nutritional & allergen saving code …
 		}
 
-		if (!$error) {
-			$this->results   = array('myreturn' => 999);
-			$this->resprints = 'Nutritional declaration saved successfully';
-			return 0; // Continue standard processing.
-		} else {
-			$this->errors[] = 'Error saving nutritional declaration';
-			return -1;
-		}
+		return $error ? -1 : 0;
 	}
 
 	/**
@@ -400,42 +394,66 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$this->resprints = '';
 
-		// Check that we are on the product card.
+		// Only on the product card
 		if (in_array('productcard', explode(':', $parameters['context']))) {
 
 			if ($action == 'create' || $action == 'edit') {
-				if (! empty($conf->productbatch->enabled) && $object->type == Product::TYPE_PRODUCT) {
-					require_once DOL_DOCUMENT_ROOT . '/productbatch/class/batch.class.php';
-					$batch   = new ProductBatch($db);
-					$enabled = $batch->isEnabledForProduct($object->id);
+				// … your existing allergens rendering code …
 
+				// === STOCKABLE_PRODUCT EDITABLE CHECKBOX ===
+				if (
+					($object->isProduct()
+						|| ($object->isService()
+							&& ! empty($conf->global->STOCK_SUPPORTS_SERVICES)
+						)
+					)
+					&& isModEnabled('stock')
+					&& ! $object->hasbatch()
+				) {
 					$this->resprints .= '<tr>';
-					$this->resprints .= '  <td>' . $langs->trans('BatchManaged') . '</td>';
-					$this->resprints .= '  <td colspan="3">';
-					$this->resprints .= '    <input type="checkbox"'
-						. ' name="lotmanaged" value="1"'
-						. ($enabled ? ' checked' : '')
-						. '> ' . $langs->trans('EnableBatchForThisProduct');
-					$this->resprints .= '  </td>';
-					$this->resprints .= '</tr>';
-					$this->resprints .= '<tr><td colspan="4"><br></td></tr>';
-				}
-			} else {
-				if (! empty($conf->productbatch->enabled) && $object->type == Product::TYPE_PRODUCT) {
-					require_once DOL_DOCUMENT_ROOT . '/productbatch/class/batch.class.php';
-					$batch   = new ProductBatch($db);
-					$enabled = $batch->isEnabledForProduct($object->id);
-
-					$this->resprints .= '<tr>';
-					$this->resprints .= '  <td>' . $langs->trans('BatchManaged') . '</td>';
-					$this->resprints .= '  <td colspan="3">'
-						. ($enabled
-							? $langs->trans('Yes')
-							: $langs->trans('No'))
+					$this->resprints .=   '<td valign="top">'
+						. $form->textwithpicto(
+							$langs->trans("StockableProduct"),
+							$langs->trans("StockableProductDescription")
+						)
+						. '</td>';
+					$this->resprints .=   '<td>'
+						. '<input type="checkbox"'
+						. ' name="stockable_product"'
+						. ' value="1"'
+						. ($object->stockable_product == 1 ? ' checked' : '')
+						. '>'
 						. '</td>';
 					$this->resprints .= '</tr>';
-					$this->resprints .= '<tr><td colspan="4"><br></td></tr>';
 				}
+				// === END EDITABLE STOCKABLE_PRODUCT ===
+
+			} else {
+				// === VIEW-ONLY STOCKABLE_PRODUCT ===
+				if (
+					($object->isProduct()
+						|| ($object->isService()
+							&& ! empty($conf->global->STOCK_SUPPORTS_SERVICES)
+						)
+					)
+					&& isModEnabled('stock')
+					&& ! $object->hasbatch()
+				) {
+					$this->resprints .= '<tr>';
+					$this->resprints .=   '<td valign="top">'
+						. $form->textwithpicto(
+							$langs->trans("StockableProduct"),
+							$langs->trans("StockableProductDescription")
+						)
+						. '</td>';
+					$this->resprints .=   '<td>'
+						. '<input type="checkbox" readonly disabled'
+						. ($object->stockable_product == 1 ? ' checked' : '')
+						. '>'
+						. '</td>';
+					$this->resprints .= '</tr>';
+				}
+				// === END VIEW-ONLY STOCKABLE_PRODUCT ===
 			}
 		}
 
