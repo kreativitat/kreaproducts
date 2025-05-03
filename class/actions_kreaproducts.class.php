@@ -339,54 +339,57 @@ class ActionsKreaProducts extends CommonHookActions
 	/**
 	 * Overload the doActions function : replacing the parent's function with the one below
 	 *
-	 * @param	array<string,mixed>	$parameters		Hook metadata (context, etc...)
-	 * @param	CommonObject		$object			The object to process (an invoice if you are in invoice module, a propale in propale's module, etc...)
-	 * @param	?string				$action			Current action (if set). Generally create or edit or null
-	 * @param	HookManager			$hookmanager	Hook manager propagated to allow calling another hook
-	 * @return	int									Return integer < 0 on error, 0 on success, 1 to replace standard code
+	 * @param  array<string,mixed> $parameters  Hook metadata (context, etc...)
+	 * @param  CommonObject        $object      The object to process
+	 * @param  ?string             $action      Current action ("create" or "update")
+	 * @param  HookManager         $hookmanager Hook manager
+	 * @return int                               <0 on error, 0 to continue standard code
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $db, $conf, $langs, $user;
+		global $db, $conf;
 
 		$error = 0;
 
-		// Only on create/update of a saved product
+		// Only on create/update of an existing product, when stock module is enabled and no batch on this item
 		if (
 			($action === 'create' || $action === 'update')
 			&& $object->element === 'product'
 			&& ! empty($object->id)
+			&& isModEnabled('stock')
+			&& ! $object->hasbatch()
+			&& ($object->isProduct()
+				|| ($object->isService() && ! empty($conf->global->STOCK_SUPPORTS_SERVICES)))
 		) {
-			// === SAVE STOCKABLE_PRODUCT VALUE ===
-			if (isset($_POST['stockable_product'])) {
-				$val = GETPOST('stockable_product', 'int') ? 1 : 0;
-				$sql = "UPDATE " . MAIN_DB_PREFIX . "product
-                    SET stockable_product=" . $val . "
-                    WHERE rowid=" . (int)$object->id;
-				if ($this->db->query($sql) === false) {
-					$this->errors[] = $this->db->error();
-					$error++;
-				}
-			}
-			// === END SAVE STOCKABLE_PRODUCT ===
+			// Grab posted checkbox value
+			$val = GETPOST('stockable_product', 'int') ? 1 : 0;
 
-			// … your existing nutritional & allergen saving code …
+			// Direct SQL update
+			$sql  = "UPDATE " . MAIN_DB_PREFIX . "product";
+			$sql .= " SET stockable_product = " . $val;
+			$sql .= " WHERE rowid = " . ((int) $object->id);
+			$resql = $db->query($sql);
+			if (! $resql) {
+				$this->errors[] = $db->lasterror();
+				$error++;
+			}
 		}
 
 		return $error ? -1 : 0;
 	}
 
+
 	/**
-	 * Render additional form options for product nutritional declaration using the Nutritional class.
+	 * Render additional form options on the product card.
 	 *
-	 * This method displays nutritional fields on the product card. In create/edit mode it shows input fields
-	 * populated with existing data (if any) from the nutritional table. In view (read-only) mode it displays the values.
+	 * In create/edit it shows a live checkbox, in view it shows a disabled one.
+	 * It will read the current stockable_product value straight from the database.
 	 *
-	 * @param array $parameters Hook parameters (should contain a key 'context', e.g., "productcard")
-	 * @param CommonObject $object The product object.
-	 * @param string $action Current action ("create", "edit", or view)
-	 * @param HookManager $hookmanager Hook manager object.
-	 * @return int 0 on success.
+	 * @param  array               $parameters  Hook parameters (must contain 'context')
+	 * @param  CommonObject        $object      The product object.
+	 * @param  string              $action      Current action ("create", "edit", or anything else for view)
+	 * @param  HookManager         $hookmanager Hook manager
+	 * @return int                               0 on success.
 	 */
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
@@ -394,71 +397,64 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$this->resprints = '';
 
-		// Only on the product card
-		if (in_array('productcard', explode(':', $parameters['context']))) {
+		// Only on the product card tab
+		if (! in_array('productcard', explode(':', $parameters['context']))) {
+			return 0;
+		}
 
-			if ($action == 'create' || $action == 'edit') {
-				// … your existing allergens rendering code …
+		// Only for stockable products/services without batches
+		$canStockToggle = isModEnabled('stock')
+			&& ! $object->hasbatch()
+			&& ($object->isProduct()
+				|| ($object->isService() && ! empty($conf->global->STOCK_SUPPORTS_SERVICES)));
 
-				// === STOCKABLE_PRODUCT EDITABLE CHECKBOX ===
-				if (
-					($object->isProduct()
-						|| ($object->isService()
-							&& ! empty($conf->global->STOCK_SUPPORTS_SERVICES)
-						)
-					)
-					&& isModEnabled('stock')
-					&& ! $object->hasbatch()
-				) {
-					$this->resprints .= '<tr>';
-					$this->resprints .=   '<td valign="top">'
-						. $form->textwithpicto(
-							$langs->trans("StockableProduct"),
-							$langs->trans("StockableProductDescription")
-						)
-						. '</td>';
-					$this->resprints .=   '<td>'
-						. '<input type="checkbox"'
-						. ' name="stockable_product"'
-						. ' value="1"'
-						. ($object->stockable_product == 1 ? ' checked' : '')
-						. '>'
-						. '</td>';
-					$this->resprints .= '</tr>';
-				}
-				// === END EDITABLE STOCKABLE_PRODUCT ===
+		if (! $canStockToggle) {
+			return 0;
+		}
 
-			} else {
-				// === VIEW-ONLY STOCKABLE_PRODUCT ===
-				if (
-					($object->isProduct()
-						|| ($object->isService()
-							&& ! empty($conf->global->STOCK_SUPPORTS_SERVICES)
-						)
-					)
-					&& isModEnabled('stock')
-					&& ! $object->hasbatch()
-				) {
-					$this->resprints .= '<tr>';
-					$this->resprints .=   '<td valign="top">'
-						. $form->textwithpicto(
-							$langs->trans("StockableProduct"),
-							$langs->trans("StockableProductDescription")
-						)
-						. '</td>';
-					$this->resprints .=   '<td>'
-						. '<input type="checkbox" readonly disabled'
-						. ($object->stockable_product == 1 ? ' checked' : '')
-						. '>'
-						. '</td>';
-					$this->resprints .= '</tr>';
-				}
-				// === END VIEW-ONLY STOCKABLE_PRODUCT ===
+		// Fetch the real value from the DB
+		$enabled = 0;
+		if (! empty($object->id)) {
+			$sql   = "SELECT stockable_product FROM " . MAIN_DB_PREFIX . "product";
+			$sql  .= " WHERE rowid = " . ((int) $object->id);
+			$resql = $db->query($sql);
+			if ($resql && $db->num_rows($resql) > 0) {
+				$row     = $db->fetch_object($resql);
+				$enabled = (int) $row->stockable_product;
 			}
 		}
 
+		// Build the single table row
+		$this->resprints .= '<tr>';
+		$this->resprints .=   '<td valign="top">'
+			.     $form->textwithpicto(
+				$langs->trans("StockableProduct"),
+				$langs->trans("StockableProductDescription")
+			)
+			.   '</td>';
+		$this->resprints .=   '<td>';
+
+		if ($action === 'create' || $action === 'edit') {
+			// editable checkbox
+			$this->resprints .= '<input type="checkbox"'
+				. ' name="stockable_product"'
+				. ' value="1"'
+				. ($enabled ? ' checked' : '')
+				. '>';
+		} else {
+			// read-only checkbox
+			$this->resprints .= '<input type="checkbox" readonly disabled'
+				. ($enabled ? ' checked' : '')
+				. '>';
+		}
+
+		$this->resprints .=   '</td>';
+		$this->resprints .= '</tr>';
+
 		return 0;
 	}
+
+
 
 	/* Add other hook methods here... */
 }
