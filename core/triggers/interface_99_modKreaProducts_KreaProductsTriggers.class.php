@@ -45,6 +45,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 	 */
 	public function runTrigger($action, $object, User $user, Translate $langs, Conf $conf)
 	{
+
+		global $db;
 		// ------------------------------------------------------------------
 		// If the KreaProducts module is not enabled, do nothing
 		if (! isModEnabled('kreaproducts')) {
@@ -106,18 +108,42 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				}
 				*/
 
+
+
+
+
 				include_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
 
 				if (!empty($conf->global->KREAGENPRODUCT_AUTO_DISMATLE_PRODUCTS_FROM_BOM)) {
 					// Check if the movement is a result of invoice validation
 					if ($object->origin_type == 'invoice_supplier') {
-						$dismantleController = new ProductDismantleController($this->db);
-						if ($dismantleController->productInDismantleCategory($object->product_id)) {
-							$bomId = $dismantleController->findBom($object->product_id);
-							if ($bomId) {
-								$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type);
-								if ($result != 0) {
-									return -1;
+
+						$sqlDate = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid = ' . (int)$object->origin_id;
+						$resDate = $db->query($sqlDate);
+						if ($resDate) {
+							$rowDate = $db->fetch_object($resDate);
+							if (!empty($rowDate->datef)) {
+								// Format date to MySQL DATETIME string
+								$dateInvoiceSql = $db->escape(dol_print_date($rowDate->datef, 'dayhourlog'));
+								$sqlUpd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement'
+									. ' SET datem = \'' . $dateInvoiceSql . '\''
+									. ' WHERE rowid = ' . (int)$object->id;
+								$resUpd = $db->query($sqlUpd);
+								if ($resUpd === false) {
+									dol_print_error($db);
+								}
+							}
+
+							$invoiceDateTs = $db->idate($rowDate->datef);
+
+							$dismantleController = new ProductDismantleController($db);
+							if ($dismantleController->productInDismantleCategory($object->product_id)) {
+								$bomId = $dismantleController->findBom($object->product_id);
+								if ($bomId) {
+									$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type, $invoiceDateTs);
+									if ($result != 0) {
+										return -1;
+									}
 								}
 							}
 						}

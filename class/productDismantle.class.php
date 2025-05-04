@@ -72,11 +72,14 @@ class ProductDismantleController extends CommonObject
         return false;
     }
 
-    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType)
+    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
 
         global $user, $conf;
+
+        $movementDate = $movementDate ?: dol_now();
+        $warehouseId  = (int)($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
 
         $defaultWarehouseId = !empty($conf->global->MAIN_DEFAULT_WAREHOUSE) ? $conf->global->MAIN_DEFAULT_WAREHOUSE : 0;
         $error = 0;
@@ -163,7 +166,7 @@ class ProductDismantleController extends CommonObject
                             $qty,
                             $product->cost_price,
                             "Consume for MO ($originRef)",
-                            dol_now(),
+                            $movementDate,
                             '',
                             '',
                             '',
@@ -182,7 +185,7 @@ class ProductDismantleController extends CommonObject
                             '',
                             '',
                             '',
-                            dol_now(),
+                            $movementDate,
                             $originId,
                             $originType
                         );
@@ -200,7 +203,7 @@ class ProductDismantleController extends CommonObject
                             '',
                             '',
                             '',
-                            dol_now(),
+                            $movementDate,
                             $originId,
                             $originType
                         );
@@ -213,7 +216,7 @@ class ProductDismantleController extends CommonObject
                             $qty,
                             $product->cost_price,
                             "Reverse produce for MO ($originRef)",
-                            dol_now(),
+                            $movementDate,
                             '',
                             '',
                             '',
