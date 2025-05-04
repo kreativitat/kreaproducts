@@ -118,29 +118,43 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 					// Check if the movement is a result of invoice validation
 					if ($object->origin_type == 'invoice_supplier') {
 
-						$sqlDate = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid = ' . (int)$object->origin_id;
-						$resDate = $db->query($sqlDate);
-						if ($resDate) {
-							$rowDate = $db->fetch_object($resDate);
-							if (!empty($rowDate->datef)) {
-								// Format date to MySQL DATETIME string
-								$dateInvoiceSql = $db->escape(dol_print_date($rowDate->datef, 'dayhourlog'));
-								$sqlUpd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement'
-									. ' SET datem = \'' . $dateInvoiceSql . '\''
-									. ' WHERE rowid = ' . (int)$object->id;
-								$resUpd = $db->query($sqlUpd);
-								if ($resUpd === false) {
-									dol_print_error($db);
+						if (!empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA)) {
+
+							$sqlDate = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid = ' . (int)$object->origin_id;
+							$resDate = $db->query($sqlDate);
+							if ($resDate) {
+								$rowDate = $db->fetch_object($resDate);
+								if (!empty($rowDate->datef)) {
+									// Format date to MySQL DATETIME string
+									$dateInvoiceSql = $db->escape(dol_print_date($rowDate->datef, 'dayhourlog'));
+									$sqlUpd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement'
+										. ' SET datem = \'' . $dateInvoiceSql . '\''
+										. ' WHERE rowid = ' . (int)$object->id;
+									$resUpd = $db->query($sqlUpd);
+									if ($resUpd === false) {
+										dol_print_error($db);
+									}
+								}
+
+								$invoiceDateTs = $db->idate($rowDate->datef);
+
+								$dismantleController = new ProductDismantleController($db);
+								if ($dismantleController->productInDismantleCategory($object->product_id)) {
+									$bomId = $dismantleController->findBom($object->product_id);
+									if ($bomId) {
+										$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type, $invoiceDateTs);
+										if ($result != 0) {
+											return -1;
+										}
+									}
 								}
 							}
-
-							$invoiceDateTs = $db->idate($rowDate->datef);
-
+						} else {
 							$dismantleController = new ProductDismantleController($db);
 							if ($dismantleController->productInDismantleCategory($object->product_id)) {
 								$bomId = $dismantleController->findBom($object->product_id);
 								if ($bomId) {
-									$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type, $invoiceDateTs);
+									$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type);
 									if ($result != 0) {
 										return -1;
 									}
