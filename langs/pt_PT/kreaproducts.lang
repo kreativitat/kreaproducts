@@ -43,6 +43,7 @@ KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configurar classe de unidades de peso existe
 KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabela nutricional dentro da aba da ficha técnica
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagar preço de custo
 KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
+KREAPRODUCTS_STOCK_MOVEMENT_DATA = Data de movimento de stocks é o dia da fatura
 
 #
 # About page

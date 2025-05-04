@@ -124,6 +124,9 @@ $item->defaultFieldValue = '';
 // Tabela nutricional dentro da aba das fichas técnicas dos produtos
 $formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
 
+// Data de movimentos de stocks dia da fatura
+$formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+
 /*
 // Enter here all parameters in your setup page
 
