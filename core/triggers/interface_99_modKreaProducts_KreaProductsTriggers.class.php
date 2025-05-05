@@ -113,7 +113,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 				/* -------- Inventory origin -------- */
 				if ($object->origin_type === 'inventory') {
-					$sql = 'SELECT date_validation FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid = ' . (int)$object->origin_id;
+					$sql = 'SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid = ' . (int)$object->origin_id;
 					$res = $db->query($sql);
 					if ($res && ($row = $db->fetch_object($res))) {
 						$dateToApply = $row->date_validation; // MySQL datetime
