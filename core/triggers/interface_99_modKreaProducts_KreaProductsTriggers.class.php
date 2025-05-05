@@ -10,6 +10,7 @@
 require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
+include_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
 
 /**
  *  Class of triggers for KreaProducts module
@@ -96,70 +97,46 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				return 1;
 
 			case 'STOCK_MOVEMENT':
-				//$responseString = json_encode($object, JSON_PRETTY_PRINT);
-				//dol_syslog("arraytoproduce: $responseString");
+				// Only handle supplier invoice and inventory origins
+				if (empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA)) break;
 
-				/*
-				if (is_object($object)) {
-					$responseString = json_encode($object, JSON_PRETTY_PRINT);
-					dol_syslog("STOCK_MOVEMENT Trigger Object (JSON): $responseString", LOG_DEBUG);
-				} else {
-					dol_syslog("STOCK_MOVEMENT Trigger: Provided object is not serializable or not an object", LOG_WARNING);
+				$dateToApply = null;
+
+				/* -------- Supplier invoice origin -------- */
+				if ($object->origin_type === 'invoice_supplier') {
+					$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid = ' . (int)$object->origin_id;
+					$res = $db->query($sql);
+					if ($res && ($row = $db->fetch_object($res))) {
+						$dateToApply = $row->datef; // MySQL datetime
+					}
 				}
-				*/
 
+				/* -------- Inventory origin -------- */
+				if ($object->origin_type === 'inventory') {
+					$sql = 'SELECT date_validation FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid = ' . (int)$object->origin_id;
+					$res = $db->query($sql);
+					if ($res && ($row = $db->fetch_object($res))) {
+						$dateToApply = $row->date_validation; // MySQL datetime
+					}
+				}
 
+				/* -------- Apply date -------- */
+				if ($dateToApply) {
+					$dateSql = $db->escape(dol_print_date($dateToApply, 'dayhourlog'));
+					$sqlUpd  = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement'
+						. ' SET datem = \'' . $dateSql . '\''
+						. ' WHERE rowid = ' . (int)$object->id;
+					$db->query($sqlUpd);
+				}
 
-
-
-				include_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
-
-				if (!empty($conf->global->KREAGENPRODUCT_AUTO_DISMATLE_PRODUCTS_FROM_BOM)) {
-					// Check if the movement is a result of invoice validation
-					if ($object->origin_type == 'invoice_supplier') {
-
-						if (!empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA)) {
-
-							$sqlDate = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid = ' . (int)$object->origin_id;
-							$resDate = $db->query($sqlDate);
-							if ($resDate) {
-								$rowDate = $db->fetch_object($resDate);
-								if (!empty($rowDate->datef)) {
-									// Format date to MySQL DATETIME string
-									$dateInvoiceSql = $db->escape(dol_print_date($rowDate->datef, 'dayhourlog'));
-									$sqlUpd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement'
-										. ' SET datem = \'' . $dateInvoiceSql . '\''
-										. ' WHERE rowid = ' . (int)$object->id;
-									$resUpd = $db->query($sqlUpd);
-									if ($resUpd === false) {
-										dol_print_error($db);
-									}
-								}
-
-								$invoiceDateTs = $db->idate($rowDate->datef);
-
-								$dismantleController = new ProductDismantleController($db);
-								if ($dismantleController->productInDismantleCategory($object->product_id)) {
-									$bomId = $dismantleController->findBom($object->product_id);
-									if ($bomId) {
-										$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type, $invoiceDateTs);
-										if ($result != 0) {
-											return -1;
-										}
-									}
-								}
-							}
-						} else {
-							$dismantleController = new ProductDismantleController($db);
-							if ($dismantleController->productInDismantleCategory($object->product_id)) {
-								$bomId = $dismantleController->findBom($object->product_id);
-								if ($bomId) {
-									$result = $dismantleController->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type);
-									if ($result != 0) {
-										return -1;
-									}
-								}
-							}
+				/* -------- Dismantle logic (only for supplier invoice moves) -------- */
+				if ($object->origin_type === 'invoice_supplier') {
+					$dismantle = new ProductDismantleController($db);
+					if ($dismantle->productInDismantleCategory($object->product_id)) {
+						$bomId = $dismantle->findBom($object->product_id);
+						if ($bomId) {
+							$ts = dol_stringtotime($dateToApply ?: '');
+							$dismantle->produceAndConsume($bomId, $object->qty, $object->price, $object->label, $object->origin_id, $object->origin_type, $ts);
 						}
 					}
 				}
