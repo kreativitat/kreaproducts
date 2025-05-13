@@ -45,8 +45,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			case 'PRODUCT_PRICE_MODIFY':
 				dol_syslog("Handling PRODUCT_PRICE_MODIFY for product #{$object->id}", LOG_DEBUG);
 				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
-                   			dol_syslog("Auto-sync enabled, calling ProductUpdater::updateProductAttributes()", LOG_INFO);	
-                   			ProductUpdater::updateProductAttributes($object->id, $user);
+					dol_syslog("Auto-sync enabled, calling ProductHierarchy::updateProductAttributes()", LOG_INFO);
+					ProductHierarchy::updateProductAttributes($object->id, $user);
 				} else {
 					dol_syslog("Auto-sync disabled (KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE=0)", LOG_DEBUG);
 					return 0;
