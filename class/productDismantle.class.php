@@ -90,21 +90,21 @@ class ProductDismantleController extends CommonObject
             dol_syslog("Failed to fetch BOM details", LOG_ERR);
             return -1;
         }
-        
+
         $productToConsume = new Product($this->db);
-if ($productToConsume->fetch($bom->fk_product) > 0) {
-    $currentCostPrice = $productToConsume->cost_price;
-    dol_syslog(
-        "Current cost price for product #".$bom->fk_product.": ".$currentCostPrice,
-        LOG_DEBUG
-    );
-} else {
-    dol_syslog(
-        "Failed to fetch product #".$bom->fk_product." for cost price",
-        LOG_ERR
-    );
-    $currentCostPrice = null; // handle error as needed
-}
+        if ($productToConsume->fetch($bom->fk_product) > 0) {
+            $currentCostPrice = $productToConsume->cost_price;
+            dol_syslog(
+                "Current cost price for product #" . $bom->fk_product . ": " . $currentCostPrice,
+                LOG_DEBUG
+            );
+        } else {
+            dol_syslog(
+                "Failed to fetch product #" . $bom->fk_product . " for cost price",
+                LOG_ERR
+            );
+            $currentCostPrice = null; // handle error as needed
+        }
 
         // Ensure BOM has lines
         if (!is_array($bom->lines) || empty($bom->lines)) {
@@ -124,9 +124,6 @@ if ($productToConsume->fetch($bom->fk_product) > 0) {
             'fk_warehouse' => $defaultWarehouseId,
         ];
         dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
-        
-        
-        
 
         // Add BOM components to produce
         foreach ($bom->lines as $line) {

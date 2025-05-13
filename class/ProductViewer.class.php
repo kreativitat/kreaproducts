@@ -6,7 +6,7 @@
  * Provides methods to build a non‐recursive map of product associations, display
  * a fancy ASCII tree of children/parents, and recalculate cost prices.
  */
-class ProductHierarchy
+class ProductHierarchyTree
 {
 
     /** @var LocalProduct[]  productMap[productId] */
@@ -46,7 +46,8 @@ class ProductHierarchy
         print '<table class="border tableforfield centpercent">';
         // Use getNomUrl(1) to generate a clickable reference link
         $linkRef = $prod->getNomUrl(1);
-        print '<tr><td class="titlefield">' . $langs->trans("Ref") . '</td><td colspan="3">' . $linkRef . '</td></tr>';
+        print '<tr><td class="titlefield">' . $langs->trans("Ref") . '</td><td colspan="3">' . $linkRef . '</td>';
+        print '</tr>';
 
         $lp = self::getLocalProduct($productId);
         $nbChildren = $lp ? count($lp->children) : 0;

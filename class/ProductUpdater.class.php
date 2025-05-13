@@ -1,19 +1,4 @@
 <?php
-/**
- * ProductHierarchy – v2.3
- *
- * Bug‑fix release
- * ----------------
- * 🐛 **Double counting** – The previous build added each parent→child link twice
- * (once while visiting the parent and again while visiting the child) which
- * doubled every computed `cost_price`.  The children collection is now an
- * *associative array* keyed by childId, so duplicates collapse naturally.
- *
- *   - `ProductNode::$children` changed from `ChildLink[]` to
- *     `array<int,float>` (childId ⇒ qty).
- *   - `propagateUpstream()` and `GraphBuilder` updated accordingly; the
- *     `ChildLink` class was removed as it’s no longer needed.
- */
 
 class ProductHierarchy
 {
@@ -23,10 +8,8 @@ class ProductHierarchy
 
     public static $inProgress = false;
 
-    /** @deprecated exposed for legacy code */
+    // deprecated exposed for legacy code
     public static $productMap = [];
-
-    // ------------------------------------------------------------- PUBLIC --
 
     public static function updateProductAttributes($productId, $user)
     {
@@ -42,10 +25,9 @@ class ProductHierarchy
             require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
             require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 
-            // Guards -------------------------------------------------------
-
+            // Guards
             $globalOn = empty($conf->global->{self::GLOBAL_CONST}) ? true
-                       : (bool)$conf->global->{self::GLOBAL_CONST};
+                : (bool)$conf->global->{self::GLOBAL_CONST};
             if (!$globalOn) {
                 dol_syslog(__METHOD__ . ' global sync disabled', LOG_INFO);
                 return 0;
@@ -63,8 +45,7 @@ class ProductHierarchy
                 return 0;
             }
 
-            // Build graph --------------------------------------------------
-
+            // Build graph
             $nodes            = GraphBuilder::aroundPivot($productId);
             self::$productMap = $nodes; // legacy exposure
             $pivot            = $nodes[$productId] ?? null;
@@ -73,8 +54,7 @@ class ProductHierarchy
                 return 0;
             }
 
-            // Propagate ----------------------------------------------------
-
+            // Propagate
             $visited = [];
             self::propagateUpstream($pivot, $nodes, $user, $visited);
             dol_syslog(__METHOD__ . " cost propagation completed for pid=$productId", LOG_INFO);
@@ -83,8 +63,6 @@ class ProductHierarchy
             self::$inProgress = false;
         }
     }
-
-    // --------------------------------------------------------- INTERNAL --
 
     private static function propagateUpstream(ProductNode $node, array &$nodes, $user, array &$visited): void
     {
@@ -96,7 +74,7 @@ class ProductHierarchy
             if (!isset($nodes[$parentId])) continue;
             $parent = $nodes[$parentId];
 
-            // --- Compute new cost from unique child list -----------------
+            // Compute new cost from unique child list
             $newCost = 0.0;
             foreach ($parent->children as $childId => $qty) {
                 $childNode = $nodes[$childId] ?? null;
@@ -104,7 +82,7 @@ class ProductHierarchy
                 $newCost  += $qty * $childCost;
             }
 
-            // --- Persist if Δ meaningful --------------------------------
+            // Persist if Δ meaningful
             if (abs($newCost - $parent->cost) >= self::DELTA) {
                 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
                 $p = new Product($db);
@@ -119,20 +97,21 @@ class ProductHierarchy
                 }
             }
 
-            // --- Recurse further up -------------------------------------
+            // Recurse further up
             self::propagateUpstream($parent, $nodes, $user, $visited);
         }
     }
 }
 
-// ------------------------------------------------------ DATA OBJECTS ----
-
 class ProductNode
 {
     public $id;
+
     public $cost = 0.0;
+
     /** @var array<int,float> childId ⇒ qty */
     public $children = [];
+
     /** @var array<int,float> parentId ⇒ qty */
     public $parents  = [];
 
@@ -142,8 +121,6 @@ class ProductNode
         $this->cost = $cost;
     }
 }
-
-// --------------------------------------------------------- GRAPH ----
 
 final class GraphBuilder
 {
@@ -179,9 +156,10 @@ final class GraphBuilder
                 $nodes[$parentId] = $nodes[$parentId] ?? new ProductNode($parentId);
                 $nodes[$childId]  = $nodes[$childId]  ?? new ProductNode($childId);
 
-                // ---- Downward (unique) ----------------------------------
+                // Downward (unique)
                 $nodes[$parentId]->children[$childId] = $qty; // overwrite duplicates
-                // ---- Upward  (unique) ----------------------------------
+
+                // Upward  (unique)
                 $nodes[$childId]->parents[$parentId]  = $qty; // overwrite duplicates
 
                 if (!isset($seen[$parentId])) $queue[] = $parentId;
@@ -189,7 +167,7 @@ final class GraphBuilder
             }
         }
 
-        // Bulk‑load current cost_price -----------------------------------
+        // Bulk‑load current cost_price
         $idList = implode(',', array_keys($nodes));
         if ($idList) {
             $sql2 = 'SELECT rowid, cost_price FROM ' . MAIN_DB_PREFIX . 'product WHERE rowid IN (' . $idList . ')';
