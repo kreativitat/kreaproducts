@@ -90,6 +90,21 @@ class ProductDismantleController extends CommonObject
             dol_syslog("Failed to fetch BOM details", LOG_ERR);
             return -1;
         }
+        
+        $productToConsume = new Product($this->db);
+if ($productToConsume->fetch($bom->fk_product) > 0) {
+    $currentCostPrice = $productToConsume->cost_price;
+    dol_syslog(
+        "Current cost price for product #".$bom->fk_product.": ".$currentCostPrice,
+        LOG_DEBUG
+    );
+} else {
+    dol_syslog(
+        "Failed to fetch product #".$bom->fk_product." for cost price",
+        LOG_ERR
+    );
+    $currentCostPrice = null; // handle error as needed
+}
 
         // Ensure BOM has lines
         if (!is_array($bom->lines) || empty($bom->lines)) {
@@ -109,6 +124,9 @@ class ProductDismantleController extends CommonObject
             'fk_warehouse' => $defaultWarehouseId,
         ];
         dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
+        
+        
+        
 
         // Add BOM components to produce
         foreach ($bom->lines as $line) {
@@ -142,7 +160,7 @@ class ProductDismantleController extends CommonObject
                     $product->cost_price = $priceMovement;
                 } else {
                     if ($qty > 0) {
-                        $product->cost_price = $priceMovement / $qty;
+                        $product->cost_price = $currentCostPrice / $item['qty'];
                     } else {
                         dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
                         $error++;
