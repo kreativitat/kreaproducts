@@ -7,16 +7,19 @@ require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/lib/mrp_mo.lib.php';
 
+
 class ProductDismantleController extends CommonObject
 {
-    /** @var DoliDB */
     public $db;
 
-    /** @var Mo */
+    /**
+     * @var Mo $mo {@type Mo}
+     */
     public $mo;
 
     public function __construct($db)
     {
+        global $db, $conf;
         $this->db = $db;
         $this->mo = new Mo($this->db);
     }
@@ -24,48 +27,44 @@ class ProductDismantleController extends CommonObject
     /**
      * Find BOM ID associated with a product ID.
      *
-     * @param int $productId
-     * @return int|false
+     * @param int $productId The ID of the product to find the BOM for.
+     * @return int|false The BOM ID if found, false otherwise.
      */
     public function findBom($productId)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "bom_bom
-                WHERE fk_product = " . (int)$productId . "
-                  AND bomtype = 1";  // 1 = dismantle BOM
+            WHERE fk_product = " . (int) $productId . "
+            AND bomtype = 1"; // Assuming bomtype = 1 indicates a dismantle type BOM
 
         $resql = $this->db->query($sql);
         if ($resql) {
             if ($obj = $this->db->fetch_object($resql)) {
-                return (int)$obj->rowid;
+                return (int) $obj->rowid; // Return the BOM ID
+            } else {
+                // No BOM found for the product
+                return false;
             }
-            return false; // no BOM found
+        } else {
+            // Query failed
+            dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
+            return false;
         }
-
-        dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
-        return false;
     }
 
-    /**
-     * Check if product is in the “dismantle” category.
-     *
-     * @param int $productId
-     * @return bool
-     */
     public function productInDismantleCategory($productId)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
+
         global $conf;
 
-        $dismantleCat = (int)($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY ?? 0);
-        if (!$dismantleCat) return false;
+        $productDismantleCategory = !empty($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY) ? $conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY : 0;
 
-        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product
-                WHERE fk_product = " . (int)$productId;
+        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product WHERE fk_product = " . $productId;
         $resql = $this->db->query($sql);
         if ($resql) {
             while ($obj = $this->db->fetch_object($resql)) {
-                if ((int)$obj->fk_categorie === $dismantleCat) {
+                if ($obj->fk_categorie == $productDismantleCategory) { // Dismantle category ID
                     return true;
                 }
             }
@@ -73,128 +72,177 @@ class ProductDismantleController extends CommonObject
         return false;
     }
 
-    /**
-     * Consume the parent product and produce its components,
-     * allocating the parent’s total cost across the produced items.
-     *
-     * @param int    $bomId
-     * @param float  $qtyMovement   Multiplier for BOM quantities
-     * @param float  $totalCost     Total cost of the batch being dismantled
-     * @param string $originRef
-     * @param int    $originId
-     * @param string $originType
-     * @param string $movementDate  (optional) “YYYY-MM-DD” or datetime
-     * @return int  0 on success, –1 on error
-     */
-    public function produceAndConsume($bomId, $qtyMovement, $totalCost, $originRef, $originId, $originType, $movementDate = null)
+    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null)
     {
-        global $user, $conf;
         dol_syslog(__METHOD__, LOG_DEBUG);
+
+        global $user, $conf;
 
         $movementDate = $movementDate ?: dol_now();
         $warehouseId  = (int)($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
 
-        // Start transaction
-        $this->db->begin();
+        $defaultWarehouseId = !empty($conf->global->MAIN_DEFAULT_WAREHOUSE) ? $conf->global->MAIN_DEFAULT_WAREHOUSE : 0;
+        $error = 0;
 
-        // 1) Load BOM
+        // Load BOM
         $bom = new BOM($this->db);
         if ($bom->fetch($bomId) <= 0) {
-            dol_syslog("Failed to fetch BOM #$bomId", LOG_ERR);
-            $this->db->rollback();
-            return -1;
-        }
-        if (empty($bom->lines)) {
-            dol_syslog("BOM #$bomId has no lines", LOG_WARNING);
-            $this->db->rollback();
+            dol_syslog("Failed to fetch BOM details", LOG_ERR);
             return -1;
         }
 
+        // Ensure BOM has lines
+        if (!is_array($bom->lines) || empty($bom->lines)) {
+            dol_syslog("BOM has no lines", LOG_WARNING);
+            return -1;
+        }
+
+        $arraytoconsume = [];
+        $arraytoproduce = [];
+
+        $finalProductQty = $bom->qty;
+
+        // Add main product to consume
+        $arraytoconsume[] = [
+            'objectid'    => $bom->fk_product,
+            'qty'         => $finalProductQty,
+            'fk_warehouse' => $defaultWarehouseId,
+        ];
+        dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
+
+        // Add BOM components to produce
+        foreach ($bom->lines as $line) {
+            $arraytoproduce[] = [
+                'objectid'    => $line->fk_product,
+                'qty'         => $line->qty,
+                'fk_warehouse' => $defaultWarehouseId,
+            ];
+        }
+        dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
+
+        // Initialize stock movement handler
         $stockmove = new MouvementStock($this->db);
 
-        // 2) Consume the parent product from stock
-        $parent = new Product($this->db);
-        if ($parent->fetch($bom->fk_product) <= 0) {
-            dol_syslog("Cannot fetch parent product #".$bom->fk_product, LOG_ERR);
-            $this->db->rollback();
+        // Process consumption and production arrays
+        foreach (['arraytoconsume', 'arraytoproduce'] as $arrayname) {
+            foreach (${$arrayname} as $item) {
+                $product = new Product($this->db);
+                if ($product->fetch($item['objectid']) <= 0) {
+                    dol_syslog("Failed to fetch product with ID " . $item['objectid'], LOG_ERR);
+                    $error++;
+                    break;
+                }
+
+                // Calculate signed and absolute quantities
+                $rawQty = $item['qty'] * $qtyMovement;
+                $qty    = abs($rawQty);
+
+                // Update cost price
+                if ($arrayname === 'arraytoconsume') {
+                    $product->cost_price = $priceMovement;
+                } else {
+                    if ($qty > 0) {
+                        $product->cost_price = $priceMovement / $qty;
+                    } else {
+                        dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
+                        $error++;
+                        break;
+                    }
+                }
+                if ($product->update($product->id, $user) <= 0) {
+                    dol_syslog("Failed to update cost_price for product ID " . $item['objectid'], LOG_ERR);
+                    $error++;
+                    break;
+                }
+
+                // Perform the correct stock movement:
+                if ($arrayname === 'arraytoconsume') {
+                    if ($rawQty >= 0) {
+                        // Normal consumption: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Consume for MO ($originRef)",
+                            $movementDate,
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
+                    } else {
+                        // Reverse consumption: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse consume for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            $movementDate,
+                            $originId,
+                            $originType
+                        );
+                    }
+                } else {
+                    if ($rawQty >= 0) {
+                        // Normal production: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Produce for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            $movementDate,
+                            $originId,
+                            $originType
+                        );
+                    } else {
+                        // Reverse production: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse produce for MO ($originRef)",
+                            $movementDate,
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
+                    }
+                }
+
+                // Link origin and check for errors
+                $stockmove->setOrigin($originType, $originId);
+                if ($result <= 0) {
+                    dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
+                    $error++;
+                    break;
+                }
+            }
+            if ($error) break;
+        }
+
+        if ($error) {
+            dol_syslog("Errors encountered, rolling back.", LOG_ERR);
             return -1;
         }
-        $parentQty = $bom->qty * $qtyMovement;
-        $rc = $stockmove->livraison(
-            $user,
-            $parent->id,
-            $warehouseId,
-            $parentQty,
-            $parent->cost_price,
-            "Dismantle consume for MO ($originRef)",
-            $movementDate,
-            '', '', '',
-            $originId,
-            $originType
-        );
-        $stockmove->setOrigin($originType, $originId);
-        if ($rc <= 0) {
-            dol_syslog("Failed to consume parent product #".$parent->id, LOG_ERR);
-            $this->db->rollback();
-            return -1;
-        }
 
-        // 3) Compute total units to produce (for cost allocation)
-        $totalUnits = 0;
-        foreach ($bom->lines as $line) {
-            $totalUnits += ($line->qty * $qtyMovement);
-        }
-        if ($totalUnits <= 0) {
-            dol_syslog("Invalid total units to produce", LOG_ERR);
-            $this->db->rollback();
-            return -1;
-        }
-
-        // 4) Produce each component and set its new unit cost
-        foreach ($bom->lines as $line) {
-            $prodQty = $line->qty * $qtyMovement;
-            $unitCost = $totalCost / $totalUnits;  // allocate equally
-
-            $comp = new Product($this->db);
-            if ($comp->fetch($line->fk_product) <= 0) {
-                dol_syslog("Cannot fetch component #".$line->fk_product, LOG_ERR);
-                $this->db->rollback();
-                return -1;
-            }
-
-            // Update unit cost
-            $comp->cost_price = $unitCost;
-            if ($comp->update($user) < 0) {
-                dol_syslog("Failed to update cost_price for product #".$comp->id, LOG_ERR);
-                $this->db->rollback();
-                return -1;
-            }
-
-            // Put produced stock back in
-            $rc = $stockmove->reception(
-                $user,
-                $comp->id,
-                $warehouseId,
-                $prodQty,
-                $unitCost,
-                "Dismantle produce for MO ($originRef)",
-                '',
-                '', '',
-                $movementDate,
-                $originId,
-                $originType
-            );
-            $stockmove->setOrigin($originType, $originId);
-            if ($rc <= 0) {
-                dol_syslog("Failed to receive stock for product #".$comp->id, LOG_ERR);
-                $this->db->rollback();
-                return -1;
-            }
-        }
-
-        // 5) Commit if all went well
-        $this->db->commit();
-        dol_syslog("Dismantle processed successfully (MO #$originId)", LOG_DEBUG);
+        dol_syslog("MO processed successfully, transaction committed.", LOG_DEBUG);
         return 0;
     }
 }
