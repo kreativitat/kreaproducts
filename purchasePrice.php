@@ -160,7 +160,7 @@ if ($action == 'setcost_price') {
 			$error++;
 			setEventMessages($object->error, $object->errors, 'errors');
 		}
-		ProductHierarchy::updateProductAttributes($object->id, $user);
+		ProductUpdater::updateProductAttributes($object->id, $user);
 	}
 }
 if ($action == 'setkreap_spread_buyprice') {
@@ -393,7 +393,7 @@ if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
 	} else {
 		flush();
 	}
-	ProductHierarchy::updateProductAttributes($object->id, $user);
+	ProductUpdater::updateProductAttributes($object->id, $user);
 	exit;
 }
 
