@@ -39,8 +39,6 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/files.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductViewer.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
-
 
 //$permissiontoadd = (($object->type == Product::TYPE_PRODUCT && $user->hasRight('produit', 'creer')) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
 
@@ -52,21 +50,6 @@ $id = GETPOST('id', 'int');
 $action = GETPOST('action');
 $sortfield = GETPOST('sortfield', 'aZ09comma');
 $sortorder = GETPOST('sortorder', 'aZ09comma');
-
-if ($action === 'updateProductAttributes' && $id > 0) {
-    // (a) log to syslog so you know we hit this block
-    dol_syslog(">> productTree: updateProductAttributes triggered for id=$id", LOG_DEBUG);
-
-    // (b) do the work
-    ProductHierarchy::updateProductAttributes($id, $user);
-
-    // (c) let the user know
-    setEventMessages($langs->trans("PeçosDeCustoAtualizados"), null, 'mesgs');
-
-    // (d) redirect out immediately so the rest of the page renders fresh
-    header('Location: ' . $_SERVER['PHP_SELF'] . '?id=' . $id);
-    exit;
-}
 
 // Initialize objects
 $object = new Product($db);
@@ -143,13 +126,6 @@ if ($object->id) {
     // Generate final HTML (4 sections)
     $html = ProductHierarchyTree::getCompletePage($id);
     echo $html;
-
-    print '<div align="right">';
-    print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $id . '">';
-    print '<input type="hidden" name="action" value="updateProductAttributes">';
-    print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
-    print '</form>';
-    print '</div>';
 } else {
     print $langs->trans("ErrorUnknown");
 }
