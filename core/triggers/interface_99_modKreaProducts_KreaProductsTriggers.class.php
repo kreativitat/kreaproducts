@@ -36,27 +36,35 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 					ProductHierarchy::updateProductAttributes($object->id, $user);
 				}
-				break;
+				return 1;
 
 			case 'PRODUCT_MODIFY':
 			case 'PRODUCT_SUBPRODUCT_UPDATE':
 				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
 					KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
 				}
-				break;
+				return 1;
 
 			case 'STOCK_MOVEMENT':
+				// handleStockMovement() itself returns 1 or 0
 				return $this->handleStockMovement($object, $db, $conf);
+
+			case 'INVENTORY_RECORDED':
+			case 'INVENTORY_MODIFY':
+				// run our post-save rename hook
+				$this->renameInventoryHeaderRef($object, $db);
+				return 1;
 
 			default:
 				return 0;
 		}
-
-		return 1;
 	}
+
 
 	protected function handleStockMovement($move, $db, $conf)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		if (empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA)) {
 			return 0;
 		}
@@ -66,9 +74,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			$this->shiftSupplierInvoiceMoveToNoon($move, $db);
 		}
 		if ($move->origintype === 'inventory') {
-			// And normalize the inventory ref
-			$this->renameInventoryRefFromMove($move, $db);
-
 			$this->alignInventoryMoveTimestamp($move, $db);
 		}
 
@@ -90,6 +95,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	protected function shiftSupplierInvoiceMoveToNoon($move, $db)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid=' . (int)$move->origin_id;
 		$res = $db->query($sql);
 		if (!$res) {
@@ -116,6 +123,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	protected function alignInventoryMoveTimestamp($move, $db)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		$sql = 'SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid=' . (int)$move->origin_id;
 		$res = $db->query($sql);
 		if (!$res) {
@@ -141,6 +150,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	protected function recalculateAfterInventory($move, $db)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		// 1) Anchor: date_inventory
 		$sqlInv = 'SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid=' . (int)$move->origin_id;
 		$resInv = $db->query($sqlInv);
@@ -292,6 +303,8 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	protected function recalculateAfterSupplierInvoice($move, $db)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		// 1) Anchor timestamp
 		$anchor = $move->datem; // already shifted to noon
 
@@ -378,76 +391,73 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 	}
 
-	protected function renameInventoryRefFromMove($move, $db)
+	protected function renameInventoryHeaderRef($inventory, $db)
 	{
-		// 1) Fetch the inventory header
-		$sqlInv = 'SELECT rowid, ref, date_inventory'
-			. ' FROM ' . MAIN_DB_PREFIX . 'inventory'
-			. ' WHERE rowid=' . (int)$move->origin_id;
-		$resInv = $db->query($sqlInv);
-		if (!$resInv) {
-			dol_syslog("Error fetching inventory header for renaming: " . $db->lasterror(), LOG_ERR);
-			return;
-		}
-		$inv = $db->fetch_object($resInv);
-		if (!$inv) {
-			dol_syslog("No inventory found for id=" . (int)$move->origin_id, LOG_ERR);
-			return;
-		}
+		global $user;
+		dol_syslog(__METHOD__, LOG_DEBUG);
 
-		$oldRef = trim($inv->ref);
-		$date   = $inv->date_inventory;
+		// 1) Grab existing ref & date
+		$oldRef = trim($inventory->ref);
+		$date   = $inventory->date_inventory;
 		if (empty($oldRef) || empty($date)) {
-			// nothing to do
+			dol_syslog(__METHOD__ . " nothing to do (empty ref or date)", LOG_DEBUG);
 			return;
 		}
 
-		// 2) Compute YYYYMMDD prefix
-		$dt = new DateTime($date);
+		// 2) Normalize into a DateTime object (handle both timestamps and DATETIME strings)
+		if (preg_match('/^\d+$/', (string)$date)) {
+			// Pure integer: treat as Unix timestamp
+			$dt = new DateTime();
+			$dt->setTimestamp((int)$date);
+		} else {
+			// DATETIME string e.g. '2025-05-08 19:00:00'
+			try {
+				$dt = new DateTime($date);
+			} catch (Exception $e) {
+				dol_syslog(__METHOD__ . " failed to parse date_inventory='{$date}': " . $e->getMessage(), LOG_ERR);
+				return;
+			}
+		}
 		$prefix = $dt->format('YmdHi');
 
-		// 3) Determine suffix from oldRef
-		$upper = strtoupper($oldRef);
-		if (strpos($upper, 'PAT')  !== false)        $suffix = 'PATTIES';
-		elseif (strpos($upper, 'PAD')  !== false)    $suffix = 'PADARIA';
+		// 3) Decide suffix based on oldRef content
+		$up = strtoupper($oldRef);
+		if (strpos($up, 'PAT')  !== false) $suffix = 'PATTIES';
+		elseif (strpos($up, 'PAD')  !== false) $suffix = 'PADARIA';
 		elseif (
-			strpos($upper, 'CHA')  !== false
-			|| strpos($upper, 'LACT') !== false
-		)    $suffix = 'CHARCUTERIA_E_LACTICINIOS';
-		elseif (strpos($upper, 'DIVE') !== false)    $suffix = 'DIVERSOS';
-		elseif (strpos($upper, 'CERV') !== false)    $suffix = 'CERVEJAS';
-		elseif (strpos($upper, 'REFR') !== false)    $suffix = 'REFRIGERANTES';
+			strpos($up, 'CHA')  !== false
+			|| strpos($up, 'LACT') !== false
+		) $suffix = 'CHARCUTERIA_E_LACTICINIOS';
+		elseif (strpos($up, 'DIVE') !== false) $suffix = 'DIVERSOS';
+		elseif (strpos($up, 'CERV') !== false) $suffix = 'CERVEJAS';
+		elseif (strpos($up, 'REFR') !== false) $suffix = 'REFRIGERANTES';
 		else {
-			// no match → leave original
+			dol_syslog(__METHOD__ . " no matching suffix for '{$oldRef}'", LOG_DEBUG);
 			return;
 		}
 
+		// 4) Build newRef and bail if unchanged
 		$newRef = $prefix . '_' . $suffix;
 		if ($newRef === $oldRef) {
-			// already correct
+			dol_syslog(__METHOD__ . " newRef '{$newRef}' is identical to oldRef, skipping", LOG_DEBUG);
 			return;
 		}
 
-		dol_syslog("Rename inventory ref, oldRef: " . $oldRef);
-		dol_syslog("Rename inventory ref, date: " . $date);
-		dol_syslog("Rename inventory ref, prefix: " . $prefix);
-		dol_syslog("Rename inventory ref, suffix: " . $suffix);
-		dol_syslog("Rename inventory ref, newRef: " . $newRef);
-
-		// 4) Persist the change
-		$sqlUp = 'UPDATE ' . MAIN_DB_PREFIX . 'inventory'
+		// 5) Persist directly to DB
+		$sql = 'UPDATE ' . MAIN_DB_PREFIX . 'inventory'
 			. ' SET ref = \'' . $db->escape($newRef) . '\''
-			. ' WHERE rowid = ' . (int)$inv->rowid;
-		if (!$db->query($sqlUp)) {
-			dol_syslog("Error renaming inventory ref #{$inv->rowid}: " . $db->lasterror(), LOG_ERR);
-		} else {
-			dol_syslog("Renamed inventory ref #{$inv->rowid} from '{$oldRef}' to '{$newRef}'", LOG_INFO);
+			. ' WHERE rowid = ' . (int)$inventory->id;
+		if (! $db->query($sql)) {
+			dol_syslog(__METHOD__ . " Error renaming inventory #{$inventory->id}: " . $db->lasterror(), LOG_ERR);
+			return;
 		}
+		dol_syslog(__METHOD__ . " Renamed inventory #{$inventory->id} '{$oldRef}' → '{$newRef}'", LOG_INFO);
 	}
-
 
 	protected function dismantleIfNeeded($move, $db)
 	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
 		$d    = new ProductDismantleController($db);
 		if (!$d->productInDismantleCategory($move->product_id)) {
 			return;
