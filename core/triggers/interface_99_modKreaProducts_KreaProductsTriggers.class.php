@@ -66,6 +66,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			$this->shiftSupplierInvoiceMoveToNoon($move, $db);
 		}
 		if ($move->origintype === 'inventory') {
+			// And normalize the inventory ref
+			$this->renameInventoryRefFromMove($move, $db);
+
 			$this->alignInventoryMoveTimestamp($move, $db);
 		}
 
@@ -73,9 +76,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		if ($move->origintype === 'inventory') {
 			// Re‐compute stock levels after this inventory move
 			$this->recalculateAfterInventory($move, $db);
-
-			// And normalize the inventory ref
-			$this->renameInventoryRefFromMove($move, $db);
 		}
 		if ($move->origintype === 'invoice_supplier') {
 			// Re‐compute stock levels after this supplier‐invoice move
