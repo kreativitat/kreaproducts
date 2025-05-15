@@ -74,6 +74,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			$this->recalculateAfterInventory($move, $db);
 		}
 		if ($move->origintype === 'invoice_supplier') {
+			$this->recalculateAfterSupplierInvoice($move, $db);
 			$this->dismantleIfNeeded($move, $db);
 		}
 
@@ -280,6 +281,94 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 
 		dol_syslog("Inventory recalc OK (prod={$move->product_id}, wh={$warehouse}, snapshot={$snapshot}, moved={$moved}, new={$new})", LOG_INFO);
+	}
+
+	protected function recalculateAfterSupplierInvoice($move, $db)
+	{
+		// 1) Anchor timestamp
+		$anchor = $move->datem; // already shifted to noon
+
+		// 2) Determine warehouse
+		$warehouse = 0;
+		if (!empty($move->fk_entrepot)) {
+			$warehouse = (int)$move->fk_entrepot;
+		} elseif (!empty($move->fk_warehouse)) {
+			$warehouse = (int)$move->fk_warehouse;
+		}
+		if ($warehouse <= 0) {
+			dol_syslog("Cannot determine warehouse for supplier recalc", LOG_ERR);
+			return;
+		}
+
+		// 3) Determine batch (if any)
+		$batch = trim($move->batch ?? '');
+		$batchCondBefore = $batch !== ''
+			? "AND batch='" . $db->escape($batch) . "'"
+			: "AND (batch='' OR batch IS NULL)";
+		$batchCondAfter  = $batchCondBefore;
+
+		// 4) Compute snapshot: sum of all movements BEFORE anchor
+		$sqlSnap = "
+        SELECT COALESCE(SUM(value),0) AS snapshot
+          FROM " . MAIN_DB_PREFIX . "stock_mouvement
+         WHERE fk_product=" . (int)$move->product_id . "
+           AND fk_entrepot=" . $warehouse . "
+           AND datem<'" . $db->escape($anchor) . "'
+           AND origintype<>'inventory'
+           $batchCondBefore";
+		$resSnap = $db->query($sqlSnap);
+		$snapshot = 0.0;
+		if ($resSnap) {
+			$r = $db->fetch_object($resSnap);
+			$snapshot = (float)$r->snapshot;
+		}
+
+		// 5) Compute moved: sum of all movements ON OR AFTER anchor
+		$sqlMoved = "
+        SELECT COALESCE(SUM(value),0) AS moved
+          FROM " . MAIN_DB_PREFIX . "stock_mouvement
+         WHERE fk_product=" . (int)$move->product_id . "
+           AND fk_entrepot=" . $warehouse . "
+           AND datem>='" . $db->escape($anchor) . "'
+           AND origintype<>'inventory'
+           $batchCondAfter";
+		$resMoved = $db->query($sqlMoved);
+		$moved = 0.0;
+		if ($resMoved) {
+			$r = $db->fetch_object($resMoved);
+			$moved = (float)$r->moved;
+		}
+
+		// 6) Compute new reel
+		$newReel = $snapshot + $moved;
+		dol_syslog("Supplier recalc for prod={$move->product_id}, wh={$warehouse}, "
+			. "snapshot={$snapshot}, moved={$moved}, newReel={$newReel}", LOG_INFO);
+
+		// 7) Persist to product_stock
+		$sqlUp = "
+        UPDATE " . MAIN_DB_PREFIX . "product_stock
+           SET reel=" . $db->escape($newReel) . "
+         WHERE fk_product=" . (int)$move->product_id . "
+           AND fk_entrepot=" . $warehouse;
+		if (!$db->query($sqlUp)) {
+			dol_syslog("Error updating product_stock for supplier recalc: " . $db->lasterror(), LOG_ERR);
+		}
+
+		// 8) If batch-managed, update product_batch too
+		if ($batch !== '') {
+			$past = $snapshot; // for the batch, its “past” is the snapshot
+			$sqlUpBatch = "
+            UPDATE " . MAIN_DB_PREFIX . "product_batch pb
+            JOIN " . MAIN_DB_PREFIX . "product_stock ps
+              ON ps.rowid=pb.fk_product_stock
+             SET pb.qty=" . $db->escape($past) . "
+           WHERE ps.fk_product=" . (int)$move->product_id . "
+             AND ps.fk_entrepot=" . $warehouse . "
+             AND pb.batch='" . $db->escape($batch) . "'";
+			if (!$db->query($sqlUpBatch)) {
+				dol_syslog("Error updating product_batch for supplier recalc: " . $db->lasterror(), LOG_ERR);
+			}
+		}
 	}
 
 	protected function dismantleIfNeeded($move, $db)
