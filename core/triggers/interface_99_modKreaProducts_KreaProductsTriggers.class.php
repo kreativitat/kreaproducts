@@ -71,10 +71,17 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		// Then: full routines
 		if ($move->origintype === 'inventory') {
+			// Re‐compute stock levels after this inventory move
 			$this->recalculateAfterInventory($move, $db);
+
+			// And normalize the inventory ref
+			$this->renameInventoryRefFromMove($move, $db);
 		}
 		if ($move->origintype === 'invoice_supplier') {
+			// Re‐compute stock levels after this supplier‐invoice move
 			$this->recalculateAfterSupplierInvoice($move, $db);
+
+			// Then run any BOM dismantle logic
 			$this->dismantleIfNeeded($move, $db);
 		}
 
@@ -95,7 +102,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			return;
 		}
 
-		$new = substr($row->datef, 0, 10) . ' 12:00:00';
+		$new = substr($row->datef, 0, 10) . ' 10:00:00';
 		if ($new !== $move->datem) {
 			$upd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement
                        SET datem=\'' . $db->escape($new) . '\'
@@ -250,11 +257,11 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		// 8) Compute new reel
 		$past = $current - $moved;
 		$new  = $current + $moved;
-		dol_syslog("Product_stock variable past: " . $past, LOG_ERR);
-		dol_syslog("Product_stock variable current: " . $current, LOG_ERR);
-		dol_syslog("Product_stock variable moved: " . $moved, LOG_ERR);
-		dol_syslog("Product_stock variable snapshot: " . $snapshot, LOG_ERR);
-		dol_syslog("Product_stock variable new: " . $new, LOG_ERR);
+		dol_syslog("Product_stock variable past: " . $past);
+		dol_syslog("Product_stock variable current: " . $current);
+		dol_syslog("Product_stock variable moved: " . $moved);
+		dol_syslog("Product_stock variable snapshot: " . $snapshot);
+		dol_syslog("Product_stock variable new: " . $new);
 
 		// 9) Persist
 		$sqlUpStock = '
@@ -370,6 +377,74 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			}
 		}
 	}
+
+	protected function renameInventoryRefFromMove($move, $db)
+	{
+		// 1) Fetch the inventory header
+		$sqlInv = 'SELECT rowid, ref, date_inventory'
+			. ' FROM ' . MAIN_DB_PREFIX . 'inventory'
+			. ' WHERE rowid=' . (int)$move->origin_id;
+		$resInv = $db->query($sqlInv);
+		if (!$resInv) {
+			dol_syslog("Error fetching inventory header for renaming: " . $db->lasterror(), LOG_ERR);
+			return;
+		}
+		$inv = $db->fetch_object($resInv);
+		if (!$inv) {
+			dol_syslog("No inventory found for id=" . (int)$move->origin_id, LOG_ERR);
+			return;
+		}
+
+		$oldRef = trim($inv->ref);
+		$date   = $inv->date_inventory;
+		if (empty($oldRef) || empty($date)) {
+			// nothing to do
+			return;
+		}
+
+		// 2) Compute YYYYMMDD prefix
+		$dt = new DateTime($date);
+		$prefix = $dt->format('YmdHi');
+
+		// 3) Determine suffix from oldRef
+		$upper = strtoupper($oldRef);
+		if (strpos($upper, 'PAT')  !== false)        $suffix = 'PATTIES';
+		elseif (strpos($upper, 'PAD')  !== false)    $suffix = 'PADARIA';
+		elseif (
+			strpos($upper, 'CHA')  !== false
+			|| strpos($upper, 'LACT') !== false
+		)    $suffix = 'CHARCUTERIA_E_LACTICINIOS';
+		elseif (strpos($upper, 'DIVE') !== false)    $suffix = 'DIVERSOS';
+		elseif (strpos($upper, 'CERV') !== false)    $suffix = 'CERVEJAS';
+		elseif (strpos($upper, 'REFR') !== false)    $suffix = 'REFRIGERANTES';
+		else {
+			// no match → leave original
+			return;
+		}
+
+		$newRef = $prefix . '_' . $suffix;
+		if ($newRef === $oldRef) {
+			// already correct
+			return;
+		}
+
+		dol_syslog("Rename inventory ref, oldRef: " . $oldRef);
+		dol_syslog("Rename inventory ref, date: " . $date);
+		dol_syslog("Rename inventory ref, prefix: " . $prefix);
+		dol_syslog("Rename inventory ref, suffix: " . $suffix);
+		dol_syslog("Rename inventory ref, newRef: " . $newRef);
+
+		// 4) Persist the change
+		$sqlUp = 'UPDATE ' . MAIN_DB_PREFIX . 'inventory'
+			. ' SET ref = \'' . $db->escape($newRef) . '\''
+			. ' WHERE rowid = ' . (int)$inv->rowid;
+		if (!$db->query($sqlUp)) {
+			dol_syslog("Error renaming inventory ref #{$inv->rowid}: " . $db->lasterror(), LOG_ERR);
+		} else {
+			dol_syslog("Renamed inventory ref #{$inv->rowid} from '{$oldRef}' to '{$newRef}'", LOG_INFO);
+		}
+	}
+
 
 	protected function dismantleIfNeeded($move, $db)
 	{
