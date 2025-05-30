@@ -7,470 +7,257 @@ require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/lib/mrp_mo.lib.php';
 
-/**
- * Class ProductDismantleController
- * 
- * Handles product dismantling operations including BOM management,
- * stock movements, and cost price calculations.
- */
+
 class ProductDismantleController extends CommonObject
 {
-    // Constants for better maintainability
-    private const DISMANTLE_BOM_TYPE = 1;
-    private const MOVEMENT_TYPE_CONSUME = 'consume';
-    private const MOVEMENT_TYPE_PRODUCE = 'produce';
-    
     public $db;
+
+    /**
+     * @var Mo $mo {@type Mo}
+     */
     public $mo;
-    
-    private array $errors = [];
-    private ?int $defaultWarehouseId = null;
 
     public function __construct($db)
     {
-        global $conf;
+        global $db, $conf;
         $this->db = $db;
         $this->mo = new Mo($this->db);
-        $this->defaultWarehouseId = (int)($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
     }
 
     /**
      * Find BOM ID associated with a product ID.
      *
      * @param int $productId The ID of the product to find the BOM for.
-     * @return int|null The BOM ID if found, null otherwise.
-     * @throws InvalidArgumentException If productId is invalid
+     * @return int|false The BOM ID if found, false otherwise.
      */
-    public function findBom(int $productId): ?int
+    public function findBom($productId)
     {
-        if ($productId <= 0) {
-            throw new InvalidArgumentException('Product ID must be a positive integer');
-        }
-
-        dol_syslog(__METHOD__ . " - Product ID: $productId", LOG_DEBUG);
-        
+        dol_syslog(__METHOD__, LOG_DEBUG);
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "bom_bom
-                WHERE fk_product = %d
-                AND bomtype = %d";
-        
-        $sql = sprintf($sql, $productId, self::DISMANTLE_BOM_TYPE);
-        
-        $resql = $this->db->query($sql);
-        if (!$resql) {
-            $this->addError("Database query failed for product ID $productId: " . $this->db->lasterror());
-            dol_syslog($this->getLastError(), LOG_ERR);
-            return null;
-        }
+            WHERE fk_product = " . (int) $productId . "
+            AND bomtype = 1"; // Assuming bomtype = 1 indicates a dismantle type BOM
 
-        $obj = $this->db->fetch_object($resql);
-        $this->db->free($resql);
-        
-        return $obj ? (int)$obj->rowid : null;
+        $resql = $this->db->query($sql);
+        if ($resql) {
+            if ($obj = $this->db->fetch_object($resql)) {
+                return (int) $obj->rowid; // Return the BOM ID
+            } else {
+                // No BOM found for the product
+                return false;
+            }
+        } else {
+            // Query failed
+            dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
+            return false;
+        }
     }
 
-    /**
-     * Check if a product belongs to the dismantle category.
-     *
-     * @param int $productId The product ID to check
-     * @return bool True if product is in dismantle category, false otherwise
-     * @throws InvalidArgumentException If productId is invalid
-     */
-    public function productInDismantleCategory(int $productId): bool
+    public function productInDismantleCategory($productId)
     {
-        if ($productId <= 0) {
-            throw new InvalidArgumentException('Product ID must be a positive integer');
-        }
+        dol_syslog(__METHOD__, LOG_DEBUG);
 
-        dol_syslog(__METHOD__ . " - Product ID: $productId", LOG_DEBUG);
-        
         global $conf;
-        
-        $dismantleCategoryId = (int)($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY ?? 0);
-        
-        if ($dismantleCategoryId === 0) {
-            dol_syslog("No dismantle category configured", LOG_WARNING);
-            return false;
-        }
 
-        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product 
-                WHERE fk_product = %d";
-        
-        $sql = sprintf($sql, $productId);
+        $productDismantleCategory = !empty($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY) ? $conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY : 0;
+
+        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product WHERE fk_product = " . $productId;
         $resql = $this->db->query($sql);
-        
-        if (!$resql) {
-            $this->addError("Database query failed for product categories: " . $this->db->lasterror());
-            return false;
-        }
-
-        $isInCategory = false;
-        while ($obj = $this->db->fetch_object($resql)) {
-            if ((int)$obj->fk_categorie === $dismantleCategoryId) {
-                $isInCategory = true;
-                break;
+        if ($resql) {
+            while ($obj = $this->db->fetch_object($resql)) {
+                if ($obj->fk_categorie == $productDismantleCategory) { // Dismantle category ID
+                    return true;
+                }
             }
         }
-        
-        $this->db->free($resql);
-        return $isInCategory;
+        return false;
     }
 
-    /**
-     * Process dismantling operation: consume main product and produce components.
-     *
-     * @param int $bomId BOM identifier
-     * @param float $qtyMovement Quantity for the movement (positive = normal, negative = reverse)
-     * @param float $priceMovement Price for the movement
-     * @param string $originRef Reference of the origin document
-     * @param int $originId ID of the origin document
-     * @param string $originType Type of the origin document
-     * @param int|null $movementDate Movement date (timestamp)
-     * @return int 0 on success, negative on error
-     */
-    public function produceAndConsume(
-        int $bomId,
-        float $qtyMovement,
-        float $priceMovement,
-        string $originRef,
-        int $originId,
-        string $originType,
-        ?int $movementDate = null
-    ): int {
-        dol_syslog(__METHOD__ . " - BOM ID: $bomId, Qty: $qtyMovement", LOG_DEBUG);
-        
-        // Validate inputs
-        if (!$this->validateProduceConsumeInputs($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType)) {
-            return -1;
-        }
+    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null)
+    {
+        dol_syslog(__METHOD__, LOG_DEBUG);
+
+        global $user, $conf;
 
         $movementDate = $movementDate ?: dol_now();
-        
-        // Start transaction
-        $this->db->begin();
-        
-        try {
-            // Load and validate BOM
-            $bom = $this->loadBom($bomId);
-            if (!$bom) {
-                $this->db->rollback();
-                return -1;
-            }
+        $warehouseId  = (int)($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
 
-            // Get current cost price of the main product
-            $currentCostPrice = $this->getProductCostPrice($bom->fk_product);
-            if ($currentCostPrice === null) {
-                $this->db->rollback();
-                return -1;
-            }
+        $defaultWarehouseId = !empty($conf->global->MAIN_DEFAULT_WAREHOUSE) ? $conf->global->MAIN_DEFAULT_WAREHOUSE : 0;
+        $error = 0;
 
-            // Prepare movement arrays
-            $movements = $this->prepareMovements($bom, $currentCostPrice);
-            
-            // Execute stock movements
-            if (!$this->executeStockMovements($movements, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate)) {
-                $this->db->rollback();
-                return -1;
-            }
-
-            $this->db->commit();
-            dol_syslog("Dismantle operation completed successfully", LOG_DEBUG);
-            return 0;
-            
-        } catch (Exception $e) {
-            $this->db->rollback();
-            $this->addError("Exception during dismantle operation: " . $e->getMessage());
-            dol_syslog($this->getLastError(), LOG_ERR);
-            return -1;
-        }
-    }
-
-    /**
-     * Validate inputs for produceAndConsume method.
-     */
-    private function validateProduceConsumeInputs(
-        int $bomId,
-        float $qtyMovement,
-        float $priceMovement,
-        string $originRef,
-        int $originId,
-        string $originType
-    ): bool {
-        if ($bomId <= 0) {
-            $this->addError("Invalid BOM ID");
-            return false;
-        }
-        
-        if ($qtyMovement == 0) {
-            $this->addError("Quantity movement cannot be zero");
-            return false;
-        }
-        
-        if ($priceMovement < 0) {
-            $this->addError("Price movement cannot be negative");
-            return false;
-        }
-        
-        if (empty($originRef)) {
-            $this->addError("Origin reference is required");
-            return false;
-        }
-        
-        if ($originId <= 0) {
-            $this->addError("Invalid origin ID");
-            return false;
-        }
-        
-        if (empty($originType)) {
-            $this->addError("Origin type is required");
-            return false;
-        }
-        
-        return true;
-    }
-
-    /**
-     * Load and validate BOM.
-     */
-    private function loadBom(int $bomId): ?BOM
-    {
+        // Load BOM
         $bom = new BOM($this->db);
         if ($bom->fetch($bomId) <= 0) {
-            $this->addError("Failed to fetch BOM with ID $bomId");
-            return null;
+            dol_syslog("Failed to fetch BOM details", LOG_ERR);
+            return -1;
         }
 
+        $productToConsume = new Product($this->db);
+        if ($productToConsume->fetch($bom->fk_product) > 0) {
+            $currentCostPrice = $productToConsume->cost_price;
+            dol_syslog(
+                "Current cost price for product #" . $bom->fk_product . ": " . $currentCostPrice,
+                LOG_DEBUG
+            );
+        } else {
+            dol_syslog(
+                "Failed to fetch product #" . $bom->fk_product . " for cost price",
+                LOG_ERR
+            );
+            $currentCostPrice = null; // handle error as needed
+        }
+
+        // Ensure BOM has lines
         if (!is_array($bom->lines) || empty($bom->lines)) {
-            $this->addError("BOM has no component lines");
-            return null;
+            dol_syslog("BOM has no lines", LOG_WARNING);
+            return -1;
         }
 
-        return $bom;
-    }
+        $arraytoconsume = [];
+        $arraytoproduce = [];
 
-    /**
-     * Get product cost price.
-     */
-    private function getProductCostPrice(int $productId): ?float
-    {
-        $product = new Product($this->db);
-        if ($product->fetch($productId) <= 0) {
-            $this->addError("Failed to fetch product #$productId for cost price");
-            return null;
-        }
-
-        return (float)$product->cost_price;
-    }
-
-    /**
-     * Prepare movement arrays for consumption and production.
-     */
-    private function prepareMovements(BOM $bom, float $currentCostPrice): array
-    {
-        $movements = [
-            self::MOVEMENT_TYPE_CONSUME => [],
-            self::MOVEMENT_TYPE_PRODUCE => []
-        ];
+        $finalProductQty = $bom->qty;
 
         // Add main product to consume
-        $movements[self::MOVEMENT_TYPE_CONSUME][] = [
-            'objectid' => $bom->fk_product,
-            'qty' => $bom->qty,
-            'fk_warehouse' => $this->defaultWarehouseId,
-            'cost_price' => null // Will be set during execution
+        $arraytoconsume[] = [
+            'objectid'    => $bom->fk_product,
+            'qty'         => $finalProductQty,
+            'fk_warehouse' => $defaultWarehouseId,
         ];
+        dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
 
         // Add BOM components to produce
         foreach ($bom->lines as $line) {
-            $movements[self::MOVEMENT_TYPE_PRODUCE][] = [
-                'objectid' => $line->fk_product,
-                'qty' => $line->qty,
-                'fk_warehouse' => $this->defaultWarehouseId,
-                'cost_price' => $currentCostPrice / $line->qty // Distribute cost among components
+            $arraytoproduce[] = [
+                'objectid'    => $line->fk_product,
+                'qty'         => $line->qty,
+                'fk_warehouse' => $defaultWarehouseId,
             ];
         }
+        dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
 
-        return $movements;
-    }
+        // Initialize stock movement handler
+        $stockmove = new MouvementStock($this->db);
 
-    /**
-     * Execute all stock movements.
-     */
-    private function executeStockMovements(
-        array $movements,
-        float $qtyMovement,
-        float $priceMovement,
-        string $originRef,
-        int $originId,
-        string $originType,
-        int $movementDate
-    ): bool {
-        global $user;
-        
-        foreach ($movements as $movementType => $items) {
-            foreach ($items as $item) {
-                // Update cost price
-                $costPrice = ($movementType === self::MOVEMENT_TYPE_CONSUME) 
-                    ? $priceMovement 
-                    : $item['cost_price'];
-                
-                if (!$this->updateProductCostPrice($item['objectid'], $costPrice)) {
-                    return false;
+        // Process consumption and production arrays
+        foreach (['arraytoconsume', 'arraytoproduce'] as $arrayname) {
+            foreach (${$arrayname} as $item) {
+                $product = new Product($this->db);
+                if ($product->fetch($item['objectid']) <= 0) {
+                    dol_syslog("Failed to fetch product with ID " . $item['objectid'], LOG_ERR);
+                    $error++;
+                    break;
                 }
 
-                // Execute stock movement
-                if (!$this->executeStockMovement(
-                    $movementType,
-                    $item,
-                    $qtyMovement,
-                    $costPrice,
-                    $originRef,
-                    $originId,
-                    $originType,
-                    $movementDate,
-                    $user
-                )) {
-                    return false;
+                // Calculate signed and absolute quantities
+                $rawQty = $item['qty'] * $qtyMovement;
+                $qty    = abs($rawQty);
+
+                // Update cost price
+                if ($arrayname === 'arraytoconsume') {
+                    $product->cost_price = $priceMovement;
+                } else {
+                    if ($qty > 0) {
+                        $product->cost_price = $currentCostPrice / $item['qty'];
+                    } else {
+                        dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
+                        $error++;
+                        break;
+                    }
+                }
+                if ($product->update($product->id, $user) <= 0) {
+                    dol_syslog("Failed to update cost_price for product ID " . $item['objectid'], LOG_ERR);
+                    $error++;
+                    break;
+                }
+
+                // Perform the correct stock movement:
+                if ($arrayname === 'arraytoconsume') {
+                    if ($rawQty >= 0) {
+                        // Normal consumption: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Consume for MO ($originRef)",
+                            $movementDate,
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
+                    } else {
+                        // Reverse consumption: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse consume for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            $movementDate,
+                            $originId,
+                            $originType
+                        );
+                    }
+                } else {
+                    if ($rawQty >= 0) {
+                        // Normal production: stock <- in
+                        $result = $stockmove->reception(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Produce for MO ($originRef)",
+                            '',
+                            '',
+                            '',
+                            $movementDate,
+                            $originId,
+                            $originType
+                        );
+                    } else {
+                        // Reverse production: stock -> out
+                        $result = $stockmove->livraison(
+                            $user,
+                            $item['objectid'],
+                            $item['fk_warehouse'],
+                            $qty,
+                            $product->cost_price,
+                            "Reverse produce for MO ($originRef)",
+                            $movementDate,
+                            '',
+                            '',
+                            '',
+                            $originId,
+                            $originType
+                        );
+                    }
+                }
+
+                // Link origin and check for errors
+                $stockmove->setOrigin($originType, $originId);
+                if ($result <= 0) {
+                    dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
+                    $error++;
+                    break;
                 }
             }
+            if ($error) break;
         }
 
-        return true;
-    }
-
-    /**
-     * Update product cost price.
-     */
-    private function updateProductCostPrice(int $productId, float $costPrice): bool
-    {
-        global $user;
-        
-        $product = new Product($this->db);
-        if ($product->fetch($productId) <= 0) {
-            $this->addError("Failed to fetch product #$productId for cost update");
-            return false;
+        if ($error) {
+            dol_syslog("Errors encountered, rolling back.", LOG_ERR);
+            return -1;
         }
 
-        $product->cost_price = $costPrice;
-        if ($product->update($product->id, $user) <= 0) {
-            $this->addError("Failed to update cost price for product #$productId");
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Execute a single stock movement.
-     */
-    private function executeStockMovement(
-        string $movementType,
-        array $item,
-        float $qtyMovement,
-        float $costPrice,
-        string $originRef,
-        int $originId,
-        string $originType,
-        int $movementDate,
-        $user
-    ): bool {
-        $stockmove = new MouvementStock($this->db);
-        
-        $rawQty = $item['qty'] * $qtyMovement;
-        $qty = abs($rawQty);
-        $isReverse = $rawQty < 0;
-
-        // Determine movement direction
-        $shouldReceive = ($movementType === self::MOVEMENT_TYPE_CONSUME && $isReverse) ||
-                        ($movementType === self::MOVEMENT_TYPE_PRODUCE && !$isReverse);
-
-        $label = $this->buildMovementLabel($movementType, $isReverse, $originRef);
-
-        if ($shouldReceive) {
-            $result = $stockmove->reception(
-                $user,
-                $item['objectid'],
-                $item['fk_warehouse'],
-                $qty,
-                $costPrice,
-                $label,
-                '',
-                '',
-                '',
-                $movementDate,
-                $originId,
-                $originType
-            );
-        } else {
-            $result = $stockmove->livraison(
-                $user,
-                $item['objectid'],
-                $item['fk_warehouse'],
-                $qty,
-                $costPrice,
-                $label,
-                $movementDate,
-                '',
-                '',
-                '',
-                $originId,
-                $originType
-            );
-        }
-
-        $stockmove->setOrigin($originType, $originId);
-        
-        if ($result <= 0) {
-            $this->addError("Stock movement failed for product #{$item['objectid']}: " . $stockmove->error);
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Build appropriate label for stock movement.
-     */
-    private function buildMovementLabel(string $movementType, bool $isReverse, string $originRef): string
-    {
-        $action = match($movementType) {
-            self::MOVEMENT_TYPE_CONSUME => $isReverse ? 'Reverse consume' : 'Consume',
-            self::MOVEMENT_TYPE_PRODUCE => $isReverse ? 'Reverse produce' : 'Produce',
-            default => 'Movement'
-        };
-
-        return "$action for MO ($originRef)";
-    }
-
-    /**
-     * Add error to internal error array.
-     */
-    private function addError(string $error): void
-    {
-        $this->errors[] = $error;
-        dol_syslog($error, LOG_ERR);
-    }
-
-    /**
-     * Get the last error message.
-     */
-    public function getLastError(): string
-    {
-        return end($this->errors) ?: '';
-    }
-
-    /**
-     * Get all error messages.
-     */
-    public function getErrors(): array
-    {
-        return $this->errors;
-    }
-
-    /**
-     * Clear all errors.
-     */
-    public function clearErrors(): void
-    {
-        $this->errors = [];
+        dol_syslog("MO processed successfully, transaction committed.", LOG_DEBUG);
+        return 0;
     }
 }
