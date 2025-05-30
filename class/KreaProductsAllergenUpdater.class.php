@@ -12,27 +12,27 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 class KreaProductsAllergenUpdater
 {
     // Constants for allergen management
-    public const ALERT_ALLERGEN_ID = 999; // Must exist in your allergens table!
-    public const CALC_OPTION_MANUAL = 0;
-    public const CALC_OPTION_AUTO = 1;
+    const ALERT_ALLERGEN_ID = 999; // Must exist in your allergens table!
+    const CALC_OPTION_MANUAL = 0;
+    const CALC_OPTION_AUTO = 1;
     
     // Constants for trace modes
-    public const TRACES_ALLERGEN = 0;
-    public const TRACES_POSSIBLE = 1;
+    const TRACES_ALLERGEN = 0;
+    const TRACES_POSSIBLE = 1;
     
     // Constants for processing limits
-    private const MAX_HIERARCHY_DEPTH = 50;
-    private const MAX_PRODUCTS_PER_LEVEL = 1000;
-    private const BATCH_SIZE = 100;
+    const MAX_HIERARCHY_DEPTH = 50;
+    const MAX_PRODUCTS_PER_LEVEL = 1000;
+    const BATCH_SIZE = 100;
     
     // Error handling
-    private static array $errors = [];
-    private static ?string $lastError = null;
+    private static $errors = array();
+    private static $lastError = null;
     
     // Performance tracking
-    private static array $processStats = [];
-    private static array $productCache = [];
-    private static array $allergenCache = [];
+    private static $processStats = array();
+    private static $productCache = array();
+    private static $allergenCache = array();
 
     /**
      * Update allergen attributes for a product hierarchy
@@ -43,12 +43,8 @@ class KreaProductsAllergenUpdater
      * @param array $options Additional processing options
      * @return bool True on success, false on failure
      */
-    public static function updateAllergenAttributes(
-        int $rootProductId, 
-        User $user, 
-        int $forceTraces = 0,
-        array $options = []
-    ): bool {
+    public static function updateAllergenAttributes($rootProductId, $user, $forceTraces = 0, $options = array())
+    {
         global $db;
 
         try {
@@ -108,7 +104,7 @@ class KreaProductsAllergenUpdater
      * @param bool $includeInherited Include inherited allergens from children
      * @return array|null Allergen data or null on error
      */
-    public static function getProductAllergens(int $productId, bool $includeInherited = false): ?array
+    public static function getProductAllergens($productId, $includeInherited = false)
     {
         global $db;
         
@@ -148,14 +144,14 @@ class KreaProductsAllergenUpdater
      * @param int $productId Product ID to validate
      * @return array Validation results with warnings and errors
      */
-    public static function validateProductAllergens(int $productId): array
+    public static function validateProductAllergens($productId)
     {
-        $results = [
+        $results = array(
             'valid' => true,
-            'warnings' => [],
-            'errors' => [],
-            'suggestions' => []
-        ];
+            'warnings' => array(),
+            'errors' => array(),
+            'suggestions' => array()
+        );
 
         try {
             // Check if product exists
@@ -204,16 +200,16 @@ class KreaProductsAllergenUpdater
     /**
      * Initialize processing state
      */
-    private static function initializeProcessing(int $rootProductId): void
+    private static function initializeProcessing($rootProductId)
     {
         self::clearErrors();
-        self::$processStats = [
+        self::$processStats = array(
             'start_time' => microtime(true),
             'root_product' => $rootProductId,
             'products_processed' => 0,
             'allergens_updated' => 0,
             'database_operations' => 0
-        ];
+        );
         
         dol_syslog(__METHOD__ . " START (root=$rootProductId)", LOG_DEBUG);
     }
@@ -221,7 +217,7 @@ class KreaProductsAllergenUpdater
     /**
      * Validate inputs for allergen update
      */
-    private static function validateInputs(int $rootProductId, User $user, int $forceTraces): bool
+    private static function validateInputs($rootProductId, $user, $forceTraces)
     {
         if ($rootProductId <= 0) {
             self::addError("Invalid root product ID: must be positive integer");
@@ -238,7 +234,7 @@ class KreaProductsAllergenUpdater
             return false;
         }
 
-        if (!in_array($forceTraces, [0, 1])) {
+        if (!in_array($forceTraces, array(0, 1))) {
             self::addError("Force traces must be 0 or 1");
             return false;
         }
@@ -249,18 +245,18 @@ class KreaProductsAllergenUpdater
     /**
      * Build comprehensive product hierarchy map
      */
-    private static function buildProductHierarchy(int $rootId): array
+    private static function buildProductHierarchy($rootId)
     {
         global $db;
         
-        $hierarchyMap = [];
-        $queue = [$rootId];
-        $visited = [];
+        $hierarchyMap = array();
+        $queue = array($rootId);
+        $visited = array();
         $depth = 0;
 
         while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
             $currentLevel = $queue;
-            $queue = [];
+            $queue = array();
             
             if (count($currentLevel) > self::MAX_PRODUCTS_PER_LEVEL) {
                 throw new Exception("Hierarchy level exceeds maximum product limit");
@@ -305,17 +301,16 @@ class KreaProductsAllergenUpdater
     /**
      * Fetch product children with enhanced error handling
      */
-    private static function fetchProductChildren(int $productId): array
+    private static function fetchProductChildren($productId)
     {
         global $db;
         
-        $children = [];
+        $children = array();
         
         $sql = "SELECT fk_product_fils, qty 
                 FROM " . MAIN_DB_PREFIX . "product_association 
-                WHERE fk_product_pere = %d";
+                WHERE fk_product_pere = " . (int)$productId;
         
-        $sql = sprintf($sql, $productId);
         $resql = $db->query($sql);
 
         if (!$resql) {
@@ -340,7 +335,7 @@ class KreaProductsAllergenUpdater
     /**
      * Validate hierarchy for processing constraints
      */
-    private static function validateHierarchy(array $hierarchyMap): bool
+    private static function validateHierarchy($hierarchyMap)
     {
         // Check for circular dependencies
         if (self::hasCircularDependencies($hierarchyMap)) {
@@ -361,10 +356,10 @@ class KreaProductsAllergenUpdater
     /**
      * Detect circular dependencies in hierarchy
      */
-    private static function hasCircularDependencies(array $hierarchyMap): bool
+    private static function hasCircularDependencies($hierarchyMap)
     {
-        $visited = [];
-        $recursionStack = [];
+        $visited = array();
+        $recursionStack = array();
 
         foreach ($hierarchyMap as $nodeId => $node) {
             if (!isset($visited[$nodeId])) {
@@ -380,12 +375,12 @@ class KreaProductsAllergenUpdater
     /**
      * DFS-based cycle detection
      */
-    private static function hasCycleDFS(int $nodeId, array $hierarchyMap, array &$visited, array &$recursionStack): bool
+    private static function hasCycleDFS($nodeId, $hierarchyMap, &$visited, &$recursionStack)
     {
         $visited[$nodeId] = true;
         $recursionStack[$nodeId] = true;
 
-        $node = $hierarchyMap[$nodeId] ?? null;
+        $node = isset($hierarchyMap[$nodeId]) ? $hierarchyMap[$nodeId] : null;
         if ($node && !empty($node->children)) {
             foreach ($node->children as $childId => $quantity) {
                 if (!isset($visited[$childId])) {
@@ -405,10 +400,10 @@ class KreaProductsAllergenUpdater
     /**
      * Calculate processing order using topological sort
      */
-    private static function calculateProcessingOrder(array $hierarchyMap): array
+    private static function calculateProcessingOrder($hierarchyMap)
     {
-        $heights = [];
-        $processed = [];
+        $heights = array();
+        $processed = array();
 
         foreach ($hierarchyMap as $nodeId => $node) {
             if (!isset($processed[$nodeId])) {
@@ -425,13 +420,13 @@ class KreaProductsAllergenUpdater
     /**
      * Calculate node height with memoization
      */
-    private static function calculateNodeHeight(int $nodeId, array $hierarchyMap, array &$heights, array &$processed): int
+    private static function calculateNodeHeight($nodeId, $hierarchyMap, &$heights, &$processed)
     {
         if (isset($heights[$nodeId])) {
             return $heights[$nodeId];
         }
 
-        $node = $hierarchyMap[$nodeId] ?? null;
+        $node = isset($hierarchyMap[$nodeId]) ? $hierarchyMap[$nodeId] : null;
         if (!$node || empty($node->children)) {
             $heights[$nodeId] = 0;
             $processed[$nodeId] = true;
@@ -453,11 +448,11 @@ class KreaProductsAllergenUpdater
     /**
      * Clear auto-calculated allergens for products in hierarchy
      */
-    private static function clearAutoCalculatedAllergens(array $hierarchyMap): void
+    private static function clearAutoCalculatedAllergens($hierarchyMap)
     {
         global $db;
         
-        $productsToClean = [];
+        $productsToClean = array();
         
         foreach ($hierarchyMap as $productId => $node) {
             if (self::getCalculationOption($productId) === self::CALC_OPTION_AUTO) {
@@ -469,16 +464,15 @@ class KreaProductsAllergenUpdater
             return;
         }
 
-        // Process in batches
+        // Process in batches for better performance
         $batches = array_chunk($productsToClean, self::BATCH_SIZE);
         
         foreach ($batches as $batch) {
-            $placeholders = str_repeat('?,', count($batch) - 1) . '?';
+            $ids = implode(',', array_map('intval', $batch));
             $sql = "DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens 
-                    WHERE fk_product IN ($placeholders)";
+                    WHERE fk_product IN ($ids)";
             
-            $stmt = $db->prepare($sql);
-            if (!$stmt || !$stmt->execute($batch)) {
+            if (!$db->query($sql)) {
                 throw new Exception("Failed to clear allergens: " . $db->lasterror());
             }
             
@@ -489,7 +483,7 @@ class KreaProductsAllergenUpdater
     /**
      * Process products in calculated order
      */
-    private static function processProductsInOrder(array $processingOrder, array $hierarchyMap, User $user, int $forceTraces): int
+    private static function processProductsInOrder($processingOrder, $hierarchyMap, $user, $forceTraces)
     {
         $processedCount = 0;
         
@@ -507,10 +501,10 @@ class KreaProductsAllergenUpdater
     /**
      * Process allergens for a single product
      */
-    private static function processProductAllergens(int $productId, array $hierarchyMap, User $user, int $forceTraces): bool
+    private static function processProductAllergens($productId, $hierarchyMap, $user, $forceTraces)
     {
         try {
-            $node = $hierarchyMap[$productId] ?? null;
+            $node = isset($hierarchyMap[$productId]) ? $hierarchyMap[$productId] : null;
             if (!$node || empty($node->children)) {
                 dol_syslog("Leaf node $productId - no allergens calculated", LOG_DEBUG);
                 return true;
@@ -537,9 +531,9 @@ class KreaProductsAllergenUpdater
     /**
      * Aggregate allergens from child products
      */
-    private static function aggregateChildAllergens(ProductHierarchyNode $node, int $forceTraces): array
+    private static function aggregateChildAllergens($node, $forceTraces)
     {
-        $aggregated = [];
+        $aggregated = array();
         $hasManualChildren = false;
 
         foreach ($node->children as $childId => $quantity) {
@@ -569,9 +563,9 @@ class KreaProductsAllergenUpdater
 
         // Apply force traces mode
         if ($forceTraces) {
-            $aggregated = array_map(function () {
-                return self::TRACES_POSSIBLE;
-            }, $aggregated);
+            foreach ($aggregated as $key => $value) {
+                $aggregated[$key] = self::TRACES_POSSIBLE;
+            }
         }
 
         return $aggregated;
@@ -580,17 +574,16 @@ class KreaProductsAllergenUpdater
     /**
      * Fetch allergens for a specific product
      */
-    private static function fetchProductAllergens(int $productId): array
+    private static function fetchProductAllergens($productId)
     {
         global $db;
         
-        $allergens = [];
+        $allergens = array();
         
         $sql = "SELECT fk_allergen, traces 
                 FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens 
-                WHERE fk_product = %d";
+                WHERE fk_product = " . (int)$productId;
         
-        $sql = sprintf($sql, $productId);
         $resql = $db->query($sql);
 
         if (!$resql) {
@@ -612,7 +605,7 @@ class KreaProductsAllergenUpdater
     /**
      * Update product allergens in database
      */
-    private static function updateProductAllergens(int $productId, array $allergens, User $user): void
+    private static function updateProductAllergens($productId, $allergens, $user)
     {
         global $db;
 
@@ -620,38 +613,30 @@ class KreaProductsAllergenUpdater
             return;
         }
 
-        // Prepare batch insert
-        $values = [];
-        $now = $db->idate(dol_now());
-        
+        // Insert allergens one by one for better compatibility
         foreach ($allergens as $allergenId => $traces) {
-            $values[] = sprintf(
-                "(%d, %d, %d, %d, '%s')",
-                $productId,
-                $allergenId,
-                $traces,
-                $user->id,
-                $now
-            );
-        }
-
-        if (!empty($values)) {
             $sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_productallergens
                     (fk_product, fk_allergen, traces, fk_user_creat, date_creation)
-                    VALUES " . implode(', ', $values);
+                    VALUES (
+                        " . (int)$productId . ",
+                        " . (int)$allergenId . ",
+                        " . (int)$traces . ",
+                        " . (int)$user->id . ",
+                        NOW()
+                    )";
             
             if (!$db->query($sql)) {
-                throw new Exception("Failed to insert allergens for product $productId: " . $db->lasterror());
+                throw new Exception("Failed to insert allergen $allergenId for product $productId: " . $db->lasterror());
             }
-            
-            self::$processStats['database_operations']++;
         }
+        
+        self::$processStats['database_operations']++;
     }
 
     /**
      * Get calculation option for a product with caching
      */
-    private static function getCalculationOption(int $productId): int
+    private static function getCalculationOption($productId)
     {
         if (isset(self::$productCache[$productId])) {
             return self::$productCache[$productId]['calc_option'];
@@ -666,13 +651,15 @@ class KreaProductsAllergenUpdater
         }
 
         $product->fetch_optionals();
-        $calcOption = (int)($product->array_options['options_kreap_calc_allergens'] ?? self::CALC_OPTION_AUTO);
+        $calcOption = isset($product->array_options['options_kreap_calc_allergens']) 
+            ? (int)$product->array_options['options_kreap_calc_allergens'] 
+            : self::CALC_OPTION_AUTO;
         
         // Cache the result
-        self::$productCache[$productId] = [
+        self::$productCache[$productId] = array(
             'calc_option' => $calcOption,
             'product' => $product
-        ];
+        );
 
         return $calcOption;
     }
@@ -680,12 +667,11 @@ class KreaProductsAllergenUpdater
     /**
      * Check if product exists
      */
-    private static function productExists(int $productId): bool
+    private static function productExists($productId)
     {
         global $db;
         
-        $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = %d";
-        $sql = sprintf($sql, $productId);
+        $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . (int)$productId;
         
         $resql = $db->query($sql);
         if (!$resql) {
@@ -701,11 +687,11 @@ class KreaProductsAllergenUpdater
     /**
      * Calculate maximum depth of hierarchy
      */
-    private static function calculateMaxDepth(array $hierarchyMap): int
+    private static function calculateMaxDepth($hierarchyMap)
     {
         $maxDepth = 0;
-        $processed = [];
-        $heights = [];
+        $processed = array();
+        $heights = array();
 
         foreach ($hierarchyMap as $nodeId => $node) {
             if (!isset($processed[$nodeId])) {
@@ -720,13 +706,13 @@ class KreaProductsAllergenUpdater
     /**
      * Get inherited allergens from children
      */
-    private static function getInheritedAllergens(int $productId): array
+    private static function getInheritedAllergens($productId)
     {
         $hierarchy = self::buildProductHierarchy($productId);
-        $node = $hierarchy[$productId] ?? null;
+        $node = isset($hierarchy[$productId]) ? $hierarchy[$productId] : null;
         
         if (!$node || empty($node->children)) {
-            return [];
+            return array();
         }
 
         return self::aggregateChildAllergens($node, 0);
@@ -735,7 +721,7 @@ class KreaProductsAllergenUpdater
     /**
      * Merge two allergen arrays
      */
-    private static function mergeAllergens(array $allergens1, array $allergens2): array
+    private static function mergeAllergens($allergens1, $allergens2)
     {
         $merged = $allergens1;
         
@@ -753,9 +739,9 @@ class KreaProductsAllergenUpdater
     /**
      * Detect allergen conflicts
      */
-    private static function detectAllergenConflicts(array $allergens): array
+    private static function detectAllergenConflicts($allergens)
     {
-        $conflicts = [];
+        $conflicts = array();
         
         // Add custom conflict detection logic here
         // For example, detecting incompatible allergen combinations
@@ -766,19 +752,19 @@ class KreaProductsAllergenUpdater
     /**
      * Log processing statistics
      */
-    private static function logProcessingStats(int $rootProductId, int $processedCount, int $totalProducts): void
+    private static function logProcessingStats($rootProductId, $processedCount, $totalProducts)
     {
         $endTime = microtime(true);
         $duration = $endTime - self::$processStats['start_time'];
         
-        $stats = [
+        $stats = array(
             'root_product' => $rootProductId,
             'total_products' => $totalProducts,
             'processed_count' => $processedCount,
             'duration_seconds' => round($duration, 3),
             'allergens_updated' => self::$processStats['allergens_updated'],
             'database_operations' => self::$processStats['database_operations']
-        ];
+        );
         
         dol_syslog(__METHOD__ . " COMPLETED: " . json_encode($stats), LOG_INFO);
     }
@@ -786,30 +772,30 @@ class KreaProductsAllergenUpdater
     /**
      * Error handling methods
      */
-    private static function addError(string $error): void
+    private static function addError($error)
     {
         self::$errors[] = $error;
         self::$lastError = $error;
         dol_syslog("KreaProductsAllergenUpdater Error: $error", LOG_ERR);
     }
 
-    private static function clearErrors(): void
+    private static function clearErrors()
     {
-        self::$errors = [];
+        self::$errors = array();
         self::$lastError = null;
     }
 
-    public static function getLastError(): ?string
+    public static function getLastError()
     {
         return self::$lastError;
     }
 
-    public static function getAllErrors(): array
+    public static function getAllErrors()
     {
         return self::$errors;
     }
 
-    public static function hasErrors(): bool
+    public static function hasErrors()
     {
         return !empty(self::$errors);
     }
@@ -817,18 +803,39 @@ class KreaProductsAllergenUpdater
     /**
      * Clear all caches
      */
-    public static function clearCache(): void
+    public static function clearCache()
     {
-        self::$productCache = [];
-        self::$allergenCache = [];
+        self::$productCache = array();
+        self::$allergenCache = array();
     }
 
     /**
      * Get processing statistics
      */
-    public static function getProcessingStats(): array
+    public static function getProcessingStats()
     {
         return self::$processStats;
+    }
+
+    // Original method for backward compatibility
+    private static function rebuildAllergensForNode($nodeId, $map, $user, $forceTraces)
+    {
+        return self::processProductAllergens($nodeId, $map, $user, $forceTraces);
+    }
+
+    private static function buildDownwardMap($rootId)
+    {
+        return self::buildProductHierarchy($rootId);
+    }
+
+    private static function computeHeights($map)
+    {
+        return self::calculateProcessingOrder($map);
+    }
+
+    private static function fetchCalcOption($productId)
+    {
+        return self::getCalculationOption($productId);
     }
 }
 
@@ -837,20 +844,20 @@ class KreaProductsAllergenUpdater
  */
 class ProductHierarchyNode
 {
-    public int $id;
-    public array $children = [];
-    public array $parents = [];
-    private float $totalQuantity = 0.0;
+    public $id;
+    public $children = array();
+    public $parents = array();
+    private $totalQuantity = 0.0;
 
-    public function __construct(int $id)
+    public function __construct($id)
     {
-        $this->id = $id;
+        $this->id = (int)$id;
     }
 
     /**
      * Add a child product with quantity
      */
-    public function addChild(int $childId, float $quantity): void
+    public function addChild($childId, $quantity)
     {
         $this->children[$childId] = $quantity;
         $this->totalQuantity += $quantity;
@@ -859,7 +866,7 @@ class ProductHierarchyNode
     /**
      * Add a parent product
      */
-    public function addParent(int $parentId): void
+    public function addParent($parentId)
     {
         $this->parents[$parentId] = true;
     }
@@ -867,7 +874,7 @@ class ProductHierarchyNode
     /**
      * Check if node has children
      */
-    public function hasChildren(): bool
+    public function hasChildren()
     {
         return !empty($this->children);
     }
@@ -875,7 +882,7 @@ class ProductHierarchyNode
     /**
      * Check if node has parents
      */
-    public function hasParents(): bool
+    public function hasParents()
     {
         return !empty($this->parents);
     }
@@ -883,7 +890,7 @@ class ProductHierarchyNode
     /**
      * Get total quantity of all children
      */
-    public function getTotalQuantity(): float
+    public function getTotalQuantity()
     {
         return $this->totalQuantity;
     }
@@ -891,7 +898,7 @@ class ProductHierarchyNode
     /**
      * Get number of children
      */
-    public function getChildCount(): int
+    public function getChildCount()
     {
         return count($this->children);
     }
