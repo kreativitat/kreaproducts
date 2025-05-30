@@ -104,10 +104,10 @@ class KreaProductsNutrientUpdater
      * Get nutritional data for a specific product
      *
      * @param int $productId Product ID
-     * @param bool $useCache Whether to use caching
+     * @param bool $includeInherited Include inherited allergens from children
      * @return array|null Nutritional data or null on error
      */
-    public static function getProductNutrition($productId, $useCache = true)
+    public static function getProductNutrition($productId, $includeInherited = false)
     {
         try {
             if ($productId <= 0) {
@@ -116,15 +116,21 @@ class KreaProductsNutrientUpdater
             }
 
             // Check cache first
-            if ($useCache && isset(self::$nutritionCache[$productId])) {
-                return self::$nutritionCache[$productId];
+            $cacheKey = "nutrition_{$productId}_" . ($includeInherited ? '1' : '0');
+            if (isset(self::$nutritionCache[$cacheKey])) {
+                return self::$nutritionCache[$cacheKey];
             }
 
             $nutrition = self::fetchNutritionalData($productId);
             
+            if ($includeInherited) {
+                $inheritedNutrition = self::getInheritedNutrition($productId);
+                $nutrition = self::mergeNutrition($nutrition, $inheritedNutrition);
+            }
+
             // Cache result
-            if ($useCache && $nutrition !== null) {
-                self::$nutritionCache[$productId] = $nutrition;
+            if ($nutrition !== null) {
+                self::$nutritionCache[$cacheKey] = $nutrition;
             }
             
             return $nutrition;
@@ -302,9 +308,8 @@ class KreaProductsNutrientUpdater
                 FROM " . MAIN_DB_PREFIX . "product_association pa
                 JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                 JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                WHERE pa.fk_product_pere = %d OR pa.fk_product_fils = %d";
+                WHERE pa.fk_product_pere = " . (int)$productId . " OR pa.fk_product_fils = " . (int)$productId;
         
-        $sql = sprintf($sql, (int)$productId, (int)$productId);
         $resql = $db->query($sql);
         
         if (!$resql) {
@@ -585,9 +590,8 @@ class KreaProductsNutrientUpdater
         $sql = "SELECT energy_kcal, energy_kj, fat, saturates, carbohydrates, 
                        sugars, protein, salt, fiber
                 FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional
-                WHERE fk_product = %d LIMIT 1";
+                WHERE fk_product = " . (int)$productId . " LIMIT 1";
         
-        $sql = sprintf($sql, (int)$productId);
         $resql = $db->query($sql);
         
         if (!$resql) {
@@ -629,8 +633,8 @@ class KreaProductsNutrientUpdater
 
         // Check if record exists
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional 
-                WHERE fk_product = %d";
-        $sql = sprintf($sql, (int)$productId);
+                WHERE fk_product = " . (int)$productId;
+        
         $resql = $db->query($sql);
         
         if (!$resql) {
@@ -757,8 +761,7 @@ class KreaProductsNutrientUpdater
     {
         global $db;
         
-        $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = %d";
-        $sql = sprintf($sql, (int)$productId);
+        $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . (int)$productId;
         
         $resql = $db->query($sql);
         if (!$resql) {
@@ -769,6 +772,43 @@ class KreaProductsNutrientUpdater
         $db->free($resql);
         
         return $exists;
+    }
+
+    /**
+     * Get inherited nutrition from children
+     */
+    private static function getInheritedNutrition($productId)
+    {
+        $hierarchy = self::buildProductHierarchy($productId);
+        $node = isset($hierarchy[$productId]) ? $hierarchy[$productId] : null;
+        
+        if (!$node || empty($node->children)) {
+            return array();
+        }
+
+        return self::calculateNodeNutrition($node, $hierarchy);
+    }
+
+    /**
+     * Merge two nutrition arrays
+     */
+    private static function mergeNutrition($nutrition1, $nutrition2)
+    {
+        if ($nutrition1 === null) {
+            return $nutrition2;
+        }
+        if ($nutrition2 === null) {
+            return $nutrition1;
+        }
+        
+        $merged = $nutrition1;
+        foreach ($nutrition2 as $nutrient => $value) {
+            if (!isset($merged[$nutrient])) {
+                $merged[$nutrient] = $value;
+            }
+        }
+        
+        return $merged;
     }
 
     /**
