@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.28';
+		$this->version = '2.30';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -462,6 +462,71 @@ class modKreaProducts extends DolibarrModules
 		);
 		*/
 		/* END MODULEBUILDER LEFTMENU MYOBJECT */
+
+		// Tools menu entry for BOM Price Updater
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools',
+			'type' => 'left',
+			'titre' => 'BOM Price Updater',
+			'prefix' => img_picto('', 'technic', 'class="pictofixedwidth valignmiddle paddingright"'),
+			'mainmenu' => 'tools',
+			'leftmenu' => 'kreaproducts_bom_price_updater',
+			'url' => '/custom/kreaproducts/test_bom_price_updater.php',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
+			'perms' => '$user->hasRight("produit", "lire")',
+			'target' => '',
+			'user' => 2,
+		);
+
+		// Submenu for batch update all BOM products
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
+			'type' => 'left',
+			'titre' => 'Batch Update All BOM Products',
+			'mainmenu' => 'tools',
+			'leftmenu' => 'kreaproducts_bom_batch_all',
+			'url' => '/custom/kreaproducts/test_bom_price_updater.php?action=batch_all',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
+			'perms' => '$user->hasRight("produit", "creer")',
+			'target' => '',
+			'user' => 2,
+		);
+
+		// Submenu for batch update multiple BOM parents only
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
+			'type' => 'left',
+			'titre' => 'Batch Update Multiple BOM Parents',
+			'mainmenu' => 'tools',
+			'leftmenu' => 'kreaproducts_bom_batch_multiple',
+			'url' => '/custom/kreaproducts/test_bom_price_updater.php?action=batch_update',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
+			'perms' => '$user->hasRight("produit", "creer")',
+			'target' => '',
+			'user' => 2,
+		);
+
+		// Submenu for viewing all BOM products
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
+			'type' => 'left',
+			'titre' => 'View All BOM Products',
+			'mainmenu' => 'tools',
+			'leftmenu' => 'kreaproducts_bom_view_all',
+			'url' => '/custom/kreaproducts/test_bom_price_updater.php?show=all',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
+			'perms' => '$user->hasRight("produit", "lire")',
+			'target' => '',
+			'user' => 2,
+		);
 		// Exports profiles provided by this module
 		$r = 1;
 		/* BEGIN MODULEBUILDER EXPORT MYOBJECT */

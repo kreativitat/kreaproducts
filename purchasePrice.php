@@ -208,6 +208,42 @@ if ($action == 'setkreap_spread_buyprice') {
 	}
 }
 
+// Handle BOM price update action
+if ($action == 'updateBOMPrice') {
+	if ($id) {
+		require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductBOMPriceUpdater.class.php';
+
+		try {
+			$result = $object->fetch($id);
+			if ($result > 0) {
+				// Initialize BOM price updater
+				$bomUpdater = new ProductBOMPriceUpdater($db);
+				$bomUpdater->setDebug(true);
+
+				// Update product price based on BOM
+				$bomResult = $bomUpdater->updateProductPriceFromBOM($object->id, $user);
+
+				if ($bomResult['success']) {
+					$oldPrice = number_format($bomResult['old_price'], 4);
+					$newPrice = number_format($bomResult['new_price'], 4);
+					$bomRef = $bomResult['selected_bom']['bom_ref'];
+					$parentProduct = $bomResult['selected_bom']['parent_product_ref'];
+
+					setEventMessages("Preço BOM atualizado com sucesso: {$oldPrice} → {$newPrice} (BOM: {$bomRef}, Origem: {$parentProduct})", null, 'mesgs');
+					$action = '';
+				} else {
+					setEventMessages("Erro ao atualizar preço BOM: " . $bomResult['error'], null, 'errors');
+				}
+			} else {
+				setEventMessages("Erro ao carregar produto", null, 'errors');
+			}
+		} catch (Exception $e) {
+			setEventMessages("Erro no sistema BOM: " . $e->getMessage(), null, 'errors');
+			dol_syslog("ERROR: BOM price update failed: " . $e->getMessage(), LOG_ERR);
+		}
+	}
+}
+
 if ($action == 'setpmp') {
 	if ($id) {
 		$result = $object->fetch($id);
@@ -498,10 +534,35 @@ if ($id > 0 || $ref) {
 			print $form->editfieldval($text, 'cost_price', $object->cost_price, $object, $usercancreate, 'amount:6');
 			print '</td>';
 			print '<td align="right">';
-			print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '">';
+			print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block; margin-right: 5px;">';
 			print '<input type="hidden" name="action" value="updateProductAttributes">';
 			print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
 			print '</form>';
+
+			// Check if product has BOMs and add BOM update button
+			if (!empty($conf->bom->enabled)) {
+				// Check if this product is in any BOM
+				$sql_check_bom = "SELECT COUNT(DISTINCT b.rowid) as bom_count
+								  FROM " . MAIN_DB_PREFIX . "bom_bomline bl
+								  JOIN " . MAIN_DB_PREFIX . "bom_bom b ON b.rowid = bl.fk_bom
+								  WHERE bl.fk_product = " . (int)$object->id . "
+								  AND b.status IN (0, 1)";
+
+				$resql_check = $db->query($sql_check_bom);
+				$has_bom = false;
+				if ($resql_check && $obj = $db->fetch_object($resql_check)) {
+					$has_bom = ($obj->bom_count > 0);
+					$db->free($resql_check);
+				}
+
+				if ($has_bom) {
+					print '<form name="updateBOMPriceForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block;">';
+					print '<input type="hidden" name="action" value="updateBOMPrice">';
+					print '<input type="submit" class="button" value="Atualizar Preço BOM" title="Atualizar preço baseado na BOM com compras mais recentes">';
+					print '</form>';
+				}
+			}
+
 			print '</td>';
 			print '</tr>';
 
