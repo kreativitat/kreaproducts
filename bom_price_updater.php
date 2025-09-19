@@ -1,176 +1,239 @@
 <?php
-/**
- * Test script for ProductBOMPriceUpdater
+/* Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
  *
- * This script demonstrates how to use the ProductBOMPriceUpdater class
- * to update product prices based on BOM with most recent purchases.
+ * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+ *
+ * GPL-3.0 License:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Proprietary License:
+ * For commercial use, support, or if you prefer not to disclose your source code modifications,
+ * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ *
+ * For more information, visit <https://www.kreativitat.com>.
+ */
+
+/**
+ *  \file       htdocs/custom/kreaproducts/bom_price_updater.php
+ *  \ingroup    kreaproducts
+ *  \brief      BOM Price Updater - Updates product prices based on BOM with most recent purchases
  */
 
 // Load Dolibarr environment
 require '../../main.inc.php';
-
+require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductBOMPriceUpdater.class.php';
 
-// Check permissions
+// Translations
+$langs->loadLangs(array("admin", "kreaproducts@kreaproducts"));
+
+// Parameters
+$action = GETPOST('action', 'alpha');
+$productId = GETPOST('product_id', 'int');
+$show = GETPOST('show', 'alpha');
+
+// Access control
 if (!$user->hasRight('produit', 'lire')) {
     accessforbidden();
 }
 
-$action = GETPOST('action', 'alpha');
-$productId = GETPOST('product_id', 'int');
-
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <title>BOM Price Updater Test</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
-        .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
-        .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
-        .info { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .number { text-align: right; }
-        pre { background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
-    </style>
-</head>
-<body>
-
-<h1>Product BOM Price Updater Test</h1>
-
-<?php
+/*
+ * Actions
+ */
 
 // Initialize the updater
 $bomUpdater = new ProductBOMPriceUpdater($db);
 $bomUpdater->setDebug(true);
 
+/*
+ * View
+ */
+
+$title = $langs->trans("BOM Price Updater");
+$helpurl = '';
+
+llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-bom-price-updater');
+
+print '<div class="fiche">';
+print '<div class="tabBar tabBarWithBottom">';
+print '<table class="border centpercent">';
+print '<tr class="liste_titre">';
+print '<td class="titlefield">' . $title . '</td>';
+print '</tr>';
+print '</table>';
+print '</div>';
+print '</div>';
+
 // Run self-test first
-echo '<div class="section">';
-echo '<h2>1. System Self-Test</h2>';
+print '<div class="div-table-responsive-no-min">';
+print '<table class="noborder centpercent">';
+print '<tr class="liste_titre">';
+print '<td colspan="2">' . $langs->trans("System Self-Test") . '</td>';
+print '</tr>';
+print '<tr>';
+print '<td colspan="2">';
 
 $testResults = $bomUpdater->runSelfTest();
 
 if (empty($testResults['errors'])) {
-    echo '<div class="success">✓ All system tests passed!</div>';
+    print '<div class="info">✓ All system tests passed!</div>';
 } else {
-    echo '<div class="error">✗ System test errors:<ul>';
+    print '<div class="error">✗ System test errors:<ul>';
     foreach ($testResults['errors'] as $error) {
-        echo '<li>' . htmlspecialchars($error) . '</li>';
+        print '<li>' . htmlspecialchars($error) . '</li>';
     }
-    echo '</ul></div>';
+    print '</ul></div>';
 }
 
-echo '<h3>Test Results:</h3>';
-echo '<pre>' . print_r($testResults, true) . '</pre>';
-echo '</div>';
-
-// Show products with BOM parents
-echo '<div class="section">';
-echo '<h2>2. Products with BOM Parents</h2>';
+print '<h3>Test Results:</h3>';
+print '<pre>' . print_r($testResults, true) . '</pre>';
+print '</td>';
+print '</tr>';
+print '</table>';
+print '</div>';
+print '<br>';
 
 // Get both multiple and all BOM products
 $multiParentProducts = $bomUpdater->getProductsWithMultipleBOMParents();
 $allBOMProducts = $bomUpdater->getProductsWithBOMParents(true, true, false); // All products with BOMs
 
-echo '<div style="margin-bottom: 15px;">';
-echo '<strong>Statistics:</strong>';
-echo '<ul>';
-echo '<li>Products with multiple BOM parents: ' . count($multiParentProducts) . '</li>';
-echo '<li>Total products with BOMs: ' . count($allBOMProducts) . '</li>';
-echo '<li>Products with single BOM: ' . (count($allBOMProducts) - count($multiParentProducts)) . '</li>';
-echo '</ul>';
-echo '</div>';
-
 // Tab-like interface
 $showAll = GETPOST('show', 'alpha') === 'all';
-echo '<div style="margin-bottom: 15px;">';
-echo '<a href="?" style="padding: 8px 16px; background-color: ' . (!$showAll ? '#007cba' : '#ddd') . '; color: ' . (!$showAll ? 'white' : 'black') . '; text-decoration: none; margin-right: 5px;">Multiple BOM Parents</a>';
-echo '<a href="?show=all" style="padding: 8px 16px; background-color: ' . ($showAll ? '#007cba' : '#ddd') . '; color: ' . ($showAll ? 'white' : 'black') . '; text-decoration: none;">All BOM Products</a>';
-echo '</div>';
+
+print '<div class="div-table-responsive-no-min">';
+print '<table class="noborder centpercent">';
+print '<tr class="liste_titre">';
+print '<td colspan="7">' . $langs->trans("Products with BOM Parents") . '</td>';
+print '</tr>';
+print '<tr>';
+print '<td colspan="7">';
+
+print '<div style="margin-bottom: 15px;">';
+print '<strong>Statistics:</strong>';
+print '<ul>';
+print '<li>Products with multiple BOM parents: ' . count($multiParentProducts) . '</li>';
+print '<li>Total products with BOMs: ' . count($allBOMProducts) . '</li>';
+print '<li>Products with single BOM: ' . (count($allBOMProducts) - count($multiParentProducts)) . '</li>';
+print '</ul>';
+print '</div>';
+
+print '<div style="margin-bottom: 15px;">';
+print '<a href="?" class="button' . (!$showAll ? ' buttonactive' : '') . '">Multiple BOM Parents</a> ';
+print '<a href="?show=all" class="button' . ($showAll ? ' buttonactive' : '') . '">All BOM Products</a>';
+print '</div>';
 
 $productsToShow = $showAll ? $allBOMProducts : $multiParentProducts;
 $title = $showAll ? 'All Products with BOMs' : 'Products with Multiple BOM Parents';
 
-echo '<h3>' . $title . '</h3>';
+print '<h3>' . $title . '</h3>';
+print '</td>';
+print '</tr>';
 
 if (!empty($productsToShow)) {
-    echo '<table>';
-    echo '<tr><th>Product ID</th><th>Reference</th><th>Label</th><th>BOM Count</th><th>Type</th><th>BOM Details</th><th>Actions</th></tr>';
-
     foreach ($productsToShow as $product) {
         $bomType = $product['bom_count'] > 1 ? 'Multiple' : 'Single';
-        $typeStyle = $product['bom_count'] > 1 ? 'background-color: #fff3cd; font-weight: bold;' : '';
+        $typeClass = $product['bom_count'] > 1 ? 'oddeven' : 'pair';
 
-        echo '<tr style="' . $typeStyle . '">';
-        echo '<td>' . $product['product_id'] . '</td>';
-        echo '<td>' . htmlspecialchars($product['ref']) . '</td>';
-        echo '<td>' . htmlspecialchars($product['label']) . '</td>';
-        echo '<td class="number">' . $product['bom_count'] . '</td>';
-        echo '<td>' . $bomType . '</td>';
-        echo '<td><small>' . htmlspecialchars($product['bom_details'] ?? 'N/A') . '</small></td>';
-        echo '<td>';
-        echo '<a href="?action=test&product_id=' . $product['product_id'] . ($showAll ? '&show=all' : '') . '">Test</a> | ';
-        echo '<a href="?action=update_single&product_id=' . $product['product_id'] . ($showAll ? '&show=all' : '') . '">Update</a>';
-        echo '</td>';
-        echo '</tr>';
+        print '<tr class="' . $typeClass . '">';
+        print '<td>' . $product['product_id'] . '</td>';
+        print '<td>' . htmlspecialchars($product['ref']) . '</td>';
+        print '<td>' . htmlspecialchars($product['label']) . '</td>';
+        print '<td class="right">' . $product['bom_count'] . '</td>';
+        print '<td>' . $bomType . '</td>';
+        print '<td><small>' . htmlspecialchars($product['bom_details'] ?? 'N/A') . '</small></td>';
+        print '<td>';
+        print '<a href="?action=test&product_id=' . $product['product_id'] . ($showAll ? '&show=all' : '') . '" class="button">Test</a> ';
+        print '<a href="?action=update_single&product_id=' . $product['product_id'] . ($showAll ? '&show=all' : '') . '" class="button">Update</a>';
+        print '</td>';
+        print '</tr>';
     }
-
-    echo '</table>';
 
     // Batch update options
-    echo '<div style="margin-top: 15px;">';
+    print '<tr>';
+    print '<td colspan="7">';
+    print '<div style="margin-top: 15px;">';
     if ($showAll) {
-        echo '<p><a href="?action=batch_all" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">🚀 Batch Update ALL Products with BOMs</a></p>';
-        echo '<p><small>This will update ALL ' . count($allBOMProducts) . ' products that have BOMs (single or multiple).</small></p>';
+        print '<p><a href="?action=batch_all" class="button">🚀 Batch Update ALL Products with BOMs</a></p>';
+        print '<p><small>This will update ALL ' . count($allBOMProducts) . ' products that have BOMs (single or multiple).</small></p>';
     } else {
-        echo '<p><a href="?action=batch_update" style="background-color: #007cba; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">🚀 Batch Update Multiple BOM Products</a></p>';
-        echo '<p><small>This will update only the ' . count($multiParentProducts) . ' products with multiple BOM parents.</small></p>';
+        print '<p><a href="?action=batch_update" class="button">🚀 Batch Update Multiple BOM Products</a></p>';
+        print '<p><small>This will update only the ' . count($multiParentProducts) . ' products with multiple BOM parents.</small></p>';
     }
-    echo '</div>';
+    print '</div>';
+    print '</td>';
+    print '</tr>';
 } else {
+    print '<tr>';
+    print '<td colspan="7" class="center">';
     if ($showAll) {
-        echo '<div class="info">No products found with BOMs.</div>';
+        print '<div class="info">No products found with BOMs.</div>';
     } else {
-        echo '<div class="info">No products found with multiple BOM parents.</div>';
+        print '<div class="info">No products found with multiple BOM parents.</div>';
     }
+    print '</td>';
+    print '</tr>';
 }
 
-echo '</div>';
+print '</table>';
+print '</div>';
+print '<br>';
 
 // Handle actions
 if ($action == 'update_single' && $productId > 0) {
-    echo '<div class="section">';
-    echo '<h2>3. Single Product Update Result</h2>';
+    print '<div class="div-table-responsive-no-min">';
+    print '<table class="noborder centpercent">';
+    print '<tr class="liste_titre">';
+    print '<td colspan="2">' . $langs->trans("Single Product Update Result") . '</td>';
+    print '</tr>';
 
     // Get product details first
     $productDetails = $bomUpdater->getProductDetails($productId);
-
     $result = $bomUpdater->updateProductPriceFromBOM($productId, $user);
 
     if ($result['success']) {
-        echo '<div class="success">✓ Product updated successfully!</div>';
-        echo '<h3>Update Details:</h3>';
-        echo '<table>';
-        echo '<tr><th>Property</th><th>Value</th></tr>';
-        echo '<tr><td>Product ID</td><td>' . $result['product_id'] . '</td></tr>';
-        echo '<tr><td>Product Reference</td><td>' . htmlspecialchars($productDetails['ref']) . '</td></tr>';
-        echo '<tr><td>Product Name</td><td>' . htmlspecialchars($productDetails['label']) . '</td></tr>';
-        echo '<tr><td>Selected BOM ID</td><td>' . $result['selected_bom']['bom_id'] . '</td></tr>';
-        echo '<tr><td>Selected BOM Ref</td><td>' . htmlspecialchars($result['selected_bom']['bom_ref']) . '</td></tr>';
-        echo '<tr><td>Parent Product</td><td>' . htmlspecialchars($result['selected_bom']['parent_product_ref']) . '</td></tr>';
-        echo '<tr><td>Old Price</td><td class="number">' . number_format($result['old_price'], 4) . '</td></tr>';
-        echo '<tr><td>New Price</td><td class="number">' . number_format($result['new_price'], 4) . '</td></tr>';
-        echo '<tr><td>Total BOM Parents</td><td class="number">' . $result['bom_parents_count'] . '</td></tr>';
-        echo '</table>';
+        print '<tr>';
+        print '<td colspan="2" class="center">';
+        print '<div class="info">✓ Product updated successfully!</div>';
+        print '</td>';
+        print '</tr>';
+
+        print '<tr class="liste_titre">';
+        print '<th>Property</th>';
+        print '<th>Value</th>';
+        print '</tr>';
+
+        print '<tr><td>Product ID</td><td>' . $result['product_id'] . '</td></tr>';
+        print '<tr><td>Product Reference</td><td>' . htmlspecialchars($productDetails['ref']) . '</td></tr>';
+        print '<tr><td>Product Name</td><td>' . htmlspecialchars($productDetails['label']) . '</td></tr>';
+        print '<tr><td>Selected BOM ID</td><td>' . $result['selected_bom']['bom_id'] . '</td></tr>';
+        print '<tr><td>Selected BOM Ref</td><td>' . htmlspecialchars($result['selected_bom']['bom_ref']) . '</td></tr>';
+        print '<tr><td>Parent Product</td><td>' . htmlspecialchars($result['selected_bom']['parent_product_ref']) . '</td></tr>';
+        print '<tr><td>Old Price</td><td class="right">' . number_format($result['old_price'], 4) . '</td></tr>';
+        print '<tr><td>New Price</td><td class="right">' . number_format($result['new_price'], 4) . '</td></tr>';
+        print '<tr><td>Total BOM Parents</td><td class="right">' . $result['bom_parents_count'] . '</td></tr>';
     } else {
-        echo '<div class="error">✗ Update failed: ' . htmlspecialchars($result['error']) . '</div>';
-        echo '<p><strong>Product:</strong> ' . htmlspecialchars($productDetails['ref']) . ' - ' . htmlspecialchars($productDetails['label']) . '</p>';
+        print '<tr>';
+        print '<td colspan="2">';
+        print '<div class="error">✗ Update failed: ' . htmlspecialchars($result['error']) . '</div>';
+        print '<p><strong>Product:</strong> ' . htmlspecialchars($productDetails['ref']) . ' - ' . htmlspecialchars($productDetails['label']) . '</p>';
+        print '</td>';
+        print '</tr>';
     }
 
-    echo '</div>';
+    print '</table>';
+    print '</div>';
+    print '<br>';
 }
 
 if ($action == 'batch_update') {
@@ -327,7 +390,5 @@ if ($action == 'test' && $productId > 0) {
     echo '</div>';
 }
 
-?>
-
-</body>
-</html>
+// End of page
+llxFooter();

@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.30';
+		$this->version = '2.32';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -414,119 +414,21 @@ class modKreaProducts extends DolibarrModules
 			'user' => 2,
 			'object' => 'ProductAllergens'
 		);
-		/* END MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
-		/* BEGIN MODULEBUILDER LEFTMENU MYOBJECT */
-		/*
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=kreaproducts',      // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',                          // This is a Left menu entry
-			'titre'=>'Allergens',
-			'prefix' => img_picto('', $this->picto, 'class="pictofixedwidth valignmiddle paddingright"'),
-			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'allergens',
-			'url'=>'/kreaproducts/kreaproductsindex.php',
-			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-			'perms'=>'$user->hasRight("kreaproducts", "allergens", "read")',
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
-		);
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',			                // This is a Left menu entry
-			'titre'=>'New_Allergens',
-			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'kreaproducts_allergens_new',
-			'url'=>'/kreaproducts/allergens_card.php?action=create',
-			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled. Use '$leftmenu==\'system\'' to show if leftmenu system is selected.
-			'perms'=>'$user->hasRight("kreaproducts", "allergens", "write")'
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
-		);
-		$this->menu[$r++]=array(
-			'fk_menu'=>'fk_mainmenu=kreaproducts,fk_leftmenu=allergens',	    // '' if this is a top menu. For left menu, use 'fk_mainmenu=xxx' or 'fk_mainmenu=xxx,fk_leftmenu=yyy' where xxx is mainmenucode and yyy is a leftmenucode
-			'type'=>'left',			                // This is a Left menu entry
-			'titre'=>'List_Allergens',
-			'mainmenu'=>'kreaproducts',
-			'leftmenu'=>'kreaproducts_allergens_list',
-			'url'=>'/kreaproducts/allergens_list.php',
-			'langs'=>'kreaproducts@kreaproducts',	        // Lang file to use (without .lang) by module. File must be in langs/code_CODE/ directory.
-			'position'=>1000+$r,
-			'enabled'=>'isModEnabled("kreaproducts")', // Define condition to show or hide menu entry. Use 'isModEnabled("kreaproducts")' if entry must be visible if module is enabled.
-			'perms'=>'$user->hasRight("kreaproducts", "allergens", "read")'
-			'target'=>'',
-			'user'=>2,				                // 0=Menu for internal users, 1=external users, 2=both
-		);
-		*/
-		/* END MODULEBUILDER LEFTMENU MYOBJECT */
-
-		// Tools menu entry for BOM Price Updater
 		$this->menu[$r++] = array(
 			'fk_menu' => 'fk_mainmenu=tools',
 			'type' => 'left',
 			'titre' => 'BOM Price Updater',
-			'prefix' => img_picto('', 'technic', 'class="pictofixedwidth valignmiddle paddingright"'),
 			'mainmenu' => 'tools',
 			'leftmenu' => 'kreaproducts_bom_price_updater',
-			'url' => '/custom/kreaproducts/test_bom_price_updater.php',
+			'url' => '/custom/kreaproducts/bom_price_updater.php',
 			'langs' => 'kreaproducts@kreaproducts',
 			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
-			'perms' => '$user->hasRight("produit", "lire")',
+			'enabled' => '1',
+			'perms' => '1',
 			'target' => '',
 			'user' => 2,
 		);
 
-		// Submenu for batch update all BOM products
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
-			'type' => 'left',
-			'titre' => 'Batch Update All BOM Products',
-			'mainmenu' => 'tools',
-			'leftmenu' => 'kreaproducts_bom_batch_all',
-			'url' => '/custom/kreaproducts/test_bom_price_updater.php?action=batch_all',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
-			'perms' => '$user->hasRight("produit", "creer")',
-			'target' => '',
-			'user' => 2,
-		);
-
-		// Submenu for batch update multiple BOM parents only
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
-			'type' => 'left',
-			'titre' => 'Batch Update Multiple BOM Parents',
-			'mainmenu' => 'tools',
-			'leftmenu' => 'kreaproducts_bom_batch_multiple',
-			'url' => '/custom/kreaproducts/test_bom_price_updater.php?action=batch_update',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
-			'perms' => '$user->hasRight("produit", "creer")',
-			'target' => '',
-			'user' => 2,
-		);
-
-		// Submenu for viewing all BOM products
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=tools,fk_leftmenu=kreaproducts_bom_price_updater',
-			'type' => 'left',
-			'titre' => 'View All BOM Products',
-			'mainmenu' => 'tools',
-			'leftmenu' => 'kreaproducts_bom_view_all',
-			'url' => '/custom/kreaproducts/test_bom_price_updater.php?show=all',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("bom")',
-			'perms' => '$user->hasRight("produit", "lire")',
-			'target' => '',
-			'user' => 2,
-		);
 		// Exports profiles provided by this module
 		$r = 1;
 		/* BEGIN MODULEBUILDER EXPORT MYOBJECT */
