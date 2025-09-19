@@ -160,7 +160,36 @@ if ($action == 'setcost_price') {
 			$error++;
 			setEventMessages($object->error, $object->errors, 'errors');
 		}
-		ProductHierarchy::updateProductAttributes($object->id, $user);
+		// Debug: Enable logging and add debug info
+		dol_syslog("DEBUG: About to call ProductHierarchy::updateProductAttributes for product ID: " . $object->id, LOG_INFO);
+
+		// Check if classes exist
+		if (!class_exists('ProductUpdater')) {
+			dol_syslog("ERROR: ProductUpdater class not found!", LOG_ERR);
+		} else {
+			dol_syslog("DEBUG: ProductUpdater class exists", LOG_INFO);
+		}
+
+		if (!class_exists('ProductHierarchy')) {
+			dol_syslog("ERROR: ProductHierarchy class not found!", LOG_ERR);
+		} else {
+			dol_syslog("DEBUG: ProductHierarchy class exists", LOG_INFO);
+		}
+
+		ProductUpdater::setDebug(true);
+
+		try {
+			// Run self-test first
+			$testResults = ProductUpdater::runSelfTest();
+			dol_syslog("DEBUG: ProductUpdater self-test results: " . print_r($testResults, true), LOG_INFO);
+
+			$result = ProductHierarchy::updateProductAttributes($object->id, $user);
+			dol_syslog("DEBUG: ProductHierarchy::updateProductAttributes returned: " . $result, LOG_INFO);
+		} catch (Exception $e) {
+			dol_syslog("ERROR: ProductHierarchy::updateProductAttributes failed: " . $e->getMessage(), LOG_ERR);
+		} catch (Error $e) {
+			dol_syslog("FATAL ERROR: " . $e->getMessage(), LOG_ERR);
+		}
 	}
 }
 if ($action == 'setkreap_spread_buyprice') {

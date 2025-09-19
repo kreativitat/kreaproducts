@@ -1,724 +1,639 @@
 <?php
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
-require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 
 /**
- * Enhanced ProductHierarchy class for managing product cost propagation
- * with improved error handling, validation, and performance optimization.
+ * Cost Price Updater - Standalone Class
+ *
+ * Extracted from ProductMixer Dolibarr module to handle product cost price updates
+ * Independent implementation using native Dolibarr framework
  */
-class ProductHierarchy
+class ProductUpdater
 {
-    // Constants for configuration
-    const SYNC_FIELD = 'kreap_spread_buyprice';
-    const GLOBAL_CONST = 'KREAP_SPREAD_BUYPRICE';
-    const DELTA = 0.001;
-    const MAX_HIERARCHY_DEPTH = 50;
-    const BATCH_SIZE = 100;
-    
-    // Class state management
-    public static $inProgress = false;
-    public static $productMap = array(); // Legacy exposure
-    
-    // Performance tracking
-    private static $updateCount = 0;
-    private static $startTime = 0;
-    private static $errors = array();
-    private static $warnings = array();
+    /**
+     * @var array Product hierarchy map
+     */
+    private static $productMap = [];
 
     /**
-     * Main entry point for updating product attributes
+     * @var array List of products to update
+     */
+    private static $updateList = [];
+
+    /**
+     * @var array Reverse list for bottom-up updates
+     */
+    private static $reverseList = [];
+
+    /**
+     * @var bool Map loaded flag
+     */
+    private static $mapLoaded = false;
+
+    /**
+     * @var bool Debug mode
+     */
+    private static $debug = false;
+
+    /**
+     * Set debug mode
      *
-     * @param int $productId Starting product ID
-     * @param User $user User performing the update
-     * @return int 1 on success, 0 on failure or skip
+     * @param bool $debug
      */
-    public static function updateProductAttributes($productId, $user)
+    public static function setDebug(bool $debug): void
     {
-        global $db, $conf;
-
-        // Prevent concurrent execution
-        if (self::$inProgress) {
-            dol_syslog(__METHOD__ . ' skipped – already running', LOG_DEBUG);
-            return 0;
-        }
-        
-        self::$inProgress = true;
-        self::$updateCount = 0;
-        self::$startTime = microtime(true);
-        self::clearErrors();
-
-        try {
-            // Enhanced validation with better error messages
-            if (!self::validateGlobalSettings($conf)) {
-                return 0;
-            }
-
-            $product = self::validateAndLoadProduct($productId, $db);
-            if (!$product) {
-                return 0;
-            }
-
-            // Build enhanced graph with validation
-            $result = self::buildAndProcessGraph($productId, $user, $db);
-            
-            // Performance logging
-            $duration = microtime(true) - self::$startTime;
-            dol_syslog(__METHOD__ . " completed: result=$result, updates=" . self::$updateCount . ", duration={$duration}s", LOG_INFO);
-            
-            return $result;
-            
-        } catch (Exception $e) {
-            self::addError('Processing failed: ' . $e->getMessage());
-            dol_syslog(__METHOD__ . ' error: ' . $e->getMessage(), LOG_ERR);
-            return 0;
-        } finally {
-            self::$inProgress = false;
-        }
+        self::$debug = $debug;
     }
 
     /**
-     * Validate global configuration settings
+     * Debug log function
+     *
+     * @param string $message
      */
-    private static function validateGlobalSettings($conf)
+    private static function debug(string $message): void
     {
-        $globalConstName = self::GLOBAL_CONST;
-        $globalOn = empty($conf->global->$globalConstName) ? true : (bool)$conf->global->$globalConstName;
-        
-        if (!$globalOn) {
-            dol_syslog(__METHOD__ . ' global sync disabled', LOG_INFO);
-            return false;
+        if (self::$debug) {
+            error_log("[ProductUpdater] " . $message);
         }
-        return true;
+        // Also log to Dolibarr log system
+        dol_syslog("[ProductUpdater] " . $message, LOG_DEBUG);
     }
 
     /**
-     * Validate and load product with enhanced error handling
+     * Update cost price for a single product and all its parents (matches original ProductMixer behavior)
+     * This mimics the exact flow from ProductMixer::updateProductAttributes()
+     *
+     * @param int $productId Product ID that was modified
+     * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+     * @return array Results array
      */
-    private static function validateAndLoadProduct($productId, $db)
+    public static function updateProductCostPrice(int $productId, bool $useWholeSalePriceSync = true): array
     {
-        if (!is_numeric($productId) || $productId <= 0) {
-            self::addError("Invalid product ID: $productId");
-            return null;
+        self::debug("Starting cost price update for product ID: " . $productId);
+
+        // Validate input
+        if ($productId <= 0) {
+            self::debug("Invalid product ID: " . $productId);
+            return [];
         }
 
-        $prod = new Product($db);
-        if ($prod->fetch($productId) <= 0) {
-            self::addError("Cannot fetch product ID: $productId");
-            dol_syslog(__METHOD__ . " invalid product id $productId", LOG_ERR);
-            return null;
+        // Reset and load product map
+        self::resetMap();
+        self::loadProductMap();
+
+        if (empty(self::$productMap)) {
+            self::debug("Product map is empty - no product associations found");
+            return [];
         }
 
-        // Enhanced extrafield validation
-        $extrafields = new ExtraFields($db);
-        $prod->fetch_optionals($productId, $extrafields);
-        
-        $syncFieldName = 'options_' . self::SYNC_FIELD;
-        if (empty($prod->array_options[$syncFieldName])) {
-            dol_syslog(__METHOD__ . " sync disabled by extra‑field for pid=$productId", LOG_DEBUG);
-            return null;
-        }
+        // Clear lists
+        self::$updateList = [];
+        self::$reverseList = [];
 
-        // Validate product state
-        if ($prod->cost_price < 0) {
-            self::addWarning("Negative cost price for product $productId: " . $prod->cost_price);
-            dol_syslog(__METHOD__ . " warning: negative cost price for pid=$productId", LOG_WARNING);
-        }
+        // Add product to update list (the one that was modified)
+        self::addToUpdateList($productId);
 
-        return $prod;
-    }
+        // Create reverse list (builds parent hierarchy)
+        self::createReverseList();
 
-    /**
-     * Build product graph and process updates
-     */
-    private static function buildAndProcessGraph($productId, $user, $db)
-    {
-        // Build graph with enhanced error handling
-        $graphResult = GraphBuilder::aroundPivot($productId);
-        if (!$graphResult['success']) {
-            self::addError('Graph build failed: ' . $graphResult['error']);
-            dol_syslog(__METHOD__ . ' graph build failed: ' . $graphResult['error'], LOG_ERR);
-            return 0;
-        }
+        $results = [];
 
-        $nodes = $graphResult['nodes'];
-        $stats = $graphResult['stats'];
-        
-        self::$productMap = $nodes; // Legacy exposure
-        
-        $pivot = isset($nodes[$productId]) ? $nodes[$productId] : null;
-        if (!$pivot) {
-            self::addError('Pivot product not found in graph');
-            dol_syslog(__METHOD__ . ' pivot not found in graph', LOG_ERR);
-            return 0;
-        }
+        // Process all products in reverse list
+        // This includes the original product AND all its parents that have children
+        while (!empty(self::$reverseList)) {
+            $currentProductId = array_shift(self::$reverseList);
+            $mapProduct = self::getProductFromMap($currentProductId);
 
-        // Enhanced propagation with batch updates
-        $updatePlan = self::buildUpdatePlan($pivot, $nodes);
-        $success = self::executeBatchUpdates($updatePlan, $user, $db);
-        
-        dol_syslog(__METHOD__ . " completed: nodes=" . $stats['nodeCount'] . ", relations=" . $stats['relationCount'] . ", updates=" . self::$updateCount, LOG_INFO);
-        
-        return $success ? 1 : 0;
-    }
-
-    /**
-     * Build comprehensive update plan
-     */
-    private static function buildUpdatePlan($pivot, $nodes)
-    {
-        $visited = array();
-        $updatePlan = array();
-        
-        self::planUpstreamUpdates($pivot, $nodes, $visited, $updatePlan, 0);
-        
-        // Sort by dependency order (deeper nodes first)
-        usort($updatePlan, function($a, $b) {
-            if ($b['depth'] == $a['depth']) {
-                return 0;
-            }
-            return ($b['depth'] > $a['depth']) ? 1 : -1;
-        });
-        
-        return $updatePlan;
-    }
-
-    /**
-     * Plan upstream updates recursively
-     */
-    private static function planUpstreamUpdates($node, &$nodes, &$visited, &$updatePlan, $depth)
-    {
-        if (isset($visited[$node->id])) {
-            return;
-        }
-        
-        if ($depth > self::MAX_HIERARCHY_DEPTH) {
-            self::addWarning("Maximum hierarchy depth exceeded for node " . $node->id);
-            dol_syslog(__METHOD__ . " max depth exceeded for node " . $node->id, LOG_WARNING);
-            return;
-        }
-        
-        $visited[$node->id] = true;
-
-        foreach ($node->parents as $parentId => $qtyNotUsed) {
-            if (!isset($nodes[$parentId])) {
-                continue;
-            }
-            
-            $parent = $nodes[$parentId];
-
-            // Calculate new cost with enhanced validation
-            $calculation = self::calculateNewCost($parent, $nodes);
-            if (!$calculation['valid']) {
-                self::addWarning("Invalid calculation for parent $parentId: " . $calculation['error']);
-                dol_syslog(__METHOD__ . " invalid calculation for parent $parentId: " . $calculation['error'], LOG_WARNING);
+            // Skip products that don't exist in map or don't have children
+            // (matches original logic: only virtual products with children get updated)
+            if (!$mapProduct || !self::hasChildren($currentProductId)) {
                 continue;
             }
 
-            $newCost = $calculation['cost'];
-            
-            // Check if update needed with enhanced precision handling
-            if (self::isUpdateNeeded($parent->cost, $newCost)) {
-                $updatePlan[] = array(
-                    'productId' => $parent->id,
-                    'oldCost' => $parent->cost,
-                    'newCost' => $newCost,
-                    'depth' => $depth,
-                    'childCount' => count($parent->children),
-                    'calculation' => $calculation['details']
-                );
-                
-                // Update in-memory for subsequent calculations
-                $parent->cost = $newCost;
-            }
+            self::debug("Processing product ID: " . $currentProductId . " (ref: " . $mapProduct['ref'] . ")");
 
-            // Recurse with depth tracking
-            self::planUpstreamUpdates($parent, $nodes, $visited, $updatePlan, $depth + 1);
-        }
-    }
-
-    /**
-     * Calculate new cost for a parent product
-     */
-    private static function calculateNewCost($parent, $nodes)
-    {
-        $newCost = 0.0;
-        $details = array();
-        $hasErrors = false;
-
-        foreach ($parent->children as $childId => $qty) {
-            $childNode = isset($nodes[$childId]) ? $nodes[$childId] : null;
-            
-            if (!$childNode) {
-                $hasErrors = true;
-                $details[] = "Missing child node: $childId";
-                continue;
-            }
-
-            // Enhanced validation
-            if ($qty <= 0) {
-                $hasErrors = true;
-                $details[] = "Invalid quantity for child $childId: $qty";
-                continue;
-            }
-
-            if ($childNode->cost < 0) {
-                $details[] = "Negative cost for child $childId: " . $childNode->cost;
-            }
-
-            $childCost = max(0, $childNode->cost); // Ensure non-negative
-            $contribution = $qty * $childCost;
-            $newCost += $contribution;
-            
-            $details[] = "Child $childId: $qty × $childCost = $contribution";
-        }
-
-        // Filter error messages for the main error field
-        $errorMessages = array();
-        foreach ($details as $detail) {
-            if (strpos($detail, 'Missing') === 0 || strpos($detail, 'Invalid') === 0) {
-                $errorMessages[] = $detail;
-            }
-        }
-
-        return array(
-            'valid' => !$hasErrors,
-            'cost' => $newCost,
-            'error' => $hasErrors ? implode('; ', $errorMessages) : null,
-            'details' => $details
-        );
-    }
-
-    /**
-     * Check if update is needed based on cost difference
-     */
-    private static function isUpdateNeeded($oldCost, $newCost)
-    {
-        // Enhanced precision handling
-        $delta = abs($newCost - $oldCost);
-        $relativeDelta = $oldCost > 0 ? $delta / $oldCost : $delta;
-        
-        // Use both absolute and relative thresholds
-        return $delta >= self::DELTA && $relativeDelta >= 0.001;
-    }
-
-    /**
-     * Execute batch updates with transaction management
-     */
-    private static function executeBatchUpdates($updatePlan, $user, $db)
-    {
-        if (empty($updatePlan)) {
-            dol_syslog(__METHOD__ . ' no updates needed', LOG_DEBUG);
-            return true;
-        }
-
-        $batches = array_chunk($updatePlan, self::BATCH_SIZE);
-        $totalSuccess = true;
-
-        foreach ($batches as $batchIndex => $batch) {
-            $batchNumber = $batchIndex + 1;
-            $totalBatches = count($batches);
-            $batchSize = count($batch);
-            
-            dol_syslog(__METHOD__ . " processing batch $batchNumber/$totalBatches ($batchSize items)", LOG_DEBUG);
-            
-            if (!self::processBatch($batch, $user, $db)) {
-                $totalSuccess = false;
-            }
-        }
-
-        return $totalSuccess;
-    }
-
-    /**
-     * Process a single batch of updates
-     */
-    private static function processBatch($batch, $user, $db)
-    {
-        $db->begin();
-        $batchSuccess = true;
-
-        try {
-            foreach ($batch as $update) {
-                if (!self::updateSingleProduct($update, $user, $db)) {
-                    $batchSuccess = false;
+            // Check if children are still in reverse list (dependency check)
+            $hasUnprocessedChildren = false;
+            foreach (self::getChildren($currentProductId) as $child) {
+                if (in_array($child['id'], self::$reverseList)) {
+                    $hasUnprocessedChildren = true;
                     break;
                 }
             }
 
-            if ($batchSuccess) {
-                $db->commit();
-                self::$updateCount += count($batch);
-            } else {
-                $db->rollback();
-                self::addError('Batch update failed - transaction rolled back');
-                dol_syslog(__METHOD__ . ' batch rollback due to error', LOG_ERR);
+            // If has unprocessed children, postpone this product
+            if ($hasUnprocessedChildren) {
+                self::$reverseList[] = $currentProductId;
+                continue;
             }
 
-        } catch (Exception $e) {
-            $db->rollback();
-            self::addError('Batch exception: ' . $e->getMessage());
-            dol_syslog(__METHOD__ . ' batch exception: ' . $e->getMessage(), LOG_ERR);
-            $batchSuccess = false;
-        }
+            // Update cost price if sync is enabled (matches original: only if product has syncbuyprice enabled)
+            if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
+                $updated = self::updateCostPriceFromChildren($currentProductId, $productId);
+                $results[$currentProductId] = [
+                    'updated' => $updated,
+                    'ref' => $mapProduct['ref'] ?? 'Unknown',
+                    'is_original' => ($currentProductId == $productId)
+                ];
 
-        return $batchSuccess;
-    }
-
-    /**
-     * Update a single product with enhanced validation
-     */
-    private static function updateSingleProduct($update, $user, $db)
-    {
-        $product = new Product($db);
-        if ($product->fetch($update['productId']) <= 0) {
-            self::addError("Cannot fetch product for update: " . $update['productId']);
-            dol_syslog(__METHOD__ . " cannot fetch pid=" . $update['productId'], LOG_ERR);
-            return false;
-        }
-
-        // Validate current state hasn't changed unexpectedly
-        if (abs($product->cost_price - $update['oldCost']) > self::DELTA) {
-            self::addWarning("Concurrent modification detected for product " . $update['productId']);
-            dol_syslog(__METHOD__ . " concurrent modification detected for pid=" . $update['productId'], LOG_WARNING);
-            // Continue anyway, but log it
-        }
-
-        $product->cost_price = $update['newCost'];
-        
-        $result = $product->update($update['productId'], $user);
-        if ($result <= 0) {
-            self::addError("Product update failed for ID: " . $update['productId']);
-            dol_syslog(__METHOD__ . " update failed for pid=" . $update['productId'], LOG_ERR);
-            return false;
-        }
-
-        // Enhanced logging
-        $oldCost = $update['oldCost'];
-        $newCost = $update['newCost'];
-        $childCount = $update['childCount'];
-        
-        dol_syslog("ProductHierarchy updated pid=" . $update['productId'] . " cost $oldCost→$newCost (children: $childCount)", LOG_DEBUG);
-        
-        // Log calculation details if available - FIXED: removed dol_syslog_level() call
-        if (!empty($update['calculation'])) {
-            $calculationDetails = implode('; ', $update['calculation']);
-            dol_syslog("  Calculation details: $calculationDetails", LOG_DEBUG);
-        }
-
-        return true;
-    }
-
-    /**
-     * Get comprehensive hierarchy statistics
-     */
-    public static function getHierarchyStats($productId)
-    {
-        $graphResult = GraphBuilder::aroundPivot($productId);
-        if (!$graphResult['success']) {
-            return array('error' => $graphResult['error']);
-        }
-
-        $nodes = $graphResult['nodes'];
-        $stats = $graphResult['stats'];
-        
-        // Calculate additional statistics
-        $leafNodes = array();
-        $rootNodes = array();
-        $totalCost = 0;
-        
-        foreach ($nodes as $node) {
-            if (empty($node->children)) {
-                $leafNodes[] = $node->id;
-            }
-            if (empty($node->parents)) {
-                $rootNodes[] = $node->id;
-            }
-            $totalCost += $node->cost;
-        }
-        
-        return array(
-            'nodeCount' => $stats['nodeCount'],
-            'relationCount' => $stats['relationCount'],
-            'maxDepth' => isset($stats['maxDepth']) ? $stats['maxDepth'] : 0,
-            'leafNodes' => $leafNodes,
-            'rootNodes' => $rootNodes,
-            'totalCost' => $totalCost
-        );
-    }
-
-    /**
-     * Validate hierarchy integrity
-     */
-    public static function validateHierarchy($productId)
-    {
-        $issues = array();
-        $graphResult = GraphBuilder::aroundPivot($productId);
-        
-        if (!$graphResult['success']) {
-            return array('error' => $graphResult['error']);
-        }
-
-        $nodes = $graphResult['nodes'];
-        
-        foreach ($nodes as $node) {
-            // Check for negative costs
-            if ($node->cost < 0) {
-                $issues[] = "Negative cost for product " . $node->id . ": " . $node->cost;
-            }
-            
-            // Check for orphaned nodes
-            if (empty($node->children) && empty($node->parents) && $node->id != $productId) {
-                $issues[] = "Orphaned node: " . $node->id;
-            }
-            
-            // Check for invalid quantities
-            foreach ($node->children as $childId => $qty) {
-                if ($qty <= 0) {
-                    $issues[] = "Invalid quantity for " . $node->id . " → $childId: $qty";
+                if ($updated) {
+                    self::debug("Cost price updated for product: " . $mapProduct['ref'] .
+                              ($currentProductId == $productId ? " (this is the original modified product)" : " (parent product)"));
                 }
             }
         }
 
-        return array('issues' => $issues, 'isValid' => empty($issues));
+        return $results;
     }
 
     /**
-     * Error handling methods
+     * Load product hierarchy map from database
      */
-    private static function addError($message)
-    {
-        self::$errors[] = $message;
-        dol_syslog("ProductHierarchy Error: $message", LOG_ERR);
-    }
-
-    private static function addWarning($message)
-    {
-        self::$warnings[] = $message;
-        dol_syslog("ProductHierarchy Warning: $message", LOG_WARNING);
-    }
-
-    private static function clearErrors()
-    {
-        self::$errors = array();
-        self::$warnings = array();
-    }
-
-    public static function getErrors()
-    {
-        return self::$errors;
-    }
-
-    public static function getWarnings()
-    {
-        return self::$warnings;
-    }
-
-    public static function hasErrors()
-    {
-        return !empty(self::$errors);
-    }
-}
-
-/**
- * Enhanced ProductNode class with metadata support
- */
-class ProductNode
-{
-    public $id;
-    public $cost = 0.0;
-    public $children = array(); // childId => qty
-    public $parents = array();  // parentId => qty
-    
-    // Enhanced metadata
-    public $name = '';
-    public $ref = '';
-    public $lastUpdated = null;
-    public $isLeaf = false;
-    public $isRoot = false;
-
-    public function __construct($id, $cost = 0.0)
-    {
-        $this->id = (int)$id;
-        $this->cost = (float)$cost;
-        $this->lastUpdated = date('Y-m-d H:i:s');
-    }
-
-    /**
-     * Update node metadata
-     */
-    public function updateMetadata()
-    {
-        $this->isLeaf = empty($this->children);
-        $this->isRoot = empty($this->parents);
-        $this->lastUpdated = date('Y-m-d H:i:s');
-    }
-
-    /**
-     * Get child count
-     */
-    public function getChildCount()
-    {
-        return count($this->children);
-    }
-
-    /**
-     * Get parent count
-     */
-    public function getParentCount()
-    {
-        return count($this->parents);
-    }
-}
-
-/**
- * Enhanced GraphBuilder class with improved error handling
- */
-final class GraphBuilder
-{
-    /**
-     * Build product graph around a pivot product
-     */
-    public static function aroundPivot($pivotId)
+    private static function loadProductMap(): void
     {
         global $db;
 
-        try {
-            $nodes = array();
-            $queue = array($pivotId);
-            $seen = array();
-            $relationCount = 0;
-            $maxDepth = 0;
+        if (self::$mapLoaded) {
+            return;
+        }
 
-            // Enhanced BFS with depth tracking
-            while (!empty($queue)) {
-                $pid = array_pop($queue);
-                if (isset($seen[$pid])) {
-                    continue;
-                }
-                $seen[$pid] = true;
+        // Validate database connection
+        if (!$db) {
+            self::debug("Error: Database connection not available");
+            return;
+        }
 
-                if (!isset($nodes[$pid])) {
-                    $nodes[$pid] = new ProductNode($pid);
-                }
+        self::debug("Loading product map from database");
 
-                // Enhanced query with better error handling
-                $sql = 'SELECT pa.fk_product_pere AS parent, pa.fk_product_fils AS child, pa.qty,
-                               p.label as parent_name, p.ref as parent_ref,
-                               c.label as child_name, c.ref as child_ref
-                        FROM ' . MAIN_DB_PREFIX . 'product_association pa
-                        LEFT JOIN ' . MAIN_DB_PREFIX . 'product p ON p.rowid = pa.fk_product_pere  
-                        LEFT JOIN ' . MAIN_DB_PREFIX . 'product c ON c.rowid = pa.fk_product_fils
-                        WHERE pa.fk_product_pere = ' . (int)$pid . '
-                           OR pa.fk_product_fils = ' . (int)$pid;
-                           
-                $res = $db->query($sql);
-                if (!$res) {
-                    return array(
-                        'success' => false, 
-                        'error' => 'SQL error: ' . $db->lasterror(),
-                        'nodes' => array(),
-                        'stats' => array()
-                    );
-                }
+        // Query to get product associations with sync flags
+        $sql = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, ";
+        $sql .= "pa.syncprice as syncprice, ";
+        // Parent product info
+        $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
+        // Child product info
+        $sql .= "f.label as f_label, f.ref as f_ref, f.cost_price as f_cost_price ";
+        $sql .= "FROM ".MAIN_DB_PREFIX."product_association as pa, ";
+        $sql .= MAIN_DB_PREFIX."product as p, ";
+        $sql .= MAIN_DB_PREFIX."product as f ";
+        $sql .= "WHERE p.rowid = pa.fk_product_pere AND f.rowid = pa.fk_product_fils";
 
-                while ($row = $db->fetch_object($res)) {
-                    $parentId = (int)$row->parent;
-                    $childId = (int)$row->child;
-                    $qty = (float)$row->qty;
-                    $relationCount++;
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::debug("Error loading product map: " . $db->lasterror());
+            return;
+        }
 
-                    // Validation
-                    if ($qty <= 0) {
-                        dol_syslog("GraphBuilder: Invalid quantity $qty for $parentId → $childId", LOG_WARNING);
-                        continue;
-                    }
-
-                    // Enhanced node creation with metadata
-                    if (!isset($nodes[$parentId])) {
-                        $nodes[$parentId] = new ProductNode($parentId);
-                        $nodes[$parentId]->name = $row->parent_name ? $row->parent_name : '';
-                        $nodes[$parentId]->ref = $row->parent_ref ? $row->parent_ref : '';
-                    }
-                    
-                    if (!isset($nodes[$childId])) {
-                        $nodes[$childId] = new ProductNode($childId);
-                        $nodes[$childId]->name = $row->child_name ? $row->child_name : '';
-                        $nodes[$childId]->ref = $row->child_ref ? $row->child_ref : '';
-                    }
-
-                    // Build relationships (prevent duplicates)
-                    $nodes[$parentId]->children[$childId] = $qty;
-                    $nodes[$childId]->parents[$parentId] = $qty;
-
-                    if (!isset($seen[$parentId])) {
-                        $queue[] = $parentId;
-                    }
-                    if (!isset($seen[$childId])) {
-                        $queue[] = $childId;
-                    }
-                }
-                $db->free($res);
+        self::$productMap = [];
+        while ($obj = $db->fetch_object($resql)) {
+            // Add parent to map
+            if (!isset(self::$productMap[$obj->parent])) {
+                self::$productMap[$obj->parent] = [
+                    'id' => $obj->parent,
+                    'ref' => $obj->p_ref,
+                    'label' => $obj->p_label,
+                    'cost_price' => $obj->p_cost_price,
+                    'children' => [],
+                    'parents' => [],
+                    'sync_cost_price' => false
+                ];
             }
 
-            // Bulk-load costs with enhanced query
-            self::loadCostsForNodes($nodes, $db);
-            
-            // Update metadata for all nodes
-            foreach ($nodes as $node) {
-                $node->updateMetadata();
+            // Add child to map
+            if (!isset(self::$productMap[$obj->child])) {
+                self::$productMap[$obj->child] = [
+                    'id' => $obj->child,
+                    'ref' => $obj->f_ref,
+                    'label' => $obj->f_label,
+                    'cost_price' => $obj->f_cost_price,
+                    'children' => [],
+                    'parents' => [],
+                    'sync_cost_price' => false
+                ];
             }
 
-            return array(
-                'success' => true,
-                'nodes' => $nodes,
-                'stats' => array(
-                    'nodeCount' => count($nodes),
-                    'relationCount' => $relationCount,
-                    'maxDepth' => $maxDepth
-                )
-            );
+            // Add child to parent's children
+            self::$productMap[$obj->parent]['children'][$obj->child] = [
+                'id' => $obj->child,
+                'qty' => $obj->qty
+            ];
 
-        } catch (Exception $e) {
-            return array(
-                'success' => false,
-                'error' => $e->getMessage(),
-                'nodes' => array(),
-                'stats' => array()
-            );
+            // Add parent to child's parents
+            self::$productMap[$obj->child]['parents'][$obj->parent] = [
+                'id' => $obj->parent
+            ];
+
+            // Set sync flag for parent
+            self::$productMap[$obj->parent]['sync_cost_price'] = (bool)$obj->syncprice;
+        }
+
+        $db->free($resql);
+        self::$mapLoaded = true;
+        self::debug("Product map loaded with " . count(self::$productMap) . " products");
+    }
+
+    /**
+     * Reset product map
+     */
+    private static function resetMap(): void
+    {
+        self::$productMap = [];
+        self::$mapLoaded = false;
+    }
+
+    /**
+     * Get product from map
+     *
+     * @param int $productId
+     * @return array|null
+     */
+    private static function getProductFromMap(int $productId): ?array
+    {
+        return self::$productMap[$productId] ?? null;
+    }
+
+    /**
+     * Check if product has children
+     *
+     * @param int $productId
+     * @return bool
+     */
+    private static function hasChildren(int $productId): bool
+    {
+        $product = self::getProductFromMap($productId);
+        return $product && !empty($product['children']);
+    }
+
+    /**
+     * Get product children
+     *
+     * @param int $productId
+     * @return array
+     */
+    private static function getChildren(int $productId): array
+    {
+        $product = self::getProductFromMap($productId);
+        return $product['children'] ?? [];
+    }
+
+    /**
+     * Check if cost price sync is enabled for product
+     *
+     * @param int $productId
+     * @return bool
+     */
+    private static function isCostPriceSyncEnabled(int $productId): bool
+    {
+        $product = self::getProductFromMap($productId);
+        return $product['sync_cost_price'] ?? false;
+    }
+
+    /**
+     * Add product to update list
+     *
+     * @param int $productId
+     */
+    private static function addToUpdateList(int $productId): void
+    {
+        if (!in_array($productId, self::$updateList)) {
+            self::$updateList[] = $productId;
+            self::debug("Added product " . $productId . " to update list");
         }
     }
 
     /**
-     * Load cost information for all nodes
+     * Create reverse list for bottom-up processing
      */
-    private static function loadCostsForNodes(&$nodes, $db)
+    private static function createReverseList(): void
     {
-        if (empty($nodes)) {
-            return;
+        self::debug("Creating reverse list");
+        self::$reverseList = [];
+
+        foreach (self::$updateList as $productId) {
+            self::addParentsToReverseList($productId);
         }
 
-        $nodeIds = array_keys($nodes);
-        $idList = implode(',', array_map('intval', $nodeIds));
-        
-        $sql = 'SELECT rowid, cost_price, label, ref 
-                FROM ' . MAIN_DB_PREFIX . 'product 
-                WHERE rowid IN (' . $idList . ')';
-                
-        $res = $db->query($sql);
-        if (!$res) {
-            dol_syslog('GraphBuilder: SQL error on cost fetch: ' . $db->lasterror(), LOG_ERR);
-            return;
+        self::debug("Reverse list created with " . count(self::$reverseList) . " products");
+    }
+
+    /**
+     * Recursively add product and its parents to reverse list
+     *
+     * @param int $productId
+     */
+    private static function addParentsToReverseList(int $productId): void
+    {
+        if (!in_array($productId, self::$reverseList)) {
+            self::$reverseList[] = $productId;
         }
 
-        while ($row = $db->fetch_object($res)) {
-            $id = (int)$row->rowid;
-            if (isset($nodes[$id])) {
-                $nodes[$id]->cost = max(0, (float)$row->cost_price); // Ensure non-negative
-                $nodes[$id]->name = $row->label ? $row->label : $nodes[$id]->name;
-                $nodes[$id]->ref = $row->ref ? $row->ref : $nodes[$id]->ref;
+        $product = self::getProductFromMap($productId);
+        if ($product && !empty($product['parents'])) {
+            foreach ($product['parents'] as $parent) {
+                self::addParentsToReverseList($parent['id']);
             }
         }
-        $db->free($res);
     }
+
+    /**
+     * Update cost price from children calculation
+     * This matches the original updateBuyprice() method behavior
+     *
+     * @param int $productId Product to update
+     * @param int $originalProductId The original product that was modified (for warning messages)
+     * @return bool True if updated, false otherwise
+     */
+    private static function updateCostPriceFromChildren(int $productId, ?int $originalProductId = null): bool
+    {
+        global $db, $user;
+
+        // Load product from database
+        $product = new Product($db);
+        if ($product->fetch($productId) <= 0) {
+            self::debug("Failed to load product: " . $productId);
+            return false;
+        }
+
+        // Calculate new cost price from children
+        $newCostPrice = self::calculateCostPriceFromChildren($productId);
+
+        // Compare with current cost price (tolerance of 0.001 - matches original)
+        if (abs($product->cost_price - $newCostPrice) < 0.001) {
+            self::debug("No cost price change needed for product " . $product->ref .
+                       " (current: " . $product->cost_price . ", calculated: " . $newCostPrice . ")");
+            return false;
+        }
+
+        $oldCostPrice = $product->cost_price;
+
+        // Update product cost price (matches original method)
+        $product->cost_price = $newCostPrice;
+        $result = $product->update($productId, $user);
+
+        if ($result > 0) {
+            self::debug("Updated cost price for product " . $product->ref . " from " .
+                       $oldCostPrice . " to " . $newCostPrice);
+
+            // If this is the original product that was modified, show a warning
+            // (matches original behavior: line 215-217 in MapProduct.php)
+            if ($productId == $originalProductId) {
+                self::debug("WARNING: Cost price for " . $product->ref .
+                           " was recalculated from children and overrode your manual entry!");
+            }
+
+            return true;
+        }
+
+        self::debug("Failed to update product " . $product->ref . " - update() returned: " . $result);
+        return false;
+    }
+
+    /**
+     * Calculate cost price from children
+     *
+     * @param int $productId
+     * @return float
+     */
+    private static function calculateCostPriceFromChildren(int $productId): float
+    {
+        $children = self::getChildren($productId);
+        if (empty($children)) {
+            return 0.0;
+        }
+
+        $totalCostPrice = 0.0;
+
+        foreach ($children as $child) {
+            $childProduct = self::getProductFromMap($child['id']);
+            if (!$childProduct) {
+                continue;
+            }
+
+            $childCostPrice = 0.0;
+
+            // If child has its own children, calculate recursively
+            if (!empty($childProduct['children'])) {
+                $childCostPrice = self::calculateCostPriceFromChildren($child['id']);
+            } else {
+                // Use child's current cost price
+                $childCostPrice = (float)$childProduct['cost_price'];
+            }
+
+            $totalCostPrice += $childCostPrice * $child['qty'];
+        }
+
+        return $totalCostPrice;
+    }
+
+    /**
+     * Get all products in hierarchy for a given product
+     *
+     * @param int $productId
+     * @return array
+     */
+    public static function getProductHierarchy(int $productId): array
+    {
+        self::loadProductMap();
+
+        $hierarchy = [
+            'product' => self::getProductFromMap($productId),
+            'children' => [],
+            'parents' => []
+        ];
+
+        if ($hierarchy['product']) {
+            // Get children recursively
+            $hierarchy['children'] = self::getChildrenHierarchy($productId);
+            // Get parents recursively
+            $hierarchy['parents'] = self::getParentsHierarchy($productId);
+        }
+
+        return $hierarchy;
+    }
+
+    /**
+     * Get children hierarchy recursively
+     *
+     * @param int $productId
+     * @return array
+     */
+    private static function getChildrenHierarchy(int $productId): array
+    {
+        $children = [];
+        $productChildren = self::getChildren($productId);
+
+        foreach ($productChildren as $child) {
+            $childData = self::getProductFromMap($child['id']);
+            if ($childData) {
+                $children[] = [
+                    'product' => $childData,
+                    'qty' => $child['qty'],
+                    'children' => self::getChildrenHierarchy($child['id'])
+                ];
+            }
+        }
+
+        return $children;
+    }
+
+    /**
+     * Get parents hierarchy recursively
+     *
+     * @param int $productId
+     * @return array
+     */
+    private static function getParentsHierarchy(int $productId): array
+    {
+        $parents = [];
+        $product = self::getProductFromMap($productId);
+
+        if ($product && !empty($product['parents'])) {
+            foreach ($product['parents'] as $parent) {
+                $parentData = self::getProductFromMap($parent['id']);
+                if ($parentData) {
+                    $parents[] = [
+                        'product' => $parentData,
+                        'parents' => self::getParentsHierarchy($parent['id'])
+                    ];
+                }
+            }
+        }
+
+        return $parents;
+    }
+
+    /**
+     * Simulate the exact behavior when a product is saved in Dolibarr
+     * This is what gets called when you modify a product and save it
+     * (equivalent to the trigger PRODUCT_MODIFY calling ProductMixer::updateProductAttributes)
+     *
+     * @param int $productId The product that was just saved/modified
+     * @param bool $useWholeSalePriceSync Use global wholesale price sync setting (default true)
+     * @return array Results array showing what was updated
+     */
+    public static function onProductModified(int $productId, bool $useWholeSalePriceSync = true): array
+    {
+        self::debug("=== Product Modified Event for Product ID: " . $productId . " ===");
+
+        // This exactly matches the trigger behavior:
+        // 1. Product A is saved
+        // 2. Trigger calls ProductMixer::updateProductAttributes(A)
+        // 3. This recalculates cost prices for A (if A has children) and all its parents
+
+        $results = self::updateProductCostPrice($productId, $useWholeSalePriceSync);
+
+        self::debug("=== End Product Modified Event ===");
+
+        return $results;
+    }
+
+    /**
+     * Batch update cost prices for multiple products
+     *
+     * @param array $productIds Array of product IDs
+     * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+     * @return array Results array
+     */
+    public static function batchUpdateCostPrices(array $productIds, bool $useWholeSalePriceSync = true): array
+    {
+        $allResults = [];
+
+        foreach ($productIds as $productId) {
+            $results = self::updateProductCostPrice($productId, $useWholeSalePriceSync);
+            $allResults = array_merge($allResults, $results);
+        }
+
+        return $allResults;
+    }
+
+    /**
+     * Main entry point for updating product attributes (backward compatibility)
+     * This maintains compatibility with existing code that calls ProductHierarchy::updateProductAttributes
+     *
+     * @param int $productId Starting product ID
+     * @param mixed $user User performing the update
+     * @return int 1 on success, 0 on failure or skip
+     */
+    public static function updateProductAttributes($productId, $user)
+    {
+        // Call the new method and return simplified result
+        $results = self::updateProductCostPrice($productId, true);
+
+        // Return 1 if any products were updated, 0 otherwise
+        foreach ($results as $result) {
+            if ($result['updated']) {
+                return 1;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Test method to verify the class is working correctly
+     *
+     * @return array Test results
+     */
+    public static function runSelfTest(): array
+    {
+        global $db;
+
+        $results = [
+            'database_connection' => false,
+            'product_associations_table' => false,
+            'product_table' => false,
+            'test_query' => false,
+            'errors' => []
+        ];
+
+        // Test database connection
+        if ($db) {
+            $results['database_connection'] = true;
+        } else {
+            $results['errors'][] = 'No database connection available';
+            return $results;
+        }
+
+        // Test if product_association table exists
+        $sql = "SHOW TABLES LIKE '" . MAIN_DB_PREFIX . "product_association'";
+        $resql = $db->query($sql);
+        if ($resql && $db->num_rows($resql) > 0) {
+            $results['product_associations_table'] = true;
+        } else {
+            $results['errors'][] = 'product_association table not found';
+        }
+        if ($resql) $db->free($resql);
+
+        // Test if product table exists
+        $sql = "SHOW TABLES LIKE '" . MAIN_DB_PREFIX . "product'";
+        $resql = $db->query($sql);
+        if ($resql && $db->num_rows($resql) > 0) {
+            $results['product_table'] = true;
+        } else {
+            $results['errors'][] = 'product table not found';
+        }
+        if ($resql) $db->free($resql);
+
+        // Test a simple query
+        $sql = "SELECT COUNT(*) as count FROM " . MAIN_DB_PREFIX . "product_association";
+        $resql = $db->query($sql);
+        if ($resql) {
+            $obj = $db->fetch_object($resql);
+            $results['test_query'] = true;
+            $results['association_count'] = $obj->count;
+            $db->free($resql);
+        } else {
+            $results['errors'][] = 'Failed to query product_association table: ' . $db->lasterror();
+        }
+
+        return $results;
+    }
+}
+
+/**
+ * Backward compatibility alias
+ * Maintains compatibility with existing code that references ProductHierarchy
+ */
+class ProductHierarchy extends ProductUpdater
+{
+    // All functionality is inherited from ProductUpdater
 }
