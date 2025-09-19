@@ -62,3 +62,9 @@ MyPageName = My page name
 #
 MyWidget = My widget
 MyWidgetDescription = My widget description
+
+#
+# Extrafields
+#
+kreap_syncprice = Auto Sync Cost Price
+EnableCostPriceSyncForThisProduct = Enable automatic cost price synchronization for this product when child products are updated

@@ -16,10 +16,7 @@
 
 --ADD Call trigger IN TABLE
 
-ALTER TABLE llx_product_association ADD COLUMN IF NOT EXISTS syncprice int(11) DEFAULT 0;
-
--- Create index for better performance
-CREATE INDEX IF NOT EXISTS idx_product_association_syncprice ON llx_product_association(syncprice);
+-- NOTE: syncprice column is no longer needed in llx_product_association table
+-- We now use kreap_syncprice extrafield on products instead (see modKreaProducts.class.php)
 
 -- Show current table structure
-DESCRIBE llx_product_association;

@@ -60,6 +60,8 @@ StockableProductDescription = Se esta opção estiver ativada, a modificação d
 
 kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
+kreap_syncprice = Sincronizar Preço de Custo Automaticamente
+EnableCostPriceSyncForThisProduct = Ativar sincronização automática do preço de custo para este produto quando produtos filhos são atualizados
 kreaproducts_nuttable = Tabela nutricional
 NutritionalCard = Tabela nutricional
 kreap_calc_nut = Tab. nutricional manual/automatica

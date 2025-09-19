@@ -7,6 +7,14 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
  *
  * Extracted from ProductMixer Dolibarr module to handle product cost price updates
  * Independent implementation using native Dolibarr framework
+ *
+ * ENHANCED WITH BOM SUPPORT:
+ * - Supports both product associations (llx_product_association) and BOM compositions (llx_bom_bom/llx_bom_bomline)
+ * - When BOM module is enabled, automatically includes BOM-based parent-child relationships
+ * - BOM quantities take precedence over association quantities when both exist
+ * - Supports Manufacturing BOMs (bomtype = 0) that are validated (status = 1)
+ * - Cost calculations work with any combination of associations and BOMs
+ * - Debug output shows the source of each relationship (association, bom, or both)
  */
 class ProductUpdater
 {
@@ -127,7 +135,7 @@ class ProductUpdater
                 continue;
             }
 
-            // Update cost price if sync is enabled (matches original: only if product has syncbuyprice enabled)
+            // Update cost price if sync is enabled (only if product has kreap_syncprice extrafield enabled)
             if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
                 $updated = self::updateCostPriceFromChildren($currentProductId, $productId);
                 $results[$currentProductId] = [
@@ -165,9 +173,27 @@ class ProductUpdater
 
         self::debug("Loading product map from database");
 
-        // Query to get product associations with sync flags
+        // First load product associations
+        self::loadProductAssociations();
+
+        // Then load BOM-based relationships (if BOM module is enabled)
+        self::loadBOMRelationships();
+
+        self::$mapLoaded = true;
+        self::debug("Product map loaded with " . count(self::$productMap) . " products");
+    }
+
+    /**
+     * Load product associations from llx_product_association table
+     */
+    private static function loadProductAssociations(): void
+    {
+        global $db;
+
+        self::debug("Loading product associations");
+
+        // Query to get product associations - no sync flags needed from associations
         $sql = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, ";
-        $sql .= "pa.syncprice as syncprice, ";
         // Parent product info
         $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
         // Child product info
@@ -179,11 +205,16 @@ class ProductUpdater
 
         $resql = $db->query($sql);
         if (!$resql) {
-            self::debug("Error loading product map: " . $db->lasterror());
+            self::debug("Error loading product associations: " . $db->lasterror());
             return;
         }
 
-        self::$productMap = [];
+        // Initialize product map if not already done
+        if (empty(self::$productMap)) {
+            self::$productMap = [];
+        }
+
+        $associationCount = 0;
         while ($obj = $db->fetch_object($resql)) {
             // Add parent to map
             if (!isset(self::$productMap[$obj->parent])) {
@@ -193,8 +224,7 @@ class ProductUpdater
                     'label' => $obj->p_label,
                     'cost_price' => $obj->p_cost_price,
                     'children' => [],
-                    'parents' => [],
-                    'sync_cost_price' => false
+                    'parents' => []
                 ];
             }
 
@@ -206,29 +236,131 @@ class ProductUpdater
                     'label' => $obj->f_label,
                     'cost_price' => $obj->f_cost_price,
                     'children' => [],
-                    'parents' => [],
-                    'sync_cost_price' => false
+                    'parents' => []
                 ];
             }
 
-            // Add child to parent's children
+            // Add child to parent's children (with source info)
             self::$productMap[$obj->parent]['children'][$obj->child] = [
                 'id' => $obj->child,
-                'qty' => $obj->qty
+                'qty' => $obj->qty,
+                'source' => 'association'
             ];
 
             // Add parent to child's parents
             self::$productMap[$obj->child]['parents'][$obj->parent] = [
-                'id' => $obj->parent
+                'id' => $obj->parent,
+                'source' => 'association'
             ];
 
-            // Set sync flag for parent
-            self::$productMap[$obj->parent]['sync_cost_price'] = (bool)$obj->syncprice;
+            $associationCount++;
         }
 
         $db->free($resql);
-        self::$mapLoaded = true;
-        self::debug("Product map loaded with " . count(self::$productMap) . " products");
+        self::debug("Loaded " . $associationCount . " product associations");
+    }
+
+    /**
+     * Load BOM-based relationships from bom_bom and bom_bomline tables
+     */
+    private static function loadBOMRelationships(): void
+    {
+        global $db, $conf;
+
+        // Only load BOM data if BOM module is enabled
+        if (empty($conf->bom->enabled)) {
+            self::debug("BOM module not enabled, skipping BOM relationships");
+            return;
+        }
+
+        self::debug("Loading BOM relationships");
+
+        // Query to get BOM relationships (manufacturing type only)
+        $sql = "SELECT b.fk_product as parent, bl.fk_product as child, bl.qty as qty, ";
+        // Parent product info
+        $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
+        // Child product info
+        $sql .= "f.label as f_label, f.ref as f_ref, f.cost_price as f_cost_price, ";
+        // BOM info
+        $sql .= "b.rowid as bom_id, b.ref as bom_ref ";
+        $sql .= "FROM ".MAIN_DB_PREFIX."bom_bom as b ";
+        $sql .= "JOIN ".MAIN_DB_PREFIX."bom_bomline as bl ON b.rowid = bl.fk_bom ";
+        $sql .= "JOIN ".MAIN_DB_PREFIX."product as p ON p.rowid = b.fk_product ";
+        $sql .= "JOIN ".MAIN_DB_PREFIX."product as f ON f.rowid = bl.fk_product ";
+        $sql .= "WHERE b.bomtype = 0 AND b.status = 1"; // Only validated manufacturing BOMs
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::debug("Error loading BOM relationships: " . $db->lasterror());
+            return;
+        }
+
+        $bomCount = 0;
+        while ($obj = $db->fetch_object($resql)) {
+            // Add parent to map if not exists
+            if (!isset(self::$productMap[$obj->parent])) {
+                self::$productMap[$obj->parent] = [
+                    'id' => $obj->parent,
+                    'ref' => $obj->p_ref,
+                    'label' => $obj->p_label,
+                    'cost_price' => $obj->p_cost_price,
+                    'children' => [],
+                    'parents' => []
+                ];
+            }
+
+            // Add child to map if not exists
+            if (!isset(self::$productMap[$obj->child])) {
+                self::$productMap[$obj->child] = [
+                    'id' => $obj->child,
+                    'ref' => $obj->f_ref,
+                    'label' => $obj->f_label,
+                    'cost_price' => $obj->f_cost_price,
+                    'children' => [],
+                    'parents' => []
+                ];
+            }
+
+            // Add child to parent's children (BOM-based relationship)
+            $childKey = $obj->child;
+            if (!isset(self::$productMap[$obj->parent]['children'][$childKey])) {
+                self::$productMap[$obj->parent]['children'][$childKey] = [
+                    'id' => $obj->child,
+                    'qty' => $obj->qty,
+                    'source' => 'bom',
+                    'bom_id' => $obj->bom_id,
+                    'bom_ref' => $obj->bom_ref
+                ];
+            } else {
+                // If relationship already exists from associations, mark it as having BOM too
+                self::$productMap[$obj->parent]['children'][$childKey]['source'] = 'both';
+                self::$productMap[$obj->parent]['children'][$childKey]['bom_id'] = $obj->bom_id;
+                self::$productMap[$obj->parent]['children'][$childKey]['bom_ref'] = $obj->bom_ref;
+                // Use BOM quantity as it's likely more accurate
+                self::$productMap[$obj->parent]['children'][$childKey]['qty'] = $obj->qty;
+            }
+
+            // Add parent to child's parents
+            $parentKey = $obj->parent;
+            if (!isset(self::$productMap[$obj->child]['parents'][$parentKey])) {
+                self::$productMap[$obj->child]['parents'][$parentKey] = [
+                    'id' => $obj->parent,
+                    'source' => 'bom',
+                    'bom_id' => $obj->bom_id,
+                    'bom_ref' => $obj->bom_ref
+                ];
+            } else {
+                // Mark existing relationship as having BOM too
+                self::$productMap[$obj->child]['parents'][$parentKey]['source'] = 'both';
+                self::$productMap[$obj->child]['parents'][$parentKey]['bom_id'] = $obj->bom_id;
+                self::$productMap[$obj->child]['parents'][$parentKey]['bom_ref'] = $obj->bom_ref;
+            }
+
+            $bomCount++;
+        }
+
+        $db->free($resql);
+        self::debug("Loaded " . $bomCount . " BOM relationships");
     }
 
     /**
@@ -277,14 +409,28 @@ class ProductUpdater
 
     /**
      * Check if cost price sync is enabled for product
+     * Now checks the kreap_syncprice extrafield on the product
      *
      * @param int $productId
      * @return bool
      */
     private static function isCostPriceSyncEnabled(int $productId): bool
     {
-        $product = self::getProductFromMap($productId);
-        return $product['sync_cost_price'] ?? false;
+        global $db;
+
+        // Load product and its extrafields
+        $product = new Product($db);
+        if ($product->fetch($productId) <= 0) {
+            return false;
+        }
+
+        require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+        $extrafields = new ExtraFields($db);
+        $product->fetch_optionals($productId, $extrafields);
+
+        // Check if kreap_syncprice extrafield is enabled
+        $syncFieldName = 'options_kreap_syncprice';
+        return !empty($product->array_options[$syncFieldName]);
     }
 
     /**
@@ -401,6 +547,10 @@ class ProductUpdater
         }
 
         $totalCostPrice = 0.0;
+        $parentProduct = self::getProductFromMap($productId);
+        $parentRef = $parentProduct ? $parentProduct['ref'] : $productId;
+
+        self::debug("Calculating cost for {$parentRef} with " . count($children) . " children");
 
         foreach ($children as $child) {
             $childProduct = self::getProductFromMap($child['id']);
@@ -409,18 +559,29 @@ class ProductUpdater
             }
 
             $childCostPrice = 0.0;
+            $source = isset($child['source']) ? $child['source'] : 'unknown';
+            $bomInfo = '';
+
+            if ($source === 'bom' || $source === 'both') {
+                $bomInfo = " (BOM: " . (isset($child['bom_ref']) ? $child['bom_ref'] : $child['bom_id']) . ")";
+            }
 
             // If child has its own children, calculate recursively
             if (!empty($childProduct['children'])) {
                 $childCostPrice = self::calculateCostPriceFromChildren($child['id']);
+                self::debug("  Child {$childProduct['ref']}: calculated cost {$childCostPrice} * qty {$child['qty']} = " .
+                          ($childCostPrice * $child['qty']) . " [source: {$source}]{$bomInfo}");
             } else {
                 // Use child's current cost price
                 $childCostPrice = (float)$childProduct['cost_price'];
+                self::debug("  Child {$childProduct['ref']}: direct cost {$childCostPrice} * qty {$child['qty']} = " .
+                          ($childCostPrice * $child['qty']) . " [source: {$source}]{$bomInfo}");
             }
 
             $totalCostPrice += $childCostPrice * $child['qty'];
         }
 
+        self::debug("Total calculated cost for {$parentRef}: {$totalCostPrice}");
         return $totalCostPrice;
     }
 

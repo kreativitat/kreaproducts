@@ -64,11 +64,76 @@ echo "<h2>2. Testing Product Cost Price Update</h2>\n";
 echo "<p>Testing with Product ID: $testProductId</p>";
 
 // Get product hierarchy first
-echo "<h3>Product Hierarchy</h3>";
+echo "<h3>Product Hierarchy (including BOM relationships)</h3>";
 $hierarchy = ProductUpdater::getProductHierarchy($testProductId);
 echo "<pre>";
 print_r($hierarchy);
 echo "</pre>";
+
+// Check if product has BOM-based relationships
+echo "<h3>BOM Relationship Analysis</h3>";
+// First load the product map so we can check relationships
+ProductUpdater::getProductHierarchy($testProductId); // This loads the map
+
+// Now check for BOM module status
+global $conf;
+if (!empty($conf->bom->enabled)) {
+    echo "<p style='color:green;'>✓ BOM module is enabled</p>";
+} else {
+    echo "<p style='color:orange;'>⚠ BOM module is not enabled - only product associations will be used</p>";
+}
+
+echo "<p><strong>Relationship Summary:</strong></p>";
+if (!empty($hierarchy['children'])) {
+    echo "<p>Product has " . count($hierarchy['children']) . " children:</p>";
+    echo "<ul>";
+    foreach ($hierarchy['children'] as $child) {
+        $source = isset($child['qty']) ? 'relationship found' : 'unknown';
+        if (isset($child['product'])) {
+            echo "<li>" . $child['product']['ref'] . " (" . $child['product']['label'] . ")" .
+                 " - Qty: " . $child['qty'] . "</li>";
+        }
+    }
+    echo "</ul>";
+} else {
+    echo "<p>Product has no child relationships (neither associations nor BOM).</p>";
+}
+
+// Test extrafield functionality first
+echo "<h3>Extrafield Sync Test</h3>";
+$product = new Product($db);
+if ($product->fetch($testProductId) > 0) {
+    echo "<p>Testing kreap_syncprice extrafield for product: " . $product->ref . "</p>";
+
+    // Load extrafields
+    require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+    $extrafields = new ExtraFields($db);
+    $product->fetch_optionals($testProductId, $extrafields);
+
+    echo "<p>Product extrafields:</p>";
+    echo "<pre>";
+    print_r($product->array_options);
+    echo "</pre>";
+
+    // Check if kreap_syncprice is set
+    $syncFieldName = 'options_kreap_syncprice';
+    $syncEnabled = !empty($product->array_options[$syncFieldName]);
+    echo "<p>kreap_syncprice field status: " . ($syncEnabled ? 'ENABLED' : 'DISABLED') . "</p>";
+
+    if (!isset($product->array_options[$syncFieldName])) {
+        echo "<p style='color:orange;'><strong>Note:</strong> kreap_syncprice extrafield not found. Make sure the module is properly activated and extrafields are created.</p>";
+        echo "<p><strong>Solutions:</strong></p>";
+        echo "<ul>";
+        echo "<li>1. Disable and re-enable the KreaProducts module to recreate extrafields</li>";
+        echo "<li>2. Check if translations are properly added to language files</li>";
+        echo "<li>3. Clear Dolibarr cache and check extrafield setup</li>";
+        echo "</ul>";
+    } else {
+        echo "<p style='color:green;'><strong>Success:</strong> kreap_syncprice extrafield is properly configured and available!</p>";
+    }
+} else {
+    echo "<p style='color:red;'>Failed to load product ID: $testProductId</p>";
+}
 
 // Test cost price update
 echo "<h3>Cost Price Update Results</h3>";
