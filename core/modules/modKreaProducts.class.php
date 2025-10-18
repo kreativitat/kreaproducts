@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.32';
+		$this->version = '2.33';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -219,7 +219,7 @@ class modKreaProducts extends DolibarrModules
 
 		$this->tabs = array();
 		$this->tabs[] = array('data' => 'product:-price:NU:$conf->kreaproducts->enabled');
-		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/sellPrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:!$conf->dolizsynch->enabled:/kreaproducts/sellPrice.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:-suppliers:NU:$conf->kreaproducts->enabled');
 		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/purchasePrice.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:-subproduct:NU:$conf->kreaproducts->enabled');
