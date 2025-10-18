@@ -501,6 +501,67 @@ if (empty($reshook)) {
 			setEventMessages($object->error, $object->errors, 'errors');
 		}
 
+		// Handle Variable Price checkboxes (Zone Soft sync) - Only if dolizsynch module is active
+		if (!$error && !empty($conf->dolizsynch->enabled)) {
+			$variablePrices = GETPOST('variable_price', 'array');
+
+			// Load ZS Product Synch class
+			dol_include_once('/dolizsynch/class/zsprodsynch.class.php');
+			$zsProductSync = new ZSProductSynch($db);
+
+			// Update variable prices in llx_dolizsynch_zsproduct table
+			$updateResult = $zsProductSync->updateVariablePricesInLocalTable($object->id, $variablePrices);
+
+			if ($updateResult < 0) {
+				$error++;
+				setEventMessages("Error updating variable prices: " . $zsProductSync->error, $zsProductSync->errors, 'errors');
+			} else {
+				// Update Dolibarr product prices to -1 for variable prices
+				for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
+					$isVariable = !empty($variablePrices[$i]);
+
+					if ($isVariable) {
+						// Set price to -1 in Dolibarr for variable price
+						$priceBaseType = $object->multiprices_base_type[$i];
+						$tva_tx = $object->multiprices_tva_tx[$i];
+
+						// Update price to -1
+						$ret = $object->updatePrice(
+							-1,                     // Price = -1 (variable)
+							$priceBaseType,         // Price base type ('HT' or 'TTC')
+							$user,                  // User object
+							$tva_tx,                // VAT rate
+							-1,                     // Minimum price = -1
+							$i,                     // Price level
+							0,                      // Non-deductible VAT rate
+							0,                      // Minimum price in TTC
+							0,                      // Minimum price base type
+							array(),                // Local taxes array
+							''                      // VAT rate code
+						);
+
+						if ($ret < 0) {
+							dol_syslog("Failed to update Dolibarr price level $i to -1 for product ID {$object->id}: " . $object->error, LOG_ERR);
+							$error++;
+							setEventMessages("Error setting variable price in Dolibarr: " . $object->error, $object->errors, 'errors');
+							break;
+						}
+					}
+					// Note: If unchecked, the normal price was already set in the main price update loop above
+				}
+
+				// Trigger sync to Zone Soft BMS if configured
+				if (!$error && !empty($conf->global->ZS_API_ENABLE_PRODUCT_EXPORT)) {
+					$syncResult = $zsProductSync->syncVariablePricesToZoneSoft($object->id, $variablePrices);
+					if ($syncResult < 0) {
+						// Log warning but don't fail the transaction
+						dol_syslog("Warning: Failed to sync variable prices to Zone Soft: " . $zsProductSync->error, LOG_WARNING);
+						setEventMessages("Prices saved but sync to Zone Soft failed: " . $zsProductSync->error, null, 'warnings');
+					}
+				}
+			}
+		}
+
 		if (empty($error)) {
 			$action = '';
 			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
@@ -1573,6 +1634,38 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			print $langs->trans('UseMultipriceRules') . ' <input type="checkbox" id="usePriceRules" name="usePriceRules" ' . ($object->price_autogen ? 'checked' : '') . '><br><br>';
 		}
 
+		// Fetch Zone Soft product data to check for variable prices - Only if dolizsynch module is active
+		$zsProductData = null;
+		$zsVariablePrices = array(); // Array to store which price levels are variable
+		if (!empty($conf->dolizsynch->enabled)) {
+			$sql = "SELECT * FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . (int)$object->id;
+			if (!empty($conf->global->ZS_API_STORE)) {
+				$sql .= " AND loja_zs = " . (int)$conf->global->ZS_API_STORE;
+			}
+			$sql .= " LIMIT 1";
+			$resql = $db->query($sql);
+			if ($resql) {
+				$zsProductData = $db->fetch_object($resql);
+				if ($zsProductData) {
+					// Check each price level for variable price (both -1 means variable)
+					for ($i = 1; $i <= 10; $i++) {
+						if ($i == 1) {
+							$priceHT = isset($zsProductData->pvp1siva) ? (float)$zsProductData->pvp1siva : null;
+							$priceTTC = isset($zsProductData->precovenda) ? (float)$zsProductData->precovenda : null;
+						} else {
+							$priceHT = isset($zsProductData->{'pvp'.$i.'siva'}) ? (float)$zsProductData->{'pvp'.$i.'siva'} : null;
+							$priceTTC = isset($zsProductData->{'pvp'.$i}) ? (float)$zsProductData->{'pvp'.$i} : null;
+						}
+						// Variable price = both prices are -1
+						if ($priceHT == -1 && $priceTTC == -1) {
+							$zsVariablePrices[$i] = true;
+						}
+					}
+				}
+				$db->free($resql);
+			}
+		}
+
 		print '<div class="div-table-responsive-no-min">';
 		print '<table class="noborder">';
 		print '<thead><tr class="liste_titre">';
@@ -1587,6 +1680,9 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		print '<td class="center">' . $langs->trans("SellingPrice") . '</td>';
 		print '<td class="center">' . $langs->trans("CalculatePriceOnCost") . '</td>';
 		print '<td class="center">' . $langs->trans("MinPrice") . '</td>';
+		if (!empty($conf->dolizsynch->enabled)) {
+			print '<td class="center" title="Preço Variável (Zone Soft)">Var</td>';
+		}
 		if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 			print '<td></td>';
 		}
@@ -1658,6 +1754,76 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
                 console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
             }
         });
+
+        // Variable Price Checkbox Functionality
+        const variablePriceCheckboxes = document.querySelectorAll(".variable-price-checkbox");
+
+        variablePriceCheckboxes.forEach((checkbox) => {
+            const priceLevel = checkbox.getAttribute("data-price-level");
+            const priceInput = document.getElementById("price_" + priceLevel);
+            const percentageInput = document.getElementById("percentage_" + priceLevel);
+            const priceMinInput = document.getElementById("price_min_" + priceLevel);
+            const htTtcSelect = document.getElementById("select_multiprices_base_type[" + priceLevel + "]");
+
+            // Store original values
+            if (priceInput) {
+                priceInput.setAttribute("data-original-value", priceInput.value);
+            }
+
+            // Function to toggle price fields based on checkbox state
+            function togglePriceFields() {
+                const isVariable = checkbox.checked;
+
+                if (isVariable) {
+                    // Variable price: disable and set to -1
+                    if (priceInput) {
+                        priceInput.value = "-1,00";
+                        priceInput.disabled = true;
+                        priceInput.style.backgroundColor = "#f0f0f0";
+                        priceInput.style.color = "#999";
+                    }
+                    if (percentageInput) {
+                        percentageInput.disabled = true;
+                        percentageInput.style.backgroundColor = "#f0f0f0";
+                    }
+                    if (priceMinInput) {
+                        priceMinInput.disabled = true;
+                        priceMinInput.style.backgroundColor = "#f0f0f0";
+                    }
+                    if (htTtcSelect) {
+                        htTtcSelect.disabled = true;
+                        htTtcSelect.style.backgroundColor = "#f0f0f0";
+                    }
+                } else {
+                    // Normal price: enable and restore original value
+                    if (priceInput) {
+                        const originalValue = priceInput.getAttribute("data-original-value");
+                        priceInput.value = originalValue || "0,00";
+                        priceInput.disabled = false;
+                        priceInput.style.backgroundColor = "";
+                        priceInput.style.color = "";
+                    }
+                    if (percentageInput) {
+                        percentageInput.disabled = false;
+                        percentageInput.style.backgroundColor = "";
+                    }
+                    if (priceMinInput) {
+                        priceMinInput.disabled = false;
+                        priceMinInput.style.backgroundColor = "";
+                    }
+                    if (htTtcSelect) {
+                        htTtcSelect.disabled = false;
+                        htTtcSelect.style.backgroundColor = "";
+                    }
+                }
+            }
+
+            // Initialize on page load
+            togglePriceFields();
+
+            // Add event listener for checkbox change
+            checkbox.addEventListener("change", togglePriceFields);
+        });
     });
 </script>';
 
@@ -1719,10 +1885,27 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			} else {
 				print '<input type="text" name="price_min[' . $i . ']" id="price_min_' . $i . '" size="10" value="' . price($object->multiprices_min[$i]) . '">';
 			}
+			print '</td>';
+
+			// Variable Price Checkbox (Zone Soft) - Only show if dolizsynch is active
+			if (!empty($conf->dolizsynch->enabled)) {
+				print '<td style="text-align: center">';
+				// Check if this price level is variable according to Zone Soft data
+				$isVariablePrice = !empty($zsVariablePrices[$i]);
+
+				print '<input type="checkbox" class="flat variable-price-checkbox" id="variable_price_' . $i . '" name="variable_price[' . $i . ']" value="1"';
+				if ($isVariablePrice) {
+					print ' checked';
+				}
+				print ' title="Preço Variável (Zone Soft) - Marque para definir preço variável no ZS BMS"';
+				print ' data-price-level="' . $i . '">';
+				print '<label for="variable_price_' . $i . '"></label>';
+				print '</td>';
+			}
+
 			if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 				print '<td class="left">' . $langs->trans("MinimumRecommendedPrice", price($maxpricesupplier, 0, '', 1, -1, -1, 'auto')) . ' ' . img_warning() . '</td>';
 			}
-			print '</td>';
 
 			print '</tr>';
 		}
