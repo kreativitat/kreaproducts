@@ -218,14 +218,14 @@ class modKreaProducts extends DolibarrModules
 		// 'user'             to add a tab in user view
 
 		$this->tabs = array();
-		$this->tabs[] = array('data' => 'product:-price');
-		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:1:/kreaproducts/sellPrice.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:-suppliers');
-		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:1:/kreaproducts/purchasePrice.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:-subproduct');
-		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:1:/kreaproducts/associatedProducts.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-price:NU:$conf->kreaproducts->enabled');
+		$this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/sellPrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-suppliers:NU:$conf->kreaproducts->enabled');
+		$this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/purchasePrice.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-subproduct:NU:$conf->kreaproducts->enabled');
+		$this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/associatedProducts.php?id=__ID__');
 		$this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
-		$this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:1:/kreaproducts/productTree.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/productTree.php?id=__ID__');
 
 
 		// Dictionaries
