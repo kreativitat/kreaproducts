@@ -1647,7 +1647,11 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			if ($resql) {
 				$zsProductData = $db->fetch_object($resql);
 				if ($zsProductData) {
-					// Check each price level for variable price (both -1 means variable)
+					// Check each price level for variable price
+					// Variable price can be indicated by:
+					// 1. Both prices are exactly -1
+					// 2. TTC price is -1 and HT price is -1 divided by (1 + VAT rate)
+					// 3. HT price is -1 and TTC price is -1 multiplied by (1 + VAT rate)
 					for ($i = 1; $i <= 10; $i++) {
 						if ($i == 1) {
 							$priceHT = isset($zsProductData->pvp1siva) ? (float)$zsProductData->pvp1siva : null;
@@ -1656,9 +1660,32 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 							$priceHT = isset($zsProductData->{'pvp'.$i.'siva'}) ? (float)$zsProductData->{'pvp'.$i.'siva'} : null;
 							$priceTTC = isset($zsProductData->{'pvp'.$i}) ? (float)$zsProductData->{'pvp'.$i} : null;
 						}
-						// Variable price = both prices are -1
-						if ($priceHT == -1 && $priceTTC == -1) {
-							$zsVariablePrices[$i] = true;
+
+						if ($priceHT !== null && $priceTTC !== null) {
+							$isVariable = false;
+
+							// Check if both are exactly -1
+							if ($priceHT == -1 && $priceTTC == -1) {
+								$isVariable = true;
+							}
+							// Check if TTC is -1 and HT is calculated from it
+							elseif ($priceTTC == -1 && $object->tva_tx > 0) {
+								$expectedHtPrice = -1 / (1 + ($object->tva_tx / 100));
+								if (abs($priceHT - $expectedHtPrice) < 0.01) {
+									$isVariable = true;
+								}
+							}
+							// Check if HT is -1 and TTC is calculated from it
+							elseif ($priceHT == -1 && $object->tva_tx > 0) {
+								$expectedTtcPrice = -1 * (1 + ($object->tva_tx / 100));
+								if (abs($priceTTC - $expectedTtcPrice) < 0.01) {
+									$isVariable = true;
+								}
+							}
+
+							if ($isVariable) {
+								$zsVariablePrices[$i] = true;
+							}
 						}
 					}
 				}
