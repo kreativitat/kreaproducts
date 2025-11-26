@@ -1064,7 +1064,7 @@ END;
 				$reshook = $hookmanager->executeHooks('addMoreActionsButtons', $parameters, $object, $action); // Note that $action and $object may have been modified by hook
 				if (empty($reshook)) {
 					if ($usercancreate) {
-						print '<a class="butAction" href="' . DOL_URL_ROOT . '/product/fournisseurs.php?id=' . $object->id . '&action=add_price&token=' . newToken() . '">';
+						print '<a class="butAction" href="' . DOL_URL_ROOT . '/product/price_suppliers.php?id=' . $object->id . '&action=add_price&token=' . newToken() . '">';
 						print $langs->trans("AddSupplierPrice") . '</a>';
 					}
 				}
