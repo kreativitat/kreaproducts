@@ -487,7 +487,7 @@ if ($id > 0 || !empty($ref)) {
 		if (!empty($conf->bom->enabled)) {
 
 			// Fetch all BOMs and the origin product for the current product
-			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label
+			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label, bl.qty as line_qty
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
@@ -504,7 +504,8 @@ if ($id > 0 || !empty($ref)) {
 						'bom_id' => $obj_bom->rowid,        // The BOM ID
 						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
 						'ref' => $obj_bom->ref,             // The origin product reference
-						'label' => $obj_bom->label          // The origin product label
+						'label' => $obj_bom->label,          // The origin product label
+						'qty' => $obj_bom->line_qty          // Quantity of current product in BOM
 					);
 				}
 			}
@@ -524,6 +525,7 @@ if ($id > 0 || !empty($ref)) {
 				print '<td>' . $langs->trans('BOMExists') . '</td>';
 				print '<td>' . $langs->trans('OriginProductId') . '</td>';
 				print '<td>' . $langs->trans('OriginProduct') . '</td>';
+				print '<td class="right">' . $langs->trans('Qty') . '</td>';
 				print '</tr>';
 
 
@@ -536,6 +538,9 @@ if ($id > 0 || !empty($ref)) {
 					// Display the origin product with a link to the product card
 					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . '</a></td>';
 					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['label'] . '</a></td>';
+					// Show fraction of BOM that corresponds to 1 unit of this component (1 / qty)
+					$fraction = ($bom['qty'] > 0) ? (1 / $bom['qty']) : 0;
+					print '<td class="right">' . price2num($fraction, 'MS') . '</td>';
 					print '</tr>';
 				}
 
@@ -871,7 +876,7 @@ if ($id > 0 || !empty($ref)) {
 		if (!empty($conf->bom->enabled)) {
 
 			// Fetch all BOMs and the components for the current product
-			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype, bl.fk_product AS fk_product_component, p.ref, p.label
+			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype, bl.fk_product AS fk_product_component, bl.qty as line_qty, p.ref, p.label
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
@@ -888,7 +893,8 @@ if ($id > 0 || !empty($ref)) {
 						'bom_id' => $obj_bom->bom_id,                  // The BOM ID
 						'product_id' => $obj_bom->fk_product_component, // The component product ID
 						'ref' => $obj_bom->ref,                        // The component product reference
-						'label' => $obj_bom->label                     // The component product label
+						'label' => $obj_bom->label,                    // The component product label
+						'qty' => $obj_bom->line_qty                    // Component quantity
 					);
 				}
 			}
@@ -904,14 +910,15 @@ if ($id > 0 || !empty($ref)) {
 
 				// Begin table structure
 				print '<table class="liste">';
-				print '<tr class="liste_titre">';
+			print '<tr class="liste_titre">';
 
-				// Column headers
-				print '<td>' . $langs->trans('BOMReference') . '</td>';
-				print '<td>' . $langs->trans('ComponentProductId') . '</td>';
-				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+			// Column headers
+			print '<td>' . $langs->trans('BOMReference') . '</td>';
+			print '<td>' . $langs->trans('ComponentProductId') . '</td>';
+			print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+			print '<td class="right">' . $langs->trans('Qty') . '</td>';
 
-				print '</tr>';
+			print '</tr>';
 
 				// Display each component
 				foreach ($components as $component) {
@@ -922,6 +929,7 @@ if ($id > 0 || !empty($ref)) {
 					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . '</a></td>';
 					// Display the component product label
 					print '<td>' . $component['label'] . '</td>';
+					print '<td class="right">' . price2num($component['qty'], 'MS') . '</td>';
 					print '</tr>';
 				}
 
