@@ -58,14 +58,6 @@ KreaProductsAboutPage = KreaProducts about page
 StockableProduct = Gerir Stocks
 StockableProductDescription = Se esta opção estiver ativada, a modificação de stock deste elemento é mantida. Se estiver desativada, a modificação de stock deste elemento não é mantida.
 
-#
-# BOM Price Updater Menu
-#
-BOM Price Updater = Atualizador de Preços BOM
-Batch Update All BOM Products = Atualização em Lote de Todos os Produtos BOM
-Batch Update Multiple BOM Parents = Atualização em Lote de Produtos com Múltiplas BOMs
-View All BOM Products = Ver Todos os Produtos BOM
-
 kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 kreap_syncprice = Sincronizar Preço de Custo Automaticamente

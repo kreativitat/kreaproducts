@@ -414,21 +414,6 @@ class modKreaProducts extends DolibarrModules
 			'user' => 2,
 			'object' => 'ProductAllergens'
 		);
-		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=tools',
-			'type' => 'left',
-			'titre' => 'BOM Price Updater',
-			'mainmenu' => 'tools',
-			'leftmenu' => 'kreaproducts_bom_price_updater',
-			'url' => '/custom/kreaproducts/bom_price_updater.php',
-			'langs' => 'kreaproducts@kreaproducts',
-			'position' => 1000 + $r,
-			'enabled' => '1',
-			'perms' => '1',
-			'target' => '',
-			'user' => 2,
-		);
-
 		// Exports profiles provided by this module
 		$r = 1;
 		/* BEGIN MODULEBUILDER EXPORT MYOBJECT */

@@ -58,14 +58,6 @@ KreaProductsArea = Home KreaProducts
 MyPageName = My page name
 
 #
-# BOM Price Updater Menu
-#
-BOM Price Updater = BOM Price Updater
-Batch Update All BOM Products = Batch Update All BOM Products
-Batch Update Multiple BOM Parents = Batch Update Multiple BOM Parents
-View All BOM Products = View All BOM Products
-
-#
 # Sample widget
 #
 MyWidget = My widget

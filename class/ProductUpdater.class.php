@@ -287,7 +287,7 @@ class ProductUpdater
         $sql .= "JOIN ".MAIN_DB_PREFIX."bom_bomline as bl ON b.rowid = bl.fk_bom ";
         $sql .= "JOIN ".MAIN_DB_PREFIX."product as p ON p.rowid = b.fk_product ";
         $sql .= "JOIN ".MAIN_DB_PREFIX."product as f ON f.rowid = bl.fk_product ";
-        $sql .= "WHERE b.bomtype = 0 AND b.status = 1"; // Only validated manufacturing BOMs
+        $sql .= "WHERE b.bomtype IN (0,1) AND b.status = 1"; // Include manufacturing and dismantle BOMs
 
         $resql = $db->query($sql);
         if (!$resql) {

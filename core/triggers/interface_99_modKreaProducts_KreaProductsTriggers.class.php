@@ -47,7 +47,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 			case 'STOCK_MOVEMENT':
 				// handleStockMovement() itself returns 1 or 0
-				return $this->handleStockMovement($object, $db, $conf);
+				return $this->handleStockMovement($object, $db, $conf, $user);
 
 			case 'INVENTORY_RECORDED':
 			case 'INVENTORY_MODIFY':
@@ -61,7 +61,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 	}
 
 
-	protected function handleStockMovement($move, $db, $conf)
+	protected function handleStockMovement($move, $db, $conf, $user)
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
@@ -85,6 +85,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		if ($move->origintype === 'invoice_supplier') {
 			// Re‐compute stock levels after this supplier‐invoice move
 			$this->recalculateAfterSupplierInvoice($move, $db);
+
+			// Before dismantling, refresh cost prices of BOM children (including nested)
+			$this->updateDismantleChildrenBeforeTrigger($move, $db, $user);
 
 			// Then run any BOM dismantle logic
 			$this->dismantleIfNeeded($move, $db);
@@ -145,6 +148,55 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				dol_syslog("Error aligning inventory move timestamp: " . $db->lasterror(), LOG_ERR);
 			}
 			$move->datem = $row->date_inventory;
+		}
+	}
+
+	/**
+	 * Before running dismantle, refresh children cost trees for dismantle BOM products
+	 */
+	protected function updateDismantleChildrenBeforeTrigger($move, $db, $user)
+	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
+		$dismantle = new ProductDismantleController($db);
+
+		// Only proceed for products that are part of the dismantle category and have a dismantle BOM
+		if (!$dismantle->productInDismantleCategory($move->product_id)) {
+			return;
+		}
+
+		$bomId = $dismantle->findBom($move->product_id);
+		if (!$bomId) {
+			return;
+		}
+
+		$sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
+                FROM " . MAIN_DB_PREFIX . "bom_bom b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
+                LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                WHERE b.rowid = " . (int) $bomId . " AND b.bomtype = 1";
+
+		$res = $db->query($sql);
+		if (!$res) {
+			dol_syslog(__METHOD__ . " Error loading dismantle BOM children: " . $db->lasterror(), LOG_ERR);
+			return;
+		}
+
+		$children = [];
+		while ($obj = $db->fetch_object($res)) {
+			if (!empty($obj->child)) {
+				$children[(int)$obj->child] = true;
+			}
+		}
+		$db->free($res);
+
+		if (empty($children)) {
+			return;
+		}
+
+		// Update each child (and its nested tree) using the existing ProductUpdater logic
+		foreach (array_keys($children) as $childId) {
+			ProductUpdater::updateProductCostPrice((int)$childId, true);
 		}
 	}
 
