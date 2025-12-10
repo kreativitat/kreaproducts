@@ -942,6 +942,7 @@ class ProductHierarchyTree
                 self::fancyChildRecursive($childId, $level + 1, $maxLevel, $visited, $childPrefix);
             }
         }
+
     }
 
     /**
