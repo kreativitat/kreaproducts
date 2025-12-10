@@ -35,6 +35,7 @@ class ProductHierarchyTree
     private static $productMap = array();
     private static $productCache = array();
     private static $priceCache = array();
+    private static $processedBomIds = array();
     
     // Error handling
     private static $errors = array();
@@ -167,6 +168,7 @@ class ProductHierarchyTree
             'products_processed' => 0,
             'updates_performed' => 0
         );
+        self::$processedBomIds = array();
         
         dol_syslog(__METHOD__ . " Starting processing for product: $productId", LOG_DEBUG);
     }
@@ -211,29 +213,26 @@ class ProductHierarchyTree
 
         try {
             self::$productMap = array();
-            $queue = array($startId);
-            $seen = array($startId => true);
-            $depth = 0;
 
-            while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
-                $currentLevel = $queue;
-                $queue = array();
-                
-                if (count($currentLevel) > self::MAX_PRODUCTS_PER_LEVEL) {
-                    throw new Exception("Hierarchy level exceeds maximum product limit");
-                }
-
-                foreach ($currentLevel as $current) {
-                    if (!self::processProductAssociations($current, $queue, $seen)) {
-                        self::addWarning("Failed to process associations for product $current");
-                    }
-                }
-                
-                $depth++;
+            // Load all relations in one pass so child products bring along their own associations/BOMs
+            $queue = array();
+            $seen = array();
+            if (!self::loadAllRelations($queue, $seen)) {
+                return false;
             }
 
-            if ($depth >= self::MAX_HIERARCHY_DEPTH) {
-                throw new Exception("Hierarchy depth exceeds maximum limit");
+            // Ensure root product exists in map even if it has no relations
+            if (!isset(self::$productMap[$startId])) {
+                $rootProd = self::loadAndValidateProduct($startId);
+                if ($rootProd) {
+                    self::$productMap[$startId] = new EnhancedLocalProduct(
+                        $startId,
+                        $rootProd->label,
+                        $rootProd->ref,
+                        (float)$rootProd->price,
+                        (float)$rootProd->cost_price
+                    );
+                }
             }
 
             return true;
@@ -245,11 +244,83 @@ class ProductHierarchyTree
     }
 
     /**
+     * Load all product relations (associations and BOMs) in one pass.
+     * This guarantees that when a child has its own tree, it is merged into the map.
+     */
+    private static function loadAllRelations(&$queue, &$seen)
+    {
+        global $db, $conf;
+
+        // Product associations
+        $sql = "SELECT pa.fk_product_pere as father, 
+                       pa.fk_product_fils as child, 
+                       pa.qty as qty,
+                       p.label as fatherLabel, 
+                       p.ref as fatherRef, 
+                       p.price as fatherPrice, 
+                       p.cost_price as fatherBuy,
+                       f.label as childLabel, 
+                       f.ref as childRef, 
+                       f.price as childPrice, 
+                       f.cost_price as childBuy,
+                       NULL as fk_bom_child
+                FROM " . MAIN_DB_PREFIX . "product_association pa
+                JOIN " . MAIN_DB_PREFIX . "product p ON (p.rowid = pa.fk_product_pere)
+                JOIN " . MAIN_DB_PREFIX . "product f ON (f.rowid = pa.fk_product_fils)";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Database error: " . $db->lasterror());
+            return false;
+        }
+        while ($obj = $db->fetch_object($resql)) {
+            self::processAssociationObject($obj, $queue, $seen, false);
+        }
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        // BOM relations (only if module enabled)
+        if (!empty($conf->bom->enabled)) {
+            $sqlBom = "SELECT b.fk_product as father,
+                              COALESCE(bl.fk_product, cb.fk_product) as child,
+                              bl.qty as qty,
+                              bl.fk_bom_child as fk_bom_child,
+                              p.label as fatherLabel,
+                              p.ref as fatherRef,
+                              p.price as fatherPrice,
+                              p.cost_price as fatherBuy,
+                              COALESCE(f.label, cprod.label) as childLabel,
+                              COALESCE(f.ref, cprod.ref) as childRef,
+                              COALESCE(f.price, cprod.price) as childPrice,
+                              COALESCE(f.cost_price, cprod.cost_price) as childBuy
+                       FROM " . MAIN_DB_PREFIX . "bom_bom b
+                       JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
+                       JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
+                       LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
+                       LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                       LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product";
+
+            $resBom = $db->query($sqlBom);
+            if (!$resBom) {
+                self::addError("Database error: " . $db->lasterror());
+                return false;
+            }
+            while ($obj = $db->fetch_object($resBom)) {
+                self::processAssociationObject($obj, $queue, $seen, false);
+            }
+            $db->free($resBom);
+            self::$processStats['database_operations']++;
+        }
+
+        return true;
+    }
+
+    /**
      * Process product associations for a single product
      */
     private static function processProductAssociations($current, &$queue, &$seen)
     {
-        global $db;
+        global $db, $conf;
 
         try {
             // Enhanced SQL with better security
@@ -284,6 +355,13 @@ class ProductHierarchyTree
             
             $db->free($resql);
             self::$processStats['database_operations']++;
+
+            // Also include BOM-based relations when the MRP/BOM module is enabled
+            if (!empty($conf->bom->enabled)) {
+                if (!self::processBomAssociations($current, $queue, $seen)) {
+                    return false;
+                }
+            }
             
             return true;
             
@@ -294,9 +372,132 @@ class ProductHierarchyTree
     }
 
     /**
+     * Process BOM associations (MRP children/parents)
+     */
+    private static function processBomAssociations($current, &$queue, &$seen)
+    {
+        global $db;
+
+        try {
+            // Use COALESCE to pull the produced product when a BOM line references another BOM (fk_bom_child)
+            $queries = array(
+                // Current product is the BOM parent (Produtos Filho)
+                "SELECT b.fk_product as father,
+                        COALESCE(bl.fk_product, cb.fk_product) as child,
+                        bl.qty as qty,
+                        bl.fk_bom_child as fk_bom_child,
+                        p.label as fatherLabel,
+                        p.ref as fatherRef,
+                        p.price as fatherPrice,
+                        p.cost_price as fatherBuy,
+                        COALESCE(f.label, cprod.label) as childLabel,
+                        COALESCE(f.ref, cprod.ref) as childRef,
+                        COALESCE(f.price, cprod.price) as childPrice,
+                        COALESCE(f.cost_price, cprod.cost_price) as childBuy
+                 FROM " . MAIN_DB_PREFIX . "bom_bom b
+                 JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
+                 JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
+                 LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
+                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                 LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
+                 WHERE b.fk_product = " . (int)$current,
+                // Current product is a BOM component (Produtos Pai)
+                "SELECT b.fk_product as father,
+                        COALESCE(bl.fk_product, cb.fk_product) as child,
+                        bl.qty as qty,
+                        bl.fk_bom_child as fk_bom_child,
+                        p.label as fatherLabel,
+                        p.ref as fatherRef,
+                        p.price as fatherPrice,
+                        p.cost_price as fatherBuy,
+                        COALESCE(f.label, cprod.label) as childLabel,
+                        COALESCE(f.ref, cprod.ref) as childRef,
+                        COALESCE(f.price, cprod.price) as childPrice,
+                        COALESCE(f.cost_price, cprod.cost_price) as childBuy
+                 FROM " . MAIN_DB_PREFIX . "bom_bomline bl
+                 JOIN " . MAIN_DB_PREFIX . "bom_bom b ON b.rowid = bl.fk_bom
+                 JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
+                 LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
+                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                 LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
+                 WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$current
+            );
+
+            foreach ($queries as $sql) {
+                $resql = $db->query($sql);
+
+                if (!$resql) {
+                    throw new Exception("Database error: " . $db->lasterror());
+                }
+
+                while ($obj = $db->fetch_object($resql)) {
+                self::processAssociationObject($obj, $queue, $seen);
+            }
+
+                $db->free($resql);
+                self::$processStats['database_operations']++;
+            }
+
+            return true;
+        } catch (Exception $e) {
+            self::addError("Failed to process BOM associations for product $current: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Recursively process a child BOM to include its produced product and components
+     */
+    private static function processChildBom($bomId, &$queue, &$seen)
+    {
+        global $db;
+
+        // Avoid loops on the same BOM id
+        if (!empty(self::$processedBomIds[$bomId])) {
+            return true;
+        }
+        self::$processedBomIds[$bomId] = true;
+
+        $sql = "SELECT b.fk_product as father,
+                       COALESCE(bl.fk_product, cb.fk_product) as child,
+                       bl.qty as qty,
+                       bl.fk_bom_child as fk_bom_child,
+                       p.label as fatherLabel,
+                       p.ref as fatherRef,
+                       p.price as fatherPrice,
+                       p.cost_price as fatherBuy,
+                       COALESCE(f.label, cprod.label) as childLabel,
+                       COALESCE(f.ref, cprod.ref) as childRef,
+                       COALESCE(f.price, cprod.price) as childPrice,
+                       COALESCE(f.cost_price, cprod.cost_price) as childBuy
+                FROM " . MAIN_DB_PREFIX . "bom_bom b
+                JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
+                JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
+                LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
+                LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
+                WHERE b.rowid = " . (int)$bomId;
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to process child BOM $bomId: " . $db->lasterror());
+            return false;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            self::processAssociationObject($obj, $queue, $seen);
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return true;
+    }
+
+    /**
      * Process a single association object
      */
-    private static function processAssociationObject($obj, &$queue, &$seen)
+    private static function processAssociationObject($obj, &$queue, &$seen, $allowChildBom = true)
     {
         try {
             // Validate association data
@@ -328,9 +529,17 @@ class ProductHierarchyTree
             
             // Add relationships with deduplication
             $quantity = (float)$obj->qty;
-            if ($quantity > 0) {
-                self::$productMap[$obj->father]->addChild($obj->child, $quantity);
-                self::$productMap[$obj->child]->addParent($obj->father);
+            // Keep edge even when quantity is missing/zero (common on nested BOM links); default to 1
+            if ($quantity <= 0) {
+                $quantity = 1;
+            }
+
+            self::$productMap[$obj->father]->addChild($obj->child, $quantity);
+            self::$productMap[$obj->child]->addParent($obj->father);
+
+            // If this link references a nested BOM, process that BOM immediately to pull its children
+            if ($allowChildBom && !empty($obj->fk_bom_child)) {
+                self::processChildBom((int)$obj->fk_bom_child, $queue, $seen);
             }
 
             // Queue management with cycle prevention
@@ -358,11 +567,6 @@ class ProductHierarchyTree
     {
         if (empty($obj->father) || empty($obj->child)) {
             self::addWarning("Invalid association: missing father or child ID");
-            return false;
-        }
-
-        if ($obj->qty <= 0) {
-            self::addWarning("Invalid quantity in association: " . $obj->qty);
             return false;
         }
 
@@ -443,13 +647,15 @@ class ProductHierarchyTree
             print '<table class="noborder" width="100%">';
             
             self::printChildParentTableHead($langs);
+
+            $maxDepth = self::MAX_HIERARCHY_DEPTH;
             
             // Print top-level row
             self::printLine($productId, 0, 0, array(), true, 0, 1, self::MODE_CHILD);
             
             // Recursively display children
             $visitedChildren = array();
-            self::fancyChildRecursive($productId, 1, 5, $visitedChildren, array());
+            self::fancyChildRecursive($productId, 1, $maxDepth, $visitedChildren, array());
             
             print '</table><br>';
             
@@ -469,13 +675,15 @@ class ProductHierarchyTree
             print '<table class="noborder" width="100%">';
             
             self::printChildParentTableHead($langs);
+
+            $maxDepth = self::MAX_HIERARCHY_DEPTH;
             
             // Print top-level row
             self::printLine($productId, 0, 0, array(), true, 0, 1, self::MODE_PARENT);
             
             // Recursively display parents
             $visitedParents = array();
-            self::fancyParentRecursive($productId, 1, 5, $visitedParents, array());
+            self::fancyParentRecursive($productId, 1, $maxDepth, $visitedParents, array());
             
             print '</table><br>';
             

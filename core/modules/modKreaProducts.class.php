@@ -553,8 +553,11 @@ class modKreaProducts extends DolibarrModules
 		$field_help = $langs->trans("");
 		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		$field_name = "kreap_syncprice";
-		$field_label = $langs->trans("kreap_syncprice");
+		// Rename legacy kreap_syncprice extrafield column to kreap_updatebuyprice if needed
+		$this->migrateSyncPriceExtrafield($this->db);
+
+		$field_name = "kreap_updatebuyprice";
+		$field_label = $langs->trans("kreap_updatebuyprice");
 		$field_help = $langs->trans("EnableCostPriceSyncForThisProduct");
 		$result1_sync = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
@@ -626,6 +629,86 @@ class modKreaProducts extends DolibarrModules
 		}
 
 		return $this->_init($sql, $options);
+	}
+
+	/**
+	 * Rename legacy kreap_syncprice extrafield column to kreap_updatebuyprice if needed.
+	 *
+	 * @param DoliDB $db
+	 * @return void
+	 */
+	private function migrateSyncPriceExtrafield($db): void
+	{
+		$table = MAIN_DB_PREFIX . 'product_extrafields';
+		$old = 'kreap_syncprice';
+		$new = 'kreap_updatebuyprice';
+
+		// Skip if new column already exists
+		if ($this->columnExists($table, $new)) {
+			return;
+		}
+
+		// Rename old column when present
+		if ($this->columnExists($table, $old)) {
+			$sql = "ALTER TABLE " . $table . " CHANGE " . $old . " " . $new . " int(11) DEFAULT NULL";
+			$resql = $db->query($sql);
+			if (!$resql) {
+				dol_syslog(__METHOD__ . " failed to rename extrafield column: " . $db->lasterror(), LOG_WARNING);
+			}
+		}
+
+		// Rename extrafield definition
+		if ($this->extrafieldExists('product', $old)) {
+			if ($this->extrafieldExists('product', $new)) {
+				// Remove legacy definition if new already exists
+				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE elementtype = 'product' AND name = '" . $db->escape($old) . "'";
+				$db->query($sql);
+			} else {
+				$sql = "UPDATE " . MAIN_DB_PREFIX . "extrafields SET name = '" . $db->escape($new) . "', label = '" . $db->escape($new) . "' WHERE elementtype = 'product' AND name = '" . $db->escape($old) . "'";
+				$resql = $db->query($sql);
+				if (!$resql) {
+					dol_syslog(__METHOD__ . " failed to rename extrafield definition: " . $db->lasterror(), LOG_WARNING);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Check if column exists in database
+	 *
+	 * @param string $table
+	 * @param string $column
+	 * @return bool
+	 */
+	private function columnExists(string $table, string $column): bool
+	{
+		$sql = "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" . $table . "' AND COLUMN_NAME = '" . $this->db->escape($column) . "'";
+		$resql = $this->db->query($sql);
+		$exists = $resql && $this->db->num_rows($resql) > 0;
+		if ($resql) {
+			$this->db->free($resql);
+		}
+
+		return $exists;
+	}
+
+	/**
+	 * Check if extrafield definition exists
+	 *
+	 * @param string $elementtype
+	 * @param string $name
+	 * @return bool
+	 */
+	private function extrafieldExists(string $elementtype, string $name): bool
+	{
+		$sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "extrafields WHERE elementtype = '" . $this->db->escape($elementtype) . "' AND name = '" . $this->db->escape($name) . "' LIMIT 1";
+		$resql = $this->db->query($sql);
+		$exists = $resql && $this->db->num_rows($resql) > 0;
+		if ($resql) {
+			$this->db->free($resql);
+		}
+
+		return $exists;
 	}
 
 	/**

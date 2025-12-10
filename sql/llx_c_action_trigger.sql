@@ -17,6 +17,6 @@
 --ADD Call trigger IN TABLE
 
 -- NOTE: syncprice column is no longer needed in llx_product_association table
--- We now use kreap_syncprice extrafield on products instead (see modKreaProducts.class.php)
+-- We now use kreap_updatebuyprice extrafield on products instead (see modKreaProducts.class.php)
 
 -- Show current table structure

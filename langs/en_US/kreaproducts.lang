@@ -75,4 +75,5 @@ MyWidgetDescription = My widget description
 # Extrafields
 #
 kreap_syncprice = Auto Sync Cost Price
+kreap_updatebuyprice = Auto Update Buy Price
 EnableCostPriceSyncForThisProduct = Enable automatic cost price synchronization for this product when child products are updated

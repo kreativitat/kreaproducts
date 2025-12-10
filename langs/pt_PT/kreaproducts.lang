@@ -69,6 +69,7 @@ View All BOM Products = Ver Todos os Produtos BOM
 kreap_spread_buyprice = Propagar recalculo de preço de custo
 kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 kreap_syncprice = Sincronizar Preço de Custo Automaticamente
+kreap_updatebuyprice = Atualizar Preço de Custo Automaticamente
 EnableCostPriceSyncForThisProduct = Ativar sincronização automática do preço de custo para este produto quando produtos filhos são atualizados
 kreaproducts_nuttable = Tabela nutricional
 NutritionalCard = Tabela nutricional

@@ -13,7 +13,8 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
  * - When BOM module is enabled, automatically includes BOM-based parent-child relationships
  * - BOM quantities take precedence over association quantities when both exist
  * - Supports Manufacturing BOMs (bomtype = 0) that are validated (status = 1)
- * - Cost calculations work with any combination of associations and BOMs
+ * - Cost/buy price calculations work with any combination of associations and BOMs
+ * - Buy price updates are controlled by the product extrafield kreap_updatebuyprice (fallback to kreap_syncprice for legacy installs)
  * - Debug output shows the source of each relationship (association, bom, or both)
  */
 class ProductUpdater
@@ -62,9 +63,8 @@ class ProductUpdater
     {
         if (self::$debug) {
             error_log("[ProductUpdater] " . $message);
+            dol_syslog("[ProductUpdater] " . $message, LOG_DEBUG);
         }
-        // Also log to Dolibarr log system
-        dol_syslog("[ProductUpdater] " . $message, LOG_DEBUG);
     }
 
     /**
@@ -135,7 +135,7 @@ class ProductUpdater
                 continue;
             }
 
-            // Update cost price if sync is enabled (only if product has kreap_syncprice extrafield enabled)
+            // Update cost price if sync is enabled via product extrafield (kreap_updatebuyprice/kreap_syncprice)
             if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
                 $updated = self::updateCostPriceFromChildren($currentProductId, $productId);
                 $results[$currentProductId] = [
@@ -192,7 +192,7 @@ class ProductUpdater
 
         self::debug("Loading product associations");
 
-        // Query to get product associations - no sync flags needed from associations
+        // Query to get product associations (no sync flags stored here)
         $sql = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, ";
         // Parent product info
         $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
@@ -409,7 +409,7 @@ class ProductUpdater
 
     /**
      * Check if cost price sync is enabled for product
-     * Now checks the kreap_syncprice extrafield on the product
+     * Uses product extrafield kreap_updatebuyprice (with legacy kreap_syncprice fallback)
      *
      * @param int $productId
      * @return bool
@@ -428,9 +428,15 @@ class ProductUpdater
         $extrafields = new ExtraFields($db);
         $product->fetch_optionals($productId, $extrafields);
 
-        // Check if kreap_syncprice extrafield is enabled
-        $syncFieldName = 'options_kreap_syncprice';
-        return !empty($product->array_options[$syncFieldName]);
+        // Primary flag: kreap_updatebuyprice
+        $syncFields = ['options_kreap_updatebuyprice', 'options_kreap_syncprice'];
+        foreach ($syncFields as $fieldName) {
+            if (!empty($product->array_options[$fieldName])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
