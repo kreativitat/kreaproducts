@@ -108,6 +108,16 @@ if (!isset($conf->global->KREAPRODUCTS_SIM_ENABLE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SIM_ENABLE', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_SIM_ENABLE = 1;
 }
+// Ensure default supplier move time is set
+if (!isset($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_SUPPLIER_MOVE_TIME', '10:00', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME = '10:00';
+}
+// Ensure dismantle BOM type has default (was hardcoded 1)
+if (!isset($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_DISMANTLE_BOMTYPE', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE = '1';
+}
 
 // Auto synch buy price
 $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
@@ -127,11 +137,66 @@ $item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
 $item->setAsSelect($TField);
 $item->defaultFieldValue = '';
 
+// Product categories (for dismantle gate)
+$TCategories = array('' => $langs->trans('None'));
+$sql = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "categorie
+        WHERE type = 0 AND entity IN (0," . ((int) $conf->entity) . ")
+        ORDER BY label";
+$resql = $db->query($sql);
+if ($resql) {
+	while ($obj = $db->fetch_object($resql)) {
+		$TCategories[$obj->rowid] = $obj->label;
+	}
+}
+
+// Warehouses list (for dismantle moves)
+$TWarehouses = array('' => $langs->trans('None'));
+$sql = "SELECT rowid, ref, lieu FROM " . MAIN_DB_PREFIX . "entrepot
+        WHERE entity IN (0," . ((int) $conf->entity) . ")
+        ORDER BY ref";
+$resql = $db->query($sql);
+if ($resql) {
+	while ($obj = $db->fetch_object($resql)) {
+		$label = $obj->ref;
+		if (!empty($obj->lieu)) $label .= ' - ' . $obj->lieu;
+		$TWarehouses[$obj->rowid] = $label;
+	}
+}
+
+// BOM types for dismantle (keep 1 as default)
+$TBomTypes = array(
+	'1' => $langs->trans('KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION1'),
+	'0' => $langs->trans('KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0'),
+);
+
 // Tabela nutricional dentro da aba das fichas técnicas dos produtos
 $formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
 
 // Data de movimentos de stocks dia da fatura
 $formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+
+// Hora a aplicar aos movimentos de stock de fatura de fornecedor (HH:MM ou HH:MM:SS)
+$item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
+$item->defaultFieldValue = '10:00';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '1');
+
+// Categoria que habilita a desmontagem automática (ID de categoria de produto)
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_CATEGORY');
+$item->setAsSelect($TCategories);
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_CATEGORY_HELP');
+$item->defaultFieldValue = '';
+
+// Tipo de BOM que representa desmontagem (bom_bom.bomtype). Padrão 1.
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_BOMTYPE');
+$item->setAsSelect($TBomTypes);
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP');
+
+// Armazém a usar para movimentos de desmontagem (fallback MAIN_DEFAULT_WAREHOUSE)
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_WAREHOUSE');
+$item->setAsSelect($TWarehouses);
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP');
 
 // Markup default for simulator
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');

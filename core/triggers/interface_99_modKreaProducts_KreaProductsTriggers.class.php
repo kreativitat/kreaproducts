@@ -98,7 +98,17 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	protected function shiftSupplierInvoiceMoveToNoon($move, $db)
 	{
+		global $conf;
 		dol_syslog(__METHOD__, LOG_DEBUG);
+
+		// Read configured time (HH:MM or HH:MM:SS), fallback to 10:00:00
+		$time = trim($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:00');
+		if (!preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $time)) {
+			$time = '10:00';
+		}
+		if (strlen($time) === 5) {
+			$time .= ':00';
+		}
 
 		$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid=' . (int)$move->origin_id;
 		$res = $db->query($sql);
@@ -112,7 +122,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			return;
 		}
 
-		$new = substr($row->datef, 0, 10) . ' 10:00:00';
+		$new = substr($row->datef, 0, 10) . ' ' . $time;
 		if ($new !== $move->datem) {
 			$upd = 'UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement
                        SET datem=\'' . $db->escape($new) . '\'

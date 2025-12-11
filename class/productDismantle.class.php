@@ -33,9 +33,12 @@ class ProductDismantleController extends CommonObject
     public function findBom($productId)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
+        global $conf;
+
+        $bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "bom_bom
             WHERE fk_product = " . (int) $productId . "
-            AND bomtype = 1"; // Assuming bomtype = 1 indicates a dismantle type BOM
+            AND bomtype = " . $bomType;
 
         $resql = $this->db->query($sql);
         if ($resql) {
@@ -58,9 +61,19 @@ class ProductDismantleController extends CommonObject
 
         global $conf;
 
-        $productDismantleCategory = !empty($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY) ? $conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY : 0;
+        $productDismantleCategory = 0;
+        if (!empty($conf->global->KREAPRODUCTS_DISMANTLE_CATEGORY)) {
+            $productDismantleCategory = (int) $conf->global->KREAPRODUCTS_DISMANTLE_CATEGORY;
+        } elseif (!empty($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY)) {
+            // Backward compatibility
+            $productDismantleCategory = (int) $conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY;
+        }
 
-        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product WHERE fk_product = " . $productId;
+        if ($productDismantleCategory <= 0) {
+            return false;
+        }
+
+        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product WHERE fk_product = " . (int) $productId;
         $resql = $this->db->query($sql);
         if ($resql) {
             while ($obj = $this->db->fetch_object($resql)) {
@@ -79,9 +92,7 @@ class ProductDismantleController extends CommonObject
         global $user, $conf;
 
         $movementDate = $movementDate ?: dol_now();
-        $warehouseId  = (int)($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
-
-        $defaultWarehouseId = !empty($conf->global->MAIN_DEFAULT_WAREHOUSE) ? $conf->global->MAIN_DEFAULT_WAREHOUSE : 0;
+        $warehouseId  = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_WAREHOUSE ?? $conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
         $error = 0;
 
         // Load BOM
@@ -121,7 +132,7 @@ class ProductDismantleController extends CommonObject
         $arraytoconsume[] = [
             'objectid'    => $bom->fk_product,
             'qty'         => $finalProductQty,
-            'fk_warehouse' => $defaultWarehouseId,
+            'fk_warehouse' => $warehouseId,
         ];
         dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
 
@@ -130,7 +141,7 @@ class ProductDismantleController extends CommonObject
             $arraytoproduce[] = [
                 'objectid'    => $line->fk_product,
                 'qty'         => $line->qty,
-                'fk_warehouse' => $defaultWarehouseId,
+                'fk_warehouse' => $warehouseId,
             ];
         }
         dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);

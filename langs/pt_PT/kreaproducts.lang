@@ -44,6 +44,16 @@ KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabela nutricional dentro da aba da ficha t
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagar preço de custo
 KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Data de movimento de stocks é o dia da fatura
+KREAPRODUCTS_SUPPLIER_MOVE_TIME = Hora para movimentos de fatura de fornecedor
+KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Hora (HH:MM ou HH:MM:SS) aplicada aos movimentos de stock vindos de faturas de fornecedor
+KREAPRODUCTS_DISMANTLE_CATEGORY = Categoria para desmontagem automática
+KREAPRODUCTS_DISMANTLE_CATEGORY_HELP = ID da categoria de produto que ativa a lógica de desmontagem automática
+KREAPRODUCTS_DISMANTLE_BOMTYPE = Tipo de BOM de desmontagem
+KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP = Valor de bom_bom.bomtype que identifica BOM de desmontagem (padrão 1)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION1 = Tipo 1 (Desmontagem padrão)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0 = Tipo 0 (Montagem/produção)
+KREAPRODUCTS_DISMANTLE_WAREHOUSE = Armazém para desmontagem
+KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP = ID do armazém usado nos movimentos de desmontagem (ou MAIN_DEFAULT_WAREHOUSE se vazio)
 KREAPRODUCTS_SIM_ENABLE = Ativar simulador de preços (Métricas e Margens)
 KREAPRODUCTS_SIM_DEFAULT_MARKUP = Markup teste predefinido (ex.: 3 = 300%)
 

@@ -337,11 +337,14 @@ class ActionsKreaProducts extends CommonHookActions
 	}
 
 	/**
-	 * Overload the doActions function : replacing the parent's function with the one below
+	 * Overload the doActions function.
+	 *
+	 * - On inventory pages (card.php and inventory.php): include custom KreaProducts versions and stop core.
+	 * - On product create/update: keep existing stockable_product logic.
 	 *
 	 * @param  array<string,mixed> $parameters  Hook metadata (context, etc...)
 	 * @param  CommonObject        $object      The object to process
-	 * @param  ?string             $action      Current action ("create" or "update")
+	 * @param  ?string             $action      Current action ("create", "update", "view", etc.)
 	 * @param  HookManager         $hookmanager Hook manager
 	 * @return int                               <0 on error, 0 to continue standard code
 	 */
@@ -351,7 +354,27 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$error = 0;
 
-		// Only on create/update of an existing product, when stock module is enabled and no batch on this item
+		// 1) Replace core inventory pages with KreaProducts versions when browsing inventory
+		if (!defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
+			$scriptName = basename($_SERVER['SCRIPT_NAME'] ?? '');
+			$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+			if (strpos($scriptPath, '/product/inventory/') !== false) {
+				if ($scriptName === 'card.php') {
+					define('KREA_INVENTORY_PAGE_OVERRIDE', true);
+					$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+					header('Location: ' . dol_buildpath('/kreaproducts/inventory_card.php', 1) . $q);
+					exit;
+				}
+				if ($scriptName === 'inventory.php') {
+					define('KREA_INVENTORY_PAGE_OVERRIDE', true);
+					$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+					header('Location: ' . dol_buildpath('/kreaproducts/inventory.php', 1) . $q);
+					exit;
+				}
+			}
+		}
+
+		// 2) Existing logic: update stockable_product on product create/update
 		if (
 			($action === 'create' || $action === 'update')
 			&& $object->element === 'product'
@@ -361,10 +384,8 @@ class ActionsKreaProducts extends CommonHookActions
 			&& ($object->isProduct()
 				|| ($object->isService() && ! empty($conf->global->STOCK_SUPPORTS_SERVICES)))
 		) {
-			// Grab posted checkbox value
 			$val = GETPOST('stockable_product', 'int') ? 1 : 0;
 
-			// Direct SQL update
 			$sql  = "UPDATE " . MAIN_DB_PREFIX . "product";
 			$sql .= " SET stockable_product = " . $val;
 			$sql .= " WHERE rowid = " . ((int) $object->id);
