@@ -140,7 +140,8 @@ $item->defaultFieldValue = '';
 // Product categories (for dismantle gate)
 $TCategories = array('' => $langs->trans('None'));
 $sql = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "categorie
-        WHERE type = 0 AND entity IN (0," . ((int) $conf->entity) . ")
+        WHERE type = 0
+          AND entity IN (0,1)
         ORDER BY label";
 $resql = $db->query($sql);
 if ($resql) {
