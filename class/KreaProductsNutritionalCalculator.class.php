@@ -25,7 +25,7 @@ class KreaProductsNutritionalCalculator
     
     // Processing limits
     const MAX_HIERARCHY_DEPTH = 50;
-    const MAX_PRODUCTS_PER_BATCH = 100;
+    const MAX_PRODUCTS_PER_BATCH = 5000;
     const BATCH_SIZE = 50;
     
     // Precision for nutritional values

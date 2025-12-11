@@ -600,9 +600,10 @@ if ($id > 0 || $ref) {
 				print '<tr><td>';
 				$textdesc = $langs->trans("kreap_spread_buyprice");
 				$text = $form->textwithpicto($langs->trans("kreap_spread_buyprice"), $textdesc, 1, 'help', '');
-				print $form->editfieldkey($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
+				$checkboxType = 'checkbox: class="flat"'; // provide suffix to avoid undefined offset in html.form for checkbox
+				print $form->editfieldkey($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, $checkboxType);
 				print '</td><td>';
-				print $form->editfieldval($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, 'checkbox');
+				print $form->editfieldval($text, 'kreap_spread_buyprice', $object->array_options['options_kreap_spread_buyprice'], $object, $usercancreate, $checkboxType);
 				print '</td><td></td></tr>';
 			}
 
