@@ -42,6 +42,8 @@ KREAPRODUCTS_MYPARAM1 = My param 1
 KREAPRODUCTS_MYPARAM1Tooltip = My param 1 tooltip
 KREAPRODUCTS_MYPARAM2=My param 2
 KREAPRODUCTS_MYPARAM2Tooltip=My param 2 tooltip
+KREAPRODUCTS_SIM_ENABLE = Enable price simulator (Metrics & Markup)
+KREAPRODUCTS_SIM_DEFAULT_MARKUP = Default test markup (e.g. 3 = 300%)
 
 
 #

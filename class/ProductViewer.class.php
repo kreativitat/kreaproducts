@@ -12,7 +12,7 @@ class ProductHierarchyTree
 {
     // Constants for configuration
     const MAX_HIERARCHY_DEPTH = 50;
-    const MAX_PRODUCTS_PER_LEVEL = 1000;
+    const MAX_PRODUCTS_PER_LEVEL = 5000;
     const BATCH_SIZE = 100;
     const PRICE_COMPARISON_DELTA = 0.01;
     

@@ -103,6 +103,12 @@ if (!class_exists('FormSetup')) {
 }
 $formSetup = new FormSetup($db);
 
+// Ensure simulator is ON by default if not yet defined
+if (!isset($conf->global->KREAPRODUCTS_SIM_ENABLE)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_SIM_ENABLE', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_SIM_ENABLE = 1;
+}
+
 // Auto synch buy price
 $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
 
@@ -126,6 +132,17 @@ $formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
 
 // Data de movimentos de stocks dia da fatura
 $formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+
+// Markup default for simulator
+$item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
+$item->defaultFieldValue = '3';
+$item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
+
+// Enable/disable price simulator block
+$item = $formSetup->newItem('KREAPRODUCTS_SIM_ENABLE');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('Enable or disable the price simulator (Métricas e Margens)');
 
 /*
 // Enter here all parameters in your setup page

@@ -44,6 +44,8 @@ KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabela nutricional dentro da aba da ficha t
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagar preço de custo
 KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Data de movimento de stocks é o dia da fatura
+KREAPRODUCTS_SIM_ENABLE = Ativar simulador de preços (Métricas e Margens)
+KREAPRODUCTS_SIM_DEFAULT_MARKUP = Markup teste predefinido (ex.: 3 = 300%)
 
 #
 # About page

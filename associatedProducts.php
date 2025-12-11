@@ -156,6 +156,72 @@ if (empty($reshook)) {
 		$action = '';
 		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 		exit;
+	} elseif ($action === 'update_sim_price' && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1) && ($user->rights->produit->creer || $user->rights->service->creer)) {
+		$newpriceInput = price2num(GETPOST('sim_price_value', 'alpha'), 'MU');
+		$priceLevelPost = GETPOST('price_level', 'int');
+		$priceLevelUsed = ($priceLevelPost > 0 ? $priceLevelPost : 1);
+		if ($id && $newpriceInput > 0) {
+			$object->fetch($id);
+			$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
+			// Resolve VAT: priority to level VAT, then product VAT, then VAT code lookup
+			$vat = 0;
+			$defaultVatCode = '';
+			if (!empty($conf->global->PRODUIT_MULTIPRICES) && isset($object->multiprices_tva_tx[$priceLevelUsed]) && $object->multiprices_tva_tx[$priceLevelUsed] !== '') {
+				$vat = (float) $object->multiprices_tva_tx[$priceLevelUsed];
+			} elseif ($object->tva_tx !== null && $object->tva_tx !== '') {
+				$vat = (float) $object->tva_tx;
+			}
+
+			// Load current price row for selected level to get VAT and VAT code if set per level
+			$sqlpr = "SELECT rowid, tva_tx, default_vat_code FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " AND price_level = " . ((int)$priceLevelUsed) . " ORDER BY rowid DESC LIMIT 1";
+			$respr = $db->query($sqlpr);
+			if ($respr && ($rowpr = $db->fetch_object($respr))) {
+				if ($rowpr->tva_tx !== null && $rowpr->tva_tx > 0) {
+					$vat = (float) $rowpr->tva_tx;
+				}
+				if (!empty($rowpr->default_vat_code)) {
+					$defaultVatCode = $rowpr->default_vat_code;
+				}
+			}
+			if ($respr) $db->free($respr);
+			if ($vat <= 0 && $object->tva_tx > 0) {
+				$vat = (float) $object->tva_tx;
+			}
+			if (empty($defaultVatCode) && !empty($object->default_vat_code)) {
+				$defaultVatCode = $object->default_vat_code;
+			}
+			// If still no VAT but we have a VAT code, try to resolve the rate
+			if ($vat <= 0 && !empty($defaultVatCode)) {
+				$sqlvat = "SELECT taux FROM " . MAIN_DB_PREFIX . "c_tva WHERE code = '" . $db->escape($defaultVatCode) . "' AND active = 1 ORDER BY taux DESC LIMIT 1";
+				$resvat = $db->query($sqlvat);
+				if ($resvat && ($rowvat = $db->fetch_object($resvat))) {
+					$vat = (float) $rowvat->taux;
+				}
+				if ($resvat) $db->free($resvat);
+			}
+
+			if ($baseType === 'TTC') {
+				// newprice is TTC; compute HT
+				$newprice_ttc = $newpriceInput;
+				$newprice_ht = ($vat >= 0) ? ($newprice_ttc / (1 + ($vat / 100))) : $newprice_ttc;
+			} else {
+				// newprice is HT; compute TTC
+				$newprice_ht = $newpriceInput;
+				$newprice_ttc = ($vat >= 0) ? ($newprice_ht * (1 + ($vat / 100))) : $newprice_ht;
+			}
+
+			// Update price for selected level using Dolibarr API only
+			$newpriceForBase = ($baseType === 'TTC') ? $newprice_ttc : $newprice_ht;
+			$res = $object->updatePrice($newpriceForBase, $baseType, $user, $vat, 0, $priceLevelUsed, 0, 0, 0, array(), $defaultVatCode, '', 0);
+
+			if ($res > 0) {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			} else {
+				setEventMessages($langs->trans("Error"), null, 'errors');
+			}
+		}
+		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+		exit;
 	}
 }
 
@@ -572,7 +638,7 @@ if ($id > 0 || !empty($ref)) {
 		print '<input type="hidden" name="token" value="' . newToken() . '" />';
 		print '<input type="hidden" name="action" value="save_composed_product" />';
 		print '<input type="hidden" name="id" value="' . $id . '" />';
-		print '<table id="tablelines" class="ui-sortable liste nobottom">';
+		print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
 		print '<tr class="liste_titre nodrag nodrop">';
 		// Rank
 		print '<td>' . $langs->trans('Position') . '</td>';
@@ -702,22 +768,24 @@ if ($id > 0 || !empty($ref)) {
 			}
 			// Total
 			print '<tr class="liste_total">';
-			print '<td></td>';
-			print '<td class="liste_total"></td>';
-			print '<td class="liste_total"></td>';
-			print '<td></td>';
-			print '<td></td>';
-			print '<td></td>';
 			print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
-			print '<td class="liste_total right">';
+
+			print '<td class="liste_total"></td>';
+			print '<td class="liste_total"></td>';
+			print '<td></td>'; // Custo do ingrediente col 1
+			print '<td></td>'; // Custo do ingrediente col 2
+			if (isModEnabled('stock')) {
+				print '<td></td>'; // Stock col
+			}
+
+			print '<td></td>';
+			print '<td></td>'; // Qty col
+			print '<td class="liste_total right" style="white-space: nowrap;">';
 			if ($atleastonenotdefined) {
 				print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
 			}
 			print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
 			print '</td>';
-			if (isModEnabled('stock')) {
-				print '<td class="liste_total right">&nbsp;</td>';
-			}
 			print '<td class="center">';
 			if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
 				print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
@@ -738,7 +806,7 @@ if ($id > 0 || !empty($ref)) {
 		print '</form>';
 		print '</div>';
 
-		// Form with product to add
+		// Form with product to add (moved before simulator)
 		if ((empty($action) || $action == 'view' || $action == 'edit' || $action == 'search' || $action == 're-edit') && ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'))) {
 			$rowspan = 1;
 			if (isModEnabled('categorie')) {
@@ -759,11 +827,203 @@ if ($id > 0 || !empty($ref)) {
 				print $form->select_all_categories(Categorie::TYPE_PRODUCT, $parent, 'parent') . ' &nbsp; </div>';
 				print ajax_combobox('parent');
 			}
-			print '<div class="inline-block">';
-			print '<input type="submit" class="button small" value="' . $langs->trans("Search") . '">';
-			print '</div>';
+			print '<div class="inline-block" style="margin-top:6px;"><input type="submit" class="button small" value="' . $langs->trans("Search") . '"></div>';
 			print '</form>';
 		}
+
+		// Margin and markup sandbox (read-only calculations + test markup)
+		$baseCost = price2num($object->cost_price, 'MU');
+
+		$isMultiPrice = !empty($conf->global->PRODUIT_MULTIPRICES);
+		$priceLevelRequested = GETPOST('price_level', 'int');
+		$multiPriceLimit = !empty($conf->global->PRODUIT_MULTIPRICES_LIMIT) ? (int) $conf->global->PRODUIT_MULTIPRICES_LIMIT : 0;
+		$priceLevels = array();
+
+		if ($isMultiPrice) {
+			$sqlPrice = "SELECT price_level, price FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " ORDER BY price_level ASC, rowid ASC";
+			$resPrice = $db->query($sqlPrice);
+			if ($resPrice) {
+				while ($objp = $db->fetch_object($resPrice)) {
+					$priceLevels[(int)$objp->price_level] = price2num($objp->price, 'MU');
+				}
+				$db->free($resPrice);
+			}
+			if (empty($priceLevels)) {
+				// Fallback to default price if no multiprice rows
+				$priceLevels[1] = price2num($object->price, 'MU');
+			}
+		} else {
+			$basePriceSingle = price2num($object->price, 'MU');
+			if ($basePriceSingle <= 0) {
+				$sqlPrice = "SELECT price FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " ORDER BY rowid ASC LIMIT 1";
+				$resPrice = $db->query($sqlPrice);
+				if ($resPrice && ($objp = $db->fetch_object($resPrice))) {
+					$basePriceSingle = price2num($objp->price, 'MU');
+				}
+				if ($resPrice) {
+					$db->free($resPrice);
+				}
+			}
+			$priceLevels['default'] = $basePriceSingle;
+		}
+
+		$selectedPriceLevel = $isMultiPrice ? ($priceLevelRequested > 0 ? $priceLevelRequested : (array_key_first($priceLevels))) : 'default';
+		$basePrice = isset($priceLevels[$selectedPriceLevel]) ? $priceLevels[$selectedPriceLevel] : reset($priceLevels);
+
+		$profit = price2num($basePrice - $baseCost, 'MU');
+		$costMargin = ($basePrice > 0) ? ($baseCost / $basePrice) : 0;
+		$grossMargin = ($basePrice > 0) ? ($profit / $basePrice) : 0;
+		$markupDefault = price2num(GETPOST('test_markup', 'alphanohtml'), 'MU');
+		if ($markupDefault <= 0) {
+			$markupDefault = price2num(getDolGlobalString('KREAPRODUCTS_SIM_DEFAULT_MARKUP', '3'), 'MU');
+			if ($markupDefault <= 0) {
+				$markupDefault = 3;
+			}
+		}
+		$markupPct = ($baseCost > 0) ? (($profit / $baseCost)) : 0;
+		$testMarkupPct = $markupDefault;
+		$testPrice = ($baseCost > 0) ? $baseCost * (1 + $testMarkupPct) : 0;
+		$testMargin = ($testPrice > 0) ? (($testPrice - $baseCost) / $testPrice) : 0;
+
+		$fmtPct = function ($val) {
+			return number_format($val * 100, 2, '.', '') . ' %';
+		};
+
+		if (getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
+			print '<div class="fichecenter" style="margin-top: 15px;">';
+			print load_fiche_titre('Métricas e Margens', '', '');
+			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
+			print '<input type="hidden" name="token" value="' . newToken() . '">';
+			print '<input type="hidden" name="id" value="' . (int) $id . '">';
+			print '<input type="hidden" name="action" value="update_sim_price">';
+			print '<input type="hidden" id="krea-sim-price-hidden" name="sim_price_value" value="">';
+			print '<table class="noborder krea-metrics" width="100%" style="table-layout: fixed;">';
+			print '<colgroup>';
+			print '<col style="width:35%; white-space: nowrap;">';
+			print '<col style="width:45%; white-space: nowrap;">';
+			print '<col style="width:20%; white-space: nowrap; text-align:right;">';
+			print '</colgroup>';
+			print '<tr class="liste_titre">';
+			print '<td>Métrica</td><td>Fórmula</td><td class="right">Resultado</td>';
+			print '</tr>';
+			if ($isMultiPrice) {
+				print '<tr><td>Nível de preço</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
+				$maxLevel = ($multiPriceLimit > 0) ? $multiPriceLimit : count($priceLevels);
+				for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
+					$labelKey = "PRODUIT_MULTIPRICES_LABEL" . $lvl;
+					$label = !empty($conf->global->$labelKey) ? $conf->global->$labelKey : 'Nível ' . $lvl;
+					if (!isset($priceLevels[$lvl])) continue;
+					$pval = $priceLevels[$lvl];
+					$sel = ($lvl == $selectedPriceLevel) ? ' selected' : '';
+					print '<option value="' . dol_escape_htmltag($lvl) . '"' . $sel . '>' . dol_escape_htmltag($label) . ' (' . price($pval, '', '', 0, 2, 2, $conf->currency) . ')</option>';
+				}
+				print '</select></td></tr>';
+			} else {
+				print '<tr><td>Preço</td><td>Preço atual</td><td class="right"><span id="krea-price-val">' . price($basePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			}
+			print '<tr><td>Custo</td><td>Custo atual</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>Margem de custo</td><td>Custo ÷ Preço</td><td class="right"><span id="krea-cost-margin">' . $fmtPct($costMargin) . '</span></td></tr>';
+			print '<tr><td>Lucro bruto</td><td>Preço − Custo</td><td class="right"><span id="krea-gross-profit">' . price($profit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			$vatRateDisplay = ($object->tva_tx ? (float)$object->tva_tx : 0);
+			$vatMultDisplay = number_format(1 + ($vatRateDisplay / 100), 3, '.', '');
+			print '<tr><td>Preço c/ IVA</td><td>Preço × (1 + ' . $vatRateDisplay . '%) [' . $vatMultDisplay . ']</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
+			print '<tr><td>Margem bruta</td><td>Lucro ÷ Preço</td><td class="right"><span id="krea-gross-margin">' . $fmtPct($grossMargin) . '</span></td></tr>';
+			print '<tr><td>Markup</td><td>Lucro ÷ Custo</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
+			print '<tr><td>Markup teste</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> (ex: 3 = 300%)</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
+			print '<tr><td>Margem bruta teste</td><td>(Preço teste − Custo) ÷ Preço teste</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
+			print '<tr><td>Preço teste</td><td>Custo × (1 + Markup teste)</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>Preço teste c/ IVA</td><td><input type="text" id="krea-test-price-vat-input" class="right width75"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
+			print '</table>';
+			$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
+			print '<div class="center" style="margin-top: 6px;">';
+			print '<span class="opacitymedium small">Modo de preço: ' . dol_escape_htmltag($baseType) . '</span><br>';
+			print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
+			print '</div>';
+			print '</form>';
+			print '<div class="opacitymedium small" style="margin-top:4px;">Pode editar "Preço teste c/ IVA" para recalcular o markup e margens.</div>';
+			print '</div>'; // wrapper
+		}
+
+		$jsPriceMap = json_encode($priceLevels);
+		$jsCurrency = dol_escape_js($conf->currency);
+		print '<script>
+		(function(){
+			var cost = ' . json_encode($baseCost) . ';
+			var priceMap = ' . $jsPriceMap . ';
+			var currency = "' . $jsCurrency . '";
+			var vatRate = ' . json_encode($object->tva_tx ? (float)$object->tva_tx : 0) . ';
+			var sel = document.getElementById("krea-price-level");
+			var markupInput = document.getElementById("krea-test-markup");
+			var testPriceVatInput = document.getElementById("krea-test-price-vat-input");
+			var hiddenSimPrice = document.getElementById("krea-sim-price-hidden");
+			var baseType = ' . json_encode(strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT')) . ';
+			function fmtPct(v){return (v*100).toFixed(2)+" %";}
+			function fmtMoney(v){return Number(v).toFixed(2)+" "+currency;}
+			function getPrice(){
+				if(sel){ return parseFloat(priceMap[sel.value] || 0); }
+				return parseFloat(priceMap["default"] || 0);
+			}
+			function recalc(markupOverride, testPriceVatOverride, skipSetVatInput){
+				var price = getPrice();
+				var markup = (markupOverride !== undefined && markupOverride !== null)
+					? markupOverride
+					: parseFloat((markupInput ? markupInput.value : "0").replace(",", "."));
+				if(isNaN(markup)){ markup = 0; }
+				var profit = price - cost;
+				var priceVat = price * (1 + (vatRate/100));
+				var costMargin = price>0 ? cost/price : 0;
+				var grossMargin = price>0 ? profit/price : 0;
+				var markupPct = cost>0 ? profit/cost : 0;
+				var testPrice;
+				var testPriceVat;
+				if(testPriceVatOverride !== undefined && testPriceVatOverride !== null){
+					testPriceVat = testPriceVatOverride;
+					testPrice = testPriceVat / (1 + (vatRate/100));
+					markup = cost > 0 ? (testPrice / cost) - 1 : 0;
+				} else {
+					testPrice = cost>0 ? cost*(1+markup) : 0;
+					testPriceVat = testPrice * (1 + (vatRate/100));
+				}
+				var testMargin = testPrice>0 ? (testPrice - cost)/testPrice : 0;
+				var set = function(id, val){ var el=document.getElementById(id); if(el){ el.textContent = val; } };
+				set("krea-price-val", fmtMoney(price));
+				set("krea-price-vat", fmtMoney(priceVat));
+				set("krea-cost-val", fmtMoney(cost));
+				set("krea-cost-margin", fmtPct(costMargin));
+				set("krea-gross-profit", fmtMoney(profit));
+				set("krea-gross-margin", fmtPct(grossMargin));
+				set("krea-markup", fmtPct(markupPct));
+				set("krea-test-markup-val", fmtPct(markup));
+				if(markupInput){ markupInput.value = markup.toFixed(2); }
+				set("krea-test-price", fmtMoney(testPrice));
+				set("krea-test-price-vat", fmtMoney(testPriceVat));
+				set("krea-test-margin", fmtPct(testMargin));
+				if(testPriceVatInput && !skipSetVatInput){
+					testPriceVatInput.value = testPriceVat.toFixed(2);
+				}
+				if(hiddenSimPrice){
+					if(baseType === "TTC"){
+						hiddenSimPrice.value = testPriceVat.toFixed(6);
+					} else {
+						hiddenSimPrice.value = testPrice.toFixed(6);
+					}
+				}
+			}
+			if(sel){ sel.addEventListener("change", function(){ recalc(); }); }
+			if(markupInput){ markupInput.addEventListener("input", function(){ recalc(); }); }
+			if(testPriceVatInput){
+				testPriceVatInput.addEventListener("input", function(){
+					var raw = parseFloat(testPriceVatInput.value.replace(",", "."));
+					if(!isNaN(raw)){
+						recalc(null, raw, true);
+					}
+				});
+			}
+			recalc();
+
+		})();</script>';
+
+
 
 		// List of products (search results)
 		if ($action == 'search') {
@@ -910,15 +1170,15 @@ if ($id > 0 || !empty($ref)) {
 
 				// Begin table structure
 				print '<table class="liste">';
-			print '<tr class="liste_titre">';
+				print '<tr class="liste_titre">';
 
-			// Column headers
-			print '<td>' . $langs->trans('BOMReference') . '</td>';
-			print '<td>' . $langs->trans('ComponentProductId') . '</td>';
-			print '<td>' . $langs->trans('ComponentProduct') . '</td>';
-			print '<td class="right">' . $langs->trans('Qty') . '</td>';
+				// Column headers
+				print '<td>' . $langs->trans('BOMReference') . '</td>';
+				print '<td>' . $langs->trans('ComponentProductId') . '</td>';
+				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
+				print '<td class="right">' . $langs->trans('Qty') . '</td>';
 
-			print '</tr>';
+				print '</tr>';
 
 				// Display each component
 				foreach ($components as $component) {
