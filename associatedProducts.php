@@ -992,6 +992,8 @@ if ($id > 0 || !empty($ref)) {
 		$testMarkupPct = $markupDefault;
 		$testPrice = ($baseCost > 0) ? $baseCost * (1 + $testMarkupPct) : 0;
 		$testMargin = ($testPrice > 0) ? (($testPrice - $baseCost) / $testPrice) : 0;
+		$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
+		$priceBaseLabel = ($baseType === 'TTC') ? 'C/IVA' : 'S/IVA';
 
 		$fmtPct = function ($val) {
 			return number_format($val * 100, 2, '.', '') . ' %';
@@ -1017,7 +1019,7 @@ if ($id > 0 || !empty($ref)) {
 			print '<td>Métrica</td><td>Fórmula</td><td class="right">Resultado</td>';
 			print '</tr>';
 			if ($isMultiPrice) {
-				print '<tr><td>Nível de preço</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
+				print '<tr><td>Nível de preço (quando definido)</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
 				$maxLevel = ($multiPriceLimit > 0) ? $multiPriceLimit : count($priceLevels);
 				for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
 					$labelKey = "PRODUIT_MULTIPRICES_LABEL" . $lvl;
@@ -1031,20 +1033,19 @@ if ($id > 0 || !empty($ref)) {
 			} else {
 				print '<tr><td>Preço</td><td>Preço atual</td><td class="right"><span id="krea-price-val">' . price($basePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
 			}
-			print '<tr><td>Custo</td><td>Custo atual</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>Custo do produto (S/IVA)</td><td>Custo atual</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
 			print '<tr><td>Margem de custo</td><td>Custo ÷ Preço</td><td class="right"><span id="krea-cost-margin">' . $fmtPct($costMargin) . '</span></td></tr>';
 			print '<tr><td>Lucro bruto</td><td>Preço − Custo</td><td class="right"><span id="krea-gross-profit">' . price($profit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
 			$vatRateDisplay = ($object->tva_tx ? (float)$object->tva_tx : 0);
 			$vatMultDisplay = number_format(1 + ($vatRateDisplay / 100), 3, '.', '');
-			print '<tr><td>Preço c/ IVA</td><td>Preço × (1 + ' . $vatRateDisplay . '%) [' . $vatMultDisplay . ']</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
+			print '<tr><td>Preço final (C/IVA)</td><td>Preço (C/IVA ' . $vatRateDisplay . '%)</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
 			print '<tr><td>Margem bruta</td><td>Lucro ÷ Preço</td><td class="right"><span id="krea-gross-margin">' . $fmtPct($grossMargin) . '</span></td></tr>';
-			print '<tr><td>Markup</td><td>Lucro ÷ Custo</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
-			print '<tr><td>Markup teste</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> (ex: 3 = 300%)</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
-			print '<tr><td>Margem bruta teste</td><td>(Preço teste − Custo) ÷ Preço teste</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
-			print '<tr><td>Preço teste</td><td>Custo × (1 + Markup teste)</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			print '<tr><td>Preço teste c/ IVA</td><td><input type="text" id="krea-test-price-vat-input" class="right width75"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
+			print '<tr><td>Markup real</td><td>Lucro ÷ Custo</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
+			print '<tr><td>Markup de teste</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> (ex: 3 = 300%)</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
+			print '<tr><td>Margem bruta de teste</td><td>(Preço teste − Custo) ÷ Preço teste</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
+			print '<tr><td>Preço estimado (' . $priceBaseLabel . ')</td><td>Custo × (1 + Markup teste)</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>Atualizar preço para (C/IVA)</td><td><input type="text" id="krea-test-price-vat-input" class="right width75" placeholder="Informe o preço final com IVA"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
 			print '</table>';
-			$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
 				print '<div class="center" style="margin-top: 6px;">';
 				print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
 				print '</div>';
