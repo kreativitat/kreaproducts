@@ -48,7 +48,7 @@ require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrien
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllergenUpdater.class.php';
 
 // Load translation files required by the page
-$langs->loadLangs(array('bills', 'products', 'stocks'));
+$langs->loadLangs(array('bills', 'products', 'stocks', 'dolizsynch@dolizsynch'));
 
 $id     = GETPOST('id', 'int');
 $ref    = GETPOST('ref', 'alpha');
@@ -649,6 +649,118 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild);
 
+		// Helper to render ZoneSoft menu chips for a product
+		$zsMenuCache = array();
+		$zsProdLabelCache = array();
+		$renderZsMenu = function ($productId) use (&$zsMenuCache, &$zsProdLabelCache, $db, $langs, $conf) {
+			if (empty($conf->dolizsynch->enabled)) {
+				return '';
+			}
+			if (isset($zsMenuCache[$productId])) {
+				return $zsMenuCache[$productId];
+			}
+
+			$html = '';
+
+			$sql = "SELECT niveismenu FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . ((int) $productId) . " LIMIT 1";
+			$resql = $db->query($sql);
+			if ($resql) {
+				$obj = $db->fetch_object($resql);
+				if ($obj && !empty($obj->niveismenu)) {
+					$data = json_decode($obj->niveismenu, true);
+					if (json_last_error() === JSON_ERROR_NONE && is_array($data) && !empty($data)) {
+						dol_syslog("DoliZSynch Menu: found " . count($data) . " menu levels for product {$productId}", LOG_DEBUG);
+						$chips = array();
+						foreach ($data as $idx => $menu) {
+							$level = isset($menu['nivel']) ? (int) $menu['nivel'] : ($idx + 1);
+							$labelRaw = isset($menu['descricao']) ? $menu['descricao'] : $langs->trans("DoliZSynchProductMenu");
+							$label = dol_escape_htmltag(dol_trunc($labelRaw, 40));
+							$isRequired = !empty($menu['obrigatorio']);
+							$badgeTitle = '#' . $level . ' ' . $label;
+							$badgeSub = '';
+							$productsHtml = '';
+						if (!empty($menu['niveismenuext']) && is_array($menu['niveismenuext'])) {
+							$productLines = array();
+							foreach ($menu['niveismenuext'] as $prod) {
+								$code = isset($prod['codigo']) ? dol_escape_htmltag((string) $prod['codigo']) : '';
+									$descRaw = '';
+									if (isset($prod['descricao']) && $prod['descricao'] !== '') {
+										$descRaw = $prod['descricao'];
+									} elseif ($code !== '') {
+										// Fallback: fetch description from synced products by codigo
+										if (!isset($zsProdLabelCache[$code])) {
+											$sqlDesc = "SELECT descricao FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
+											$resDesc = $db->query($sqlDesc);
+											if ($resDesc && ($rowDesc = $db->fetch_object($resDesc))) {
+												$zsProdLabelCache[$code] = $rowDesc->descricao;
+											} else {
+												$zsProdLabelCache[$code] = '';
+											}
+										}
+										$descRaw = $zsProdLabelCache[$code];
+									}
+									$desc = dol_escape_htmltag(dol_trunc($descRaw, 80));
+									$price = isset($prod['preco']) ? price2num($prod['preco'], 'MU') : 0;
+									$priceStr = ($price > 0) ? '(' . price($price, '', '', 0, 2, 2) . ')' : '';
+									$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">#' . $code . '</span><span class="zs-prod-desc">' . $desc . '</span><span class="zs-prod-price">' . $priceStr . '</span></div>';
+								}
+								$productsHtml = '<div class="zs-menu-products">' . implode('', $productLines) . '</div>';
+							}
+							$chips[] = '<div class="zs-menu-card">'
+								. '<div class="zs-menu-meta">'
+								. '<div class="zs-level-badge">'
+								. '<div class="zs-badge-title">' . $badgeTitle . '</div>'
+								. '</div>'
+								. ($isRequired ? '<div class="zs-req-pill">Obrigatório</div>' : '')
+								. '</div>'
+								. $productsHtml
+								. '</div>';
+						}
+						$html = implode('', $chips);
+					} else {
+						dol_syslog("DoliZSynch Menu: niveismenu JSON empty or invalid for product {$productId}", LOG_DEBUG);
+					}
+				} else {
+					dol_syslog("DoliZSynch Menu: no niveismenu for product {$productId}", LOG_DEBUG);
+				}
+			}
+
+			$zsMenuCache[$productId] = $html;
+			return $html;
+		};
+
+		// Lightweight styles for the menu chips (printed once)
+		if (empty($GLOBALS['DOLIZSYNCH_MENU_STYLES_PRINTED'])) {
+			print '<style>
+				.zs-menu-cell { min-width: 220px; display: flex; flex-direction: column; gap: 10px; }
+				.zs-menu-card { position: relative; padding: 12px 14px; margin: 6px 0; border-radius: 10px; background: linear-gradient(135deg,#ffffff,#f7fbff); border: 1px solid #e4ebf5; box-shadow: 0 2px 8px rgba(20, 40, 60, 0.08); display: grid; grid-template-columns: 220px 1fr; column-gap: 16px; align-items: start; }
+				.zs-menu-card::before { content: \"\"; position: absolute; left: 10px; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: linear-gradient(180deg,#2c7be5,#6ec1ff); }
+				.zs-menu-meta { position: relative; padding-left: 12px; display: flex; flex-direction: column; gap: 6px; grid-column: 1; }
+				.zs-level-badge { display: inline-flex; flex-direction: column; gap: 4px; min-width: 140px; padding: 8px 12px; border-radius: 12px; background: var(--colorbackhmenu1, #2c7be5); color: #fff; box-shadow: 0 1px 6px rgba(0,0,0,0.18); }
+				.zs-badge-title { font-weight: 800; letter-spacing: 0.3px; }
+				.zs-badge-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; opacity: 0.9; }
+				.zs-req-pill { margin-top: 6px; padding: 3px 8px; border-radius: 999px; background: #ffeaea; color: #c0392b; font-weight: 700; font-size: 11px; width: fit-content; box-shadow: 0 1px 2px rgba(0,0,0,0.08); text-transform: uppercase; letter-spacing: 0.2px; }
+				.zs-menu-products { grid-column: 2; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+				.zs-menu-product { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+				.zs-prod-code { font-weight: 800; color: #1f2937; flex: 0 0 auto; }
+				.zs-prod-desc { color: #111827; font-size: 13px; flex: 0 0 auto; }
+				.zs-prod-price { color: #111827; font-weight: 700; flex: 0 0 auto; }
+			</style>';
+			$GLOBALS['DOLIZSYNCH_MENU_STYLES_PRINTED'] = true;
+		}
+
+		// Show current product Menu (ZS) chips (from llxnm_dolizsynch_zsproduct.niveismenu)
+		$currentMenuHtml = $renderZsMenu($object->id);
+		if (!empty($currentMenuHtml)) {
+			print '<div class="fichecenter" style="margin-bottom:10px;">';
+			$title = $langs->trans("DoliZSynchProductMenu");
+			$title = str_replace('(ZS)', '', $title);
+			$title = trim($title);
+			print load_fiche_titre($title, '', '');
+			print '<div class="zs-menu-cell">' . $currentMenuHtml . '</div>';
+			print '</div>';
+		}
+
 		// Hide the child list only when this product is already part of a BOM and has no own components.
 		$hasBomParents = !empty($boms);
 		$hideChildList = ($hasBomParents && $nbofsubproducts === 0);
@@ -669,6 +781,13 @@ if ($id > 0 || !empty($ref)) {
 			print '<td style="width:12%;">' . $langs->trans('ComposedProduct') . '</td>';
 			// Product label
 			print '<td style="min-width:320px;">' . $langs->trans('Label') . '</td>';
+			// ZS Menu column
+			if (!empty($conf->dolizsynch->enabled)) {
+				$colTitle = $langs->trans('DoliZSynchProductMenu');
+				$colTitle = str_replace('(ZS)', '', $colTitle);
+				$colTitle = trim($colTitle);
+				print '<td style="width:200px;">' . $colTitle . '</td>';
+			}
 				// Ingredient cost (single column)
 				print '<td class="right" style="width:140px;">' . $langs->trans('Custo do ingrediente') . '</td>';
 			// Stock
@@ -704,6 +823,11 @@ if ($id > 0 || !empty($ref)) {
 						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 						// Product label
 						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
+						// Menu (ZS)
+						if (!empty($conf->dolizsynch->enabled)) {
+							$menuCell = $renderZsMenu($productstatic->id);
+							print '<td class="zs-menu-cell">' . $menuCell . '</td>';
+						}
 							// For avoid a non-numeric value
 							$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
 							$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
@@ -753,6 +877,10 @@ if ($id > 0 || !empty($ref)) {
 						print '</td>';
 						// Product label
 						print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
+							// Menu placeholder for nested rows
+							if (!empty($conf->dolizsynch->enabled)) {
+								print '<td></td>';
+							}
 							// Cost placeholder for nested rows
 							print '<td>&nbsp;</td>';
 							// Stock
@@ -780,6 +908,9 @@ if ($id > 0 || !empty($ref)) {
 
 					print '<td class="liste_total"></td>'; // Ingredient col
 					print '<td class="liste_total"></td>'; // Label col
+					if (!empty($conf->dolizsynch->enabled)) {
+						print '<td></td>'; // Menu col
+					}
 					print '<td></td>'; // Custo do ingrediente col
 					if (isModEnabled('stock')) {
 						print '<td></td>'; // Stock col
@@ -801,7 +932,7 @@ if ($id > 0 || !empty($ref)) {
 					print '</tr>' . "\n";
 			} else {
 				// Show an empty state row when no components exist but the table is displayed.
-				$colspan = 8; // Position, Ingredient, Label, Cost, Stock?, Qty, Cost per component, Inc/Dec
+				$colspan = 9; // Position, Ingredient, Label, Menu, Cost, Stock?, Qty, Cost per component, Inc/Dec
 				if (isModEnabled('stock')) {
 					$colspan++; // account for stock column
 				}
