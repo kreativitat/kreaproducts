@@ -125,11 +125,20 @@ class Nutritional extends CommonObject
             "visible" => "-2", 
             "index" => "1"
         ),
+        "is_food" => array(
+            "type" => "integer", 
+            "label" => "FoodProduct", 
+            "enabled" => "1", 
+            'position' => 61, 
+            'notnull' => 1, 
+            'default' => 1, 
+            "visible" => "1"
+        ),
         "energy_kcal" => array(
             "type" => "double(28,4)", 
             "label" => "Energy (kcal)", 
             "enabled" => "1", 
-            'position' => 61, 
+            'position' => 62, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -137,7 +146,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Energy (kj)", 
             "enabled" => "1", 
-            'position' => 62, 
+            'position' => 63, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -145,7 +154,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Fat", 
             "enabled" => "1", 
-            'position' => 63, 
+            'position' => 64, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -153,7 +162,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Saturates", 
             "enabled" => "1", 
-            'position' => 64, 
+            'position' => 65, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -161,7 +170,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Carbohydrates", 
             "enabled" => "1", 
-            'position' => 65, 
+            'position' => 66, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -169,7 +178,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Sugars", 
             "enabled" => "1", 
-            'position' => 66, 
+            'position' => 67, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -177,7 +186,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Protein", 
             "enabled" => "1", 
-            'position' => 67, 
+            'position' => 68, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -185,7 +194,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Salt", 
             "enabled" => "1", 
-            'position' => 68, 
+            'position' => 69, 
             'notnull' => 0, 
             "visible" => "1"
         ),
@@ -193,7 +202,7 @@ class Nutritional extends CommonObject
             "type" => "double(28,4)", 
             "label" => "Fiber", 
             "enabled" => "1", 
-            'position' => 69, 
+            'position' => 70, 
             'notnull' => 0, 
             "visible" => "1"
         )
@@ -206,6 +215,7 @@ class Nutritional extends CommonObject
     public $fk_user_creat;
     public $fk_user_modif;
     public $fk_product;
+    public $is_food;
     public $energy_kcal;
     public $energy_kj;
     public $fat;

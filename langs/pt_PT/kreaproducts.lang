@@ -167,6 +167,8 @@ AllergenUpdateFired = Actualização de alergénios iniciada
 kreap_brand_Inline = Marca do produto
 kreap_video_Inline = Video do produto
 kreap_description_Inline = Descrição do produto
+KreaFoodProduct = Produto alimentar
+KreaNonFoodProduct = Produto não alimentar
 
 #
 # Products tree card

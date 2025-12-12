@@ -57,6 +57,7 @@ $confirm = GETPOST('confirm', 'alpha');
 $cancel  = GETPOST('cancel', 'alpha');
 $key     = GETPOST('key');
 $parent  = GETPOST('parent');
+$productIsFood = 1;
 
 // Security check
 if (!empty($user->socid)) {
@@ -311,6 +312,42 @@ if ($action == 'updateAllergens') {
 	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
 }
 
+// Toggle food/non-food flag for nutritional handling
+if ($action === 'toggle_is_food' && $usercancreate) {
+	$newValue = GETPOST('value', 'int') ? 1 : 0;
+
+	// Ensure a record exists
+	$sqlCheck = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $object->id;
+	$resCheck = $db->query($sqlCheck);
+	$rowId = null;
+	if ($resCheck && $db->num_rows($resCheck) > 0) {
+		$objCheck = $db->fetch_object($resCheck);
+		$rowId = (int) $objCheck->rowid;
+	}
+	if ($resCheck) $db->free($resCheck);
+
+	if (!$rowId) {
+		$sqlInsert = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (fk_product, date_creation, fk_user_creat, is_food) VALUES ("
+			. (int) $object->id . ", '" . $db->escape(date('Y-m-d H:i:s')) . "', " . (int) $user->id . ", " . (int) $newValue . ")";
+		$db->query($sqlInsert);
+		$rowId = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
+	} else {
+		$setParts = array("is_food = " . (int) $newValue);
+		if ($newValue === 0) {
+			// Reset nutritional fields when marking as non-food
+			$zeroFields = array('energy_kcal','energy_kj','fat','saturates','carbohydrates','sugars','protein','salt','fiber');
+			foreach ($zeroFields as $zf) {
+				$setParts[] = $zf . " = 0";
+			}
+		}
+		$sqlUpdate = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET " . implode(', ', $setParts) . " WHERE rowid = " . (int) $rowId;
+		$db->query($sqlUpdate);
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
 if ($action == 'saveAllergens' && $usercancreate) {
 	// Retrieve submitted allergens (non-traces and traces)
 	$selectedAllergens       = GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
@@ -450,6 +487,18 @@ if ($id > 0 || !empty($ref)) {
 			$shownav = 0;
 		}
 		dol_banner_tab($object, 'ref', $linkback, $shownav, 'ref', '');
+
+		// Food/non-food toggle (default: food)
+		$productIsFood = 1;
+		$sqlFoodFlag = "SELECT rowid, is_food FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $object->id . " LIMIT 1";
+		$resFoodFlag = $db->query($sqlFoodFlag);
+		$foodRowId = null;
+		if ($resFoodFlag && ($foodObj = $db->fetch_object($resFoodFlag))) {
+			$productIsFood = ($foodObj->is_food !== null) ? (int) $foodObj->is_food : 1;
+			$foodRowId = (int) $foodObj->rowid;
+		}
+		if ($resFoodFlag) $db->free($resFoodFlag);
+
 		if ($object->type != Product::TYPE_SERVICE || getDolGlobalString('STOCK_SUPPORTS_SERVICES') || !getDolGlobalString('PRODUIT_MULTIPRICES')) {
 			print '<div class="fichecenter">';
 			print '<div class="fichehalfleft">';
@@ -464,6 +513,14 @@ if ($id > 0 || !empty($ref)) {
 				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, $usercancreate, $typeformat);
 				print '</td></tr>';
 			}
+			// Food/non-food toggle on left column
+			print '<tr><td class="titlefield">' . $langs->trans("KreaFoodProduct") . '</td><td>';
+			$foodIcon = $productIsFood ? 'fa-toggle-on font-status4' : 'fa-toggle-off opacitymedium';
+			$toggleUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=toggle_is_food&value=' . ($productIsFood ? 0 : 1);
+			print '<a class="linkobject" href="' . $toggleUrl . '" title="' . ($productIsFood ? $langs->trans('KreaFoodProduct') : $langs->trans('KreaNonFoodProduct')) . '">';
+			print '<span class="fas ' . $foodIcon . '"></span>';
+			print '</a>';
+			print '</td></tr>';
 			print '</table>';
 			print '</div><div class="fichehalfright">';
 			print '<div class="underbanner clearboth"></div>';
@@ -494,6 +551,7 @@ if ($id > 0 || !empty($ref)) {
 				}
 				print '</td></tr>';
 			}
+
 			print '</table>';
 			print '</div>';
 			print '</div>';
@@ -1289,6 +1347,7 @@ if ($id > 0 || !empty($ref)) {
 		$object->insertExtraFields();
 
 
+		if ($productIsFood) {
 		// Nutritional table
 		// Reusable spacing to keep titles and tables visually consistent.
 		$sectionMarginStyle = 'margin-top: 18px;';
@@ -1593,7 +1652,8 @@ if ($id > 0 || !empty($ref)) {
 			print '</table>';
 			print '</div>';
 		}
-	}
+		} // end productIsFood inner extrafields
+	} // end productIsFood
 }
 
 

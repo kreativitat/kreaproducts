@@ -22,6 +22,7 @@ CREATE TABLE llx_kreaproducts_nutritional(
 	fk_user_creat integer NOT NULL, 
 	fk_user_modif integer, 
 	fk_product integer NOT NULL, 
+	is_food tinyint DEFAULT 1 NOT NULL,
 	energy_kcal double(28,4), 
 	energy_kj double(28,4), 
 	fat double(28,4), 
