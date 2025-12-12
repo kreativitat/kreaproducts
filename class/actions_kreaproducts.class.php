@@ -353,28 +353,12 @@ class ActionsKreaProducts extends CommonHookActions
 		global $db, $conf;
 
 		$error = 0;
-
-		// 1) Replace core inventory pages with KreaProducts versions when browsing inventory
-		if (!defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
-			$scriptName = basename($_SERVER['SCRIPT_NAME'] ?? '');
-			$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
-			if (strpos($scriptPath, '/product/inventory/') !== false) {
-				if ($scriptName === 'card.php') {
-					define('KREA_INVENTORY_PAGE_OVERRIDE', true);
-					$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
-					header('Location: ' . dol_buildpath('/kreaproducts/inventory_card.php', 1) . $q);
-					exit;
-				}
-				if ($scriptName === 'inventory.php') {
-					define('KREA_INVENTORY_PAGE_OVERRIDE', true);
-					$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
-					header('Location: ' . dol_buildpath('/kreaproducts/inventory.php', 1) . $q);
-					exit;
-				}
-			}
+		$handled = $this->redirectToCustomPages($parameters, $object, $action);
+		if ($handled) {
+			return 0;
 		}
 
-		// 2) Existing logic: update stockable_product on product create/update
+		// 3) Existing logic: update stockable_product on product create/update
 		if (
 			($action === 'create' || $action === 'update')
 			&& $object->element === 'product'
@@ -397,6 +381,65 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 
 		return $error ? -1 : 0;
+	}
+
+	/**
+	 * Early redirection hook to custom pages for contexts that don't trigger doActions (e.g. supplierpaymentcard).
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata (context, etc...)
+	 * @param CommonObject        $object     The object to process
+	 * @param ?string             $action     Current action
+	 * @param HookManager         $hookmanager Hook manager
+	 * @return int                              Always 0 to keep standard header flow
+	 */
+	public function llxHeader($parameters, &$object, &$action, $hookmanager)
+	{
+		$this->redirectToCustomPages($parameters, $object, $action);
+		return 0;
+	}
+
+	/**
+	 * Redirect core pages to custom equivalents when needed.
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata (context, etc...)
+	 * @param CommonObject        $object     The object to process
+	 * @param ?string             $action     Current action
+	 * @return bool                           True if the current context was handled
+	 */
+	private function redirectToCustomPages($parameters, &$object, &$action)
+	{
+		$currentcontext = ! empty($parameters['currentcontext']) ? $parameters['currentcontext'] : '';
+		$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+		$isKreaCustomPage = (strpos($scriptPath, '/custom/kreaproducts/') !== false);
+
+		if (strpos($currentcontext, 'inventorycard') !== false && ! $isKreaCustomPage) {
+			if (! defined('KREA_INVENTORY_PAGE_OVERRIDE') && ($action === 'view' || $action === '' || $action === null)) {
+				define('KREA_INVENTORY_PAGE_OVERRIDE', true);
+				$scriptName = basename($scriptPath);
+				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+				$target = '/kreaproducts/inventory.php';
+				if ($scriptName === 'card.php') {
+					$target = '/kreaproducts/inventory_card.php';
+				}
+				header('Location: ' . dol_buildpath($target, 1) . $q);
+				exit;
+			}
+
+			return true;
+		}
+
+		if (strpos($currentcontext, 'supplierpaymentcard') !== false && ! $isKreaCustomPage) {
+			if (! defined('KREA_SUPPLIERPAYMENT_PAGE_OVERRIDE') && ($action === 'view' || $action === '' || $action === null)) {
+				define('KREA_SUPPLIERPAYMENT_PAGE_OVERRIDE', true);
+				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+				header('Location: ' . dol_buildpath('/kreaproducts/supplierpayment.php', 1) . $q);
+				exit;
+			}
+
+			return true;
+		}
+
+		return false;
 	}
 
 

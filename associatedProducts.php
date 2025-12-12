@@ -1319,19 +1319,6 @@ if ($id > 0 || !empty($ref)) {
 		}
 		$extrafields = new ExtraFields($db);
 		$extrafields->fetch_name_optionals_label($object->table_element);
-		if (isset($object->array_options)) {
-			print '<br>';
-			print load_fiche_titre($langs->trans("productRecipeTitle"), '', '');
-			print '<div class="fichecenter" id="myAllergenButtons">';
-			print '<table class="ui-sortable liste nobottom">';
-			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $extrafield_value, $object, $usercancreate, 'ckeditor');
-			print '</td><td>';
-			print $form->editfieldval($langs->trans("productRecipeInline"), 'options_kreap_recipe', $extrafield_value, $object, $usercancreate, 'ckeditor');
-			print '</td></tr>';
-			print '</table>';
-			print '</div>';
-		}
 
 		// Preserve the original extra–fields values.
 		$originalOptions = $object->array_options;
@@ -1352,149 +1339,6 @@ if ($id > 0 || !empty($ref)) {
 		}
 		// Save the changes to the database (one call for all extra–fields)
 		$object->insertExtraFields();
-
-
-		// Allergens table
-		// Load available allergens from dictionary
-		$TAllergens = array();
-		$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
-		$resql = $db->query($sql);
-		if ($resql) {
-			while ($obj = $db->fetch_object($resql)) {
-				// Use the code translation as the display value
-				$TAllergens[$obj->rowid] = $langs->trans($obj->code);
-			}
-		} else {
-			dol_syslog("Error loading allergens dictionary: " . $db->error());
-		}
-
-		// Reload saved allergen associations for current product
-		$savedAllergensArray = array();
-		$savedAllergensTracesArray = array();
-		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-		$resql = $db->query($sql);
-		if ($resql) {
-			while ($obj = $db->fetch_object($resql)) {
-				if ($obj->traces == 1) {
-					$savedAllergensTracesArray[] = $obj->fk_allergen;
-				} else {
-					$savedAllergensArray[] = $obj->fk_allergen;
-				}
-			}
-		} else {
-			dol_syslog("Error retrieving saved allergens: " . $db->error());
-		}
-
-		print '<br>';
-		print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
-		print '<div>';
-		print '<table class="ui-sortable liste nobottom">';
-		$key = 'kreap_calc_allergens';
-		$fieldName = 'options_' . $key;
-		$label = $extrafields->attributes['product']['label'][$key];
-		dol_syslog('label: ' . $label, LOG_DEBUG);
-		$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
-		$editorType = 'select;' . implode(',', array_map(
-			function ($k, $v) {
-				global $langs;
-				$langs->load("kreaproducts@kreaproducts");
-				return "$k:" . $langs->trans($v);
-			},
-			array_keys($options),
-			$options
-		));
-
-		print '<tr><td class="titlefield">';
-		print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-		print '</td><td>';
-		print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-		print '</td></tr>';
-		print '</table>';
-		print '</div>';
-
-		if ($object->array_options['options_kreap_calc_allergens'] != 2) {
-			// Check if we are in edit mode and the user has rights to edit
-			if ($usercancreate && $action == 'edit_allergens') {
-
-				// Start the form
-				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-				print '<input type="hidden" name="action" value="saveAllergens">';
-
-				// Multiselect for allergens
-				print '<table class="ui-sortable liste nobottom">';
-				print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
-				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
-				print '</td></tr>';
-
-				// Multiselect for allergens traces
-				print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
-				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
-				print '</td></tr>';
-
-				print '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>';
-				print '</table>';
-
-				// Save button
-				print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
-				print '</form>';
-			} else {
-				// View mode (read-only display)
-				print '<table class="ui-sortable liste nobottom">';
-				print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-				if (!empty($savedAllergensArray)) {
-					foreach ($savedAllergensArray as $allergenId) {
-						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-						$resql = $db->query($sql);
-						if ($resql && $obj = $db->fetch_object($resql)) {
-							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-							print '</div>';
-						}
-					}
-				} else {
-					print $langs->trans("NoneSelected");
-				}
-				print '</td></tr>';
-
-				print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-				if (!empty($savedAllergensTracesArray)) {
-					foreach ($savedAllergensTracesArray as $allergenId) {
-						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-						$resql = $db->query($sql);
-						if ($resql && $obj = $db->fetch_object($resql)) {
-							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-							print '</div>';
-						}
-					}
-				} else {
-					print $langs->trans("NoneSelected");
-				}
-				print '</td></tr>';
-				print '</table>';
-
-				if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
-					print '<div class="center" style="margin-top:10px;">';
-					print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
-					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-					print '<input type="hidden" name="action" value="updateAllergens">';
-					print '</form>';
-					print '</div>';
-				} else {
-					print '<div class="center" style="margin-top:10px;">';
-					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-					print '<input type="hidden" name="action" value="updateAllergens">';
-					print '</form>';
-					print '</div>';
-				}
-			}
-		}
 
 
 		// Nutritional table
@@ -1532,11 +1376,11 @@ if ($id > 0 || !empty($ref)) {
 			KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
 		}
 
-		if ($object->array_options['options_kreap_calc_nut'] == 0) {
-			print '<div class="fichecenter">';
-			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-			print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
-			print '<table class="ui-sortable liste nobottom">';
+			if ($object->array_options['options_kreap_calc_nut'] == 0) {
+				print '<div class="fichecenter">';
+				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+				print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
+				print '<table class="ui-sortable liste nobottom">';
 
 			$nutritionalFields = array(
 				'KreaProducts_Energy_kcal'   => 'energy_kcal',
@@ -1577,22 +1421,157 @@ if ($id > 0 || !empty($ref)) {
 			}
 
 			print '</table>';
-			print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
-			print '</form>';
-			print '</div>';
-		}
+				print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+				print '</form>';
+				print '</div>';
+			}
 
-		if (isset($object->array_options)) {
+			// Allergens table
+			// Load available allergens from dictionary
+			$TAllergens = array();
+			$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
+			$resql = $db->query($sql);
+			if ($resql) {
+				while ($obj = $db->fetch_object($resql)) {
+					// Use the code translation as the display value
+					$TAllergens[$obj->rowid] = $langs->trans($obj->code);
+				}
+			} else {
+				dol_syslog("Error loading allergens dictionary: " . $db->error());
+			}
+
+			// Reload saved allergen associations for current product
+			$savedAllergensArray = array();
+			$savedAllergensTracesArray = array();
+			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+			$resql = $db->query($sql);
+			if ($resql) {
+				while ($obj = $db->fetch_object($resql)) {
+					if ($obj->traces == 1) {
+						$savedAllergensTracesArray[] = $obj->fk_allergen;
+					} else {
+						$savedAllergensArray[] = $obj->fk_allergen;
+					}
+				}
+			} else {
+				dol_syslog("Error retrieving saved allergens: " . $db->error());
+			}
+
 			print '<br>';
-			print load_fiche_titre($langs->trans("ExtraFields"), '', '');
-
-			print '<div class="fichecenter">';
+			print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
+			print '<div>';
 			print '<table class="ui-sortable liste nobottom">';
+			$key = 'kreap_calc_allergens';
+			$fieldName = 'options_' . $key;
+			$label = $extrafields->attributes['product']['label'][$key];
+			dol_syslog('label: ' . $label, LOG_DEBUG);
+			$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
+			$editorType = 'select;' . implode(',', array_map(
+				function ($k, $v) {
+					global $langs;
+					$langs->load("kreaproducts@kreaproducts");
+					return "$k:" . $langs->trans($v);
+				},
+				array_keys($options),
+				$options
+			));
 
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			print '</td><td>';
+			print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			print '</td></tr>';
+			print '</table>';
+			print '</div>';
 
+			if ($object->array_options['options_kreap_calc_allergens'] != 2) {
+				// Check if we are in edit mode and the user has rights to edit
+				if ($usercancreate && $action == 'edit_allergens') {
 
+					// Start the form
+					print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+					print '<input type="hidden" name="action" value="saveAllergens">';
 
-			// Process the brand extra–field
+					// Multiselect for allergens
+					print '<table class="ui-sortable liste nobottom">';
+					print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
+					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
+					print '</td></tr>';
+
+					// Multiselect for allergens traces
+					print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
+					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
+					print '</td></tr>';
+
+					print '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>';
+					print '</table>';
+
+					// Save button
+					print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+					print '</form>';
+				} else {
+					// View mode (read-only display)
+					print '<table class="ui-sortable liste nobottom">';
+					print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+					if (!empty($savedAllergensArray)) {
+						foreach ($savedAllergensArray as $allergenId) {
+							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+							$resql = $db->query($sql);
+							if ($resql && $obj = $db->fetch_object($resql)) {
+								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+								print '</div>';
+							}
+						}
+					} else {
+						print $langs->trans("NoneSelected");
+					}
+					print '</td></tr>';
+
+					print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+					if (!empty($savedAllergensTracesArray)) {
+						foreach ($savedAllergensTracesArray as $allergenId) {
+							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+							$resql = $db->query($sql);
+							if ($resql && $obj = $db->fetch_object($resql)) {
+								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+								print '</div>';
+							}
+						}
+					} else {
+						print $langs->trans("NoneSelected");
+					}
+					print '</td></tr>';
+					print '</table>';
+
+					if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
+						print '<div class="center" style="margin-top:10px;">';
+						print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
+						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+						print '<input type="hidden" name="action" value="updateAllergens">';
+						print '</form>';
+						print '</div>';
+					} else {
+						print '<div class="center" style="margin-top:10px;">';
+						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+						print '<input type="hidden" name="action" value="updateAllergens">';
+						print '</form>';
+						print '</div>';
+					}
+				}
+			}
+
+			if (isset($object->array_options)) {
+				print '<br>';
+
+				// Keep displayed values in sync with the posted data
 			if (isset($_POST['kreap_brand'])) {
 				$extrafield_value = trim($_POST['options_kreap_brand']);
 				if ($extrafield_value === '') {
@@ -1602,21 +1581,7 @@ if ($id > 0 || !empty($ref)) {
 			} else {
 				$extrafield_value = $object->array_options['options_kreap_brand'];
 			}
-			$extrafields = new ExtraFields($db);
-			$extrafields->fetch_name_optionals_label($object->table_element);
-			if (isset($object->array_options)) {
-				print '<br>';
-				print load_fiche_titre($langs->trans("productRecipeTitle"), '', '');
-				print '<div class="fichecenter" id="myAllergenButtons">';
-				print '<table class="ui-sortable liste nobottom">';
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $extrafield_value, $object, $usercancreate, 'string');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $extrafield_value, $object, $usercancreate, 'string');
-				print '</td></tr>';
-			}
 
-			// Process the video extra–field
 			if (isset($_POST['kreap_video'])) {
 				$extrafield_value = trim($_POST['options_kreap_video']);
 				if ($extrafield_value === '') {
@@ -1626,18 +1591,7 @@ if ($id > 0 || !empty($ref)) {
 			} else {
 				$extrafield_value = $object->array_options['options_kreap_video'];
 			}
-			$extrafields = new ExtraFields($db);
-			$extrafields->fetch_name_optionals_label($object->table_element);
-			if (isset($object->array_options)) {
 
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_video_Inline"), 'options_kreap_video', $extrafield_value, $object, $usercancreate, 'url');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_video_Inline"), 'options_kreap_video', $extrafield_value, $object, $usercancreate, 'url');
-				print '</td></tr>';
-			}
-
-			// Process the video extra–field
 			if (isset($_POST['kreap_description'])) {
 				$extrafield_value = trim($_POST['options_kreap_description']);
 				if ($extrafield_value === '') {
@@ -1647,100 +1601,39 @@ if ($id > 0 || !empty($ref)) {
 			} else {
 				$extrafield_value = $object->array_options['options_kreap_description'];
 			}
-			$extrafields = new ExtraFields($db);
-			$extrafields->fetch_name_optionals_label($object->table_element);
-			if (isset($object->array_options)) {
 
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_description_Inline"), 'options_kreap_description', $extrafield_value, $object, $usercancreate, 'ckeditor');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_description_Inline"), 'options_kreap_description', $extrafield_value, $object, $usercancreate, 'ckeditor');
-				print '</td></tr>';
-				print '</table>';
-				print '</div>';
-			}
+			$prepValue = isset($object->array_options['options_kreap_recipe']) ? $object->array_options['options_kreap_recipe'] : '';
+			$brandValue = isset($object->array_options['options_kreap_brand']) ? $object->array_options['options_kreap_brand'] : '';
+			$videoValue = isset($object->array_options['options_kreap_video']) ? $object->array_options['options_kreap_video'] : '';
+			$descriptionValue = isset($object->array_options['options_kreap_description']) ? $object->array_options['options_kreap_description'] : '';
 
+			print '<div class="fichecenter" id="myAllergenButtons">';
+			print '<div class="titre inline-block">' . $langs->trans("productRecipeTitle") . '</div>';
+			print '<table class="ui-sortable liste nobottom">';
 
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
+			print '</td><td>';
+			print $form->editfieldval($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
+			print '</td></tr>';
 
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $brandValue, $object, $usercancreate, 'string');
+			print '</td><td>';
+			print $form->editfieldval($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $brandValue, $object, $usercancreate, 'string');
+			print '</td></tr>';
 
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey($langs->trans("kreap_video_Inline"), 'options_kreap_video', $videoValue, $object, $usercancreate, 'url');
+			print '</td><td>';
+			print $form->editfieldval($langs->trans("kreap_video_Inline"), 'options_kreap_video', $videoValue, $object, $usercancreate, 'url');
+			print '</td></tr>';
 
-			// Define the keys you want to display
-			/*
-			$fieldsToDisplay = ['kreap_brand', 'kreap_description', 'kreap_video'];
-			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
-				// Only process the keys you want
-				if (in_array($key, $fieldsToDisplay)) {
-					// Optionally, if you want to set a manual field key mapping, do it here
-					// For this example, we'll use the key as is
-					$fieldKey = $key;
-
-					// Retrieve the type for the current extra field
-					$type = $extrafields->attributes[$object->table_element]['type'][$key];
-
-					// Map the extra field type to an editor type
-					switch ($type) {
-						case 'varchar':
-							$editorType = 'string';
-							break;
-						case 'int':
-						case 'integer':
-							$editorType = 'numeric';
-							break;
-						case 'double':
-						case 'float':
-							$editorType = 'amount:99';
-							break;
-						case 'text':
-							$editorType = 'textarea';
-							break;
-						case 'date':
-							$editorType = 'datepicker';
-							break;
-						case 'datetime':
-							$editorType = 'datehourpicker';
-							break;
-						case 'boolean':
-							$editorType = 'checkbox';
-							break;
-						case 'email':
-							$editorType = 'email';
-							break;
-						case 'url':
-							$editorType = 'url';
-							break;
-						case 'ckeditor':
-							$editorType = 'ckeditor';
-							break;
-						case 'select':
-							if (
-								isset($extrafields->attributes['product']['param'][$key]['options'])
-								&& is_array($extrafields->attributes['product']['param'][$key]['options'])
-							) {
-								// Get options and add an empty option at the beginning
-								$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
-								$editorType = 'select;' . implode(',', array_map(function ($k, $v) {
-									return "$k:$v";
-								}, array_keys($options), $options));
-							} else {
-								echo "'options' key is missing or not an array.";
-								$editorType = 'select;';
-							}
-							break;
-						default:
-							$editorType = 'string';
-							break;
-					}
-
-					// Use the manual field key when building the field name
-					$fieldName = 'options_' . $fieldKey;
-					print '<tr><td class="titlefield">';
-					print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-					print '</td><td>';
-					print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-					print '</td></tr>';
-				}
-			}
-			*/
+			print '<tr><td class="titlefield">';
+			print $form->editfieldkey($langs->trans("kreap_description_Inline"), 'options_kreap_description', $descriptionValue, $object, $usercancreate, 'ckeditor');
+			print '</td><td>';
+			print $form->editfieldval($langs->trans("kreap_description_Inline"), 'options_kreap_description', $descriptionValue, $object, $usercancreate, 'ckeditor');
+			print '</td></tr>';
 
 			print '</table>';
 			print '</div>';
