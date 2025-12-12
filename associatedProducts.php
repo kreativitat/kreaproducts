@@ -311,25 +311,6 @@ if ($action == 'updateAllergens') {
 	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 if ($action == 'saveAllergens' && $usercancreate) {
 	// Retrieve submitted allergens (non-traces and traces)
 	$selectedAllergens       = GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
@@ -391,27 +372,6 @@ if ($action == 'saveAllergens' && $usercancreate) {
 	// After saving, you might want to switch back to view mode.
 	$action = '';
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * View
@@ -631,183 +591,188 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild);
 
-		print '<div class="fichecenter">';
-		$atleastonenotdefined = 0;
-		print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
-		print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
-		print '<input type="hidden" name="token" value="' . newToken() . '" />';
-		print '<input type="hidden" name="action" value="save_composed_product" />';
-		print '<input type="hidden" name="id" value="' . $id . '" />';
-		print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
-		print '<tr class="liste_titre nodrag nodrop">';
-		// Rank
-		print '<td>' . $langs->trans('Position') . '</td>';
-		// Product ref
-		print '<td>' . $langs->trans('ComposedProduct') . '</td>';
-		// Product label
-		print '<td>' . $langs->trans('Label') . '</td>';
-		// Min supplier price
-		print '<td class="right" colspan="2">' . $langs->trans('Custo do ingrediente') . '</td>';
-		// Stock
-		if (isModEnabled('stock')) {
-			print '<td class="right">' . $langs->trans('Stock') . '</td>';
-		}
-		// Hook fields
-		$parameters = array();
-		$reshook = $hookmanager->executeHooks('printFieldListTitle', $parameters);
-		print $hookmanager->resPrint;
-		// Qty in kit
-		print '<td class="center">' . $langs->trans('Qty') . '</td>';
-		// Valor por componente
-		print '<td class="right" colspan="2">Custo por componente</td>';
-		// Stoc inc/dev
-		print '<td class="center">' . $langs->trans('ComposedProductIncDecStock') . '</td>';
-		// Move
-		print '<td class="linecolmove" style="width: 10px"></td>';
-		print '</tr>' . "\n";
+		$hasBomParents = !empty($boms);
+		$hideChildList = ($hasBomParents && $nbofsubproducts === 0);
 
-		$totalsell = 0;
-		$total = 0;
-		if (count($prods_arbo)) {
-			foreach ($prods_arbo as $value) {
-				$productstatic->fetch($value['id']);
-				if ($value['level'] <= 1) {
-					print '<tr id="' . $object->sousprods[$parent_label][$value['id']][6] . '" class="drag drop oddeven level1">';
-					// Rank
-					print '<td>' . $object->sousprods[$parent_label][$value['id']][7] . '</td>';
-					$notdefined = 0;
-					$nb_of_subproduct = $value['nb'];
-					// Product ref
-					print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
-					// Product label
-					print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
-					// Best buying price
-					print '<td class="right">';
-					if ($product_fourn->find_min_price_product_fournisseur($productstatic->id) > 0) {
-						print $langs->trans("BuyingPriceMinShort") . ': ';
-						if ($product_fourn->product_fourn_price_id > 0) {
-							print $product_fourn->display_price_product_fournisseur(0, 0);
-						} else {
-							print $langs->trans("NotDefined");
-							$notdefined++;
-							$atleastonenotdefined++;
-						}
-					}
-					print '</td>';
-					// For avoid a non-numeric value
-					$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
-					$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
-					$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
-					$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
-					$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
-					$total +=  $totalline;
-					print '<td class="right nowraponall">';
-					print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
-					print '</td>';
-					// Stock
-					if (isModEnabled('stock')) {
-						print '<td class="right">' . number_format((float)$value['stock'], 4, '.', '') . '</td>';
-					}
-					// Hook fields
-					$parameters = array();
-					$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
-					print $hookmanager->resPrint;
-					// Qty + IncDec
-					if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-						print '<td class="center"><input type="text" value="' . $nb_of_subproduct . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width40" /></td>';
-						$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
-						print '<td class="right" colspan="2">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
-						print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
-					} else {
-						print '<td>' . $nb_of_subproduct . '</td>';
-						print '<td>' . ($value['incdec'] == 1 ? 'x' : '') . '</td>';
-					}
-					// Move action
-					print '<td class="linecolmove tdlineupdown center"></td>';
-					print '</tr>' . "\n";
-				} else {
-					$hide = '';
-					if (!getDolGlobalString('PRODUCT_SHOW_SUB_SUB_PRODUCTS')) {
-						$hide = ' hideobject';
-					}
-					print '<tr class="oddeven' . $hide . '" id="sub-' . $value['id_parent'] . '" data-ignoreidfordnd=1>';
-					$productstatic->ref = $value['ref'];
-					// Rank
-					print '<td></td>';
-					// Product ref
-					print '<td>';
-					for ($i = 0; $i < $value['level']; $i++) {
-						print ' &nbsp; &nbsp; ';
-					}
-					print $productstatic->getNomUrl(1, 'auto');
-					print '</td>';
-					// Product label
-					print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
-					// Best buying price
-					print '<td>&nbsp;</td>';
-					print '<td>&nbsp;</td>';
-					// Best selling price
-					print '<td>&nbsp;</td>';
-					print '<td>&nbsp;</td>';
-					// Stock
-					if (isModEnabled('stock')) {
-						print '<td></td>';
-					}
-					// Hook fields
-					$parameters = array();
-					$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
-					print $hookmanager->resPrint;
-					// Qty in kit
-					print '<td class="right">' . dol_escape_htmltag($value['nb']) . '</td>';
-					// Inc/dec
-					print '<td>&nbsp;</td>';
-					// Action move
-					print '<td>&nbsp;</td>';
-					print '</tr>' . "\n";
-				}
-			}
-			// Total
-			print '<tr class="liste_total">';
-			print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
-
-			print '<td class="liste_total"></td>';
-			print '<td class="liste_total"></td>';
-			print '<td></td>'; // Custo do ingrediente col 1
-			print '<td></td>'; // Custo do ingrediente col 2
+		if (!$hideChildList) {
+			print '<div class="fichecenter">';
+			$atleastonenotdefined = 0;
+			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
+			print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
+			print '<input type="hidden" name="token" value="' . newToken() . '" />';
+			print '<input type="hidden" name="action" value="save_composed_product" />';
+			print '<input type="hidden" name="id" value="' . $id . '" />';
+			print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
+			print '<tr class="liste_titre nodrag nodrop">';
+			// Rank
+			print '<td>' . $langs->trans('Position') . '</td>';
+			// Product ref
+			print '<td>' . $langs->trans('ComposedProduct') . '</td>';
+			// Product label
+			print '<td>' . $langs->trans('Label') . '</td>';
+			// Min supplier price
+			print '<td class="right" colspan="2">' . $langs->trans('Custo do ingrediente') . '</td>';
+			// Stock
 			if (isModEnabled('stock')) {
-				print '<td></td>'; // Stock col
+				print '<td class="right">' . $langs->trans('Stock') . '</td>';
 			}
-
-			print '<td></td>';
-			print '<td></td>'; // Qty col
-			print '<td class="liste_total right" style="white-space: nowrap;">';
-			if ($atleastonenotdefined) {
-				print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
-			}
-			print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
-			print '</td>';
-			print '<td class="center">';
-			if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-				print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
-			}
-			print '</td>';
-			print '<td></td>';
+			// Hook fields
+			$parameters = array();
+			$reshook = $hookmanager->executeHooks('printFieldListTitle', $parameters);
+			print $hookmanager->resPrint;
+			// Qty in kit
+			print '<td class="center">' . $langs->trans('Qty') . '</td>';
+			// Valor por componente
+			print '<td class="right" colspan="2">Custo por componente</td>';
+			// Stoc inc/dev
+			print '<td class="center">' . $langs->trans('ComposedProductIncDecStock') . '</td>';
+			// Move
+			print '<td class="linecolmove" style="width: 10px"></td>';
 			print '</tr>' . "\n";
-		} else {
-			$colspan = 10;
-			if (isModEnabled('stock')) {
-				$colspan++;
-			}
-			print '<tr class="oddeven">';
-			print '<td colspan="' . $colspan . '"><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
-			print '</tr>';
-		}
-		print '</table>';
-		print '</form>';
-		print '</div>';
 
-		// Form with product to add (moved before simulator)
-		if ((empty($action) || $action == 'view' || $action == 'edit' || $action == 'search' || $action == 're-edit') && ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'))) {
+			$totalsell = 0;
+			$total = 0;
+			if (count($prods_arbo)) {
+				foreach ($prods_arbo as $value) {
+					$productstatic->fetch($value['id']);
+					if ($value['level'] <= 1) {
+						print '<tr id="' . $object->sousprods[$parent_label][$value['id']][6] . '" class="drag drop oddeven level1">';
+						// Rank
+						print '<td>' . $object->sousprods[$parent_label][$value['id']][7] . '</td>';
+						$notdefined = 0;
+						$nb_of_subproduct = $value['nb'];
+						// Product ref
+						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
+						// Product label
+						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
+						// Best buying price
+						print '<td class="right">';
+						if ($product_fourn->find_min_price_product_fournisseur($productstatic->id) > 0) {
+							print $langs->trans("BuyingPriceMinShort") . ': ';
+							if ($product_fourn->product_fourn_price_id > 0) {
+								print $product_fourn->display_price_product_fournisseur(0, 0);
+							} else {
+								print $langs->trans("NotDefined");
+								$notdefined++;
+								$atleastonenotdefined++;
+							}
+						}
+						print '</td>';
+						// For avoid a non-numeric value
+						$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
+						$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
+						$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
+						$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
+						$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
+						$total +=  $totalline;
+						print '<td class="right nowraponall">';
+						print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
+						print '</td>';
+						// Stock
+						if (isModEnabled('stock')) {
+							print '<td class="right">' . number_format((float)$value['stock'], 4, '.', '') . '</td>';
+						}
+						// Hook fields
+						$parameters = array();
+						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
+						print $hookmanager->resPrint;
+						// Qty + IncDec
+						if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
+							print '<td class="center"><input type="text" value="' . $nb_of_subproduct . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width40" /></td>';
+							$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
+							print '<td class="right" colspan="2">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+							print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
+						} else {
+							print '<td>' . $nb_of_subproduct . '</td>';
+							print '<td>' . ($value['incdec'] == 1 ? 'x' : '') . '</td>';
+						}
+						// Move action
+						print '<td class="linecolmove tdlineupdown center"></td>';
+						print '</tr>' . "\n";
+					} else {
+						$hide = '';
+						if (!getDolGlobalString('PRODUCT_SHOW_SUB_SUB_PRODUCTS')) {
+							$hide = ' hideobject';
+						}
+						print '<tr class="oddeven' . $hide . '" id="sub-' . $value['id_parent'] . '" data-ignoreidfordnd=1>';
+						$productstatic->ref = $value['ref'];
+						// Rank
+						print '<td></td>';
+						// Product ref
+						print '<td>';
+						for ($i = 0; $i < $value['level']; $i++) {
+							print ' &nbsp; &nbsp; ';
+						}
+						print $productstatic->getNomUrl(1, 'auto');
+						print '</td>';
+						// Product label
+						print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
+						// Best buying price
+						print '<td>&nbsp;</td>';
+						print '<td>&nbsp;</td>';
+						// Best selling price
+						print '<td>&nbsp;</td>';
+						print '<td>&nbsp;</td>';
+						// Stock
+						if (isModEnabled('stock')) {
+							print '<td></td>';
+						}
+						// Hook fields
+						$parameters = array();
+						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
+						print $hookmanager->resPrint;
+						// Qty in kit
+						print '<td class="right">' . dol_escape_htmltag($value['nb']) . '</td>';
+						// Inc/dec
+						print '<td>&nbsp;</td>';
+						// Action move
+						print '<td>&nbsp;</td>';
+						print '</tr>' . "\n";
+					}
+				}
+				// Total
+				print '<tr class="liste_total">';
+				print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
+
+				print '<td class="liste_total"></td>';
+				print '<td class="liste_total"></td>';
+				print '<td></td>'; // Custo do ingrediente col 1
+				print '<td></td>'; // Custo do ingrediente col 2
+				if (isModEnabled('stock')) {
+					print '<td></td>'; // Stock col
+				}
+
+				print '<td></td>';
+				print '<td></td>'; // Qty col
+				print '<td class="liste_total right" style="white-space: nowrap;">';
+				if ($atleastonenotdefined) {
+					print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
+				}
+				print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
+				print '</td>';
+				print '<td class="center">';
+				if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
+					print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
+				}
+				print '</td>';
+				print '<td></td>';
+				print '</tr>' . "\n";
+			} else {
+				$colspan = 10;
+				if (isModEnabled('stock')) {
+					$colspan++;
+				}
+				print '<tr class="oddeven">';
+				print '<td colspan="' . $colspan . '"><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
+				print '</tr>';
+			}
+			print '</table>';
+			print '</form>';
+			print '</div>';
+		}
+
+		// Form with product to add (moved before simulator); hide when the child list is hidden
+		if (!$hideChildList && ((empty($action) || $action == 'view' || $action == 'edit' || $action == 'search' || $action == 're-edit') && ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')))) {
 			$rowspan = 1;
 			if (isModEnabled('categorie')) {
 				$rowspan++;
@@ -889,7 +854,9 @@ if ($id > 0 || !empty($ref)) {
 			return number_format($val * 100, 2, '.', '') . ' %';
 		};
 
-		if (getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
+		// Only show the simulator if enabled and the product is for sale.
+		$isSellable = (isset($object->status) && (int) $object->status === 1);
+		if ($isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
 			print '<div class="fichecenter" style="margin-top: 15px;">';
 			print load_fiche_titre('Métricas e Margens', '', '');
 			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
@@ -1342,10 +1309,13 @@ if ($id > 0 || !empty($ref)) {
 
 
 		// Nutritional table
-		print '<br>';
+		// Reusable spacing to keep titles and tables visually consistent.
+		$sectionMarginStyle = 'margin-top: 18px;';
+		$tableMarginStyle = 'margin-top: 10px;';
+
+		print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
 		print load_fiche_titre($langs->trans("KreaProductsProductAssociations"), '', '');
-		print '<div class="fichecenter">';
-		print '<table class="ui-sortable liste nobottom">';
+		print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
 		$key = 'kreap_calc_nut';
 		$fieldName = 'options_' . $key;
 		$label = $extrafields->attributes['product']['label'][$key];
@@ -1376,11 +1346,11 @@ if ($id > 0 || !empty($ref)) {
 			KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
 		}
 
-			if ($object->array_options['options_kreap_calc_nut'] == 0) {
-				print '<div class="fichecenter">';
-				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-				print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
-				print '<table class="ui-sortable liste nobottom">';
+		if ($object->array_options['options_kreap_calc_nut'] == 0) {
+			print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
+			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+			print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
+			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
 
 			$nutritionalFields = array(
 				'KreaProducts_Energy_kcal'   => 'energy_kcal',
@@ -1421,157 +1391,159 @@ if ($id > 0 || !empty($ref)) {
 			}
 
 			print '</table>';
-				print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+			print '<div class="center" style="margin-top: 12px;"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
+			print '</form>';
+			print '</div>';
+		}
+
+		// Allergens table
+		// Load available allergens from dictionary
+		$TAllergens = array();
+		$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				// Use the code translation as the display value
+				$TAllergens[$obj->rowid] = $langs->trans($obj->code);
+			}
+		} else {
+			dol_syslog("Error loading allergens dictionary: " . $db->error());
+		}
+
+		// Reload saved allergen associations for current product
+		$savedAllergensArray = array();
+		$savedAllergensTracesArray = array();
+		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				if ($obj->traces == 1) {
+					$savedAllergensTracesArray[] = $obj->fk_allergen;
+				} else {
+					$savedAllergensArray[] = $obj->fk_allergen;
+				}
+			}
+		} else {
+			dol_syslog("Error retrieving saved allergens: " . $db->error());
+		}
+
+		print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
+		print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
+		print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
+		$key = 'kreap_calc_allergens';
+		$fieldName = 'options_' . $key;
+		$label = $extrafields->attributes['product']['label'][$key];
+		dol_syslog('label: ' . $label, LOG_DEBUG);
+		$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
+		$editorType = 'select;' . implode(',', array_map(
+			function ($k, $v) {
+				global $langs;
+				$langs->load("kreaproducts@kreaproducts");
+				return "$k:" . $langs->trans($v);
+			},
+			array_keys($options),
+			$options
+		));
+
+		print '<tr><td class="titlefield">';
+		print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+		print '</td><td>';
+		print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+		print '</td></tr>';
+		print '</table>';
+		print '</div>';
+
+		if ($object->array_options['options_kreap_calc_allergens'] != 2) {
+			// Check if we are in edit mode and the user has rights to edit
+			if ($usercancreate && $action == 'edit_allergens') {
+
+				// Start the form
+				print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
+				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+				print '<input type="hidden" name="action" value="saveAllergens">';
+
+				// Multiselect for allergens
+				print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
+				print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
+				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
+				print '</td></tr>';
+
+				// Multiselect for allergens traces
+				print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
+				print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
+				print '</td></tr>';
+
+				print '<tr><td colspan="4" class="maxwidthonsmartphone" style="height: 10px;"></td></tr>';
+				print '</table>';
+
+				// Save button
+				print '<div class="center" style="margin-top: 12px;"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
 				print '</form>';
 				print '</div>';
-			}
-
-			// Allergens table
-			// Load available allergens from dictionary
-			$TAllergens = array();
-			$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					// Use the code translation as the display value
-					$TAllergens[$obj->rowid] = $langs->trans($obj->code);
-				}
 			} else {
-				dol_syslog("Error loading allergens dictionary: " . $db->error());
-			}
-
-			// Reload saved allergen associations for current product
-			$savedAllergensArray = array();
-			$savedAllergensTracesArray = array();
-			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					if ($obj->traces == 1) {
-						$savedAllergensTracesArray[] = $obj->fk_allergen;
-					} else {
-						$savedAllergensArray[] = $obj->fk_allergen;
+				// View mode (read-only display)
+				print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
+				print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
+				print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
+				if (!empty($savedAllergensArray)) {
+					foreach ($savedAllergensArray as $allergenId) {
+						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+							print '</div>';
+						}
 					}
-				}
-			} else {
-				dol_syslog("Error retrieving saved allergens: " . $db->error());
-			}
-
-			print '<br>';
-			print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
-			print '<div>';
-			print '<table class="ui-sortable liste nobottom">';
-			$key = 'kreap_calc_allergens';
-			$fieldName = 'options_' . $key;
-			$label = $extrafields->attributes['product']['label'][$key];
-			dol_syslog('label: ' . $label, LOG_DEBUG);
-			$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
-			$editorType = 'select;' . implode(',', array_map(
-				function ($k, $v) {
-					global $langs;
-					$langs->load("kreaproducts@kreaproducts");
-					return "$k:" . $langs->trans($v);
-				},
-				array_keys($options),
-				$options
-			));
-
-			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-			print '</td><td>';
-			print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
-			print '</td></tr>';
-			print '</table>';
-			print '</div>';
-
-			if ($object->array_options['options_kreap_calc_allergens'] != 2) {
-				// Check if we are in edit mode and the user has rights to edit
-				if ($usercancreate && $action == 'edit_allergens') {
-
-					// Start the form
-					print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-					print '<input type="hidden" name="action" value="saveAllergens">';
-
-					// Multiselect for allergens
-					print '<table class="ui-sortable liste nobottom">';
-					print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
-					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
-					print '</td></tr>';
-
-					// Multiselect for allergens traces
-					print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
-					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
-					print '</td></tr>';
-
-					print '<tr><td colspan="4" class="maxwidthonsmartphone"><br/></td></tr>';
-					print '</table>';
-
-					// Save button
-					print '<div class="center"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
-					print '</form>';
 				} else {
-					// View mode (read-only display)
-					print '<table class="ui-sortable liste nobottom">';
-					print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-					if (!empty($savedAllergensArray)) {
-						foreach ($savedAllergensArray as $allergenId) {
-							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-							$resql = $db->query($sql);
-							if ($resql && $obj = $db->fetch_object($resql)) {
-								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-								print '</div>';
-							}
-						}
-					} else {
-						print $langs->trans("NoneSelected");
-					}
-					print '</td></tr>';
+					print $langs->trans("NoneSelected");
+				}
+				print '</td></tr>';
 
-					print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-					if (!empty($savedAllergensTracesArray)) {
-						foreach ($savedAllergensTracesArray as $allergenId) {
-							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-							$resql = $db->query($sql);
-							if ($resql && $obj = $db->fetch_object($resql)) {
-								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-								print '</div>';
-							}
+				print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
+				if (!empty($savedAllergensTracesArray)) {
+					foreach ($savedAllergensTracesArray as $allergenId) {
+						$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
+						$resql = $db->query($sql);
+						if ($resql && $obj = $db->fetch_object($resql)) {
+							$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
+							print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
+							print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
+							print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
+							print '</div>';
 						}
-					} else {
-						print $langs->trans("NoneSelected");
 					}
-					print '</td></tr>';
-					print '</table>';
+				} else {
+					print $langs->trans("NoneSelected");
+				}
+				print '</td></tr>';
+				print '</table>';
+				print '</div>';
 
-					if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
-						print '<div class="center" style="margin-top:10px;">';
-						print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
-						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-						print '<input type="hidden" name="action" value="updateAllergens">';
-						print '</form>';
-						print '</div>';
-					} else {
-						print '<div class="center" style="margin-top:10px;">';
-						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-						print '<input type="hidden" name="action" value="updateAllergens">';
-						print '</form>';
-						print '</div>';
-					}
+				if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
+					print '<div class="center" style="margin-top: 12px;">';
+					print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
+					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+					print '<input type="hidden" name="action" value="updateAllergens">';
+					print '</form>';
+					print '</div>';
+				} else {
+					print '<div class="center" style="margin-top: 12px;">';
+					print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
+					print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
+					print '<input type="hidden" name="action" value="updateAllergens">';
+					print '</form>';
+					print '</div>';
 				}
 			}
+		}
 
-			if (isset($object->array_options)) {
-				print '<br>';
+		if (isset($object->array_options)) {
 
-				// Keep displayed values in sync with the posted data
+			// Keep displayed values in sync with the posted data
 			if (isset($_POST['kreap_brand'])) {
 				$extrafield_value = trim($_POST['options_kreap_brand']);
 				if ($extrafield_value === '') {
@@ -1607,9 +1579,11 @@ if ($id > 0 || !empty($ref)) {
 			$videoValue = isset($object->array_options['options_kreap_video']) ? $object->array_options['options_kreap_video'] : '';
 			$descriptionValue = isset($object->array_options['options_kreap_description']) ? $object->array_options['options_kreap_description'] : '';
 
-			print '<div class="fichecenter" id="myAllergenButtons">';
-			print '<div class="titre inline-block">' . $langs->trans("productRecipeTitle") . '</div>';
-			print '<table class="ui-sortable liste nobottom">';
+			print '<div class="fichecenter" id="myAllergenButtons" style="' . $sectionMarginStyle . '">';
+			print '<div class="titre inline-block" style="margin: 0 0 12px;">' . $langs->trans("productRecipeTitle") . '</div>';
+
+			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
+
 
 			print '<tr><td class="titlefield">';
 			print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');

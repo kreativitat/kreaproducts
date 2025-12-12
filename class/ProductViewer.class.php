@@ -640,13 +640,26 @@ class ProductHierarchyTree
     /**
      * Generate children section
      */
-    private static function generateChildrenSection($productId, $langs)
-    {
-        try {
-            print '<p><strong>Lista de produtos/serviços que são componentes deste kit</strong></p>';
-            print '<table class="noborder" width="100%">';
-            
-            self::printChildParentTableHead($langs);
+	private static function generateChildrenSection($productId, $langs)
+	{
+		try {
+			$lp = self::getLocalProduct($productId);
+			if (!$lp) {
+				return;
+			}
+
+			$hasChildren = !empty($lp->children);
+			$hasParents = !empty($lp->parents);
+
+			// Hide the child list when the product only appears as a parent in MRP (and has no components of its own).
+			if (!$hasChildren && $hasParents) {
+				return;
+			}
+
+			print '<p><strong>Lista de produtos/serviços que são componentes deste kit</strong></p>';
+			print '<table class="noborder" width="100%">';
+			
+			self::printChildParentTableHead($langs);
 
             $maxDepth = self::MAX_HIERARCHY_DEPTH;
             
