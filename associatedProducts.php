@@ -591,8 +591,8 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild);
 
-		$hasBomParents = !empty($boms);
-		$hideChildList = ($hasBomParents && $nbofsubproducts === 0);
+		// Hide the child list (and related search form) when there are no components to show.
+		$hideChildList = ($nbofsubproducts === 0);
 
 		if (!$hideChildList) {
 			print '<div class="fichecenter">';
@@ -757,14 +757,6 @@ if ($id > 0 || !empty($ref)) {
 				print '</td>';
 				print '<td></td>';
 				print '</tr>' . "\n";
-			} else {
-				$colspan = 10;
-				if (isModEnabled('stock')) {
-					$colspan++;
-				}
-				print '<tr class="oddeven">';
-				print '<td colspan="' . $colspan . '"><span class="opacitymedium">' . $langs->trans("None") . '</span></td>';
-				print '</tr>';
 			}
 			print '</table>';
 			print '</form>';
