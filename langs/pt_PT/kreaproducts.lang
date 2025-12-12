@@ -110,8 +110,8 @@ EstimatedTotalsForTheProduct = Totais Estimados do Produto
 #
 # Associated products card
 #
-BOMExistsAndOriginProduct = MRP (Planeamento das Necessidades de Materiais) - Artigo Composto
-ComponentsOfProduct = MRP (Planeamento das Necessidades de Materiais) - Artigos Componentes
+BOMExistsAndOriginProduct = MRP - Produto Original Antes do Desmantelamento
+ComponentsOfProduct = MRP - Produto Final Após Desmantelamento
 OriginProductId = Componentes
 ComponentProductId = Componentes
 ComponentProduct = Etiqueta
