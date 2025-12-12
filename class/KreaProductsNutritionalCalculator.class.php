@@ -320,6 +320,20 @@ class KreaProductsNutritionalCalculator
                 throw new Exception("Hierarchy depth exceeds maximum limit");
             }
 
+            // Ensure the root product is present in the map even if it has no associations.
+            if (!isset(self::$productMap[$startId])) {
+                require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+                $prod = new Product($db);
+                if ($prod->fetch($startId) > 0) {
+                    self::$productMap[$startId] = new EnhancedLocalProduct(
+                        $startId,
+                        $prod->label,
+                        $prod->weight,
+                        $prod->weight_units
+                    );
+                }
+            }
+
             return true;
             
         } catch (Exception $e) {
@@ -410,12 +424,7 @@ class KreaProductsNutritionalCalculator
     {
         global $db;
 
-        if (empty($subList)) {
-            print '<p>' . $langs->trans("NoSubproductsFound") . '</p>';
-            return;
-        }
-
-        // Display table header
+        // Display table header and keep an empty row if there are no subproducts
         self::displayTableHeader($langs);
 
         // Calculate and display nutritional data
@@ -426,8 +435,12 @@ class KreaProductsNutritionalCalculator
             return;
         }
 
-        // Display individual subproduct rows
-        self::displaySubproductRows($subList, $calculationResult['details']);
+        if (empty($subList)) {
+            print '<tr><td colspan="14" class="opacitymedium">' . $langs->trans("NoSubproductsFound") . '</td></tr>';
+        } else {
+            // Display individual subproduct rows
+            self::displaySubproductRows($subList, $calculationResult['details']);
+        }
 
         // Display totals and normalized values
         self::displayTotalRows($calculationResult, $langs);

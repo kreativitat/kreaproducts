@@ -591,8 +591,9 @@ if ($id > 0 || !empty($ref)) {
 		$prodschild = $object->getChildsArbo($id, 1);
 		$nbofsubproducts = count($prodschild);
 
-		// Hide the child list (and related search form) when there are no components to show.
-		$hideChildList = ($nbofsubproducts === 0);
+		// Hide the child list only when this product is already part of a BOM and has no own components.
+		$hasBomParents = !empty($boms);
+		$hideChildList = ($hasBomParents && $nbofsubproducts === 0);
 
 		if (!$hideChildList) {
 			print '<div class="fichecenter">';
@@ -605,25 +606,25 @@ if ($id > 0 || !empty($ref)) {
 			print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
 			print '<tr class="liste_titre nodrag nodrop">';
 			// Rank
-			print '<td>' . $langs->trans('Position') . '</td>';
+			print '<td style="width:60px;">' . $langs->trans('Position') . '</td>';
 			// Product ref
-			print '<td>' . $langs->trans('ComposedProduct') . '</td>';
+			print '<td style="width:12%;">' . $langs->trans('ComposedProduct') . '</td>';
 			// Product label
-			print '<td>' . $langs->trans('Label') . '</td>';
-			// Min supplier price
-			print '<td class="right" colspan="2">' . $langs->trans('Custo do ingrediente') . '</td>';
+			print '<td style="min-width:320px;">' . $langs->trans('Label') . '</td>';
+				// Ingredient cost (single column)
+				print '<td class="right" style="width:140px;">' . $langs->trans('Custo do ingrediente') . '</td>';
 			// Stock
 			if (isModEnabled('stock')) {
-				print '<td class="right">' . $langs->trans('Stock') . '</td>';
+				print '<td class="right" style="width:80px;">' . $langs->trans('Stock') . '</td>';
 			}
 			// Hook fields
 			$parameters = array();
 			$reshook = $hookmanager->executeHooks('printFieldListTitle', $parameters);
 			print $hookmanager->resPrint;
 			// Qty in kit
-			print '<td class="center">' . $langs->trans('Qty') . '</td>';
+			print '<td class="center" style="width:120px;">' . $langs->trans('Qty') . '</td>';
 			// Valor por componente
-			print '<td class="right" colspan="2">Custo por componente</td>';
+			print '<td class="right" style="width: 200px;">Custo por componente</td>';
 			// Stoc inc/dev
 			print '<td class="center">' . $langs->trans('ComposedProductIncDecStock') . '</td>';
 			// Move
@@ -645,45 +646,32 @@ if ($id > 0 || !empty($ref)) {
 						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 						// Product label
 						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
-						// Best buying price
-						print '<td class="right">';
-						if ($product_fourn->find_min_price_product_fournisseur($productstatic->id) > 0) {
-							print $langs->trans("BuyingPriceMinShort") . ': ';
-							if ($product_fourn->product_fourn_price_id > 0) {
-								print $product_fourn->display_price_product_fournisseur(0, 0);
-							} else {
-								print $langs->trans("NotDefined");
-								$notdefined++;
-								$atleastonenotdefined++;
-							}
-						}
-						print '</td>';
-						// For avoid a non-numeric value
-						$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
-						$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
-						$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
-						$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
-						$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
-						$total +=  $totalline;
-						print '<td class="right nowraponall">';
-						print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
-						print '</td>';
+							// For avoid a non-numeric value
+							$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
+							$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
+							$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
+							$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
+							$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
+							$total +=  $totalline;
+							print '<td class="right nowraponall" style="width:140px;">';
+							print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
+							print '</td>';
 						// Stock
-						if (isModEnabled('stock')) {
-							print '<td class="right">' . number_format((float)$value['stock'], 4, '.', '') . '</td>';
-						}
+							if (isModEnabled('stock')) {
+								print '<td class="right" style="white-space: nowrap;">' . number_format((float)$value['stock'], 4, '.', '') . '</td>';
+							}
 						// Hook fields
 						$parameters = array();
 						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
 						print $hookmanager->resPrint;
 						// Qty + IncDec
 						if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-							print '<td class="center"><input type="text" value="' . $nb_of_subproduct . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width40" /></td>';
-							$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
-							print '<td class="right" colspan="2">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
-							print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
-						} else {
-							print '<td>' . $nb_of_subproduct . '</td>';
+								print '<td class="center"><input type="text" value="' . $nb_of_subproduct . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width90" /></td>';
+								$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
+								print '<td class="right" style="width: 190px;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+						print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
+					} else {
+						print '<td>' . $nb_of_subproduct . '</td>';
 							print '<td>' . ($value['incdec'] == 1 ? 'x' : '') . '</td>';
 						}
 						// Move action
@@ -707,56 +695,61 @@ if ($id > 0 || !empty($ref)) {
 						print '</td>';
 						// Product label
 						print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
-						// Best buying price
-						print '<td>&nbsp;</td>';
-						print '<td>&nbsp;</td>';
-						// Best selling price
-						print '<td>&nbsp;</td>';
-						print '<td>&nbsp;</td>';
-						// Stock
-						if (isModEnabled('stock')) {
-							print '<td></td>';
-						}
+							// Cost placeholder for nested rows
+							print '<td>&nbsp;</td>';
+							// Stock
+							if (isModEnabled('stock')) {
+								print '<td></td>';
+							}
 						// Hook fields
 						$parameters = array();
 						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
 						print $hookmanager->resPrint;
 						// Qty in kit
-						print '<td class="right">' . dol_escape_htmltag($value['nb']) . '</td>';
-						// Inc/dec
-						print '<td>&nbsp;</td>';
-						// Action move
-						print '<td>&nbsp;</td>';
+							print '<td class="right">' . dol_escape_htmltag($value['nb']) . '</td>';
+							// Cost per component placeholder
+							print '<td>&nbsp;</td>';
+							// Inc/dec
+							print '<td>&nbsp;</td>';
+							// Action move
+							print '<td>&nbsp;</td>';
 						print '</tr>' . "\n";
 					}
 				}
 				// Total
-				print '<tr class="liste_total">';
-				print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
+					print '<tr class="liste_total">';
+					print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>'; // Position col
 
-				print '<td class="liste_total"></td>';
-				print '<td class="liste_total"></td>';
-				print '<td></td>'; // Custo do ingrediente col 1
-				print '<td></td>'; // Custo do ingrediente col 2
+					print '<td class="liste_total"></td>'; // Ingredient col
+					print '<td class="liste_total"></td>'; // Label col
+					print '<td></td>'; // Custo do ingrediente col
+					if (isModEnabled('stock')) {
+						print '<td></td>'; // Stock col
+					}
+
+					print '<td></td>'; // Qty col
+					print '<td class="liste_total right" style="white-space: nowrap;">';
+					if ($atleastonenotdefined) {
+						print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
+					}
+					print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
+					print '</td>';
+					print '<td class="center">'; // Inc/dec col
+					if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
+						print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
+					}
+					print '</td>';
+					print '<td></td>'; // Move col
+					print '</tr>' . "\n";
+			} else {
+				// Show an empty state row when no components exist but the table is displayed.
+				$colspan = 8; // Position, Ingredient, Label, Cost, Stock?, Qty, Cost per component, Inc/Dec
 				if (isModEnabled('stock')) {
-					print '<td></td>'; // Stock col
+					$colspan++; // account for stock column
 				}
-
-				print '<td></td>';
-				print '<td></td>'; // Qty col
-				print '<td class="liste_total right" style="white-space: nowrap;">';
-				if ($atleastonenotdefined) {
-					print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
-				}
-				print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
-				print '</td>';
-				print '<td class="center">';
-				if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-					print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
-				}
-				print '</td>';
-				print '<td></td>';
-				print '</tr>' . "\n";
+				print '<tr class="oddeven">';
+				print '<td colspan="' . $colspan . '" class="opacitymedium">' . $langs->trans("None") . '</td>';
+				print '</tr>';
 			}
 			print '</table>';
 			print '</form>';
@@ -992,14 +985,12 @@ if ($id > 0 || !empty($ref)) {
 			print '<tr><td>Preço teste c/ IVA</td><td><input type="text" id="krea-test-price-vat-input" class="right width75"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
 			print '</table>';
 			$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
-			print '<div class="center" style="margin-top: 6px;">';
-			print '<span class="opacitymedium small">Modo de preço: ' . dol_escape_htmltag($baseType) . '</span><br>';
-			print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
-			print '</div>';
+				print '<div class="center" style="margin-top: 6px;">';
+				print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
+				print '</div>';
 			print '</form>';
-			print '<div class="opacitymedium small" style="margin-top:4px;">Pode editar "Preço teste c/ IVA" para recalcular o markup e margens.</div>';
-			print '</div>'; // wrapper
-		}
+				print '</div>'; // wrapper
+			}
 
 		$jsPriceMap = json_encode($priceLevels);
 		$jsCurrency = dol_escape_js($conf->currency);
