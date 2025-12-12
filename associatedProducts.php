@@ -769,7 +769,6 @@ if ($id > 0 || !empty($ref)) {
 			if (isModEnabled('categorie')) {
 				$rowspan++;
 			}
-			print load_fiche_titre($langs->trans("ProductToAddSearch"), '', '');
 			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="POST">';
 			print '<input type="hidden" name="action" value="search">';
 			print '<input type="hidden" name="id" value="' . $id . '">';
@@ -785,6 +784,105 @@ if ($id > 0 || !empty($ref)) {
 				print ajax_combobox('parent');
 			}
 			print '<div class="inline-block" style="margin-top:6px;"><input type="submit" class="button small" value="' . $langs->trans("Search") . '"></div>';
+			print '</form>';
+		}
+
+		// List of products (search results) - keep before the metrics block
+		if ($action == 'search') {
+			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="post">';
+			print '<input type="hidden" name="token" value="' . newToken() . '">';
+			print '<input type="hidden" name="action" value="add_prod">';
+			print '<input type="hidden" name="id" value="' . $id . '">';
+			print '<table class="noborder centpercent">';
+			print '<tr class="liste_titre">';
+			print '<th class="liste_titre">' . $langs->trans("ComposedProduct") . '</th>';
+			print '<th class="liste_titre">' . $langs->trans("Label") . '</th>';
+			print '<th class="liste_titre right">' . $langs->trans("Qty") . '</th>';
+			print '<th class="center">' . $langs->trans('ComposedProductIncDecStock') . '</th>';
+			print '</tr>';
+			if ($resql) {
+				$num = $db->num_rows($resql);
+				$i = 0;
+				if ($num == 0) {
+					print '<tr><td colspan="4">' . $langs->trans("NoMatchFound") . '</td></tr>';
+				}
+				$MAX = 100;
+				while ($i < min($num, $MAX)) {
+					$objp = $db->fetch_object($resql);
+					if ($objp->rowid != $id) {
+						$prod_arbo = new Product($db);
+						$prod_arbo->id = $objp->rowid;
+						if (getDolGlobalString('PRODUCT_USE_DEPRECATED_ASSEMBLY_AND_STOCK_KIT_TYPE')) {
+							if ($prod_arbo->type == 2 || $prod_arbo->type == 3) {
+								$is_pere = 0;
+								$prod_arbo->get_sousproduits_arbo();
+								$prods_arbo = $prod_arbo->get_arbo_each_prod();
+								if (count($prods_arbo) > 0) {
+									foreach ($prods_arbo as $key => $value) {
+										if ($value[1] == $id) {
+											$is_pere = 1;
+										}
+									}
+								}
+								if ($is_pere == 1) {
+									$i++;
+									continue;
+								}
+							}
+						}
+						print "\n";
+						print '<tr class="oddeven">';
+						$productstatic->id = $objp->rowid;
+						$productstatic->ref = $objp->ref;
+						$productstatic->label = $objp->label;
+						$productstatic->type = $objp->type;
+						$productstatic->entity = $objp->entity;
+						$productstatic->status = $objp->status;
+						$productstatic->status_buy = $objp->status_buy;
+						print '<td>' . $productstatic->getNomUrl(1, '', 24) . '</td>';
+						$labeltoshow = $objp->label;
+						if (getDolGlobalInt('MAIN_MULTILANGS') && !empty($objp->labelm)) {
+							$labeltoshow = $objp->labelm;
+						}
+						print '<td>' . $labeltoshow . '</td>';
+						if ($object->is_sousproduit($id, $objp->rowid)) {
+							$qty = $object->is_sousproduit_qty;
+							$incdec = $object->is_sousproduit_incdec;
+						} else {
+							$qty = 0;
+							$incdec = 0;
+						}
+						print '<td class="right"><input type="hidden" name="prod_id_' . $i . '" value="' . $objp->rowid . '"><input type="text" size="2" name="prod_qty_' . $i . '" value="' . ($qty ? $qty : '') . '"></td>';
+						print '<td class="center">';
+						if ($qty) {
+							print '<input type="checkbox" name="prod_incdec_' . $i . '" value="1" ' . ($incdec ? 'checked' : '') . '>';
+						} else {
+							print '<input type="checkbox" name="prod_incdec_' . $i . '" value="1" checked>';
+						}
+						print '</td>';
+						print '</tr>';
+					}
+					$i++;
+				}
+				if ($num > $MAX) {
+					print '<tr class="oddeven">';
+					print '<td><span class="opacitymedium">' . $langs->trans("More") . '...</span></td>';
+					print '<td></td>';
+					print '<td></td>';
+					print '<td></td>';
+					print '</tr>';
+				}
+			} else {
+				dol_print_error($db);
+			}
+			print '</table>';
+			print '<input type="hidden" name="max_prod" value="' . $i . '">';
+			if ($num > 0) {
+				print '<div class="center">';
+				print '<input type="submit" class="button button-save" name="save" value="' . $langs->trans("Add") . '/' . $langs->trans("Update") . '">';
+				print '<input type="submit" class="button button-cancel" name="cancel" value="' . $langs->trans("Cancel") . '">';
+				print '</div>';
+			}
 			print '</form>';
 		}
 
@@ -983,106 +1081,6 @@ if ($id > 0 || !empty($ref)) {
 		})();</script>';
 
 
-
-		// List of products (search results)
-		if ($action == 'search') {
-			//print '<br>';
-			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="post">';
-			print '<input type="hidden" name="token" value="' . newToken() . '">';
-			print '<input type="hidden" name="action" value="add_prod">';
-			print '<input type="hidden" name="id" value="' . $id . '">';
-			print '<table class="noborder centpercent">';
-			print '<tr class="liste_titre">';
-			print '<th class="liste_titre">' . $langs->trans("ComposedProduct") . '</th>';
-			print '<th class="liste_titre">' . $langs->trans("Label") . '</th>';
-			print '<th class="liste_titre right">' . $langs->trans("Qty") . '</th>';
-			print '<th class="center">' . $langs->trans('ComposedProductIncDecStock') . '</th>';
-			print '</tr>';
-			if ($resql) {
-				$num = $db->num_rows($resql);
-				$i = 0;
-				if ($num == 0) {
-					print '<tr><td colspan="4">' . $langs->trans("NoMatchFound") . '</td></tr>';
-				}
-				$MAX = 100;
-				while ($i < min($num, $MAX)) {
-					$objp = $db->fetch_object($resql);
-					if ($objp->rowid != $id) {
-						$prod_arbo = new Product($db);
-						$prod_arbo->id = $objp->rowid;
-						if (getDolGlobalString('PRODUCT_USE_DEPRECATED_ASSEMBLY_AND_STOCK_KIT_TYPE')) {
-							if ($prod_arbo->type == 2 || $prod_arbo->type == 3) {
-								$is_pere = 0;
-								$prod_arbo->get_sousproduits_arbo();
-								$prods_arbo = $prod_arbo->get_arbo_each_prod();
-								if (count($prods_arbo) > 0) {
-									foreach ($prods_arbo as $key => $value) {
-										if ($value[1] == $id) {
-											$is_pere = 1;
-										}
-									}
-								}
-								if ($is_pere == 1) {
-									$i++;
-									continue;
-								}
-							}
-						}
-						print "\n";
-						print '<tr class="oddeven">';
-						$productstatic->id = $objp->rowid;
-						$productstatic->ref = $objp->ref;
-						$productstatic->label = $objp->label;
-						$productstatic->type = $objp->type;
-						$productstatic->entity = $objp->entity;
-						$productstatic->status = $objp->status;
-						$productstatic->status_buy = $objp->status_buy;
-						print '<td>' . $productstatic->getNomUrl(1, '', 24) . '</td>';
-						$labeltoshow = $objp->label;
-						if (getDolGlobalInt('MAIN_MULTILANGS') && !empty($objp->labelm)) {
-							$labeltoshow = $objp->labelm;
-						}
-						print '<td>' . $labeltoshow . '</td>';
-						if ($object->is_sousproduit($id, $objp->rowid)) {
-							$qty = $object->is_sousproduit_qty;
-							$incdec = $object->is_sousproduit_incdec;
-						} else {
-							$qty = 0;
-							$incdec = 0;
-						}
-						print '<td class="right"><input type="hidden" name="prod_id_' . $i . '" value="' . $objp->rowid . '"><input type="text" size="2" name="prod_qty_' . $i . '" value="' . ($qty ? $qty : '') . '"></td>';
-						print '<td class="center">';
-						if ($qty) {
-							print '<input type="checkbox" name="prod_incdec_' . $i . '" value="1" ' . ($incdec ? 'checked' : '') . '>';
-						} else {
-							print '<input type="checkbox" name="prod_incdec_' . $i . '" value="1" checked>';
-						}
-						print '</td>';
-						print '</tr>';
-					}
-					$i++;
-				}
-				if ($num > $MAX) {
-					print '<tr class="oddeven">';
-					print '<td><span class="opacitymedium">' . $langs->trans("More") . '...</span></td>';
-					print '<td></td>';
-					print '<td></td>';
-					print '<td></td>';
-					print '</tr>';
-				}
-			} else {
-				dol_print_error($db);
-			}
-			print '</table>';
-			print '<input type="hidden" name="max_prod" value="' . $i . '">';
-			if ($num > 0) {
-				print '<div class="center">';
-				print '<input type="submit" class="button button-save" name="save" value="' . $langs->trans("Add") . '/' . $langs->trans("Update") . '">';
-				print '<input type="submit" class="button button-cancel" name="cancel" value="' . $langs->trans("Cancel") . '">';
-				print '</div>';
-			}
-			print '</form>';
-		}
 
 		/**
 		 * This code snippet checks if the current product acts as a parent in any **assemble BOM** (Bill of Materials) in the system.
