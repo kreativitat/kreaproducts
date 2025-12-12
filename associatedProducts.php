@@ -836,6 +836,8 @@ if ($id > 0 || !empty($ref)) {
 			}
 			print '<div class="inline-block" style="margin-top:6px;"><input type="submit" class="button small" value="' . $langs->trans("Search") . '"></div>';
 			print '</form>';
+			// Add a little breathing room before the next section
+			print '<div style="margin-bottom: 14px;"></div>';
 		}
 
 		// List of products (search results) - keep before the metrics block
