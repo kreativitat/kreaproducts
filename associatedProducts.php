@@ -651,8 +651,8 @@ if ($id > 0 || !empty($ref)) {
 
 		// Helper to render ZoneSoft menu chips for a product
 		$zsMenuCache = array();
-		$zsProdLabelCache = array();
-		$renderZsMenu = function ($productId) use (&$zsMenuCache, &$zsProdLabelCache, $db, $langs, $conf) {
+		$zsProdDataCache = array(); // Cache by ZS code: ['desc' => ..., 'fk_product' => ...]
+		$renderZsMenu = function ($productId) use (&$zsMenuCache, &$zsProdDataCache, $db, $langs, $conf) {
 			if (empty($conf->dolizsynch->enabled)) {
 				return '';
 			}
@@ -682,27 +682,49 @@ if ($id > 0 || !empty($ref)) {
 						if (!empty($menu['niveismenuext']) && is_array($menu['niveismenuext'])) {
 							$productLines = array();
 							foreach ($menu['niveismenuext'] as $prod) {
-								$code = isset($prod['codigo']) ? dol_escape_htmltag((string) $prod['codigo']) : '';
+									$code = isset($prod['codigo']) ? dol_escape_htmltag((string) $prod['codigo']) : '';
 									$descRaw = '';
 									if (isset($prod['descricao']) && $prod['descricao'] !== '') {
 										$descRaw = $prod['descricao'];
 									} elseif ($code !== '') {
 										// Fallback: fetch description from synced products by codigo
-										if (!isset($zsProdLabelCache[$code])) {
-											$sqlDesc = "SELECT descricao FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
+										if (!isset($zsProdDataCache[$code])) {
+											$sqlDesc = "SELECT descricao, fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
 											$resDesc = $db->query($sqlDesc);
 											if ($resDesc && ($rowDesc = $db->fetch_object($resDesc))) {
-												$zsProdLabelCache[$code] = $rowDesc->descricao;
+												$zsProdDataCache[$code] = array(
+													'desc' => $rowDesc->descricao,
+													'fk_product' => !empty($rowDesc->fk_product) ? (int) $rowDesc->fk_product : null,
+												);
 											} else {
-												$zsProdLabelCache[$code] = '';
+												$zsProdDataCache[$code] = array('desc' => '', 'fk_product' => null);
 											}
 										}
-										$descRaw = $zsProdLabelCache[$code];
+										$descRaw = $zsProdDataCache[$code]['desc'];
 									}
 									$desc = dol_escape_htmltag(dol_trunc($descRaw, 80));
+									// Get product link if available in cache or via lookup
+									$fkProdLink = null;
+									if (isset($zsProdDataCache[$code]) && !empty($zsProdDataCache[$code]['fk_product'])) {
+										$fkProdLink = $zsProdDataCache[$code]['fk_product'];
+									} elseif (!isset($zsProdDataCache[$code]) && $code !== '') {
+										$sqlDesc = "SELECT fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
+										$resDesc = $db->query($sqlDesc);
+										if ($resDesc && ($rowDesc = $db->fetch_object($resDesc))) {
+											$fkProdLink = !empty($rowDesc->fk_product) ? (int) $rowDesc->fk_product : null;
+											$zsProdDataCache[$code] = array(
+												'desc' => $descRaw,
+												'fk_product' => $fkProdLink,
+											);
+										}
+									}
 									$price = isset($prod['preco']) ? price2num($prod['preco'], 'MU') : 0;
 									$priceStr = ($price > 0) ? '(' . price($price, '', '', 0, 2, 2) . ')' : '';
-									$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">#' . $code . '</span><span class="zs-prod-desc">' . $desc . '</span><span class="zs-prod-price">' . $priceStr . '</span></div>';
+									$linkWrappedCode = '#'.$code;
+									if (!empty($fkProdLink)) {
+										$linkWrappedCode = '<a class="zs-prod-link" target="_blank" href="' . DOL_URL_ROOT . '/product/card.php?id=' . (int) $fkProdLink . '">#' . $code . '</a>';
+									}
+									$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">' . $linkWrappedCode . '</span><span class="zs-prod-desc">' . $desc . '</span><span class="zs-prod-price">' . $priceStr . '</span></div>';
 								}
 								$productsHtml = '<div class="zs-menu-products">' . implode('', $productLines) . '</div>';
 							}
@@ -744,6 +766,15 @@ if ($id > 0 || !empty($ref)) {
 				.zs-menu-product { display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 				.zs-prod-code { font-weight: 800; color: #1f2937; flex: 0 0 auto; }
 				.zs-prod-desc { color: #111827; font-size: 13px; flex: 0 0 auto; }
+				.zs-prod-link { font-weight: 800; }
+				.zs-menu-card a:link,
+				.zs-menu-card a:visited,
+				.zs-menu-card a:hover,
+				.zs-menu-card a:active,
+				.zs-menu-card .classlink {
+					color: #000 !important;
+					text-decoration: none !important;
+				}
 				.zs-prod-price { color: #111827; font-weight: 700; flex: 0 0 auto; }
 			</style>';
 			$GLOBALS['DOLIZSYNCH_MENU_STYLES_PRINTED'] = true;
@@ -781,13 +812,7 @@ if ($id > 0 || !empty($ref)) {
 			print '<td style="width:12%;">' . $langs->trans('ComposedProduct') . '</td>';
 			// Product label
 			print '<td style="min-width:320px;">' . $langs->trans('Label') . '</td>';
-			// ZS Menu column
-			if (!empty($conf->dolizsynch->enabled)) {
-				$colTitle = $langs->trans('DoliZSynchProductMenu');
-				$colTitle = str_replace('(ZS)', '', $colTitle);
-				$colTitle = trim($colTitle);
-				print '<td style="width:200px;">' . $colTitle . '</td>';
-			}
+			// ZS Menu column removed in list view
 				// Ingredient cost (single column)
 				print '<td class="right" style="width:140px;">' . $langs->trans('Custo do ingrediente') . '</td>';
 			// Stock
@@ -823,15 +848,10 @@ if ($id > 0 || !empty($ref)) {
 						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 						// Product label
 						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
-						// Menu (ZS)
-						if (!empty($conf->dolizsynch->enabled)) {
-							$menuCell = $renderZsMenu($productstatic->id);
-							print '<td class="zs-menu-cell">' . $menuCell . '</td>';
-						}
-							// For avoid a non-numeric value
-							$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
-							$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
-							$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
+						// For avoid a non-numeric value
+						$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
+						$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
+						$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
 							$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
 							$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
 							$total +=  $totalline;
@@ -877,10 +897,6 @@ if ($id > 0 || !empty($ref)) {
 						print '</td>';
 						// Product label
 						print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
-							// Menu placeholder for nested rows
-							if (!empty($conf->dolizsynch->enabled)) {
-								print '<td></td>';
-							}
 							// Cost placeholder for nested rows
 							print '<td>&nbsp;</td>';
 							// Stock
@@ -908,9 +924,6 @@ if ($id > 0 || !empty($ref)) {
 
 					print '<td class="liste_total"></td>'; // Ingredient col
 					print '<td class="liste_total"></td>'; // Label col
-					if (!empty($conf->dolizsynch->enabled)) {
-						print '<td></td>'; // Menu col
-					}
 					print '<td></td>'; // Custo do ingrediente col
 					if (isModEnabled('stock')) {
 						print '<td></td>'; // Stock col
@@ -932,7 +945,7 @@ if ($id > 0 || !empty($ref)) {
 					print '</tr>' . "\n";
 			} else {
 				// Show an empty state row when no components exist but the table is displayed.
-				$colspan = 9; // Position, Ingredient, Label, Menu, Cost, Stock?, Qty, Cost per component, Inc/Dec
+				$colspan = 8; // Position, Ingredient, Label, Cost, Stock?, Qty, Cost per component, Inc/Dec
 				if (isModEnabled('stock')) {
 					$colspan++; // account for stock column
 				}
@@ -943,6 +956,18 @@ if ($id > 0 || !empty($ref)) {
 			print '</table>';
 			print '</form>';
 			print '</div>';
+			// Open product links in a new tab on the association list
+			print '<script>
+				(function() {
+					var links = document.querySelectorAll("#tablelines a");
+					links.forEach(function(a) {
+						if (!a.target || a.target === "_self") {
+							a.target = "_blank";
+							a.rel = "noopener noreferrer";
+						}
+					});
+				})();
+			</script>';
 		}
 
 		// Form with product to add (moved before simulator); hide when the child list is hidden
