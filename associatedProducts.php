@@ -617,11 +617,11 @@ if ($id > 0 || !empty($ref)) {
 				foreach ($boms as $bom) {
 					print '<tr class="oddeven">';
 					// Link to the BOM (assuming there is a page that shows BOM details)
-					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '" target="_blank" rel="noopener noreferrer">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
 
 					// Display the origin product with a link to the product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['ref'] . '</a></td>';
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '">' . $bom['label'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['ref'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['label'] . '</a></td>';
 					// Show fraction of BOM that corresponds to 1 unit of this component (1 / qty)
 					$fraction = ($bom['qty'] > 0) ? (1 / $bom['qty']) : 0;
 					print '<td class="right">' . price2num($fraction, 'MS') . '</td>';
@@ -1349,9 +1349,9 @@ if ($id > 0 || !empty($ref)) {
 				foreach ($components as $component) {
 					print '<tr class="oddeven">';
 					// Link to the BOM (assuming there is a page that shows BOM details)
-					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '" target="_blank" rel="noopener noreferrer">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
 					// Display the component product reference with a link to its product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '">' . $component['ref'] . '</a></td>';
+					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $component['ref'] . '</a></td>';
 					// Display the component product label
 					print '<td>' . $component['label'] . '</td>';
 					print '<td class="right">' . price2num($component['qty'], 'MS') . '</td>';
