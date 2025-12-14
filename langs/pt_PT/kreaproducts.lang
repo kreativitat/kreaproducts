@@ -70,8 +70,6 @@ KreaProductsAboutPage = KreaProducts about page
 StockableProduct = Gerir Stocks
 StockableProductDescription = Se esta opção estiver ativada, a modificação de stock deste elemento é mantida. Se estiver desativada, a modificação de stock deste elemento não é mantida.
 
-kreap_spread_buyprice = Propagar recalculo de preço de custo
-kreap_spread_buyprice_help = Propagar recalculo de preço de custo
 kreap_syncprice = Sincronizar Preço de Custo Automaticamente
 kreap_updatebuyprice = Atualizar Preço de Custo Automaticamente
 EnableCostPriceSyncForThisProduct = Ativar sincronização automática do preço de custo para este produto quando produtos filhos são atualizados

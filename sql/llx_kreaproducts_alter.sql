@@ -30,5 +30,19 @@ LEFT JOIN llxnm_extrafields e2
 SET e.name = 'kreap_updatebuyprice', e.label = 'kreap_updatebuyprice'
 WHERE e.elementtype = 'product' AND e.name = 'kreap_syncprice' AND e2.rowid IS NULL;
 
-ALTER TABLE `llxnm_product_extrafields` CHANGE `kreap_spread_buyprice` `kreap_spread_buyprice` INT(11) NOT NULL DEFAULT '1';
-ALTER TABLE `llxnm_product_extrafields` CHANGE `kreap_hideproduct` `kreap_hideproduct` TINYINT(1) NULL DEFAULT '0';
+-- Remove unused kreap_spread_buyprice extrafield/column
+DELETE FROM llxnm_extrafields WHERE elementtype = 'product' AND name = 'kreap_spread_buyprice';
+
+SET @has_spread_col := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME = 'kreap_spread_buyprice'
+);
+SET @sql := IF(@has_spread_col > 0,
+    'ALTER TABLE llxnm_product_extrafields DROP COLUMN kreap_spread_buyprice',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+ALTER TABLE `llxnm_product_extrafields` MODIFY `kreap_hideproduct` TINYINT(1) NULL DEFAULT 0;
+ALTER TABLE `llxnm_product_extrafields` MODIFY `kreap_updatebuyprice` TINYINT(1) NULL DEFAULT 1;
