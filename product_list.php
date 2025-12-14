@@ -319,12 +319,28 @@ while ($i < min($num, $limit)) {
 				$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
 				print '<td class="center"><div class="refidno multicompany-entity-card-container"><span class="fa fa-globe"></span><span class="multiselect-selected-title-text">' . dol_escape_htmltag($entityLabel) . '</span></div></td>';
 				break;
-			case 'p.tobuy':
+		case 'p.tobuy':
+			$canEditBuy = ($productstatic->type == Product::TYPE_SERVICE) ? !empty($user->rights->service->creer) : !empty($user->rights->produit->creer);
+			if ($canEditBuy) {
 				print '<td class="center">' . ajax_object_onoff($productstatic, 'status_buy', 'tobuy', 'ProductStatusOnBuy', 'ProductStatusNotOnBuy') . '</td>';
-				break;
-			case 'p.tosell':
+			} else {
+				$isBuyOn = (int) $obj->tobuy;
+				$label = $langs->trans($isBuyOn ? 'ProductStatusOnBuy' : 'ProductStatusNotOnBuy');
+				$badgeClass = $isBuyOn ? 'badge badge-status4 badge-status' : 'badge badge-status1 badge-status';
+				print '<td class="center"><span class="' . $badgeClass . '" title="' . dol_escape_htmltag($label) . '">' . dol_escape_htmltag($label) . '</span></td>';
+			}
+			break;
+		case 'p.tosell':
+			$canEditSell = ($productstatic->type == Product::TYPE_SERVICE) ? !empty($user->rights->service->creer) : !empty($user->rights->produit->creer);
+			if ($canEditSell) {
 				print '<td class="center">' . ajax_object_onoff($productstatic, 'status', 'tosell', 'ProductStatusOnSell', 'ProductStatusNotOnSell') . '</td>';
-				break;
+			} else {
+				$isSellOn = (int) $obj->tosell;
+				$label = $langs->trans($isSellOn ? 'ProductStatusOnSell' : 'ProductStatusNotOnSell');
+				$badgeClass = $isSellOn ? 'badge badge-status4 badge-status' : 'badge badge-status1 badge-status';
+				print '<td class="center"><span class="' . $badgeClass . '" title="' . dol_escape_htmltag($label) . '">' . dol_escape_htmltag($label) . '</span></td>';
+			}
+			break;
 			default:
 				print '<td>&nbsp;</td>';
 		}
