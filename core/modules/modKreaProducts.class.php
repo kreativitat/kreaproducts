@@ -543,35 +543,37 @@ class modKreaProducts extends DolibarrModules
 		$field_help = $langs->trans("");
 		$result1 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 6, 3, 'product', 0, 0, '', '', 1, '', "\$conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE", $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
-		// Rename legacy kreap_syncprice extrafield column to kreap_updatebuyprice if needed
-		$this->migrateSyncPriceExtrafield($this->db);
-
 		$field_name = "kreap_updatebuyprice";
 		$field_label = $langs->trans("kreap_updatebuyprice");
 		$field_help = $langs->trans("EnableCostPriceSyncForThisProduct");
-		$result1_sync = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result2 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+		$field_name = "kreap_hideproduct";
+		$field_label = $langs->trans("kreap_hideproduct");
+		$field_help = $langs->trans("kreap_hideproduct_help");
+		$result3 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 8, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_recipe");
-		$result2 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result4 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_brand");
-		$result2 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result5 = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_description");
-		$result3 = $extrafields->addExtraField('kreap_description', $field_label, 'html', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result6 = $extrafields->addExtraField('kreap_description', $field_label, 'html', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_label = $langs->trans("kreap_video");
-		$result4 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result7 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_name = "kreap_calc_nut";
 		$field_label = $langs->trans("kreap_calc_nut");
 		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 11, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result8 = $extrafields->addExtraField($field_name, $field_label, 'select', 11, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaNutricionalInserida"), 1 => $langs->trans("TabelaNutricionalCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		$field_name = "kreap_calc_allergens";
 		$field_label = $langs->trans("kreap_calc_allergens");
 		$field_help = $langs->trans("");
-		$result5 = $extrafields->addExtraField($field_name, $field_label, 'select', 12, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaAllergensInserida"), 1 => $langs->trans("TabelaAllergensCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$result9 = $extrafields->addExtraField($field_name, $field_label, 'select', 12, 3, 'product', 0, 0, 2, array('options' => array(0 => $langs->trans("TabelaAllergensInserida"), 1 => $langs->trans("TabelaAllergensCalculada"), 2 => $langs->trans("NaoEUmAlimento"))), 1, '', 0, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 		//$result1=$extrafields->addExtraField('kreaproducts_myattr1', "New Attr 1 label", 'boolean', 1,  3, 'thirdparty',   0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 		//$result2=$extrafields->addExtraField('kreaproducts_myattr2', "New Attr 2 label", 'varchar', 1, 10, 'project',      0, 0, '', '', 1, '', 0, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
@@ -619,48 +621,6 @@ class modKreaProducts extends DolibarrModules
 		}
 
 		return $this->_init($sql, $options);
-	}
-
-	/**
-	 * Rename legacy kreap_syncprice extrafield column to kreap_updatebuyprice if needed.
-	 *
-	 * @param DoliDB $db
-	 * @return void
-	 */
-	private function migrateSyncPriceExtrafield($db): void
-	{
-		$table = MAIN_DB_PREFIX . 'product_extrafields';
-		$old = 'kreap_syncprice';
-		$new = 'kreap_updatebuyprice';
-
-		// Skip if new column already exists
-		if ($this->columnExists($table, $new)) {
-			return;
-		}
-
-		// Rename old column when present
-		if ($this->columnExists($table, $old)) {
-			$sql = "ALTER TABLE " . $table . " CHANGE " . $old . " " . $new . " int(11) DEFAULT NULL";
-			$resql = $db->query($sql);
-			if (!$resql) {
-				dol_syslog(__METHOD__ . " failed to rename extrafield column: " . $db->lasterror(), LOG_WARNING);
-			}
-		}
-
-		// Rename extrafield definition
-		if ($this->extrafieldExists('product', $old)) {
-			if ($this->extrafieldExists('product', $new)) {
-				// Remove legacy definition if new already exists
-				$sql = "DELETE FROM " . MAIN_DB_PREFIX . "extrafields WHERE elementtype = 'product' AND name = '" . $db->escape($old) . "'";
-				$db->query($sql);
-			} else {
-				$sql = "UPDATE " . MAIN_DB_PREFIX . "extrafields SET name = '" . $db->escape($new) . "', label = '" . $db->escape($new) . "' WHERE elementtype = 'product' AND name = '" . $db->escape($old) . "'";
-				$resql = $db->query($sql);
-				if (!$resql) {
-					dol_syslog(__METHOD__ . " failed to rename extrafield definition: " . $db->lasterror(), LOG_WARNING);
-				}
-			}
-		}
 	}
 
 	/**

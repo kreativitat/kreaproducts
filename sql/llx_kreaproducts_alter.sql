@@ -29,3 +29,6 @@ LEFT JOIN llxnm_extrafields e2
   ON e2.elementtype = 'product' AND e2.name = 'kreap_updatebuyprice'
 SET e.name = 'kreap_updatebuyprice', e.label = 'kreap_updatebuyprice'
 WHERE e.elementtype = 'product' AND e.name = 'kreap_syncprice' AND e2.rowid IS NULL;
+
+ALTER TABLE `llxnm_product_extrafields` CHANGE `kreap_spread_buyprice` `kreap_spread_buyprice` INT(11) NOT NULL DEFAULT '1';
+ALTER TABLE `llxnm_product_extrafields` CHANGE `kreap_hideproduct` `kreap_hideproduct` TINYINT(1) NULL DEFAULT '0';

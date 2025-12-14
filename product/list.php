@@ -221,6 +221,10 @@ if ($user->rights->produit->creer) {
 }
 
 print '<form id="searchFormList" action="' . $_SERVER["PHP_SELF"] . '" method="GET" name="formulaire">';
+
+print '<div class="div-table-responsive">';
+print '<table class="tagtable nobottomiftotal liste' . (!empty($moreforfilter) ? ' ' : '') . '">';
+
 if ($optioncss != '') {
 	print '<input type="hidden" name="optioncss" value="' . $optioncss . '">';
 }
@@ -233,8 +237,7 @@ print '<input type="hidden" name="page" value="' . $page . '">';
 print '<input type="hidden" name="mode" value="' . dol_escape_htmltag($mode) . '">';
 print '<input type="hidden" name="show_hidden" value="' . (int) $show_hidden . '">';
 
-print '<div class="div-table-responsive">';
-print '<table class="tagtable nobottomiftotal liste' . (!empty($moreforfilter) ? ' listwithfilterbefore' : '') . '">';
+
 
 // Categories/variants row just before filters
 if (!empty($moreforfilter)) {
@@ -247,8 +250,8 @@ if (!empty($moreforfilter)) {
 	print '<tr class="liste_titre">';
 	print '<td class="liste_titre" colspan="' . $colspan . '">';
 	print '<table class="nobordernopadding centpercent"><tr>';
-	print '<td class="left" style="border:0;">' . $moreforfilter . '</td>';
-	print '<td class="right" style="border:0; width:1%;">';
+	print '<td class="left">' . $moreforfilter . '</td>';
+	print '<td class="right" style="width:1%;">';
 	print '<div class="tabBarInsideButAction noborder valignmiddle">';
 	print '<a class="btnTitle butAction" href="' . dol_escape_htmltag($toggleUrl) . '" title="' . dol_escape_htmltag($toggleLabel) . '"><span class="fa fa-toggle-' . ($show_hidden ? 'on' : 'off') . ' valignmiddle btnTitle-icon"></span></a>';
 	print '</div>';
