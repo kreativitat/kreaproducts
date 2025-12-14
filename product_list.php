@@ -8,13 +8,13 @@
  */
 
 /**
- * \file       htdocs/custom/kreaproducts/product/list.php
+ * \file       htdocs/custom/kreaproducts/product_list.php
  * \ingroup    kreaproducts
  * \brief      Simplified product list with hide toggle based on kreap_hideproduct.
  */
 
 // Load Dolibarr environment
-require_once '../../../main.inc.php';
+require_once '../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/ajax.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
@@ -40,16 +40,12 @@ $toselect = GETPOST('toselect', 'array');
 $optioncss = GETPOST('optioncss', 'alpha');
 $mode = GETPOST('mode', 'alpha');
 
-$show_hidden = GETPOSTINT('show_hidden'); // 0 = hide flagged, 1 = show all
+$show_hidden = GETPOSTISSET('show_hidden') ? GETPOSTINT('show_hidden') : 0; // 0 = hide flagged, 1 = show all
 $search_ref = GETPOST('search_ref', 'alphanohtml');
 $search_label = GETPOST('search_label', 'alphanohtml');
 $search_tobuy = GETPOST('search_tobuy', 'alpha');
 $search_tosell = GETPOST('search_tosell', 'alpha');
-$search_show_childproducts = GETPOST('search_show_childproducts');
-$searchCategoryProductOperator = GETPOSTINT('search_category_product_operator');
-if (GETPOSTISSET('formfilteraction')) {
-	$searchCategoryProductOperator = GETPOSTINT('search_category_product_operator');
-}
+$searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 
 $limit = GETPOSTINT('limit') ? GETPOSTINT('limit') : $conf->liste_limit;
@@ -70,14 +66,13 @@ if (empty($sortorder)) {
 	$sortorder = 'ASC';
 }
 
-if (GETPOST('button_removefilter', 'alpha')) {
+if (GETPOST('button_removefilter', 'alpha') || GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter_y', 'alpha')) {
 	$search_ref = '';
 	$search_label = '';
 	$search_tobuy = '';
 	$search_tosell = '';
-	$search_show_childproducts = '';
 	$searchCategoryProductList = array();
-	$searchCategoryProductOperator = 0;
+	$searchCategoryProductOperator = 1;
 }
 
 $param = '&show_hidden=' . ((int) $show_hidden);
@@ -85,16 +80,10 @@ $param .= ($search_ref !== '' ? '&search_ref=' . urlencode($search_ref) : '');
 $param .= ($search_label !== '' ? '&search_label=' . urlencode($search_label) : '');
 $param .= ($search_tobuy !== '' ? '&search_tobuy=' . urlencode($search_tobuy) : '');
 $param .= ($search_tosell !== '' ? '&search_tosell=' . urlencode($search_tosell) : '');
-if ($search_show_childproducts) {
-	$param .= '&search_show_childproducts=' . urlencode((string) $search_show_childproducts);
-}
 if (!empty($searchCategoryProductList)) {
 	foreach ($searchCategoryProductList as $key => $valcat) {
 		$param .= '&search_category_product_list[' . $key . ']=' . urlencode((string) $valcat);
 	}
-}
-if (!empty($searchCategoryProductOperator)) {
-	$param .= '&search_category_product_operator=' . urlencode((string) $searchCategoryProductOperator);
 }
 
 $object = new Product($db);
@@ -117,6 +106,7 @@ $arrayfields = array(
 
 // SQL build
 $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_product_type, "
+	. "COALESCE(p.price, 0) as sell_price, "
 	. "COALESCE(p.cost_price, p.pmp, 0) as cost_price, "
 	. "COALESCE(pe.kreap_hideproduct, 0) as kreap_hideproduct";
 $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
@@ -137,9 +127,6 @@ if ($search_tobuy !== '' && $search_tobuy !== '-1') {
 }
 if ($search_tosell !== '' && $search_tosell !== '-1') {
 	$sql .= " AND p.tosell = " . ((int) $search_tosell);
-}
-if (isModEnabled('variants') && empty($search_show_childproducts)) {
-	$sql .= " AND NOT EXISTS (SELECT 1 FROM " . MAIN_DB_PREFIX . "product_attribute_combination pac WHERE pac.fk_product_child = p.rowid)";
 }
 if (!empty($searchCategoryProductList)) {
 	$listofcategoryid = implode(',', array_map('intval', $searchCategoryProductList));
@@ -198,16 +185,12 @@ $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
 
-// Filter on categories and variants (header area before list)
+// Filter on categories (header area before list)
 $moreforfilter = '';
 if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
-	$moreforfilter .= $formcategory->getFilterBox(Categorie::TYPE_PRODUCT, $searchCategoryProductList, 'minwidth300', $searchCategoryProductOperator ? $searchCategoryProductOperator : 0);
-}
-if (isModEnabled('variants')) {
-	$moreforfilter .= '<div class="divsearchfield">';
-	$moreforfilter .= '<input type="checkbox" id="search_show_childproducts" name="search_show_childproducts"' . ($search_show_childproducts ? 'checked="checked"' : '') . '>';
-	$moreforfilter .= ' <label for="search_show_childproducts">' . $langs->trans('ShowChildProducts') . '</label>';
-	$moreforfilter .= '</div>';
+	$moreforfilter .= $formcategory->getFilterBox(Categorie::TYPE_PRODUCT, $searchCategoryProductList, 'minwidth300', 1);
+	// Remove OR/AND operator checkbox from filter box output
+	$moreforfilter = preg_replace('#<input[^>]*search_category_product_operator[^>]*>(?:\\s*<label[^>]*>.*?</label>)?#', '', $moreforfilter);
 }
 
 llxHeader('', $title);
@@ -252,8 +235,11 @@ if (!empty($moreforfilter)) {
 	print '<table class="nobordernopadding centpercent"><tr>';
 	print '<td class="left">' . $moreforfilter . '</td>';
 	print '<td class="right" style="width:1%;">';
-	print '<div class="tabBarInsideButAction noborder valignmiddle">';
-	print '<a class="btnTitle butAction" href="' . dol_escape_htmltag($toggleUrl) . '" title="' . dol_escape_htmltag($toggleLabel) . '"><span class="fa fa-toggle-' . ($show_hidden ? 'on' : 'off') . ' valignmiddle btnTitle-icon"></span></a>';
+	print '<div class="tabBarInsideButAction valignmiddle" style="background: transparent; border: none !important; box-shadow: none; padding: 0; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">';
+	print '<span class="valignmiddle" style="color: rgb(96, 96, 111); white-space: nowrap;">Mostrar ocultos</span>';
+	print '<a class="btnTitle" style="background: transparent; color: rgb(96, 96, 111) !important; border: none !important; box-shadow: none; outline: none; padding: 0;" href="' . dol_escape_htmltag($toggleUrl) . '" title="' . dol_escape_htmltag($toggleLabel) . '">';
+	print '<span class="fa fa-toggle-' . ($show_hidden ? 'on' : 'off') . ' valignmiddle btnTitle-icon"></span>';
+	print '</a>';
 	print '</div>';
 	print '</td></tr></table>';
 	print '</td>';
@@ -313,7 +299,9 @@ while ($i < min($num, $limit)) {
 		}
 		switch ($key) {
 			case 'p.ref':
-				print '<td>' . $productstatic->getNomUrl(1) . '</td>';
+				$link = $productstatic->getNomUrl(1);
+				$link = preg_replace('/<a\b/', '<a target="_blank" rel="noopener"', $link, 1);
+				print '<td>' . $link . '</td>';
 				break;
 			case 'p.label':
 				print '<td>' . dol_escape_htmltag($obj->label) . '</td>';

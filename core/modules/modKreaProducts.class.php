@@ -133,6 +133,8 @@ class modKreaProducts extends DolibarrModules
 			'hooks' => array(
 				'data' => array(
 					'productcard',
+					'productservicelist',
+					'productlist',
 					'inventorycard',
 					'supplierpaymentcard',
 					'globalcard',

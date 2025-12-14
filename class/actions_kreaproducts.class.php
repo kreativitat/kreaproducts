@@ -408,9 +408,23 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	private function redirectToCustomPages($parameters, &$object, &$action)
 	{
+		global $conf;
+
 		$currentcontext = ! empty($parameters['currentcontext']) ? $parameters['currentcontext'] : '';
 		$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
 		$isKreaCustomPage = (strpos($scriptPath, '/custom/kreaproducts/') !== false);
+
+		// Redirect core product list to custom simplified list
+		if (!$isKreaCustomPage && preg_match('#/product/list\\.php$#', $scriptPath) && getDolGlobalInt('KREAPRODUCTS_REPLACE_PRODUCT_LIST', 1)) {
+			if (!defined('KREA_PRODUCTLIST_PAGE_OVERRIDE')) {
+				define('KREA_PRODUCTLIST_PAGE_OVERRIDE', true);
+				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+				header('Location: ' . dol_buildpath('/custom/kreaproducts/product_list.php', 1) . $q);
+				exit;
+			}
+
+			return true;
+		}
 
 		if (strpos($currentcontext, 'inventorycard') !== false && ! $isKreaCustomPage) {
 			if (! defined('KREA_INVENTORY_PAGE_OVERRIDE') && ($action === 'view' || $action === '' || $action === null)) {

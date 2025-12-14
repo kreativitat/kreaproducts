@@ -108,6 +108,11 @@ if (!isset($conf->global->KREAPRODUCTS_SIM_ENABLE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SIM_ENABLE', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_SIM_ENABLE = 1;
 }
+// Default to replacing core product list with KreaProducts simplified list
+if (!isset($conf->global->KREAPRODUCTS_REPLACE_PRODUCT_LIST)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_REPLACE_PRODUCT_LIST', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_REPLACE_PRODUCT_LIST = 1;
+}
 // Ensure default supplier move time is set
 if (!isset($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SUPPLIER_MOVE_TIME', '10:00', 'chaine', 0, '', $conf->entity);
@@ -203,6 +208,12 @@ $item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
 $item->defaultFieldValue = '3';
 $item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
+
+// Enable/disable replacement of core product list with Krea simplified list (use select to avoid ajax toggle issues)
+$item = $formSetup->newItem('KREAPRODUCTS_REPLACE_PRODUCT_LIST');
+$item->setAsSelect(array('1' => $langs->trans('Yes'), '0' => $langs->trans('No')));
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP');
 
 // Enable/disable price simulator block
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_ENABLE');
