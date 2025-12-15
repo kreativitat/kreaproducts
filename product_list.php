@@ -47,6 +47,20 @@ $search_tobuy = GETPOST('search_tobuy', 'alpha');
 $search_tosell = GETPOST('search_tosell', 'alpha');
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
+$leftmenu = GETPOST('leftmenu', 'alpha');
+$type = GETPOST('type', 'alpha');
+
+// Normalize type using left menu when not explicitly provided
+if (($type === '' || $type === null) && $leftmenu) {
+	if ($leftmenu === 'product') {
+		$type = '0';
+	} elseif ($leftmenu === 'service') {
+		$type = '1';
+	}
+}
+if ($type !== '0' && $type !== '1') {
+	$type = '';
+}
 
 $limit = GETPOSTINT('limit') ? GETPOSTINT('limit') : $conf->liste_limit;
 $sortfield = GETPOST('sortfield', 'aZ09comma');
@@ -88,13 +102,24 @@ if (!empty($searchCategoryProductList)) {
 if ($limit > 0 && $limit != $conf->liste_limit) {
 	$param .= '&limit=' . ((int) $limit);
 }
+if ($type !== '' && $type !== null) {
+	$param .= '&type=' . urlencode((string) $type);
+}
+if (!empty($leftmenu)) {
+	$param .= '&leftmenu=' . urlencode($leftmenu);
+}
 
 $object = new Product($db);
 $form = new Form($db);
 $formcategory = new FormCategory($db);
 
 $title = $langs->trans('KreapProductSimpleList');
-$picto = 'product';
+if ($type === '0') {
+	$title = $langs->trans('Products');
+} elseif ($type === '1') {
+	$title = $langs->trans('Services');
+}
+$picto = ($type === '1') ? 'service' : 'product';
 
 // Fields
 $arrayfields = array(
@@ -118,6 +143,9 @@ $sql .= " WHERE p.entity IN (" . getEntity('product') . ")";
 
 if (!$show_hidden) {
 	$sql .= " AND COALESCE(pe.kreap_hideproduct, 0) = 0";
+}
+if ($type !== '' && $type !== null && ($type === '0' || $type === '1')) {
+	$sql .= " AND p.fk_product_type = " . ((int) $type);
 }
 if ($search_ref !== '') {
 	$sql .= natural_search('p.ref', $search_ref);
@@ -184,6 +212,8 @@ $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
 	'search_price_level' => $search_price_level,
 	'search_tobuy' => $search_tobuy,
 	'search_tosell' => $search_tosell,
+	'type' => $type,
+	'leftmenu' => $leftmenu,
 ), '', '&', PHP_QUERY_RFC3986);
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
@@ -220,9 +250,16 @@ print '<input type="hidden" name="action" value="list">';
 print '<input type="hidden" name="sortfield" value="' . dol_escape_htmltag($sortfield) . '">';
 print '<input type="hidden" name="sortorder" value="' . dol_escape_htmltag($sortorder) . '">';
 print '<input type="hidden" name="page" value="' . $page . '">';
+print '<input type="hidden" name="pageplusone" value="' . ($page + 1) . '">';
 print '<input type="hidden" name="limit" value="' . ((int) $limit) . '">';
 print '<input type="hidden" name="mode" value="' . dol_escape_htmltag($mode) . '">';
 print '<input type="hidden" name="show_hidden" value="' . (int) $show_hidden . '">';
+if ($type !== '' && $type !== null) {
+	print '<input type="hidden" name="type" value="' . dol_escape_htmltag($type) . '">';
+}
+if (!empty($leftmenu)) {
+	print '<input type="hidden" name="leftmenu" value="' . dol_escape_htmltag($leftmenu) . '">';
+}
 
 
 
@@ -361,7 +398,7 @@ print '</table>';
 print '</div>';
 print '</form>';
 
-// Sync the existing pagination limit selector with this list form
+// Sync the existing pagination controls (limit/page) with this list form
 print '<script>
 jQuery(function ($) {
 	var $limitSelect = $(\'form[name="formlimit"] select[name="limit"], select[name="limit"][id="limit"]\');
@@ -382,7 +419,29 @@ jQuery(function ($) {
 		if ($page.length) {
 			$page.val(0);
 		}
+		var $pagePlusOne = $form.find(\'input[name="pageplusone"]\');
+		if ($pagePlusOne.length) {
+			$pagePlusOne.val(1);
+		}
 
+		$form.trigger("submit");
+	});
+
+	var $pageInput = $(\'input.pageplusone\');
+	$pageInput.off("change.kreaPage keyup.kreaPage").on("change.kreaPage keyup.kreaPage", function (e) {
+		if (e.type === "keyup" && e.key !== "Enter") return;
+		var v = parseInt($(this).val(), 10);
+		if (isNaN(v)) return;
+		var $form = $("#searchFormList");
+		if (!$form.length) return;
+		var $pageHidden = $form.find(\'input[name="page"]\');
+		var $pagePlusHidden = $form.find(\'input[name="pageplusone"]\');
+		if ($pageHidden.length) {
+			$pageHidden.val(Math.max(0, v - 1));
+		}
+		if ($pagePlusHidden.length) {
+			$pagePlusHidden.val(Math.max(1, v));
+		}
 		$form.trigger("submit");
 	});
 });
