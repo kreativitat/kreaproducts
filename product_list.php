@@ -85,6 +85,9 @@ if (!empty($searchCategoryProductList)) {
 		$param .= '&search_category_product_list[' . $key . ']=' . urlencode((string) $valcat);
 	}
 }
+if ($limit > 0 && $limit != $conf->liste_limit) {
+	$param .= '&limit=' . ((int) $limit);
+}
 
 $object = new Product($db);
 $form = new Form($db);
@@ -195,13 +198,13 @@ if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
 
 llxHeader('', $title);
 
-print load_fiche_titre($title, '', $picto);
-
 $newcardbutton = '';
 if ($user->rights->produit->creer) {
 	$newcardbutton .= dolGetButtonTitle($langs->trans('NewProduct'), '', 'fa fa-plus-circle', DOL_URL_ROOT . '/product/card.php?action=create&type=0', '', 1, array());
-	$newcardbutton .= dolGetButtonTitle($langs->trans('NewService'), '', 'fa fa-plus-circle', DOL_URL_ROOT . '/product/card.php?action=create&type=1', '', 1, array());
 }
+$morehtmlright = $newcardbutton;
+
+print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, '', $num, $nbtotalofrecords, 'object_' . $picto, 0, $morehtmlright, '', $limit, 0, 0, 1);
 
 print '<form id="searchFormList" action="' . $_SERVER["PHP_SELF"] . '" method="GET" name="formulaire">';
 
