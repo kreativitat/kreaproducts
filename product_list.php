@@ -48,16 +48,7 @@ $search_tosell = GETPOST('search_tosell', 'alpha');
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 $leftmenu = GETPOST('leftmenu', 'alpha');
-$type = GETPOST('type', 'alpha');
-
-// Normalize type using left menu when not explicitly provided
-if (($type === '' || $type === null) && $leftmenu) {
-	if ($leftmenu === 'product') {
-		$type = '0';
-	} elseif ($leftmenu === 'service') {
-		$type = '1';
-	}
-}
+$type = (string) GETPOST('type', 'int');
 if ($type !== '0' && $type !== '1') {
 	$type = '';
 }
