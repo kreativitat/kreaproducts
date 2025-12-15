@@ -45,6 +45,7 @@ $search_ref = GETPOST('search_ref', 'alphanohtml');
 $search_label = GETPOST('search_label', 'alphanohtml');
 $search_tobuy = GETPOST('search_tobuy', 'alpha');
 $search_tosell = GETPOST('search_tosell', 'alpha');
+$search_price_level = GETPOST('search_price_level', 'int');
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 $leftmenu = GETPOST('leftmenu', 'alpha');
