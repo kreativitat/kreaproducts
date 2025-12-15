@@ -220,6 +220,7 @@ print '<input type="hidden" name="action" value="list">';
 print '<input type="hidden" name="sortfield" value="' . dol_escape_htmltag($sortfield) . '">';
 print '<input type="hidden" name="sortorder" value="' . dol_escape_htmltag($sortorder) . '">';
 print '<input type="hidden" name="page" value="' . $page . '">';
+print '<input type="hidden" name="limit" value="' . ((int) $limit) . '">';
 print '<input type="hidden" name="mode" value="' . dol_escape_htmltag($mode) . '">';
 print '<input type="hidden" name="show_hidden" value="' . (int) $show_hidden . '">';
 
@@ -359,6 +360,33 @@ if ($num == 0) {
 print '</table>';
 print '</div>';
 print '</form>';
+
+// Sync the existing pagination limit selector with this list form
+print '<script>
+jQuery(function ($) {
+	var $limitSelect = $(\'form[name="formlimit"] select[name="limit"], select[name="limit"][id="limit"]\');
+	if (!$limitSelect.length) return;
+
+	$limitSelect.off("change.kreaLimit").on("change.kreaLimit", function () {
+		var v = $(this).val();
+		var $form = $("#searchFormList");
+		if (!$form.length) return;
+
+		var $hiddenLimit = $form.find(\'input[name="limit"]\');
+		if (!$hiddenLimit.length) {
+			$hiddenLimit = $(\'<input type="hidden" name="limit">\').appendTo($form);
+		}
+		$hiddenLimit.val(v);
+
+		var $page = $form.find(\'input[name="page"]\');
+		if ($page.length) {
+			$page.val(0);
+		}
+
+		$form.trigger("submit");
+	});
+});
+</script>';
 
 // Reset title bar spacing after filter block printed before title
 llxFooter();
