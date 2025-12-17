@@ -76,3 +76,6 @@ kreap_hideproduct_help = Hide this product from KreaProducts lists and syncs
 KreapProductSimpleList = Product List (Krea)
 KreapShowHiddenProducts = Show products flagged as hidden
 KreapHideHiddenProducts = Hide products flagged as hidden
+KreapPriceWithVat = Price (incl. VAT)
+KreapPriceWithoutVat = Price (excl. VAT)
+KreapCostWithoutVat = Cost (excl. VAT)

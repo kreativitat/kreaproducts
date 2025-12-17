@@ -1155,9 +1155,9 @@ if ($id > 0 || !empty($ref)) {
 			return number_format($val * 100, 2, '.', '') . ' %';
 		};
 
-		// Only show the simulator if enabled and the product is for sale.
+		// Only show the simulator if enabled, the product is for sale and DolizSynch is disabled.
 		$isSellable = (isset($object->status) && (int) $object->status === 1);
-		if ($isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
+		if (!isModEnabled('dolizsynch') && $isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
 			print '<div class="fichecenter" style="margin-top: 15px;">';
 			print load_fiche_titre('Métricas e Margens', '', '');
 			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';

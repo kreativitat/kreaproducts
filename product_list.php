@@ -46,6 +46,8 @@ $search_label = GETPOST('search_label', 'alphanohtml');
 $search_tobuy = GETPOST('search_tobuy', 'alpha');
 $search_tosell = GETPOST('search_tosell', 'alpha');
 $search_price_level = GETPOST('search_price_level', 'int');
+$priceLevel = ($search_price_level > 0) ? (int) $search_price_level : 1;
+$useMultiprices = !empty($conf->global->PRODUIT_MULTIPRICES);
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 $leftmenu = GETPOST('leftmenu', 'alpha');
@@ -117,16 +119,16 @@ $picto = ($type === '1') ? 'service' : 'product';
 $arrayfields = array(
 	'p.ref' => array('label' => $langs->trans('Ref'), 'checked' => 1, 'position' => 1),
 	'p.label' => array('label' => $langs->trans('Label'), 'checked' => 1, 'position' => 2),
-	'sell_price' => array('label' => $langs->trans('SellingPrice'), 'checked' => 1, 'position' => 3),
-	'cost_price' => array('label' => $langs->trans('CostPrice'), 'checked' => 1, 'position' => 4),
-	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 5),
-	'p.tobuy' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Buy') . ')', 'checked' => 1, 'position' => 6),
-	'p.tosell' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Sell') . ')', 'checked' => 1, 'position' => 7),
+	'cost_price' => array('label' => $langs->trans('KreapCostWithoutVat'), 'checked' => 1, 'position' => 3),
+	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 4),
+	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 5),
+	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 6),
+	'p.tobuy' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Buy') . ')', 'checked' => 1, 'position' => 7),
+	'p.tosell' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Sell') . ')', 'checked' => 1, 'position' => 8),
 );
 
 // SQL build
 $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_product_type, "
-	. "COALESCE(p.price, 0) as sell_price, "
 	. "COALESCE(p.cost_price, p.pmp, 0) as cost_price, "
 	. "COALESCE(pe.kreap_hideproduct, 0) as kreap_hideproduct";
 $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
@@ -286,11 +288,12 @@ print '<td class="liste_titre left"><input class="flat width75" type="text" name
 print '<td class="liste_titre left"><input class="flat width100" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
 print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre right"></td>';
+print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre maxwidthonsmartphone" align="center">&nbsp;</td>';
-$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
-print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
 $selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
 print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
+print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
 print '</tr>';
 
 // Header row
@@ -299,7 +302,7 @@ print '<th class="wrapcolumntitle center maxwidthsearch liste_titre"></th>';
 foreach ($arrayfields as $key => $val) {
 	if (!empty($val['checked'])) {
 		$align = '';
-		if ($key === 'cost_price' || $key === 'sell_price') {
+		if ($key === 'cost_price' || $key === 'sell_price' || $key === 'sell_price_ttc') {
 			$align = 'right ';
 		}
 		if ($key === 'p.entity' || $key === 'p.tobuy' || $key === 'p.tosell') {
@@ -323,6 +326,26 @@ while ($i < min($num, $limit)) {
 	$productstatic->type = $obj->fk_product_type;
 	$productstatic->status = $obj->tosell;
 	$productstatic->status_buy = $obj->tobuy;
+	$fetchRes = $productstatic->fetch($obj->rowid);
+	if ($fetchRes <= 0) {
+		$productstatic->price = 0;
+		$productstatic->price_ttc = 0;
+		$productstatic->cost_price = $obj->cost_price;
+	}
+	$productstatic->status = $obj->tosell;
+	$productstatic->status_buy = $obj->tobuy;
+
+	$priceExclVat = (float) $productstatic->price;
+	$priceInclVat = (float) $productstatic->price_ttc;
+	if ($useMultiprices) {
+		if (isset($productstatic->multiprices[$priceLevel]) && $productstatic->multiprices[$priceLevel] !== '') {
+			$priceExclVat = (float) $productstatic->multiprices[$priceLevel];
+		}
+		if (isset($productstatic->multiprices_ttc[$priceLevel]) && $productstatic->multiprices_ttc[$priceLevel] !== '') {
+			$priceInclVat = (float) $productstatic->multiprices_ttc[$priceLevel];
+		}
+	}
+	$costPriceDisplay = isset($productstatic->cost_price) ? $productstatic->cost_price : $obj->cost_price;
 
 	print '<tr class="oddeven">';
 	print '<td class="center nowrap"></td>';
@@ -340,13 +363,13 @@ while ($i < min($num, $limit)) {
 				print '<td>' . dol_escape_htmltag($obj->label) . '</td>';
 				break;
 			case 'sell_price':
-				if (empty($productstatic->price)) {
-					$productstatic->fetch($obj->rowid);
-				}
-				print '<td class="right">' . price($productstatic->price) . '</td>';
+				print '<td class="right">' . price($priceExclVat) . '</td>';
+				break;
+			case 'sell_price_ttc':
+				print '<td class="right">' . price($priceInclVat) . '</td>';
 				break;
 			case 'cost_price':
-				print '<td class="right">' . price($obj->cost_price) . '</td>';
+				print '<td class="right">' . price($costPriceDisplay) . '</td>';
 				break;
 			case 'p.entity':
 				$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
