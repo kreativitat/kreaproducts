@@ -136,6 +136,7 @@ class modKreaProducts extends DolibarrModules
 					'productservicelist',
 					'productlist',
 					'inventorycard',
+					'inventorylist',
 					'supplierpaymentcard',
 					'globalcard',
 				)
@@ -420,6 +421,20 @@ class modKreaProducts extends DolibarrModules
 			'target' => '',
 			'user' => 2,
 			'object' => 'ProductAllergens'
+		);
+		$this->menu[$r++] = array(
+			'fk_menu' => 'fk_mainmenu=stock,fk_leftmenu=stock_inventories',
+			'type' => 'left',
+			'titre' => 'KREAPRODUCTS_INVENTORY_PRINT_SHEET',
+			'mainmenu' => 'stock',
+			'leftmenu' => 'kreaproducts_inventory_printsheet',
+			'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
+			'langs' => 'kreaproducts@kreaproducts',
+			'position' => 1000 + $r,
+			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("stock")',
+			'perms' => '$user->hasRight("stock", "lire") || $user->hasRight("stock", "inventory_advance", "read")',
+			'target' => '',
+			'user' => 2
 		);
 		// Exports profiles provided by this module
 		$r = 1;

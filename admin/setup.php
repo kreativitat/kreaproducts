@@ -68,6 +68,7 @@ global $langs, $user;
 // Libraries
 require_once DOL_DOCUMENT_ROOT . "/core/lib/admin.lib.php";
 require_once '../lib/kreaproducts.lib.php';
+require_once DOL_DOCUMENT_ROOT . '/core/class/html.formcategory.class.php';
 //require_once "../class/myclass.class.php";
 
 // Translations
@@ -118,6 +119,11 @@ if (!isset($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SUPPLIER_MOVE_TIME', '10:00', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME = '10:00';
 }
+// Ensure default inventory time is set
+if (!isset($conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME = '10:30';
+}
 // Ensure dismantle BOM type has default (was hardcoded 1)
 if (!isset($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DISMANTLE_BOMTYPE', '1', 'chaine', 0, '', $conf->entity);
@@ -155,6 +161,16 @@ if ($resql) {
 	}
 }
 
+// Product categories tree (for inventory category filter)
+$TInventoryCategoryRoots = array('' => $langs->trans('None'));
+$formcategory = new FormCategory($db);
+$categoryTree = $formcategory->select_all_categories(0, '', '', 64, 0, 1, 1);
+if (is_array($categoryTree)) {
+	foreach ($categoryTree as $catId => $catLabel) {
+		$TInventoryCategoryRoots[$catId] = $catLabel;
+	}
+}
+
 // Warehouses list (for dismantle moves)
 $TWarehouses = array('' => $langs->trans('None'));
 $sql = "SELECT rowid, ref, lieu FROM " . MAIN_DB_PREFIX . "entrepot
@@ -186,6 +202,18 @@ $item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
 $item->defaultFieldValue = '10:00';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
 $item->fieldAttr = array('type' => 'time', 'step' => '1');
+
+// Hora por defeito no inventário (HH:MM ou HH:MM:SS)
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_DEFAULT_TIME');
+$item->defaultFieldValue = '10:30';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '1');
+
+// Categoria raiz para limitar as categorias do inventário
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT');
+$item->setAsSelect($TInventoryCategoryRoots);
+$item->defaultFieldValue = '';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP');
 
 // Categoria que habilita a desmontagem automática (ID de categoria de produto)
 $item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_CATEGORY');

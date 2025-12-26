@@ -9,6 +9,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
+require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
 
 /**
  * Triggers for KreaProducts
@@ -54,10 +55,160 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				// run our post-save rename hook
 				$this->renameInventoryHeaderRef($object, $db);
 				return 1;
+			case 'INVENTORY_CREATE':
+				return $this->prefillInventoryLinesAtCreate($object, $db, $user);
 
 			default:
 				return 0;
 		}
+	}
+
+	protected function prefillInventoryLinesAtCreate($inventory, $db, $user)
+	{
+		dol_syslog(__METHOD__, LOG_DEBUG);
+
+		if (empty($inventory->id)) {
+			return 0;
+		}
+
+		$sqlCheck = 'SELECT COUNT(*) as cnt FROM ' . MAIN_DB_PREFIX . 'inventorydet WHERE fk_inventory=' . (int) $inventory->id;
+		$resCheck = $db->query($sqlCheck);
+		if (! $resCheck) {
+			dol_syslog(__METHOD__ . " Error checking inventory lines: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+		$check = $db->fetch_object($resCheck);
+		if ($check && (int) $check->cnt > 0) {
+			return 0;
+		}
+
+		$inventoryAnchor = !empty($inventory->date_inventory) ? $inventory->date_inventory : null;
+		if (!empty($inventoryAnchor) && !is_numeric($inventoryAnchor)) {
+			$inventoryAnchor = dol_stringtotime($inventoryAnchor);
+		}
+
+		$warehouseIds = array();
+		if (!empty($inventory->fk_warehouse)) {
+			$warehouseIds[] = (int) $inventory->fk_warehouse;
+			if (getDolGlobalInt('INVENTORY_INCLUDE_SUB_WAREHOUSE')) {
+				$TChildWarehouses = array();
+				$inventory->getChildWarehouse($inventory->fk_warehouse, $TChildWarehouses);
+				if (!empty($TChildWarehouses)) {
+					foreach ($TChildWarehouses as $childId) {
+						$warehouseIds[] = (int) $childId;
+					}
+				}
+			}
+		}
+		$warehouseIds = array_values(array_unique($warehouseIds));
+
+		$movedByKey = array();
+		if (!empty($inventoryAnchor)) {
+			$sqlmove = "SELECT fk_product, fk_entrepot, COALESCE(batch, '') as batch, SUM(value) as moved";
+			$sqlmove .= " FROM " . MAIN_DB_PREFIX . "stock_mouvement";
+			$sqlmove .= " WHERE datem > '" . $db->escape($db->idate($inventoryAnchor)) . "'";
+			if (!empty($inventory->fk_product)) {
+				$sqlmove .= " AND fk_product = " . (int) $inventory->fk_product;
+			}
+			if (!empty($warehouseIds)) {
+				$sqlmove .= " AND fk_entrepot IN (" . $db->sanitize(implode(',', $warehouseIds)) . ")";
+			}
+			$sqlmove .= " GROUP BY fk_product, fk_entrepot, COALESCE(batch, '')";
+			$resmove = $db->query($sqlmove);
+			if ($resmove) {
+				while ($mov = $db->fetch_object($resmove)) {
+					$moveKey = $mov->fk_product.'|'.$mov->fk_entrepot.'|'.(string) $mov->batch;
+					$movedByKey[$moveKey] = (float) $mov->moved;
+				}
+			} else {
+				dol_syslog(__METHOD__ . " Error loading stock movements: " . $db->lasterror(), LOG_ERR);
+			}
+		}
+
+		$sql = "SELECT ps.rowid, ps.fk_entrepot as fk_warehouse, ps.fk_product, ps.reel,";
+		if (isModEnabled('productbatch')) {
+			$sql .= " COALESCE(pb.batch, '') as batch, pb.qty as qty,";
+		} else {
+			$sql .= " '' as batch, 0 as qty,";
+		}
+		$sql .= " p.ref, p.tobatch";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product_stock as ps";
+		if (isModEnabled('productbatch')) {
+			$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_batch as pb ON pb.fk_product_stock = ps.rowid";
+		}
+		$sql .= ", " . MAIN_DB_PREFIX . "product as p, " . MAIN_DB_PREFIX . "entrepot as e";
+		$sql .= " WHERE p.entity IN (" . getEntity('product') . ")";
+		$sql .= " AND ps.fk_product = p.rowid AND ps.fk_entrepot = e.rowid";
+		if (!getDolGlobalString('STOCK_SUPPORTS_SERVICES')) {
+			$sql .= " AND p.fk_product_type = 0";
+		}
+		if (!empty($inventory->fk_product)) {
+			$sql .= " AND ps.fk_product = " . (int) $inventory->fk_product;
+		}
+		if (!empty($warehouseIds)) {
+			$sql .= " AND ps.fk_entrepot IN (" . $db->sanitize(implode(',', $warehouseIds)) . ")";
+		}
+		if (!empty($inventory->categories_product)) {
+			$sql .= " AND EXISTS (";
+			$sql .= " SELECT cp.fk_product";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "categorie_product AS cp";
+			$sql .= " WHERE cp.fk_product = ps.fk_product";
+			$sql .= " AND cp.fk_categorie IN (" . $db->sanitize($inventory->categories_product) . ")";
+			$sql .= ")";
+		}
+		if (getDolGlobalInt('PRODUIT_SOUSPRODUITS')) {
+			$sql .= " AND NOT EXISTS (";
+			$sql .= " SELECT pa.rowid";
+			$sql .= " FROM " . MAIN_DB_PREFIX . "product_association as pa";
+			$sql .= " WHERE pa.fk_product_pere = ps.fk_product";
+			$sql .= ")";
+		}
+		$sql .= " ORDER BY p.rowid";
+
+		$resql = $db->query($sql);
+		if (! $resql) {
+			dol_syslog(__METHOD__ . " Error prefill inventory lines: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+
+		$error = 0;
+		$inventoryline = new InventoryLine($db);
+		while ($obj = $db->fetch_object($resql)) {
+			$inventoryline->fk_inventory = $inventory->id;
+			$inventoryline->fk_warehouse = $obj->fk_warehouse;
+			$inventoryline->fk_product = $obj->fk_product;
+			$inventoryline->batch = $obj->batch;
+			$inventoryline->datec = dol_now();
+
+			if (isModEnabled('productbatch')) {
+				if ($obj->batch && empty($obj->tobatch)) {
+					$error++;
+					dol_syslog(__METHOD__ . " Product ID=" . $obj->ref . " has batch stock but is not batch-managed", LOG_ERR);
+					break;
+				}
+				$currentstock = ($obj->batch ? $obj->qty : $obj->reel);
+			} else {
+				$currentstock = $obj->reel;
+			}
+			if (!empty($inventoryAnchor)) {
+				$moveKey = $obj->fk_product.'|'.$obj->fk_warehouse.'|'.(string) $obj->batch;
+				$moved = $movedByKey[$moveKey] ?? 0.0;
+				$inventoryline->qty_stock = (float) $currentstock - (float) $moved;
+			} else {
+				$inventoryline->qty_stock = $currentstock;
+			}
+
+			if ($inventoryline->create($user) <= 0) {
+				$error++;
+				dol_syslog(__METHOD__ . " Error creating inventory line: " . $inventoryline->error, LOG_ERR);
+				break;
+			}
+		}
+
+		if ($error) {
+			return -1;
+		}
+		return 1;
 	}
 
 
@@ -480,7 +631,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				return;
 			}
 		}
-		$prefix = $dt->format('YmdHi');
+		$prefix = $dt->format('Ymd');
 
 		// 3) Decide suffix based on oldRef content
 		$up = strtoupper($oldRef);
@@ -498,8 +649,31 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			return;
 		}
 
-		// 4) Build newRef and bail if unchanged
-		$newRef = $prefix . '_' . $suffix;
+		// 4) Build newRef and ensure uniqueness within the same entity
+		$baseRef = $prefix . '_' . $suffix;
+		$entity = isset($inventory->entity) ? (int) $inventory->entity : (int) $GLOBALS['conf']->entity;
+		$sql = 'SELECT ref FROM ' . MAIN_DB_PREFIX . 'inventory'
+			. " WHERE entity = " . $entity
+			. " AND rowid <> " . (int) $inventory->id
+			. " AND ref LIKE '" . $db->escape($baseRef) . "%'";
+		$resql = $db->query($sql);
+		$hasAny = false;
+		$maxVersion = 1;
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$hasAny = true;
+				if ($obj->ref === $baseRef) {
+					$maxVersion = max($maxVersion, 1);
+				} elseif (preg_match('/^' . preg_quote($baseRef, '/') . '_V(\d+)$/', $obj->ref, $m)) {
+					$maxVersion = max($maxVersion, (int) $m[1]);
+				}
+			}
+		} else {
+			dol_syslog(__METHOD__ . " Error checking existing refs: " . $db->lasterror(), LOG_ERR);
+			return;
+		}
+
+		$newRef = $hasAny ? ($baseRef . '_V' . ($maxVersion + 1)) : $baseRef;
 		if ($newRef === $oldRef) {
 			dol_syslog(__METHOD__ . " newRef '{$newRef}' is identical to oldRef, skipping", LOG_DEBUG);
 			return;

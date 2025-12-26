@@ -46,6 +46,21 @@ KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Data de movimento de stocks é o dia da fatura
 KREAPRODUCTS_SUPPLIER_MOVE_TIME = Hora para movimentos de fatura de fornecedor
 KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Hora (HH:MM ou HH:MM:SS) aplicada aos movimentos de stock vindos de faturas de fornecedor
+KREAPRODUCTS_INVENTORY_DEFAULT_TIME = Hora por defeito no inventário
+KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP = Hora (HH:MM ou HH:MM:SS) usada como valor por defeito na criação do inventário
+KREAPRODUCTS_INVENTORY_CATEGORY_ROOT = Categoria raiz para o inventário
+KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP = Limitar a seleção de categorias do inventário às subcategorias desta categoria
+KREAPRODUCTS_INVENTORY_PRINT_SHEET = Folha de inventário
+KREAPRODUCTS_INVENTORY_PRINT_TITLE = INVENTÁRIO
+KREAPRODUCTS_INVENTORY_PRINT_STORE = LOJA
+KREAPRODUCTS_INVENTORY_PRINT_DATE = DATA
+KREAPRODUCTS_INVENTORY_PRINT_CODE = Código de lançamento
+KREAPRODUCTS_INVENTORY_PRINT_PRODUCT = Designação do produto a lançar
+KREAPRODUCTS_INVENTORY_PRINT_COUNTED = Unidades contadas (stock)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT = Unidade de lançamento stock
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_COUNT = Unidades (CONTAR)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_WEIGHT = Kilogramas (PESAR)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_VOLUME = Litros (MEDIR)
 KREAPRODUCTS_DISMANTLE_CATEGORY = Categoria para desmontagem automática
 KREAPRODUCTS_DISMANTLE_CATEGORY_HELP = ID da categoria de produto que ativa a lógica de desmontagem automática
 KREAPRODUCTS_DISMANTLE_BOMTYPE = Tipo de BOM de desmontagem
@@ -56,6 +71,7 @@ KREAPRODUCTS_DISMANTLE_WAREHOUSE = Armazém para desmontagem
 KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP = ID do armazém usado nos movimentos de desmontagem (ou MAIN_DEFAULT_WAREHOUSE se vazio)
 KREAPRODUCTS_SIM_ENABLE = Ativar simulador de preços (Métricas e Margens)
 KREAPRODUCTS_SIM_DEFAULT_MARKUP = Markup teste predefinido (ex.: 3 = 300%)
+QtyInStockWhenInventoryWasCreated = Quantidade em stock quando o inventário foi criado (antes da correção do stock)
 
 #
 # About page

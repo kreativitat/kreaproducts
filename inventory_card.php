@@ -43,6 +43,149 @@ $cancel     = GETPOST('cancel', 'aZ09');
 $contextpage = GETPOST('contextpage', 'aZ') ? GETPOST('contextpage', 'aZ') : 'inventorycard'; // To manage different context of search
 $backtopage = GETPOST('backtopage', 'alpha');
 $include_sub_warehouse = !empty(GETPOST('include_sub_warehouse')) ? GETPOST('include_sub_warehouse') : 0;
+$fk_product = GETPOSTINT('fk_product');
+
+function kreaproducts_inventory_normalize_suffix($label)
+{
+	$label = trim((string) $label);
+	if ($label === '') {
+		return '';
+	}
+	$label = preg_replace('/\s*\([^)]*\)/', '', $label);
+	$label = dol_string_unaccent($label);
+	$label = strtoupper($label);
+	$label = preg_replace('/[^A-Z0-9]+/', '_', $label);
+	return trim($label, '_');
+}
+
+function kreaproducts_inventory_get_category_label($db, array $categoryIds)
+{
+	if (empty($categoryIds)) {
+		return '';
+	}
+	$categoryIds = array_values(array_filter(array_map('intval', $categoryIds)));
+	sort($categoryIds, SORT_NUMERIC);
+	$categoryId = $categoryIds[0] ?? 0;
+	if (!$categoryId) {
+		return '';
+	}
+	$sql = 'SELECT label FROM '.MAIN_DB_PREFIX.'categorie';
+	$sql .= ' WHERE rowid = '.(int) $categoryId;
+	$sql .= ' AND entity IN ('.getEntity('category').')';
+	$resql = $db->query($sql);
+	if ($resql) {
+		$obj = $db->fetch_object($resql);
+		return $obj ? (string) $obj->label : '';
+	}
+	dol_syslog(__METHOD__ . " Error fetching category label: " . $db->lasterror(), LOG_ERR);
+	return '';
+}
+
+function kreaproducts_inventory_get_product_label($db, $productId)
+{
+	if ($productId <= 0) {
+		return '';
+	}
+	$sql = 'SELECT ref, label FROM '.MAIN_DB_PREFIX.'product';
+	$sql .= ' WHERE rowid = '.(int) $productId;
+	$sql .= ' AND entity IN ('.getEntity('product').')';
+	$resql = $db->query($sql);
+	if ($resql) {
+		$obj = $db->fetch_object($resql);
+		if (!$obj) {
+			return '';
+		}
+		$label = trim((string) ($obj->label ?? ''));
+		return $label !== '' ? $label : (string) $obj->ref;
+	}
+	dol_syslog(__METHOD__ . " Error fetching product label: " . $db->lasterror(), LOG_ERR);
+	return '';
+}
+
+function kreaproducts_inventory_get_ref_prefix()
+{
+	$year = GETPOSTINT('date_inventoryyear');
+	$month = GETPOSTINT('date_inventorymonth');
+	$day = GETPOSTINT('date_inventoryday');
+	$hour = GETPOSTINT('date_inventoryhour');
+	$min = GETPOSTINT('date_inventorymin');
+	if ($year && $month && $day) {
+		$timestamp = dol_mktime($hour, $min, 0, $month, $day, $year);
+	} else {
+		$timestamp = dol_now();
+	}
+	return dol_print_date($timestamp, '%Y%m%d');
+}
+
+function kreaproducts_inventory_build_ref($db, $prefix, $suffix, $entity, $excludeId = 0)
+{
+	$prefix = trim((string) $prefix);
+	$suffix = trim((string) $suffix);
+	if ($prefix === '' || $suffix === '') {
+		return '';
+	}
+	$baseRef = $prefix . '_' . $suffix;
+	$sql = 'SELECT ref FROM '.MAIN_DB_PREFIX.'inventory';
+	$sql .= ' WHERE entity = '.(int) $entity;
+	$sql .= ' AND rowid <> '.(int) $excludeId;
+	$sql .= " AND ref LIKE '".$db->escape($baseRef)."%'";
+	$resql = $db->query($sql);
+	if (!$resql) {
+		dol_syslog(__METHOD__ . " Error checking existing refs: " . $db->lasterror(), LOG_ERR);
+		return $baseRef;
+	}
+	$hasAny = false;
+	$maxVersion = 1;
+	while ($obj = $db->fetch_object($resql)) {
+		$hasAny = true;
+		if ($obj->ref === $baseRef) {
+			$maxVersion = max($maxVersion, 1);
+		} elseif (preg_match('/^' . preg_quote($baseRef, '/') . '_V(\d+)$/', (string) $obj->ref, $m)) {
+			$maxVersion = max($maxVersion, (int) $m[1]);
+		}
+	}
+	return $hasAny ? ($baseRef . '_V' . ($maxVersion + 1)) : $baseRef;
+}
+
+function kreaproducts_inventory_get_default_warehouse_id($db)
+{
+	$sql = 'SELECT rowid FROM '.MAIN_DB_PREFIX.'entrepot';
+	$sql .= ' WHERE entity IN ('.getEntity('stock').')';
+	$sql .= ' AND statut = 1';
+	$sql .= ' ORDER BY rowid';
+	$sql .= ' LIMIT 1';
+	$resql = $db->query($sql);
+	if ($resql) {
+		$obj = $db->fetch_object($resql);
+		return $obj ? (int) $obj->rowid : 0;
+	}
+	dol_syslog(__METHOD__ . " Error fetching default warehouse: " . $db->lasterror(), LOG_ERR);
+	return 0;
+}
+
+function kreaproducts_inventory_get_subcategory_ids($db, $rootId)
+{
+	$rootId = (int) $rootId;
+	if ($rootId <= 0) {
+		return array();
+	}
+	require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
+	$cat = new Categorie($db);
+	$tree = $cat->get_full_arbo(Categorie::TYPE_PRODUCT, $rootId, 1);
+	if (!is_array($tree)) {
+		return array();
+	}
+	$childIds = array();
+	foreach ($tree as $info) {
+		$catId = (int) ($info['id'] ?? 0);
+		if ($catId > 0 && $catId !== $rootId) {
+			$childIds[] = $catId;
+		}
+	}
+	$childIds = array_values(array_unique($childIds));
+	sort($childIds, SORT_NUMERIC);
+	return $childIds;
+}
 
 if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 	$result = restrictedArea($user, 'stock', $id, 'inventory&stock');
@@ -53,6 +196,20 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 // Initialize technical objects
 $object = new Inventory($db);
 $extrafields = new ExtraFields($db);
+if (isset($object->fields['date_inventory'])) {
+	$object->fields['date_inventory']['type'] = 'datetime';
+	$object->fields['date_inventory']['enabled'] = 1;
+	$object->fields['date_inventory']['notnull'] = 1;
+}
+if (isset($object->fields['fk_warehouse'])) {
+	$object->fields['fk_warehouse']['notnull'] = 1;
+}
+if (isset($object->fields['categories_product']) && !empty($conf->global->KREAPRODUCTS_INVENTORY_CATEGORY_ROOT)) {
+	$rootCategoryId = (int) $conf->global->KREAPRODUCTS_INVENTORY_CATEGORY_ROOT;
+	$subCategoryIds = kreaproducts_inventory_get_subcategory_ids($db, $rootCategoryId);
+	$categoryIdsForFilter = !empty($subCategoryIds) ? implode(',', $subCategoryIds) : (string) $rootCategoryId;
+	$object->fields['categories_product']['type'] = 'chkbxlst:categorie:label:rowid::type=0:0:'.$categoryIdsForFilter;
+}
 // no inventory docs yet
 $includedocgeneration = false;
 $diroutputmassaction = null;
@@ -75,6 +232,46 @@ foreach ($object->fields as $key => $val) {
 
 if (empty($action) && empty($id) && empty($ref)) {
 	$action = 'view';
+}
+
+if (in_array($action, array('create', 'add'), true) && isset($object->fields['date_inventory'])) {
+	$setDefaultDate = !GETPOSTISSET('date_inventoryyear')
+		&& !GETPOSTISSET('date_inventorymonth')
+		&& !GETPOSTISSET('date_inventoryday');
+	$setDefaultTime = !GETPOSTISSET('date_inventoryhour')
+		&& !GETPOSTISSET('date_inventorymin');
+	if ($setDefaultDate || $setDefaultTime) {
+		$nowinfo = dol_getdate(dol_now());
+		if ($setDefaultDate) {
+			$_POST['date_inventoryyear'] = $nowinfo['year'];
+			$_POST['date_inventorymonth'] = $nowinfo['mon'];
+			$_POST['date_inventoryday'] = $nowinfo['mday'];
+		}
+		if ($setDefaultTime) {
+			$time = trim($conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME ?? '10:30');
+			if (!preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $time)) {
+				$time = '10:30';
+			}
+			list($hour, $min) = explode(':', $time);
+			$_POST['date_inventoryhour'] = (int) $hour;
+			$_POST['date_inventorymin'] = (int) $min;
+		}
+	}
+}
+
+if (in_array($action, array('create', 'add'), true) && isset($object->fields['ref'])) {
+	$object->fields['ref']['noteditable'] = 1;
+}
+
+if (in_array($action, array('create', 'add'), true)) {
+	$warehouseId = GETPOSTINT('fk_warehouse');
+	if ($warehouseId <= 0) {
+		$defaultWarehouseId = kreaproducts_inventory_get_default_warehouse_id($db);
+		if ($defaultWarehouseId > 0) {
+			$_POST['fk_warehouse'] = $defaultWarehouseId;
+			$_REQUEST['fk_warehouse'] = $defaultWarehouseId;
+		}
+	}
 }
 
 // Load object
@@ -128,6 +325,29 @@ if (empty($reshook)) {
 		}
 	}
 	$triggermodname = 'STOCK_INVENTORY_MODIFY'; // Name of trigger action code to execute when we modify record
+
+	if ($action === 'add') {
+		$categoryIds = GETPOST('categories_product', 'array');
+		if (!is_array($categoryIds)) {
+			$rawCategories = GETPOST('categories_product', 'alphanohtml');
+			$categoryIds = $rawCategories !== '' ? preg_split('/[,\s]+/', $rawCategories) : array();
+		}
+		$categoryIds = array_values(array_filter(array_map('intval', $categoryIds)));
+		$suffixLabel = kreaproducts_inventory_get_category_label($db, $categoryIds);
+		if ($suffixLabel === '') {
+			$suffixLabel = kreaproducts_inventory_get_product_label($db, $fk_product);
+		}
+		$suffix = kreaproducts_inventory_normalize_suffix($suffixLabel);
+		if ($suffix === '') {
+			$suffix = 'INVENTORY';
+		}
+		$prefix = kreaproducts_inventory_get_ref_prefix();
+		$autoref = kreaproducts_inventory_build_ref($db, $prefix, $suffix, (int) $conf->entity);
+		if ($autoref !== '') {
+			$_POST['ref'] = $autoref;
+			$_REQUEST['ref'] = $autoref;
+		}
+	}
 
 	// Actions cancel, add, update, update_extras, confirm_validate, confirm_delete, confirm_deleteline, confirm_clone, confirm_close, confirm_setdraft, confirm_reopen
 	include DOL_DOCUMENT_ROOT.'/core/actions_addupdatedelete.inc.php';
@@ -218,7 +438,7 @@ if ($action == 'create') {
 
 	print '</form>';
 
-	dol_set_focus('input[name="ref"]');
+	dol_set_focus('input[name="title"]');
 }
 
 // Part to edit record
@@ -258,6 +478,20 @@ if (($id || $ref) && $action == 'edit') {
 // Part to show record
 if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'create'))) {
 	$res = $object->fetch_optionals();
+
+	if (isset($object->fields['date_inventory'])) {
+		$object->fields['date_inventory']['enabled'] = 1;
+		$object->fields['date_inventory']['visible'] = 1;
+	}
+	if (!empty($object->date_validation)) {
+		$object->fields['date_validation']['visible'] = 1;
+	}
+	if (!empty($object->date_creation)) {
+		$object->fields['date_creation']['visible'] = 1;
+	}
+	if (!empty($object->fk_user_creat)) {
+		$object->fields['fk_user_creat']['visible'] = 1;
+	}
 
 	$head = inventoryPrepareHead($object);
 	print dol_get_fiche_head($head, 'card', $langs->trans("Inventory"), -1, 'stock');

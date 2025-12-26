@@ -43,7 +43,7 @@ include_once DOL_DOCUMENT_ROOT.'/product/stock/class/productlot.class.php';
  */
 
 // Load translation files required by the page
-$langs->loadLangs(array("stocks", "other", "productbatch"));
+$langs->loadLangs(array("stocks", "other", "productbatch", "kreaproducts@kreaproducts"));
 
 // Get parameters
 $id = GETPOSTINT('id');
@@ -81,6 +81,9 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 // Initialize a technical objects
 $object = new Inventory($db);
 $extrafields = new ExtraFields($db);
+if (isset($object->fields['date_inventory'])) {
+	$object->fields['date_inventory']['type'] = 'datetime';
+}
 $diroutputmassaction = $conf->stock->dir_output.'/temp/massgeneration/'.$user->id;
 
 // Default sort order (if not yet defined by previous GETPOST)
@@ -239,9 +242,6 @@ if (empty($reshook)) {
 						// Update line with id of stock movement (and the start quantity if it has changed this last recording)
 						$sqlupdate = "UPDATE ".MAIN_DB_PREFIX."inventorydet";
 						$sqlupdate .= " SET fk_movement = ".((int) $idstockmove);
-						if ($qty_stock != $realqtynow) {
-							$sqlupdate .= ", qty_stock = ".((float) $realqtynow);
-						}
 						$sqlupdate .= " WHERE rowid = ".((int) $line->rowid);
 						$resqlupdate = $db->query($sqlupdate);
 						if (! $resqlupdate) {
@@ -469,6 +469,20 @@ if ($limit > 0 && $limit != $conf->liste_limit) {
 
 
 $res = $object->fetch_optionals();
+
+if (isset($object->fields['date_inventory'])) {
+	$object->fields['date_inventory']['enabled'] = 1;
+	$object->fields['date_inventory']['visible'] = 1;
+}
+if (!empty($object->date_validation)) {
+	$object->fields['date_validation']['visible'] = 1;
+}
+if (!empty($object->date_creation)) {
+	$object->fields['date_creation']['visible'] = 1;
+}
+if (!empty($object->fk_user_creat)) {
+	$object->fields['fk_user_creat']['visible'] = 1;
+}
 
 $head = inventoryPrepareHead($object);
 print dol_get_fiche_head($head, 'inventory', $langs->trans("Inventory"), -1, 'stock');
@@ -962,10 +976,10 @@ if (isModEnabled('productbatch')) {
 	print '</td>';
 }
 if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {
-	// Expected quantity = If inventory is open: Quantity currently in stock (may change if stock movement are done during the inventory)
-	print '<td class="right">'.$form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyCurrentlyKnownInStock")).'</td>';
+	// Expected quantity = Snapshot taken at inventory creation
+	print '<td class="right">'.$form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasCreated")).'</td>';
 } else {
-	// Expected quantity = If inventory is closed: Quantity we had in stock when we start the inventory.
+	// Expected quantity = Quantity we had in stock when we start the inventory.
 	print '<td class="right">'.$form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasValidated")).'</td>';
 }
 if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
@@ -1066,6 +1080,11 @@ $sql .= $db->plimit($limit, $offset);
 
 $cacheOfProducts = array();
 $cacheOfWarehouses = array();
+$expectedQtyCache = array();
+$inventoryAnchor = !empty($object->date_inventory) ? $object->date_inventory : null;
+if (!empty($inventoryAnchor) && !is_numeric($inventoryAnchor)) {
+	$inventoryAnchor = dol_stringtotime($inventoryAnchor);
+}
 
 //$sql = '';
 $resql = $db->query($sql);
@@ -1106,6 +1125,42 @@ if ($resql) {
 			$cacheOfProducts[$product_static->id] = $product_static;
 		}
 
+		$expectedqty = $obj->qty_stock;
+		if (!empty($inventoryAnchor)) {
+			$batchKey = (string) $obj->batch;
+			$cacheKey = $obj->fk_product.'|'.$obj->fk_warehouse.'|'.$batchKey;
+			if (!array_key_exists($cacheKey, $expectedQtyCache)) {
+				if (isModEnabled('productbatch') && $product_static->hasbatch() && $batchKey !== '') {
+					$currentstock = $product_static->stock_warehouse[$obj->fk_warehouse]->detail_batch[$batchKey]->qty ?? 0;
+				} else {
+					$currentstock = $product_static->stock_warehouse[$obj->fk_warehouse]->real ?? 0;
+				}
+
+				$sqlmove = 'SELECT COALESCE(SUM(value),0) as moved';
+				$sqlmove .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement';
+				$sqlmove .= ' WHERE fk_product='.(int) $obj->fk_product;
+				$sqlmove .= ' AND fk_entrepot='.(int) $obj->fk_warehouse;
+				$sqlmove .= " AND datem > '".$db->escape($db->idate($inventoryAnchor))."'";
+				if (isModEnabled('productbatch') && $product_static->hasbatch()) {
+					if ($batchKey !== '') {
+						$sqlmove .= " AND batch='".$db->escape($batchKey)."'";
+					} else {
+						$sqlmove .= " AND (batch = '' OR batch IS NULL)";
+					}
+				}
+				$resmove = $db->query($sqlmove);
+				$moved = 0.0;
+				if ($resmove) {
+					$movobj = $db->fetch_object($resmove);
+					$moved = $movobj ? (float) $movobj->moved : 0.0;
+				}
+
+				$expectedQtyCache[$cacheKey] = (float) $currentstock - (float) $moved;
+			}
+			$expectedqty = $expectedQtyCache[$cacheKey];
+			$obj->qty_stock = $expectedqty;
+		}
+
 		print '<tr class="oddeven">';
 		print '<td id="id_'.$obj->rowid.'_warehouse" data-ref="'.dol_escape_htmltag($warehouse_static->ref).'">';
 		print $warehouse_static->getNomUrl(1);
@@ -1127,12 +1182,13 @@ if ($resql) {
 			print '</td>';
 		}
 
-		// Expected quantity = If inventory is open: Quantity currently in stock (may change if stock movement are done during the inventory)
+		// Expected quantity = Snapshot taken at inventory creation.
 		// Expected quantity = If inventory is closed: Quantity we had in stock when we start the inventory.
 		print '<td class="right expectedqty" id="id_'.$obj->rowid.'" title="Stock viewed at last update: '.$obj->qty_stock.'">';
 		$valuetoshow = $obj->qty_stock;
-		// For inventory not yet close, we overwrite with the real value in stock now
-		if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {
+		if (($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED)
+			&& ($valuetoshow === null || $valuetoshow === '')
+		) {
 			if (isModEnabled('productbatch') && $product_static->hasbatch()) {
 				$valuetoshow = $product_static->stock_warehouse[$obj->fk_warehouse]->detail_batch[$obj->batch]->qty ?? 0;
 			} else {

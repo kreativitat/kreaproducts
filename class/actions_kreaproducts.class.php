@@ -25,6 +25,7 @@
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/class/commonhookactions.class.php';
+require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
 
 /**
  * Class ActionsKreaProducts
@@ -350,12 +351,37 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $db, $conf;
+		global $db, $conf, $user;
 
 		$error = 0;
 		$handled = $this->redirectToCustomPages($parameters, $object, $action);
 		if ($handled) {
 			return 0;
+		}
+
+		if ($object->element === 'inventory' && $action === 'confirm_validate') {
+			$permissiontoadd = !getDolGlobalString('MAIN_USE_ADVANCED_PERMS')
+				? $user->rights->stock->creer
+				: $user->rights->stock->inventory_advance->write;
+			if ($permissiontoadd) {
+				$sql = 'SELECT COUNT(*) as cnt FROM ' . MAIN_DB_PREFIX . 'inventorydet WHERE fk_inventory=' . (int) $object->id;
+				$resql = $db->query($sql);
+				if ($resql) {
+					$row = $db->fetch_object($resql);
+					if ($row && (int) $row->cnt > 0) {
+						$result = $object->setStatut(Inventory::STATUS_VALIDATED, null, '', 'INVENTORY_VALIDATED');
+						if ($result > 0) {
+							header('Location: ' . dol_buildpath('/custom/kreaproducts/inventory.php', 1) . '?id=' . (int) $object->id);
+							exit;
+						}
+						$this->errors[] = $object->error;
+						return -1;
+					}
+				} else {
+					$this->errors[] = $db->lasterror();
+					return -1;
+				}
+			}
 		}
 
 		// 3) Existing logic: update stockable_product on product create/update
@@ -426,8 +452,11 @@ class ActionsKreaProducts extends CommonHookActions
 			return true;
 		}
 
-		if (strpos($currentcontext, 'inventorycard') !== false && ! $isKreaCustomPage) {
-			if (! defined('KREA_INVENTORY_PAGE_OVERRIDE') && ($action === 'view' || $action === '' || $action === null)) {
+		$isInventoryCard = (bool) preg_match('#/product/inventory/card\.php$#', $scriptPath);
+		$isInventorySheet = (bool) preg_match('#/product/inventory/inventory\.php$#', $scriptPath);
+		if ((strpos($currentcontext, 'inventorycard') !== false || $isInventoryCard || $isInventorySheet) && ! $isKreaCustomPage) {
+			$isPost = (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST');
+			if (! $isPost && ! defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
 				define('KREA_INVENTORY_PAGE_OVERRIDE', true);
 				$scriptName = basename($scriptPath);
 				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
@@ -436,6 +465,18 @@ class ActionsKreaProducts extends CommonHookActions
 					$target = '/kreaproducts/inventory_card.php';
 				}
 				header('Location: ' . dol_buildpath($target, 1) . $q);
+				exit;
+			}
+
+			return true;
+		}
+
+		$isInventoryList = (bool) preg_match('#/product/inventory/list\.php$#', $scriptPath);
+		if ((strpos($currentcontext, 'inventorylist') !== false || $isInventoryList) && ! $isKreaCustomPage) {
+			if (! defined('KREA_INVENTORYLIST_PAGE_OVERRIDE') && ($action === 'view' || $action === '' || $action === null)) {
+				define('KREA_INVENTORYLIST_PAGE_OVERRIDE', true);
+				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
+				header('Location: ' . dol_buildpath('/custom/kreaproducts/inventory_list.php', 1) . $q);
 				exit;
 			}
 
