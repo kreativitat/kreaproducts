@@ -230,6 +230,34 @@ if (empty($reshook)) {
 		$massaction = ''; // Protection to avoid mass action if we force a new search during a mass action confirmation
 	}
 
+	if (in_array($massaction, array('predelete', 'delete'), true) && !empty($toselect)) {
+		$selectedIds = array_values(array_filter(array_map('intval', $toselect)));
+		if (!empty($selectedIds)) {
+			$sqlClosed = 'SELECT rowid FROM '.MAIN_DB_PREFIX.'inventory';
+			$sqlClosed .= ' WHERE rowid IN ('.$db->sanitize(implode(',', $selectedIds)).')';
+			$sqlClosed .= ' AND status = '.((int) Inventory::STATUS_RECORDED);
+			$resClosed = $db->query($sqlClosed);
+			if ($resClosed) {
+				$closedIds = array();
+				while ($row = $db->fetch_object($resClosed)) {
+					$closedIds[] = (int) $row->rowid;
+				}
+				if (!empty($closedIds)) {
+					$toselect = array_values(array_diff($selectedIds, $closedIds));
+					setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_DELETE_CLOSED'), null, 'errors');
+					if (empty($toselect)) {
+						$massaction = '';
+						$action = 'list';
+					}
+				}
+			} else {
+				setEventMessages($db->lasterror(), null, 'errors');
+				$massaction = '';
+				$action = 'list';
+			}
+		}
+	}
+
 	// Mass actions
 	$objectclass = 'Inventory';
 	$objectlabel = 'Inventory';

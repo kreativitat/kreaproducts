@@ -338,6 +338,120 @@ class ActionsKreaProducts extends CommonHookActions
 	}
 
 	/**
+	 * Inject inventory print sheet link under Inventory list in left menu.
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata
+	 * @param array<int,array<string,mixed>> $menuitems Menu items to adjust
+	 * @param ?string $action Current action
+	 * @param HookManager $hookmanager Hook manager
+	 * @return int
+	 */
+	public function menuLeftMenuItems($parameters, &$menuitems, &$action, $hookmanager)
+	{
+		global $langs, $user;
+
+		if (!is_array($menuitems)) {
+			return 0;
+		}
+		if (empty($parameters['mainmenu']) || $parameters['mainmenu'] !== 'products') {
+			return 0;
+		}
+		if (!isModEnabled('kreaproducts') || !isModEnabled('stock')) {
+			return 0;
+		}
+
+		$langs->load('kreaproducts@kreaproducts');
+		$permission = ($user->hasRight('stock', 'lire') || $user->hasRight('stock', 'inventory_advance', 'read'));
+
+		$newmenu = array();
+		$inserted = false;
+
+		foreach ($menuitems as $item) {
+			if (!empty($item['url']) && strpos($item['url'], '/kreaproducts/inventory_printsheet.php') !== false) {
+				continue;
+			}
+
+			$newmenu[] = $item;
+
+			$isInventoryList = (!empty($item['url'])
+				&& strpos($item['url'], '/product/inventory/list.php') !== false
+				&& strpos($item['url'], 'leftmenu=stock_inventories') !== false
+				&& isset($item['level'])
+				&& (int) $item['level'] === 1);
+
+			if (!$inserted && $isInventoryList) {
+				$newmenu[] = array(
+					'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
+					'titre' => $langs->trans('KREAPRODUCTS_INVENTORY_PRINT_SHEET'),
+					'level' => 1,
+					'enabled' => (int) $permission,
+					'target' => '_blank',
+					'mainmenu' => 'products',
+					'leftmenu' => 'stock_inventories',
+					'position' => isset($item['position']) ? (int) $item['position'] : 0,
+					'id' => '',
+					'idsel' => '',
+					'classname' => '',
+					'prefix' => '',
+				);
+				$inserted = true;
+			}
+		}
+
+		if (!$inserted) {
+			$newmenu[] = array(
+				'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
+				'titre' => $langs->trans('KREAPRODUCTS_INVENTORY_PRINT_SHEET'),
+				'level' => 1,
+				'enabled' => (int) $permission,
+				'target' => '_blank',
+				'mainmenu' => 'products',
+				'leftmenu' => 'stock_inventories',
+				'position' => 0,
+				'id' => '',
+				'idsel' => '',
+				'classname' => '',
+				'prefix' => '',
+			);
+		}
+
+		$this->results = $newmenu;
+		return 1;
+	}
+
+	/**
+	 * Override inventory status label for started inventories.
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata
+	 * @param CommonObject $object The object to process
+	 * @param ?string $action Current action
+	 * @param HookManager $hookmanager Hook manager
+	 * @return int
+	 */
+	public function LibStatut($parameters, &$object, &$action, $hookmanager)
+	{
+		global $langs;
+
+		if (!is_object($object) || $object->element !== 'inventory') {
+			return 0;
+		}
+
+		$status = isset($parameters['status']) ? (int) $parameters['status'] : (int) $object->status;
+		if ($status !== Inventory::STATUS_VALIDATED) {
+			return 0;
+		}
+
+		$mode = isset($parameters['mode']) ? (int) $parameters['mode'] : 0;
+		$langs->load('kreaproducts@kreaproducts');
+
+		$label = $langs->transnoentitiesnoconv('KREAPRODUCTS_INVENTORY_STARTED');
+		$statusType = 'status'.$status;
+
+		$this->resprints = dolGetStatus($label, $label, '', $statusType, $mode);
+		return 1;
+	}
+
+	/**
 	 * Overload the doActions function.
 	 *
 	 * - On inventory pages (card.php and inventory.php): include custom KreaProducts versions and stop core.
@@ -351,7 +465,7 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $db, $conf, $user;
+		global $db, $conf, $user, $langs;
 
 		$error = 0;
 		$handled = $this->redirectToCustomPages($parameters, $object, $action);
@@ -360,6 +474,11 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 
 		if ($object->element === 'inventory' && $action === 'confirm_validate') {
+			if ((int) $object->status === Inventory::STATUS_RECORDED) {
+				$langs->load('kreaproducts@kreaproducts');
+				setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_CLOSED_LOCKED'), null, 'errors');
+				return -1;
+			}
 			$permissiontoadd = !getDolGlobalString('MAIN_USE_ADVANCED_PERMS')
 				? $user->rights->stock->creer
 				: $user->rights->stock->inventory_advance->write;

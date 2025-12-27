@@ -59,6 +59,9 @@ KREAPRODUCTS_INVENTORY_PRINT_UNIT = Stock unit for counting
 KREAPRODUCTS_INVENTORY_PRINT_UNIT_COUNT = Units (COUNT)
 KREAPRODUCTS_INVENTORY_PRINT_UNIT_WEIGHT = Kilograms (WEIGH)
 KREAPRODUCTS_INVENTORY_PRINT_UNIT_VOLUME = Liters (MEASURE)
+KREAPRODUCTS_INVENTORY_STARTED = Started
+KREAPRODUCTS_INVENTORY_DELETE_CLOSED = Closed inventories cannot be deleted
+KREAPRODUCTS_INVENTORY_CLOSED_LOCKED = Closed inventories cannot be changed
 QtyInStockWhenInventoryWasCreated = Quantity in stock when the inventory was created (before stock correction)
 
 

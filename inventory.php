@@ -138,6 +138,16 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 	$permissiontoupdatestock = $user->hasRight('stock', 'inventory_advance', 'write');
 }
 
+$isClosedInventory = (!empty($object->id) && (int) $object->status === Inventory::STATUS_RECORDED);
+if ($isClosedInventory && in_array($action, array('delete', 'confirm_delete'), true)) {
+	setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_DELETE_CLOSED'), null, 'errors');
+	$action = '';
+}
+if ($isClosedInventory && in_array($action, array('confirm_validate', 'validate', 'setdraft', 'confirm_setdraft', 'update', 'update_extras', 'updateinventorylines', 'deleteline', 'confirm_deleteline', 'confirm_cancel', 'record', 'cancel_record'), true)) {
+	setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_CLOSED_LOCKED'), null, 'errors');
+	$action = '';
+}
+
 $now = dol_now();
 
 
@@ -1267,7 +1277,7 @@ if ($resql) {
 			//Krea
 			print '<td class="right nowraponall">';
 			//print  round($obj->qty_view - $obj->qty_stock,2);
-			print $obj->qty_view - $obj->qty_stock;
+			print price2num($obj->qty_view - $obj->qty_stock, 'MS');
 			print '</td>';
 			print '<td>';
 			print '</td>';
@@ -1322,7 +1332,7 @@ if ($resql) {
 			print '</td>';
 			//Krea
 			print '<td class="right nowraponall">';
-			print $obj->qty_view - $obj->qty_stock;
+			print price2num($obj->qty_view - $obj->qty_stock, 'MS');
 			print '</td>';
 			// diferença em %
 			print '<td class="right nowraponall">';

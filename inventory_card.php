@@ -298,6 +298,17 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 	$upload_dir = $conf->stock->multidir_output[isset($object->entity) ? $object->entity : 1];
 }
 
+$isClosedInventory = (!empty($object->id) && (int) $object->status === Inventory::STATUS_RECORDED);
+if ($isClosedInventory && in_array($action, array('delete', 'confirm_delete'), true)) {
+	setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_DELETE_CLOSED'), null, 'errors');
+	$action = '';
+	$confirm = '';
+}
+if ($isClosedInventory && in_array($action, array('confirm_validate', 'validate', 'setdraft', 'confirm_setdraft', 'edit', 'update', 'update_extras', 'deleteline', 'confirm_deleteline'), true)) {
+	setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_CLOSED_LOCKED'), null, 'errors');
+	$action = '';
+	$confirm = '';
+}
 
 /*
  * Actions
@@ -648,13 +659,6 @@ if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'crea
 					print '<a class="butAction" href="'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&action=setdraft&confirm=yes&token='.newToken().'">'.$langs->trans("SetToDraft").'</a>';
 				}
 			}
-			// Back to validate
-			if ($object->status == $object::STATUS_RECORDED) {
-				if ($permissiontoadd) {
-					print '<a class="butAction" href="'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&action=confirm_validate&confirm=yes&token='.newToken().'">'.$langs->trans("ReOpen").'</a>';
-				}
-			}
-
 			// Modify
 			if ($object->status == $object::STATUS_DRAFT) {
 				if ($permissiontoadd) {
@@ -681,7 +685,9 @@ if ($object->id > 0 && (empty($action) || ($action != 'edit' && $action != 'crea
 			}
 
 			// Delete
-			print dolGetButtonAction($langs->trans("Delete"), '', 'delete', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=delete&token='.newToken(), 'delete', $permissiontodelete);
+			if ((int) $object->status !== $object::STATUS_RECORDED) {
+				print dolGetButtonAction($langs->trans("Delete"), '', 'delete', $_SERVER["PHP_SELF"].'?id='.$object->id.'&action=delete&token='.newToken(), 'delete', $permissiontodelete);
+			}
 		}
 		print '</div>'."\n";
 	}

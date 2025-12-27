@@ -53,7 +53,6 @@ require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_expression.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_parser.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
 if (isModEnabled('barcode')) {
 	dol_include_once('/core/class/html.formbarcode.class.php');
 }
@@ -147,76 +146,6 @@ if ($reshook < 0) {
 	setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
 }
 
-/**
- * Propagate cost-price updates down a dismantle BOM before running dismantle
- *
- * @param int  $productId
- * @param DoliDB $db
- * @param User $user
- */
-function kreaUpdateDismantleBomChildren($productId, $db, $user)
-{
-	dol_syslog(__FUNCTION__ . " start for productId={$productId}", LOG_DEBUG);
-
-	$dismantle = new ProductDismantleController($db);
-
-	// Only run for dismantle-category products with a dismantle BOM
-	if (!$dismantle->productInDismantleCategory($productId)) {
-		return;
-	}
-
-	$bomId = $dismantle->findBom($productId);
-	if (!$bomId) {
-		return;
-	}
-
-	$sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
-                   , bl.qty as line_qty
-            FROM " . MAIN_DB_PREFIX . "bom_bom b
-            JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
-            LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-            WHERE b.rowid = " . ((int) $bomId) . " AND b.bomtype = 1";
-
-	$res = $db->query($sql);
-	if (!$res) {
-		dol_syslog(__FUNCTION__ . " error loading dismantle children: " . $db->lasterror(), LOG_ERR);
-		return;
-	}
-
-	$children = [];
-	while ($obj = $db->fetch_object($res)) {
-		if (!empty($obj->child)) {
-			$children[(int)$obj->child] = (float) $obj->line_qty;
-		}
-	}
-	$db->free($res);
-
-	// Fetch parent cost price once
-	$parentProduct = new Product($db);
-	if ($parentProduct->fetch($productId) > 0) {
-		$parentCost = (float) $parentProduct->cost_price;
-	} else {
-		$parentCost = 0;
-	}
-
-	foreach ($children as $childId => $lineQty) {
-		// Update child cost directly based on dismantle logic (avoid division by zero)
-		$qty = ($lineQty > 0 ? $lineQty : 1);
-		if ($parentCost > 0) {
-			$childProd = new Product($db);
-			if ($childProd->fetch($childId) > 0) {
-				$newCost = $parentCost / $qty;
-				$childProd->cost_price = $newCost;
-				$childProd->buyprice = $newCost;
-				$childProd->update($childProd->id, $user);
-			}
-		}
-
-		// Also propagate through nested hierarchies for this child
-		ProductUpdater::updateProductCostPrice((int)$childId, true);
-	}
-}
-
 
 if ($action == 'setcost_price') {
 	if ($id) {
@@ -255,8 +184,6 @@ if ($action == 'setcost_price') {
 
 			$result = ProductHierarchy::updateProductAttributes($object->id, $user);
 			dol_syslog("DEBUG: ProductHierarchy::updateProductAttributes returned: " . $result, LOG_INFO);
-			// Also refresh dismantle BOM children cost trees
-			kreaUpdateDismantleBomChildren($object->id, $db, $user);
 		} catch (Exception $e) {
 			dol_syslog("ERROR: ProductHierarchy::updateProductAttributes failed: " . $e->getMessage(), LOG_ERR);
 		} catch (Error $e) {
@@ -467,9 +394,6 @@ if ($action == 'save_price') {
 
 if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
 	ProductHierarchy::updateProductAttributes($object->id, $user);
-	// Also propagate down dismantle BOM children so their nested cost trees are refreshed
-	kreaUpdateDismantleBomChildren($object->id, $db, $user);
-
 	setEventMessages("Peços de custo actualizados!", null, 'mesgs');
 	header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
 	exit;

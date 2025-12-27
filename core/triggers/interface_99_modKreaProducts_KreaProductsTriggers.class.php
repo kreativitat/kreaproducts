@@ -8,7 +8,6 @@
 require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
 
 /**
@@ -208,6 +207,14 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		if ($error) {
 			return -1;
 		}
+
+		if ((int) $inventory->status === Inventory::STATUS_DRAFT) {
+			$result = $inventory->setStatut(Inventory::STATUS_VALIDATED, null, '', 'INVENTORY_VALIDATED');
+			if ($result < 0) {
+				dol_syslog(__METHOD__ . " Error setting inventory to started: " . $inventory->error, LOG_ERR);
+				return -1;
+			}
+		}
 		return 1;
 	}
 
@@ -236,12 +243,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		if ($move->origintype === 'invoice_supplier') {
 			// Re‐compute stock levels after this supplier‐invoice move
 			$this->recalculateAfterSupplierInvoice($move, $db);
-
-			// Before dismantling, refresh cost prices of BOM children (including nested)
-			$this->updateDismantleChildrenBeforeTrigger($move, $db, $user);
-
-			// Then run any BOM dismantle logic
-			$this->dismantleIfNeeded($move, $db);
 		}
 
 		return 1;
@@ -312,54 +313,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 	}
 
-	/**
-	 * Before running dismantle, refresh children cost trees for dismantle BOM products
-	 */
-	protected function updateDismantleChildrenBeforeTrigger($move, $db, $user)
-	{
-		dol_syslog(__METHOD__, LOG_DEBUG);
-
-		$dismantle = new ProductDismantleController($db);
-
-		// Only proceed for products that are part of the dismantle category and have a dismantle BOM
-		if (!$dismantle->productInDismantleCategory($move->product_id)) {
-			return;
-		}
-
-		$bomId = $dismantle->findBom($move->product_id);
-		if (!$bomId) {
-			return;
-		}
-
-		$sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
-                FROM " . MAIN_DB_PREFIX . "bom_bom b
-                JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
-                LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-                WHERE b.rowid = " . (int) $bomId . " AND b.bomtype = 1";
-
-		$res = $db->query($sql);
-		if (!$res) {
-			dol_syslog(__METHOD__ . " Error loading dismantle BOM children: " . $db->lasterror(), LOG_ERR);
-			return;
-		}
-
-		$children = [];
-		while ($obj = $db->fetch_object($res)) {
-			if (!empty($obj->child)) {
-				$children[(int)$obj->child] = true;
-			}
-		}
-		$db->free($res);
-
-		if (empty($children)) {
-			return;
-		}
-
-		// Update each child (and its nested tree) using the existing ProductUpdater logic
-		foreach (array_keys($children) as $childId) {
-			ProductUpdater::updateProductCostPrice((int)$childId, true);
-		}
-	}
 
 	protected function recalculateAfterInventory($move, $db)
 	{
@@ -690,26 +643,4 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		dol_syslog(__METHOD__ . " Renamed inventory #{$inventory->id} '{$oldRef}' → '{$newRef}'", LOG_INFO);
 	}
 
-	protected function dismantleIfNeeded($move, $db)
-	{
-		dol_syslog(__METHOD__, LOG_DEBUG);
-
-		$d    = new ProductDismantleController($db);
-		if (!$d->productInDismantleCategory($move->product_id)) {
-			return;
-		}
-		if (!($bom = $d->findBom($move->product_id))) {
-			return;
-		}
-
-		$d->produceAndConsume(
-			$bom,
-			$move->qty,
-			$move->price,
-			$move->label,
-			$move->origin_id,
-			$move->origintype,
-			dol_stringtotime($move->datem)
-		);
-	}
 }

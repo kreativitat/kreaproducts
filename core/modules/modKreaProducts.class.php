@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.62';
+		$this->version = '2.67';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -139,6 +139,7 @@ class modKreaProducts extends DolibarrModules
 					'inventorylist',
 					'supplierpaymentcard',
 					'globalcard',
+					'leftblock',
 				)
 			),
 			// Set this to 1 if features of module are opened to external users
@@ -336,21 +337,22 @@ class modKreaProducts extends DolibarrModules
 		$this->rights[$r][4] = 'nutritional';
 		$this->rights[$r][5] = 'delete';
 		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 0 + 1);
 		$this->rights[$r][1] = 'Read ProductAllergens object of KreaProducts';
 		$this->rights[$r][4] = 'productallergens';
 		$this->rights[$r][5] = 'read';
 		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 1 + 1);
 		$this->rights[$r][1] = 'Create/Update ProductAllergens object of KreaProducts';
 		$this->rights[$r][4] = 'productallergens';
 		$this->rights[$r][5] = 'write';
 		$r++;
-		$this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 2 + 1);
 		$this->rights[$r][1] = 'Delete ProductAllergens object of KreaProducts';
 		$this->rights[$r][4] = 'productallergens';
 		$this->rights[$r][5] = 'delete';
 		$r++;
+
 		/* END MODULEBUILDER PERMISSIONS */
 
 		// Main menu entries to add
@@ -423,17 +425,17 @@ class modKreaProducts extends DolibarrModules
 			'object' => 'ProductAllergens'
 		);
 		$this->menu[$r++] = array(
-			'fk_menu' => 'fk_mainmenu=stock,fk_leftmenu=stock_inventories',
+			'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=stock',
 			'type' => 'left',
 			'titre' => 'KREAPRODUCTS_INVENTORY_PRINT_SHEET',
-			'mainmenu' => 'stock',
+			'mainmenu' => 'products',
 			'leftmenu' => 'kreaproducts_inventory_printsheet',
 			'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
 			'langs' => 'kreaproducts@kreaproducts',
 			'position' => 1000 + $r,
 			'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("stock")',
 			'perms' => '$user->hasRight("stock", "lire") || $user->hasRight("stock", "inventory_advance", "read")',
-			'target' => '',
+			'target' => '_blank',
 			'user' => 2
 		);
 		// Exports profiles provided by this module
@@ -642,7 +644,7 @@ class modKreaProducts extends DolibarrModules
 	 * @param string $column
 	 * @return bool
 	 */
-	private function columnExists(string $table, string $column): bool
+	private function columnExists($table, $column)
 	{
 		$sql = "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" . $table . "' AND COLUMN_NAME = '" . $this->db->escape($column) . "'";
 		$resql = $this->db->query($sql);
@@ -661,7 +663,7 @@ class modKreaProducts extends DolibarrModules
 	 * @param string $name
 	 * @return bool
 	 */
-	private function extrafieldExists(string $elementtype, string $name): bool
+	private function extrafieldExists($elementtype, $name)
 	{
 		$sql = "SELECT 1 FROM " . MAIN_DB_PREFIX . "extrafields WHERE elementtype = '" . $this->db->escape($elementtype) . "' AND name = '" . $this->db->escape($name) . "' LIMIT 1";
 		$resql = $this->db->query($sql);
