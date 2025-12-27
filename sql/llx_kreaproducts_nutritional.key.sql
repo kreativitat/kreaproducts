@@ -17,7 +17,6 @@
 -- BEGIN MODULEBUILDER INDEXES
 ALTER TABLE llx_kreaproducts_nutritional ADD INDEX idx_kreaproducts_nutritional_rowid (rowid);
 ALTER TABLE llx_kreaproducts_nutritional ADD INDEX idx_kreaproducts_nutritional_fk_product (fk_product);
-ALTER TABLE llx_kreaproducts_nutritional ADD INDEX idx_kreaproducts_nutritional_fk_product (fk_product);
 -- END MODULEBUILDER INDEXES
 
 --ALTER TABLE llx_kreaproducts_nutritional ADD UNIQUE INDEX uk_kreaproducts_nutritional_fieldxy(fieldx, fieldy);

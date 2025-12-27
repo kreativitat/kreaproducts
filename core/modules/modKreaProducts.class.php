@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.67';
+		$this->version = '2.75';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -351,6 +351,11 @@ class modKreaProducts extends DolibarrModules
 		$this->rights[$r][1] = 'Delete ProductAllergens object of KreaProducts';
 		$this->rights[$r][4] = 'productallergens';
 		$this->rights[$r][5] = 'delete';
+		$r++;
+		$this->rights[$r][0] = $this->numero . sprintf('%02d', (2 * 10) + 0 + 1);
+		$this->rights[$r][1] = 'View expected inventory values';
+		$this->rights[$r][4] = 'inventory';
+		$this->rights[$r][5] = 'expected';
 		$r++;
 
 		/* END MODULEBUILDER PERMISSIONS */

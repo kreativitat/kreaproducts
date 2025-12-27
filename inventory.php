@@ -26,13 +26,13 @@
 if (!defined('DOL_DOCUMENT_ROOT')) {
 	require '../../main.inc.php';
 }
-include_once DOL_DOCUMENT_ROOT.'/core/class/html.formcompany.class.php';
-include_once DOL_DOCUMENT_ROOT.'/product/class/html.formproduct.class.php';
-include_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
-include_once DOL_DOCUMENT_ROOT.'/product/inventory/class/inventory.class.php';
-include_once DOL_DOCUMENT_ROOT.'/product/inventory/lib/inventory.lib.php';
-include_once DOL_DOCUMENT_ROOT.'/product/stock/class/mouvementstock.class.php';
-include_once DOL_DOCUMENT_ROOT.'/product/stock/class/productlot.class.php';
+include_once DOL_DOCUMENT_ROOT . '/core/class/html.formcompany.class.php';
+include_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
+include_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+include_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
+include_once DOL_DOCUMENT_ROOT . '/product/inventory/lib/inventory.lib.php';
+include_once DOL_DOCUMENT_ROOT . '/product/stock/class/mouvementstock.class.php';
+include_once DOL_DOCUMENT_ROOT . '/product/stock/class/productlot.class.php';
 
 /**
  * @var Conf $conf
@@ -72,10 +72,17 @@ $batch = GETPOST('batch', 'alphanohtml');
 $totalExpectedValuation = 0;
 $totalRealValuation = 0;
 $hookmanager->initHooks(array('inventorycard')); // Note that conf->hooks_modules contains array
+
+// Security check
+$socid = 0;
+if ($user->socid > 0) {	// Protection if external user
+	//$socid = $user->socid;
+	accessforbidden();
+}
 if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
-	$result = restrictedArea($user, 'stock', $id);
+	$result = restrictedArea($user, 'stock');
 } else {
-	$result = restrictedArea($user, 'stock', $id, '', 'inventory_advance');
+	$result = restrictedArea($user, 'stock', 0, '', 'inventory_advance');
 }
 
 // Initialize a technical objects
@@ -84,7 +91,7 @@ $extrafields = new ExtraFields($db);
 if (isset($object->fields['date_inventory'])) {
 	$object->fields['date_inventory']['type'] = 'datetime';
 }
-$diroutputmassaction = $conf->stock->dir_output.'/temp/massgeneration/'.$user->id;
+$diroutputmassaction = $conf->stock->dir_output . '/temp/massgeneration/' . $user->id;
 
 // Default sort order (if not yet defined by previous GETPOST)
 if (!$sortfield) {
@@ -103,8 +110,8 @@ $search_array_options = $extrafields->getOptionalsFromPost($object->table_elemen
 $search_all = GETPOST("search_all", 'alpha');
 $search = array();
 foreach ($object->fields as $key => $val) {
-	if (GETPOST('search_'.$key, 'alpha')) {
-		$search[$key] = GETPOST('search_'.$key, 'alpha');
+	if (GETPOST('search_' . $key, 'alpha')) {
+		$search[$key] = GETPOST('search_' . $key, 'alpha');
 	}
 }
 
@@ -113,7 +120,7 @@ if (empty($action) && empty($id) && empty($ref)) {
 }
 
 // Load object
-include DOL_DOCUMENT_ROOT.'/core/actions_fetchobject.inc.php'; // Must be 'include', not 'include_once'.
+include DOL_DOCUMENT_ROOT . '/core/actions_fetchobject.inc.php'; // Must be 'include', not 'include_once'.
 
 // Security check - Protection if external user
 //if ($user->socid > 0) accessforbidden();
@@ -124,7 +131,7 @@ include DOL_DOCUMENT_ROOT.'/core/actions_fetchobject.inc.php'; // Must be 'inclu
 $paramwithsearch = '&sortfield=' . urlencode($sortfield);
 $paramwithsearch .= '&sortorder=' . urlencode($sortorder);
 if ($limit > 0 && $limit != $conf->liste_limit) {
-	$paramwithsearch .= '&limit='.((int) $limit);
+	$paramwithsearch .= '&limit=' . ((int) $limit);
 }
 
 
@@ -137,6 +144,8 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 	$permissiontodelete = $user->hasRight('stock', 'inventory_advance', 'write');
 	$permissiontoupdatestock = $user->hasRight('stock', 'inventory_advance', 'write');
 }
+$permissiontoseeexpected = $user->hasRight('kreaproducts', 'inventory', 'expected');
+$showexpected = $permissiontoseeexpected || (!empty($object->id) && (int) $object->status === Inventory::STATUS_RECORDED);
 
 $isClosedInventory = (!empty($object->id) && (int) $object->status === Inventory::STATUS_RECORDED);
 if ($isClosedInventory && in_array($action, array('delete', 'confirm_delete'), true)) {
@@ -185,8 +194,8 @@ if (empty($reshook)) {
 
 		$sql = 'SELECT id.rowid, id.datec as date_creation, id.tms as date_modification, id.fk_inventory, id.fk_warehouse,';
 		$sql .= ' id.fk_product, id.batch, id.qty_stock, id.qty_view, id.qty_regulated, id.pmp_real';
-		$sql .= ' FROM '.MAIN_DB_PREFIX.'inventorydet as id';
-		$sql .= ' WHERE id.fk_inventory = '.((int) $object->id);
+		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'inventorydet as id';
+		$sql .= ' WHERE id.fk_inventory = ' . ((int) $object->id);
 		$sql .= ' ORDER BY id.rowid';
 
 		$resql = $db->query($sql);
@@ -224,7 +233,8 @@ if (empty($reshook)) {
 				}
 
 				if (!is_null($qty_view)) {
-					$stock_movement_qty = price2num($qty_view - $realqtynow, 'MS');
+					$baseqty = (is_numeric($qty_stock) ? $qty_stock : $realqtynow);
+					$stock_movement_qty = price2num($qty_view - $baseqty, 'MS');
 					//print "Process inventory line ".$line->rowid." product=".$product_static->id." realqty=".$realqtynow." qty_stock=".$qty_stock." qty_view=".$qty_view." warehouse=".$line->fk_warehouse." qty to move=".$stock_movement_qty."<br>\n";
 
 					if ($stock_movement_qty != 0) {
@@ -234,9 +244,12 @@ if (empty($reshook)) {
 							$movement_type = 0;
 						}
 
-						$datemovement = '';
+						$datemovement = $object->date_inventory;
+						if (!empty($datemovement) && is_numeric($datemovement)) {
+							$datemovement = $db->idate($datemovement);
+						}
 						//$inventorycode = 'INV'.$object->id;
-						$inventorycode = 'INV-'.$object->ref;
+						$inventorycode = 'INV-' . $object->ref;
 						$price = 0;
 						if (!empty($line->pmp_real) && getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
 							$price = $line->pmp_real;
@@ -250,9 +263,9 @@ if (empty($reshook)) {
 						}
 
 						// Update line with id of stock movement (and the start quantity if it has changed this last recording)
-						$sqlupdate = "UPDATE ".MAIN_DB_PREFIX."inventorydet";
-						$sqlupdate .= " SET fk_movement = ".((int) $idstockmove);
-						$sqlupdate .= " WHERE rowid = ".((int) $line->rowid);
+						$sqlupdate = "UPDATE " . MAIN_DB_PREFIX . "inventorydet";
+						$sqlupdate .= " SET fk_movement = " . ((int) $idstockmove);
+						$sqlupdate .= " WHERE rowid = " . ((int) $line->rowid);
 						$resqlupdate = $db->query($sqlupdate);
 						if (! $resqlupdate) {
 							$error++;
@@ -262,7 +275,7 @@ if (empty($reshook)) {
 					}
 
 					if (!empty($line->pmp_real) && getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
-						$sqlpmp = 'UPDATE '.MAIN_DB_PREFIX.'product SET pmp = '.((float) $line->pmp_real).' WHERE rowid = '.((int) $line->fk_product);
+						$sqlpmp = 'UPDATE ' . MAIN_DB_PREFIX . 'product SET pmp = ' . ((float) $line->pmp_real) . ' WHERE rowid = ' . ((int) $line->fk_product);
 						$resqlpmp = $db->query($sqlpmp);
 						if (! $resqlpmp) {
 							$error++;
@@ -270,7 +283,7 @@ if (empty($reshook)) {
 							break;
 						}
 						if (getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED')) {
-							$sqlpmp = 'UPDATE '.MAIN_DB_PREFIX.'product_perentity SET pmp = '.((float) $line->pmp_real).' WHERE fk_product = '.((int) $line->fk_product).' AND entity='.$conf->entity;
+							$sqlpmp = 'UPDATE ' . MAIN_DB_PREFIX . 'product_perentity SET pmp = ' . ((float) $line->pmp_real) . ' WHERE fk_product = ' . ((int) $line->fk_product) . ' AND entity=' . $conf->entity;
 							$resqlpmp = $db->query($sqlpmp);
 							if (! $resqlpmp) {
 								$error++;
@@ -301,9 +314,9 @@ if (empty($reshook)) {
 	// Save quantity found during inventory (when we click on Save button on inventory page)
 	if ($action == 'updateinventorylines' && $permissiontoupdatestock) {
 		$sql = 'SELECT id.rowid, id.datec as date_creation, id.tms as date_modification, id.fk_inventory, id.fk_warehouse,';
-		$sql .= ' id.fk_product, id.batch, id.qty_stock, id.qty_view, id.qty_regulated';
-		$sql .= ' FROM '.MAIN_DB_PREFIX.'inventorydet as id';
-		$sql .= ' WHERE id.fk_inventory = '.((int) $object->id);
+		$sql .= ' id.fk_product, id.batch, id.qty_stock, id.qty_view, id.qty_regulated, id.pmp_expected';
+		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'inventorydet as id';
+		$sql .= ' WHERE id.fk_inventory = ' . ((int) $object->id);
 		$sql .= $db->order('id.rowid', 'ASC');
 		$sql .= $db->plimit($limit, $offset);
 
@@ -323,18 +336,23 @@ if (empty($reshook)) {
 				$result = 0;
 				$resultupdate = 0;
 
-				if (GETPOST("id_".$lineid, 'alpha') != '') {		// If a value was set ('0' or something else)
-					$qtytoupdate = (float) price2num(GETPOST("id_".$lineid, 'alpha'), 'MS');
+				if (GETPOST("id_" . $lineid, 'alpha') != '') {		// If a value was set ('0' or something else)
+					$qtytoupdate = (float) price2num(GETPOST("id_" . $lineid, 'alpha'), 'MS');
 					$result = $inventoryline->fetch($lineid);
 					if ($qtytoupdate < 0) {
 						$result = -1;
 						setEventMessages($langs->trans("FieldCannotBeNegative", $langs->transnoentitiesnoconv("RealQty")), null, 'errors');
 					}
 					if ($result > 0) {
-						$inventoryline->qty_stock = (float) price2num(GETPOST('stock_qty_'.$lineid, 'alpha'), 'MS');	// The new value that was set in as hidden field
+						if (!$permissiontoseeexpected && ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED)) {
+							$inventoryline->qty_stock = (float) $line->qty_stock;
+							$inventoryline->pmp_expected = (float) $line->pmp_expected;
+						} else {
+							$inventoryline->qty_stock = (float) price2num(GETPOST('stock_qty_' . $lineid, 'alpha'), 'MS');	// The new value that was set in as hidden field
+							$inventoryline->pmp_expected = price2num(GETPOST('expectedpmp_' . $lineid, 'alpha'), 'MS');
+						}
 						$inventoryline->qty_view = $qtytoupdate;	// The new value we want
-						$inventoryline->pmp_real = price2num(GETPOST('realpmp_'.$lineid, 'alpha'), 'MS');
-						$inventoryline->pmp_expected = price2num(GETPOST('expectedpmp_'.$lineid, 'alpha'), 'MS');
+						$inventoryline->pmp_real = price2num(GETPOST('realpmp_' . $lineid, 'alpha'), 'MS');
 						$resultupdate = $inventoryline->update($user);
 					}
 				} elseif (GETPOSTISSET('id_' . $lineid)) {
@@ -342,8 +360,12 @@ if (empty($reshook)) {
 					$result = $inventoryline->fetch($lineid);
 					if ($result > 0) {
 						$inventoryline->qty_view = null;			// The new value we want
-						$inventoryline->pmp_real = price2num(GETPOST('realpmp_'.$lineid, 'alpha'), 'MS');
-						$inventoryline->pmp_expected = price2num(GETPOST('expectedpmp_'.$lineid, 'alpha'), 'MS');
+						$inventoryline->pmp_real = price2num(GETPOST('realpmp_' . $lineid, 'alpha'), 'MS');
+						if (!$permissiontoseeexpected && ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED)) {
+							$inventoryline->pmp_expected = (float) $line->pmp_expected;
+						} else {
+							$inventoryline->pmp_expected = price2num(GETPOST('expectedpmp_' . $lineid, 'alpha'), 'MS');
+						}
 						$resultupdate = $inventoryline->update($user);
 					}
 				}
@@ -358,9 +380,9 @@ if (empty($reshook)) {
 
 		// Update line with id of stock movement (and the start quantity if it has changed this last recording)
 		if (! $error) {
-			$sqlupdate = "UPDATE ".MAIN_DB_PREFIX."inventory";
-			$sqlupdate .= " SET fk_user_modif = ".((int) $user->id);
-			$sqlupdate .= " WHERE rowid = ".((int) $object->id);
+			$sqlupdate = "UPDATE " . MAIN_DB_PREFIX . "inventory";
+			$sqlupdate .= " SET fk_user_modif = " . ((int) $user->id);
+			$sqlupdate .= " WHERE rowid = " . ((int) $object->id);
 			$resqlupdate = $db->query($sqlupdate);
 			if (! $resqlupdate) {
 				$error++;
@@ -375,17 +397,17 @@ if (empty($reshook)) {
 		}
 	}
 
-	$backurlforlist = DOL_URL_ROOT.'/product/inventory/list.php';
-	$backtopage = DOL_URL_ROOT.'/product/inventory/inventory.php?id='.$object->id.'&page='.$page.$paramwithsearch;
+	$backurlforlist = DOL_URL_ROOT . '/product/inventory/list.php';
+	$backtopage = DOL_URL_ROOT . '/product/inventory/inventory.php?id=' . $object->id . '&page=' . $page . $paramwithsearch;
 
 	// Actions cancel, add, update, delete or clone
-	include DOL_DOCUMENT_ROOT.'/core/actions_addupdatedelete.inc.php';
+	include DOL_DOCUMENT_ROOT . '/core/actions_addupdatedelete.inc.php';
 
 	// Actions when linking object each other
-	include DOL_DOCUMENT_ROOT.'/core/actions_dellink.inc.php';
+	include DOL_DOCUMENT_ROOT . '/core/actions_dellink.inc.php';
 
 	// Actions when printing a doc from card
-	include DOL_DOCUMENT_ROOT.'/core/actions_printing.inc.php';
+	include DOL_DOCUMENT_ROOT . '/core/actions_printing.inc.php';
 
 	// Actions to send emails
 	/*$triggersendname = 'MYOBJECT_SENTBYMAIL';
@@ -462,15 +484,15 @@ if (empty($reshook)) {
 $form = new Form($db);
 $formproduct = new FormProduct($db);
 
+// Part to show record
+if ($object->id <= 0) {
+	accessforbidden($langs->trans('ErrorRecordNotFound'));
+	exit;
+}
+
 $help_url = '';
 
 llxHeader('', $langs->trans('Inventory'), $help_url, '', 0, 0, '', '', '', 'mod-product page-inventory_inventory');
-
-// Part to show record
-if ($object->id <= 0) {
-	dol_print_error(null, 'Bad value for object id');
-	exit;
-}
 
 $param = '';
 if ($limit > 0 && $limit != $conf->liste_limit) {
@@ -501,29 +523,29 @@ $formconfirm = '';
 
 // Confirmation to delete
 if ($action == 'delete') {
-	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('DeleteInventory'), $langs->trans('ConfirmDeleteOrder'), 'confirm_delete', '', 0, 1);
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('DeleteInventory'), $langs->trans('ConfirmDeleteOrder'), 'confirm_delete', '', 0, 1);
 }
 // Confirmation to delete line
 if ($action == 'deleteline') {
-	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id.'&lineid='.$lineid.'&page='.$page.$paramwithsearch, $langs->trans('DeleteLine'), $langs->trans('ConfirmDeleteLine'), 'confirm_deleteline', '', 0, 1);
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id . '&lineid=' . $lineid . '&page=' . $page . $paramwithsearch, $langs->trans('DeleteLine'), $langs->trans('ConfirmDeleteLine'), 'confirm_deleteline', '', 0, 1);
 }
 
 // Clone confirmation
 if ($action == 'clone') {
 	// Create an array for form
 	$formquestion = array();
-	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('ToClone'), $langs->trans('ConfirmCloneMyObject', $object->ref), 'confirm_clone', $formquestion, 'yes', 1);
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('ToClone'), $langs->trans('ConfirmCloneMyObject', $object->ref), 'confirm_clone', $formquestion, 'yes', 1);
 }
 
 // Confirmation to close
 if ($action == 'record') {
-	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id.'&page='.$page.$paramwithsearch, $langs->trans('Close'), $langs->trans('ConfirmFinish'), 'update', '', 0, 1);
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id . '&page=' . $page . $paramwithsearch, $langs->trans('Close'), $langs->trans('ConfirmFinish'), 'update', '', 0, 1);
 	$action = 'view';
 }
 
 // Confirmation to close
 if ($action == 'confirm_cancel') {
-	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('Cancel'), $langs->trans('ConfirmCancel'), 'cancel_record', '', 0, 1);
+	$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('Cancel'), $langs->trans('ConfirmCancel'), 'cancel_record', '', 0, 1);
 	$action = 'view';
 }
 
@@ -534,7 +556,7 @@ if ($action == 'validate') {
 		$formquestion = array(
 			array('type' => 'checkbox', 'name' => 'include_sub_warehouse', 'label' => $langs->trans("IncludeSubWarehouse"), 'value' => 1, 'size' => '10'),
 		);
-		$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"].'?id='.$object->id, $langs->trans('ValidateInventory'), $langs->trans('IncludeSubWarehouseExplanation'), 'confirm_validate', $formquestion, '', 1);
+		$formconfirm = $form->formconfirm($_SERVER["PHP_SELF"] . '?id=' . $object->id, $langs->trans('ValidateInventory'), $langs->trans('IncludeSubWarehouseExplanation'), 'confirm_validate', $formquestion, '', 1);
 	}
 }
 
@@ -553,7 +575,7 @@ print $formconfirm;
 
 // Object card
 // ------------------------------------------------------------
-$linkback = '<a href="'.DOL_URL_ROOT.'/product/inventory/list.php">'.$langs->trans("BackToList").'</a>';
+$linkback = '<a href="' . DOL_URL_ROOT . '/product/inventory/list.php">' . $langs->trans("BackToList") . '</a>';
 
 $morehtmlref = '<div class="refidno">';
 /*
@@ -604,13 +626,13 @@ dol_banner_tab($object, 'ref', $linkback, 1, 'ref', 'ref', $morehtmlref);
 print '<div class="fichecenter">';
 print '<div class="fichehalfleft">';
 print '<div class="underbanner clearboth"></div>';
-print '<table class="border centpercent tableforfield">'."\n";
+print '<table class="border centpercent tableforfield">' . "\n";
 
 // Common attributes
-include DOL_DOCUMENT_ROOT.'/core/tpl/commonfields_view.tpl.php';
+include DOL_DOCUMENT_ROOT . '/core/tpl/commonfields_view.tpl.php';
 
 // Other attributes. Fields from hook formObjectOptions and Extrafields.
-include DOL_DOCUMENT_ROOT.'/core/tpl/extrafields_view.tpl.php';
+include DOL_DOCUMENT_ROOT . '/core/tpl/extrafields_view.tpl.php';
 
 //print '<tr><td class="titlefield fieldname_invcode">'.$langs->trans("InventoryCode").'</td><td>INV'.$object->id.'</td></tr>';
 
@@ -622,20 +644,20 @@ print '<div class="clearboth"></div>';
 
 print dol_get_fiche_end();
 
-print '<form id="formrecord" name="formrecord" method="POST" action="'.$_SERVER["PHP_SELF"].'?page='.$page.'&id='.$object->id.'">';
-print '<input type="hidden" name="token" value="'.newToken().'">';
+print '<form id="formrecord" name="formrecord" method="POST" action="' . $_SERVER["PHP_SELF"] . '?page=' . $page . '&id=' . $object->id . '">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<input type="hidden" name="action" value="updateinventorylines">';
-print '<input type="hidden" name="id" value="'.$object->id.'">';
+print '<input type="hidden" name="id" value="' . $object->id . '">';
 print '<input type="hidden" name="sortfield" value="' . $sortfield . '">';
 print '<input type="hidden" name="sortorder" value="' . $sortorder . '">';
 if ($backtopage) {
-	print '<input type="hidden" name="backtopage" value="'.$backtopage.'">';
+	print '<input type="hidden" name="backtopage" value="' . $backtopage . '">';
 }
 
 
 // Buttons for actions
 if ($action != 'record') {
-	print '<div class="tabsAction">'."\n";
+	print '<div class="tabsAction">' . "\n";
 	$parameters = array();
 	$reshook = $hookmanager->executeHooks('addMoreActionsButtons', $parameters, $object, $action); // Note that $action and $object may have been modified by hook
 	if ($reshook < 0) {
@@ -646,29 +668,29 @@ if ($action != 'record') {
 		if ($object->status == Inventory::STATUS_DRAFT) {
 			if ($permissiontoupdatestock) {
 				if (getDolGlobalInt('INVENTORY_INCLUDE_SUB_WAREHOUSE') && !empty($object->fk_warehouse)) {
-					print '<a class="butAction" href="'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&action=validate&token='.newToken().'">'.$langs->trans("Validate").' ('.$langs->trans("Start").')</a>';
+					print '<a class="butAction" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=validate&token=' . newToken() . '">' . $langs->trans("Validate") . ' (' . $langs->trans("Start") . ')</a>';
 				} else {
-					print '<a class="butAction" href="'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&action=confirm_validate&confirm=yes&token='.newToken().'">'.$langs->trans("Validate").' ('.$langs->trans("Start").')</a>';
+					print '<a class="butAction" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=confirm_validate&confirm=yes&token=' . newToken() . '">' . $langs->trans("Validate") . ' (' . $langs->trans("Start") . ')</a>';
 				}
 			} else {
-				print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("NotEnoughPermissions")).'">'.$langs->trans('Validate').' ('.$langs->trans("Start").')</a>'."\n";
+				print '<a class="butActionRefused classfortooltip" href="#" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '">' . $langs->trans('Validate') . ' (' . $langs->trans("Start") . ')</a>' . "\n";
 			}
 		}
 
 		// Save
 		if ($object->status == $object::STATUS_VALIDATED) {
 			if ($permissiontoupdatestock) {
-				print '<a class="butAction classfortooltip" id="idbuttonmakemovementandclose" href="'.$_SERVER["PHP_SELF"].'?id='.$object->id.'&action=record&page='.$page.$paramwithsearch.'&token='.newToken().'" title="'.dol_escape_htmltag($langs->trans("MakeMovementsAndClose")).'">'.$langs->trans("MakeMovementsAndClose").'</a>'."\n";
+				print '<a class="butAction classfortooltip" id="idbuttonmakemovementandclose" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=record&page=' . $page . $paramwithsearch . '&token=' . newToken() . '" title="' . dol_escape_htmltag($langs->trans("MakeMovementsAndClose")) . '">' . $langs->trans("MakeMovementsAndClose") . '</a>' . "\n";
 			} else {
-				print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($langs->trans("NotEnoughPermissions")).'">'.$langs->trans('MakeMovementsAndClose').'</a>'."\n";
+				print '<a class="butActionRefused classfortooltip" href="#" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '">' . $langs->trans('MakeMovementsAndClose') . '</a>' . "\n";
 			}
 
 			if ($permissiontoupdatestock) {
-				print '<a class="butActionDelete" href="'.$_SERVER["PHP_SELF"].'?id='.$object->id.'&action=confirm_cancel&page='.$page.$paramwithsearch.'&token='.newToken().'">'.$langs->trans("Cancel").'</a>'."\n";
+				print '<a class="butActionDelete" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=confirm_cancel&page=' . $page . $paramwithsearch . '&token=' . newToken() . '">' . $langs->trans("Cancel") . '</a>' . "\n";
 			}
 		}
 	}
-	print '</div>'."\n";
+	print '</div>' . "\n";
 
 	if ($object->status != Inventory::STATUS_DRAFT && $object->status != Inventory::STATUS_VALIDATED) {
 		print '<br><br>';
@@ -683,31 +705,33 @@ if ($object->status == Inventory::STATUS_VALIDATED) {
 		if ($permissiontoupdatestock) {
 			// Link to launch scan tool
 			if (isModEnabled('barcode') || isModEnabled('productbatch')) {
-				print '<a href="'.$_SERVER["PHP_SELF"].'?id='.$object->id.'&action=updatebyscaning&token='.currentToken().'" class="marginrightonly paddingright marginleftonly paddingleft">'.img_picto('', 'barcode', 'class="paddingrightonly"').$langs->trans("UpdateByScaning").'</a>';
+				print '<a href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=updatebyscaning&token=' . currentToken() . '" class="marginrightonly paddingright marginleftonly paddingleft">' . img_picto('', 'barcode', 'class="paddingrightonly"') . $langs->trans("UpdateByScaning") . '</a>';
 			}
 
 			// Link to autofill
-			print '<a id="fillwithexpected" class="marginrightonly paddingright marginleftonly paddingleft" href="#">'.img_picto('', 'autofill', 'class="paddingrightonly"').$langs->trans('AutofillWithExpected').'</a>';
-			print '<script>';
-			print '$( document ).ready(function() {';
-			print '	$("#fillwithexpected").on("click",function fillWithExpected(){
-						$(".expectedqty").each(function(){
-							var object = $(this)[0];
-							var objecttofill = $("#"+object.id+"_input")[0];
-							objecttofill.value = object.innerText;
-							jQuery(".realqty").trigger("change");
-						})
-						console.log("Values filled (after click on fillwithexpected)");
-						/* disablebuttonmakemovementandclose(); */
-						return false;
-			        });';
-			print '});';
-			print '</script>';
+			if ($showexpected) {
+				print '<a id="fillwithexpected" class="marginrightonly paddingright marginleftonly paddingleft" href="#">' . img_picto('', 'autofill', 'class="paddingrightonly"') . $langs->trans('AutofillWithExpected') . '</a>';
+				print '<script>';
+				print '$( document ).ready(function() {';
+				print '	$("#fillwithexpected").on("click",function fillWithExpected(){
+							$(".expectedqty").each(function(){
+								var object = $(this)[0];
+								var objecttofill = $("#"+object.id+"_input")[0];
+								objecttofill.value = object.innerText;
+								jQuery(".realqty").trigger("change");
+							})
+							console.log("Values filled (after click on fillwithexpected)");
+							/* disablebuttonmakemovementandclose(); */
+							return false;
+				        });';
+				print '});';
+				print '</script>';
+			}
 
 			// Link to reset qty
-			print '<a href="#" id="clearqty" class="marginrightonly paddingright marginleftonly paddingleft">'.img_picto('', 'eraser', 'class="paddingrightonly"').$langs->trans("ClearQtys").'</a>';
+			print '<a href="#" id="clearqty" class="marginrightonly paddingright marginleftonly paddingleft">' . img_picto('', 'eraser', 'class="paddingrightonly"') . $langs->trans("ClearQtys") . '</a>';
 		} else {
-			print '<a class="classfortooltip marginrightonly paddingright marginleftonly paddingleft" href="#" title="'.dol_escape_htmltag($langs->trans("NotEnoughPermissions")).'">'.$langs->trans("Save").'</a>'."\n";
+			print '<a class="classfortooltip marginrightonly paddingright marginleftonly paddingleft" href="#" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '">' . $langs->trans("Save") . '</a>' . "\n";
 		}
 	}
 	print '<br>';
@@ -792,8 +816,8 @@ if ($action == 'updatebyscaning') {
 							verify_batch = barcodeserialforproduct(tabproduct,index,element,barcodeproductqty,selectaddorreplace,"lotserial");
 							break;
 						default:
-							alert(\''.dol_escape_js($langs->trans("ErrorWrongBarcodemode")).' "\'+barcodemode+\'"\');
-							throw \''.dol_escape_js($langs->trans('ErrorWrongBarcodemode')).' "\'+barcodemode+\'"\';
+							alert(\'' . dol_escape_js($langs->trans("ErrorWrongBarcodemode")) . ' "\'+barcodemode+\'"\');
+							throw \'' . dol_escape_js($langs->trans('ErrorWrongBarcodemode')) . ' "\'+barcodemode+\'"\';
 					}
 
 					if (verify_batch == false && verify_barcode == false) {		/* If the 2 flags are false, not found error */
@@ -814,8 +838,8 @@ if ($action == 'updatebyscaning') {
 						if(product.Qty!=0){
 							console.log("We change #"+product.Id+"_input to match input in scanner box");
 							if(product.hasOwnProperty("reelqty")){
-								$.ajax({ url: \''.DOL_URL_ROOT.'/product/inventory/ajax/searchfrombarcode.php\',
-									data: { "token":"'.newToken().'", "action":"addnewlineproduct", "fk_entrepot":product.Warehouse, "batch":product.Batch, "fk_inventory":'.dol_escape_js($object->id).', "fk_product":product.fk_product, "reelqty":product.reelqty},
+								$.ajax({ url: \'' . DOL_URL_ROOT . '/product/inventory/ajax/searchfrombarcode.php\',
+									data: { "token":"' . newToken() . '", "action":"addnewlineproduct", "fk_entrepot":product.Warehouse, "batch":product.Batch, "fk_inventory":' . dol_escape_js($object->id) . ', "fk_product":product.fk_product, "reelqty":product.reelqty},
 									type: \'POST\',
 									async: false,
 									success: function(response) {
@@ -839,41 +863,41 @@ if ($action == 'updatebyscaning') {
 							}
 						}
 					});
-					jQuery("#scantoolmessage").text("'.dol_escape_js($langs->transnoentities("QtyWasAddedToTheScannedBarcode")).'\n");
+					jQuery("#scantoolmessage").text("' . dol_escape_js($langs->transnoentities("QtyWasAddedToTheScannedBarcode")) . '\n");
 					/* document.forms["formrecord"].submit(); */
 				} else {
 					let stringerror = "";
 					if (Object.keys(errortab1).length > 0) {
-						stringerror += "<br>'.dol_escape_js($langs->transnoentities('ErrorSameBatchNumber')).': ";
+						stringerror += "<br>' . dol_escape_js($langs->transnoentities('ErrorSameBatchNumber')) . ': ";
 						errortab1.forEach(element => {
 							stringerror += (element + ", ")
 						});
 						stringerror = stringerror.slice(0, -2);	/* Remove last ", " */
 					}
 					if (Object.keys(errortab2).length > 0) {
-						stringerror += "<br>'.dol_escape_js($langs->transnoentities('ErrorCantFindCodeInInventory')).': ";
+						stringerror += "<br>' . dol_escape_js($langs->transnoentities('ErrorCantFindCodeInInventory')) . ': ";
 						errortab2.forEach(element => {
 							stringerror += (element + ", ")
 						});
 						stringerror = stringerror.slice(0, -2);	/* Remove last ", " */
 					}
 					if (Object.keys(errortab3).length > 0) {
-						stringerror += "<br>'.dol_escape_js($langs->transnoentities('ErrorCodeScannedIsBothProductAndSerial')).': ";
+						stringerror += "<br>' . dol_escape_js($langs->transnoentities('ErrorCodeScannedIsBothProductAndSerial')) . ': ";
 						errortab3.forEach(element => {
 							stringerror += (element + ", ")
 						});
 						stringerror = stringerror.slice(0, -2);	/* Remove last ", " */
 					}
 					if (Object.keys(errortab4).length > 0) {
-						stringerror += "<br>'.dol_escape_js($langs->transnoentities('ErrorBarcodeNotFoundForProductWarehouse')).': ";
+						stringerror += "<br>' . dol_escape_js($langs->transnoentities('ErrorBarcodeNotFoundForProductWarehouse')) . ': ";
 						errortab4.forEach(element => {
 							stringerror += (element + ", ")
 						});
 						stringerror = stringerror.slice(0, -2);	/* Remove last ", " */
 					}
 
-					jQuery("#scantoolmessage").html(\''.dol_escape_js($langs->transnoentities("ErrorOnElementsInventory")).'\' + stringerror);
-					//alert("'.dol_escape_js($langs->trans("ErrorOnElementsInventory")).' :\n" + stringerror);
+					jQuery("#scantoolmessage").html(\'' . dol_escape_js($langs->transnoentities("ErrorOnElementsInventory")) . '\' + stringerror);
+					//alert("' . dol_escape_js($langs->trans("ErrorOnElementsInventory")) . ' :\n" + stringerror);
 				}
 			}
 
@@ -885,8 +909,8 @@ if ($action == 'updatebyscaning') {
 			newproductrow=0
 			result=false;
 			tabproduct.forEach(product => {
-				$.ajax({ url: \''.DOL_URL_ROOT.'/product/inventory/ajax/searchfrombarcode.php\',
-					data: { "token":"'.newToken().'", "action":"existbarcode", '.(!empty($object->fk_warehouse) ? '"fk_entrepot":'.$object->fk_warehouse.', ' : '').(!empty($object->fk_product) ? '"fk_product":'.$object->fk_product.', ' : '').'"barcode":element, "product":product, "mode":mode},
+				$.ajax({ url: \'' . DOL_URL_ROOT . '/product/inventory/ajax/searchfrombarcode.php\',
+					data: { "token":"' . newToken() . '", "action":"existbarcode", ' . (!empty($object->fk_warehouse) ? '"fk_entrepot":' . $object->fk_warehouse . ', ' : '') . (!empty($object->fk_product) ? '"fk_product":' . $object->fk_product . ', ' : '') . '"barcode":element, "product":product, "mode":mode},
 					type: \'POST\',
 					async: false,
 					success: function(response) {
@@ -941,7 +965,7 @@ if ($action == 'updatebyscaning') {
 		';
 		print '</script>';
 	}
-	include DOL_DOCUMENT_ROOT.'/core/class/html.formother.class.php';
+	include DOL_DOCUMENT_ROOT . '/core/class/html.formother.class.php';
 	$formother = new FormOther($db);
 	print $formother->getHTMLScannerForm("barcodescannerjs", 'all');
 }
@@ -981,43 +1005,43 @@ print '<tr class="liste_titre">';
 print getTitleFieldOfList($langs->trans("Warehouse"), 0, $_SERVER['PHP_SELF'], 'e.ref', '', 'id=' . $object->id . '&page=' . $page . $param, '', $sortfield, $sortorder, '', 0, '') . "\n";
 print getTitleFieldOfList($langs->trans("Product"), 0, $_SERVER['PHP_SELF'], 'p.ref', '', 'id=' . $object->id . '&page=' . $page . $param, '', $sortfield, $sortorder, '', 0, '') . "\n";
 if (isModEnabled('productbatch')) {
-	print '<td>';
+	print '<th class="liste_titre">';
 	print $langs->trans("Batch");
-	print '</td>';
+	print '</th>';
 }
 if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {
 	// Expected quantity = Snapshot taken at inventory creation
-	print '<td class="right">'.$form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasCreated")).'</td>';
+	if ($showexpected) {
+		print '<th class="right liste_titre">' . $form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasCreated")) . '</th>';
+	} else {
+		print '<th class="right liste_titre">&nbsp;</th>';
+	}
 } else {
 	// Expected quantity = Quantity we had in stock when we start the inventory.
-	print '<td class="right">'.$form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasValidated")).'</td>';
+	print '<th class="right liste_titre">' . $form->textwithpicto($langs->trans("ExpectedQty"), $langs->trans("QtyInStockWhenInventoryWasValidated")) . '</th>';
 }
 if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
-	print '<td class="right">'.$langs->trans('PMPExpected').'</td>';
-	print '<td class="right">'.$langs->trans('ExpectedValuation').'</td>';
-	print '<td class="right">'.$form->textwithpicto($langs->trans("RealQty"), $langs->trans("InventoryRealQtyHelp")).'</td>';
-	print '<td class="right">'.$langs->trans('PMPReal').'</td>';
-	print '<td class="right">'.$langs->trans('RealValuation').'</td>';
+	print '<th class="right liste_titre">' . ($showexpected ? $langs->trans('PMPExpected') : '&nbsp;') . '</th>';
+	print '<th class="right liste_titre">' . ($showexpected ? $langs->trans('ExpectedValuation') : '&nbsp;') . '</th>';
+	print '<th class="right liste_titre">' . $form->textwithpicto($langs->trans("RealQty"), $langs->trans("InventoryRealQtyHelp")) . '</th>';
+	print '<th class="right liste_titre">' . $langs->trans('PMPReal') . '</th>';
+	print '<th class="right liste_titre">' . $langs->trans('RealValuation') . '</th>';
 } else {
-	print '<td class="right">';
+	print '<th class="right liste_titre">';
 	print $form->textwithpicto($langs->trans("RealQty"), $langs->trans("InventoryRealQtyHelp"));
-	print '</td>';
+	print '</th>';
 	//krea titulo da diferença
-	print '<td>';
-	print '</td>';
-	print '<td class="right">';
-	print $form->textwithpicto($langs->trans("Diferença"), "");
-	print '</td>';
+	print '<th class="liste_titre">&nbsp;</th>';
+	print '<th class="right liste_titre">';
+	print $showexpected ? $form->textwithpicto($langs->trans("Diferença"), "") : '&nbsp;';
+	print '</th>';
 }
 if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {
 	// Actions or link to stock movement
-	print '<td class="center">';
-	print '</td>';
+	print '<th class="center liste_titre">&nbsp;</th>';
 } else {
 	// Actions or link to stock movement
-	print '<td class="right">';
-	//print $langs->trans("StockMovement");
-	print '</td>';
+	print '<th class="right liste_titre">&nbsp;</th>';
 }
 print '</tr>';
 
@@ -1037,7 +1061,7 @@ if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STAT
 	print '</td>';
 	if (isModEnabled('productbatch')) {
 		print '<td>';
-		print '<input type="text" name="batch" class="maxwidth100" value="'.(GETPOSTISSET('batch') ? GETPOST('batch') : '').'">';
+		print '<input type="text" name="batch" class="maxwidth100" value="' . (GETPOSTISSET('batch') ? GETPOST('batch') : '') . '">';
 		print '</td>';
 	}
 	print '<td class="right"></td>';
@@ -1066,9 +1090,9 @@ if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STAT
 	// Actions
 	print '<td class="center">';
 	if ($permissiontoupdatestock) {
-		print '<input type="submit" class="button paddingright" name="addline" value="'.$langs->trans("Add").'">';
+		print '<input type="submit" class="button paddingright" name="addline" value="' . $langs->trans("Add") . '">';
 	} else {
-		print '<input type="submit" class="button paddingright" disabled="disabled" title="'.dol_escape_htmltag($langs->trans("NotEnoughPermissions")).'" name="addline" value="'.$langs->trans("Add").'">';
+		print '<input type="submit" class="button paddingright" disabled="disabled" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '" name="addline" value="' . $langs->trans("Add") . '">';
 	}
 	print '</td>';
 	print '</tr>';
@@ -1091,9 +1115,14 @@ $sql .= $db->plimit($limit, $offset);
 $cacheOfProducts = array();
 $cacheOfWarehouses = array();
 $expectedQtyCache = array();
+$movedCache = array();
 $inventoryAnchor = !empty($object->date_inventory) ? $object->date_inventory : null;
 if (!empty($inventoryAnchor) && !is_numeric($inventoryAnchor)) {
 	$inventoryAnchor = dol_stringtotime($inventoryAnchor);
+}
+$inventoryAnchorDate = '';
+if (!empty($inventoryAnchor)) {
+	$inventoryAnchorDate = $db->idate($inventoryAnchor);
 }
 
 //$sql = '';
@@ -1102,7 +1131,7 @@ if ($resql) {
 	$num = $db->num_rows($resql);
 
 	if (!empty($limit != 0) || $num > $limit || $page) {
-		print_fleche_navigation($page, $_SERVER["PHP_SELF"], '&id='.$object->id.$paramwithsearch, ($num >= $limit ? 1 : 0), '<li class="pagination"><span>' . $langs->trans("Page") . ' ' . ($page + 1) . '</span></li>', '', $limit);
+		print_fleche_navigation($page, $_SERVER["PHP_SELF"], '&id=' . $object->id . $paramwithsearch, ($num >= $limit ? 1 : 0), '<li class="pagination"><span>' . $langs->trans("Page") . ' ' . ($page + 1) . '</span></li>', '', $limit);
 	}
 
 	$i = 0;
@@ -1136,51 +1165,58 @@ if ($resql) {
 		}
 
 		$expectedqty = $obj->qty_stock;
-		if (!empty($inventoryAnchor)) {
+		if (!empty($inventoryAnchorDate) && ($obj->qty_stock === null || $obj->qty_stock === '')) {
 			$batchKey = (string) $obj->batch;
-			$cacheKey = $obj->fk_product.'|'.$obj->fk_warehouse.'|'.$batchKey;
+			$cacheKey = $obj->fk_product . '|' . $obj->fk_warehouse . '|' . $batchKey;
 			if (!array_key_exists($cacheKey, $expectedQtyCache)) {
-				if (isModEnabled('productbatch') && $product_static->hasbatch() && $batchKey !== '') {
-					$currentstock = $product_static->stock_warehouse[$obj->fk_warehouse]->detail_batch[$batchKey]->qty ?? 0;
-				} else {
-					$currentstock = $product_static->stock_warehouse[$obj->fk_warehouse]->real ?? 0;
+				if (!array_key_exists($cacheKey, $movedCache)) {
+					$batchCond = $batchKey !== ''
+						? " AND batch='" . $db->escape($batchKey) . "'"
+						: " AND (batch='' OR batch IS NULL)";
+					$sqlmove = 'SELECT COALESCE(SUM(value),0) as moved';
+					$sqlmove .= ' FROM ' . MAIN_DB_PREFIX . 'stock_mouvement';
+					$sqlmove .= ' WHERE fk_product=' . (int) $obj->fk_product;
+					$sqlmove .= ' AND fk_entrepot=' . (int) $obj->fk_warehouse;
+					$sqlmove .= " AND datem > '" . $db->escape($inventoryAnchorDate) . "'";
+					$sqlmove .= " AND origintype <> 'inventory'";
+					$sqlmove .= $batchCond;
+					$resmove = $db->query($sqlmove);
+					$moved = 0.0;
+					if ($resmove) {
+						$movobj = $db->fetch_object($resmove);
+						$moved = $movobj ? (float) $movobj->moved : 0.0;
+					}
+					$movedCache[$cacheKey] = $moved;
 				}
 
-				$sqlmove = 'SELECT COALESCE(SUM(value),0) as moved';
-				$sqlmove .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement';
-				$sqlmove .= ' WHERE fk_product='.(int) $obj->fk_product;
-				$sqlmove .= ' AND fk_entrepot='.(int) $obj->fk_warehouse;
-				$sqlmove .= " AND datem > '".$db->escape($db->idate($inventoryAnchor))."'";
+				$currentStock = 0.0;
+				$warehouseStock = $product_static->stock_warehouse[$obj->fk_warehouse] ?? null;
 				if (isModEnabled('productbatch') && $product_static->hasbatch()) {
-					if ($batchKey !== '') {
-						$sqlmove .= " AND batch='".$db->escape($batchKey)."'";
-					} else {
-						$sqlmove .= " AND (batch = '' OR batch IS NULL)";
+					if ($warehouseStock && isset($warehouseStock->detail_batch[$obj->batch])) {
+						$currentStock = (float) $warehouseStock->detail_batch[$obj->batch]->qty;
+					}
+				} else {
+					if ($warehouseStock && isset($warehouseStock->real)) {
+						$currentStock = (float) $warehouseStock->real;
 					}
 				}
-				$resmove = $db->query($sqlmove);
-				$moved = 0.0;
-				if ($resmove) {
-					$movobj = $db->fetch_object($resmove);
-					$moved = $movobj ? (float) $movobj->moved : 0.0;
-				}
 
-				$expectedQtyCache[$cacheKey] = (float) $currentstock - (float) $moved;
+				$expectedQtyCache[$cacheKey] = (float) $currentStock - (float) $movedCache[$cacheKey];
 			}
 			$expectedqty = $expectedQtyCache[$cacheKey];
 			$obj->qty_stock = $expectedqty;
 		}
 
 		print '<tr class="oddeven">';
-		print '<td id="id_'.$obj->rowid.'_warehouse" data-ref="'.dol_escape_htmltag($warehouse_static->ref).'">';
+		print '<td id="id_' . $obj->rowid . '_warehouse" data-ref="' . dol_escape_htmltag($warehouse_static->ref) . '">';
 		print $warehouse_static->getNomUrl(1);
 		print '</td>';
-		print '<td id="id_'.$obj->rowid.'_product" data-ref="'.dol_escape_htmltag($product_static->ref).'" data-barcode="'.dol_escape_htmltag($product_static->barcode).'">';
-		print $product_static->getNomUrl(1).' - '.$product_static->label;
+		print '<td id="id_' . $obj->rowid . '_product" data-ref="' . dol_escape_htmltag($product_static->ref) . '" data-barcode="' . dol_escape_htmltag($product_static->barcode) . '">';
+		print $product_static->getNomUrl(1) . ' - ' . $product_static->label;
 		print '</td>';
 
 		if (isModEnabled('productbatch')) {
-			print '<td id="id_'.$obj->rowid.'_batch" data-batch="'.dol_escape_htmltag($obj->batch).'">';
+			print '<td id="id_' . $obj->rowid . '_batch" data-batch="' . dol_escape_htmltag($obj->batch) . '">';
 			$batch_static = new Productlot($db);
 			// @phan-suppress-next-line PhanPluginSuspiciousParamPosition
 			$res = $batch_static->fetch(0, $product_static->id, $obj->batch);
@@ -1194,7 +1230,8 @@ if ($resql) {
 
 		// Expected quantity = Snapshot taken at inventory creation.
 		// Expected quantity = If inventory is closed: Quantity we had in stock when we start the inventory.
-		print '<td class="right expectedqty" id="id_'.$obj->rowid.'" title="Stock viewed at last update: '.$obj->qty_stock.'">';
+		$expectedtitle = $showexpected ? 'Stock viewed at last update: ' . $obj->qty_stock : '';
+		print '<td class="right expectedqty" id="id_' . $obj->rowid . '" title="' . $expectedtitle . '">';
 		$valuetoshow = $obj->qty_stock;
 		if (($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED)
 			&& ($valuetoshow === null || $valuetoshow === '')
@@ -1205,13 +1242,19 @@ if ($resql) {
 				$valuetoshow = $product_static->stock_warehouse[$obj->fk_warehouse]->real ?? 0;
 			}
 		}
-		print price2num($valuetoshow, 'MS');
-		print '<input type="hidden" name="stock_qty_'.$obj->rowid.'" value="'.$valuetoshow.'">';
+		if ($showexpected) {
+			print price2num($valuetoshow, 'MS');
+		} else {
+			print '&nbsp;';
+		}
+		$hiddenExpected = $showexpected ? $valuetoshow : '';
+		print '<input type="hidden" name="stock_qty_' . $obj->rowid . '" value="' . $hiddenExpected . '">';
 		print '</td>';
 
 		// Real quantity
 		if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {
-			$qty_view = GETPOST("id_".$obj->rowid) && price2num(GETPOST("id_".$obj->rowid), 'MS') >= 0 ? GETPOST("id_".$obj->rowid) : $obj->qty_view;
+			$qty_view = GETPOST("id_" . $obj->rowid) && price2num(GETPOST("id_" . $obj->rowid), 'MS') >= 0 ? GETPOST("id_" . $obj->rowid) : $obj->qty_view;
+			$has_qty_view = !($qty_view === '' || $qty_view === null);
 
 			//if (!$hasinput && $qty_view !== null && $obj->qty_stock != $qty_view) {
 			if ($qty_view != '') {
@@ -1227,18 +1270,27 @@ if ($resql) {
 				}
 				$pmp_valuation = $pmp_expected * $valuetoshow;
 				print '<td class="right">';
-				print price($pmp_expected);
-				print '<input type="hidden" name="expectedpmp_'.$obj->rowid.'" value="'.$pmp_expected.'"/>';
+				if ($showexpected) {
+					print price($pmp_expected);
+				} else {
+					print '&nbsp;';
+				}
+				$hiddenPmpExpected = $showexpected ? $pmp_expected : '';
+				print '<input type="hidden" name="expectedpmp_' . $obj->rowid . '" value="' . $hiddenPmpExpected . '"/>';
 				print '</td>';
 				print '<td class="right">';
-				print price($pmp_valuation);
+				if ($showexpected) {
+					print price($pmp_valuation);
+				} else {
+					print '&nbsp;';
+				}
 				print '</td>';
 
 				print '<td class="right">';
-				print '<a id="undochangesqty_'.$obj->rowid.'" href="#" class="undochangesqty reposition marginrightonly" title="'.dol_escape_htmltag($langs->trans("Clear")).'">';
+				print '<a id="undochangesqty_' . $obj->rowid . '" href="#" class="undochangesqty reposition marginrightonly" title="' . dol_escape_htmltag($langs->trans("Clear")) . '">';
 				print img_picto('', 'eraser', 'class="opacitymedium"');
 				print '</a>';
-				print '<input type="text" class="maxwidth50 right realqty" name="id_'.$obj->rowid.'" id="id_'.$obj->rowid.'_input" value="'.$qty_view.'">';
+				print '<input type="text" class="maxwidth50 right realqty" name="id_' . $obj->rowid . '" id="id_' . $obj->rowid . '_input" value="' . $qty_view . '">';
 				print '</td>';
 
 				//PMP Real
@@ -1249,35 +1301,39 @@ if ($resql) {
 					$pmp_real = $product_static->pmp;
 				}
 				$pmp_valuation_real = $pmp_real * $qty_view;
-				print '<input type="text" class="maxwidth75 right realpmp'.$obj->fk_product.'" name="realpmp_'.$obj->rowid.'" id="id_'.$obj->rowid.'_input_pmp" value="'.price2num($pmp_real).'">';
+				print '<input type="text" class="maxwidth75 right realpmp' . $obj->fk_product . '" name="realpmp_' . $obj->rowid . '" id="id_' . $obj->rowid . '_input_pmp" value="' . price2num($pmp_real) . '">';
 				print '</td>';
 				print '<td class="right">';
-				print '<input type="text" class="maxwidth75 right realvaluation'.$obj->fk_product.'" name="realvaluation_'.$obj->rowid.'" id="id_'.$obj->rowid.'_input_real_valuation" value="'.$pmp_valuation_real.'">';
+				print '<input type="text" class="maxwidth75 right realvaluation' . $obj->fk_product . '" name="realvaluation_' . $obj->rowid . '" id="id_' . $obj->rowid . '_input_real_valuation" value="' . $pmp_valuation_real . '">';
 				print '</td>';
 
 				$totalExpectedValuation += $pmp_valuation;
 				$totalRealValuation += $pmp_valuation_real;
 			} else {
 				print '<td class="right">';
-				print '<a id="undochangesqty_'.$obj->rowid.'" href="#" class="undochangesqty reposition marginrightonly" title="'.dol_escape_htmltag($langs->trans("Clear")).'">';
+				print '<a id="undochangesqty_' . $obj->rowid . '" href="#" class="undochangesqty reposition marginrightonly" title="' . dol_escape_htmltag($langs->trans("Clear")) . '">';
 				print img_picto('', 'eraser', 'class="opacitymedium"');
 				print '</a>';
-				print '<input type="text" class="maxwidth50 right realqty" name="id_'.$obj->rowid.'" id="id_'.$obj->rowid.'_input" value="'.$qty_view.'">';
+				print '<input type="text" class="maxwidth50 right realqty" name="id_' . $obj->rowid . '" id="id_' . $obj->rowid . '_input" value="' . $qty_view . '">';
 				print '</td>';
 			}
 
 			// Picto delete line
 			print '<td class="right">';
 			if ($permissiontoupdatestock) {
-				print '<a class="reposition" href="'.DOL_URL_ROOT.'/product/inventory/inventory.php?id='.$object->id.'&lineid='.$obj->rowid.'&action=deleteline&page='.$page.$paramwithsearch.'&token='.newToken().'">'.img_delete().'</a>';
+				print '<a class="reposition" href="' . DOL_URL_ROOT . '/product/inventory/inventory.php?id=' . $object->id . '&lineid=' . $obj->rowid . '&action=deleteline&page=' . $page . $paramwithsearch . '&token=' . newToken() . '">' . img_delete() . '</a>';
 			}
-			$qty_tmp = price2num(GETPOST("id_".$obj->rowid."_input_tmp", 'MS')) >= 0 ? GETPOST("id_".$obj->rowid."_input_tmp") : $qty_view;
-			print '<input type="hidden" class="maxwidth50 right realqty" name="id_'.$obj->rowid.'_input_tmp" id="id_'.$obj->rowid.'_input_tmp" value="'.$qty_tmp.'">';
+			$qty_tmp = price2num(GETPOST("id_" . $obj->rowid . "_input_tmp", 'MS')) >= 0 ? GETPOST("id_" . $obj->rowid . "_input_tmp") : $qty_view;
+			print '<input type="hidden" class="maxwidth50 right realqty" name="id_' . $obj->rowid . '_input_tmp" id="id_' . $obj->rowid . '_input_tmp" value="' . $qty_tmp . '">';
 			print '</td>';
 			//Krea
 			print '<td class="right nowraponall">';
-			//print  round($obj->qty_view - $obj->qty_stock,2);
-			print price2num($obj->qty_view - $obj->qty_stock, 'MS');
+			if ($showexpected && $has_qty_view) {
+				//print  round($obj->qty_view - $obj->qty_stock,2);
+				print price2num($qty_view - $obj->qty_stock, 'MS');
+			} else {
+				print '&nbsp;';
+			}
 			print '</td>';
 			print '<td>';
 			print '</td>';
@@ -1291,10 +1347,18 @@ if ($resql) {
 				}
 				$pmp_valuation = $pmp_expected * $valuetoshow;
 				print '<td class="right">';
-				print price($pmp_expected);
+				if ($showexpected) {
+					print price($pmp_expected);
+				} else {
+					print '&nbsp;';
+				}
 				print '</td>';
 				print '<td class="right">';
-				print price($pmp_valuation);
+				if ($showexpected) {
+					print price($pmp_valuation);
+				} else {
+					print '&nbsp;';
+				}
 				print '</td>';
 
 				print '<td class="right nowraponall">';
@@ -1331,16 +1395,25 @@ if ($resql) {
 			}
 			print '</td>';
 			//Krea
+			$has_qty_view = !($obj->qty_view === '' || $obj->qty_view === null);
 			print '<td class="right nowraponall">';
-			print price2num($obj->qty_view - $obj->qty_stock, 'MS');
+			if ($showexpected && $has_qty_view) {
+				print price2num($obj->qty_view - $obj->qty_stock, 'MS');
+			} else {
+				print '&nbsp;';
+			}
 			print '</td>';
 			// diferença em %
 			print '<td class="right nowraponall">';
-			if (abs($obj->qty_stock) < 0.0001) {
-				print "";
+			if ($showexpected && $has_qty_view) {
+				if (abs($obj->qty_stock) < 0.0001) {
+					print "";
+				} else {
+					$difference = ($obj->qty_view - $obj->qty_stock) / abs($obj->qty_stock) * 100;
+					print sprintf("%.2f", $difference) . "%";
+				}
 			} else {
-				$difference = ($obj->qty_view - $obj->qty_stock) / abs($obj->qty_stock) * 100;
-				print sprintf("%.2f", $difference) . "%";
+				print '&nbsp;';
 			}
 			print '</td>';
 		}
@@ -1353,9 +1426,9 @@ if ($resql) {
 }
 if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
 	print '<tr class="liste_total">';
-	print '<td colspan="4">'.$langs->trans("Total").'</td>';
-	print '<td class="right" colspan="2">'.price($totalExpectedValuation).'</td>';
-	print '<td class="right" id="totalRealValuation" colspan="3">'.price($totalRealValuation).'</td>';
+	print '<td colspan="4">' . $langs->trans("Total") . '</td>';
+	print '<td class="right" colspan="2">' . ($showexpected ? price($totalExpectedValuation) : '&nbsp;') . '</td>';
+	print '<td class="right" id="totalRealValuation" colspan="3">' . price($totalRealValuation) . '</td>';
 	print '<td></td>';
 	print '</tr>';
 }
@@ -1364,7 +1437,7 @@ print '</table>';
 print '</div>';
 
 if ($object->status == $object::STATUS_VALIDATED) {
-	print '<center><input id="submitrecord" type="submit" class="button button-save" name="save" value="'.$langs->trans("Save").'"></center>';
+	print '<center><input id="submitrecord" type="submit" class="button button-save" name="save" value="' . $langs->trans("Save") . '"></center>';
 }
 
 print '</div>';
@@ -1389,38 +1462,38 @@ print '<script type="text/javascript">
 
                         $(".paginationnext:last").click(function(e){
                             var form = $("#formrecord");
-   							var actionURL = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page).$paramwithsearch.'";
+   							var actionURL = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page) . $paramwithsearch . '";
    							$.ajax({
       					 	url: actionURL,
         					data: form.serialize(),
         					cache: false,
         					success: function(result){
-           				 	window.location.href = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page + 1).$paramwithsearch.'";
+           				 	window.location.href = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page + 1) . $paramwithsearch . '";
     						}});
     					});
 
 
                          $(".paginationprevious:last").click(function(e){
                             var form = $("#formrecord");
-   							var actionURL = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page).$paramwithsearch.'";
+   							var actionURL = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page) . $paramwithsearch . '";
    							$.ajax({
       					 	url: actionURL,
         					data: form.serialize(),
         					cache: false,
         					success: function(result){
-           				 	window.location.href = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page - 1).$paramwithsearch.'";
+           				 	window.location.href = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page - 1) . $paramwithsearch . '";
        					 	}});
 						 });
 
                           $("#idbuttonmakemovementandclose").click(function(e){
                             var form = $("#formrecord");
-   							var actionURL = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page).$paramwithsearch.'";
+   							var actionURL = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page) . $paramwithsearch . '";
    							$.ajax({
       					 	url: actionURL,
         					data: form.serialize(),
         					cache: false,
         					success: function(result){
-           				 	window.location.href = "'.$_SERVER['PHP_SELF'].'?id='.$object->id.'&page='.($page - 1).$paramwithsearch.'&action=record";
+           				 	window.location.href = "' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&page=' . ($page - 1) . $paramwithsearch . '&action=record";
        					 	}});
 						 });
 					});
@@ -1428,71 +1501,73 @@ print '<script type="text/javascript">
 
 
 if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
-	?>
+?>
 <script type="text/javascript">
-$('.realqty').on('change', function () {
-	let realqty = $(this).closest('tr').find('.realqty').val();
-	let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
-	let realpmp = $(inputPmp).val();
-	if (!isNaN(realqty) && !isNaN(realpmp)) {
-		let realval = realqty * realpmp;
-		$(this).closest('tr').find('input[name^=realvaluation]').val(realval.toFixed(2));
-	}
-	updateTotalValuation();
+$('.realqty').on('change', function() {
+    let realqty = $(this).closest('tr').find('.realqty').val();
+    let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
+    let realpmp = $(inputPmp).val();
+    if (!isNaN(realqty) && !isNaN(realpmp)) {
+        let realval = realqty * realpmp;
+        $(this).closest('tr').find('input[name^=realvaluation]').val(realval.toFixed(2));
+    }
+    updateTotalValuation();
 });
 
-$('input[class*=realpmp]').on('change', function () {
-	let inputQtyReal = $(this).closest('tr').find('.realqty');
-	let realqty = $(inputQtyReal).val();
-	let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
-	console.log(inputPmp);
-	let realPmpClassname = $(inputPmp).attr('class').match(/[\w-]*realpmp[\w-]*/g)[0];
-	let realpmp = $(inputPmp).val();
-	if (!isNaN(realpmp)) {
-		$('.'+realPmpClassname).val(realpmp); //For batch case if pmp is changed we change it everywhere it's same product and calc back everything
+$('input[class*=realpmp]').on('change', function() {
+    let inputQtyReal = $(this).closest('tr').find('.realqty');
+    let realqty = $(inputQtyReal).val();
+    let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
+    console.log(inputPmp);
+    let realPmpClassname = $(inputPmp).attr('class').match(/[\w-]*realpmp[\w-]*/g)[0];
+    let realpmp = $(inputPmp).val();
+    if (!isNaN(realpmp)) {
+        $('.' + realPmpClassname).val(
+            realpmp
+            ); //For batch case if pmp is changed we change it everywhere it's same product and calc back everything
 
-		if (!isNaN(realqty)) {
-			let realval = realqty * realpmp;
-			$(this).closest('tr').find('input[name^=realvaluation]').val(realval.toFixed(2));
-		}
-		$('.realqty').trigger('change');
-		updateTotalValuation();
-	}
+        if (!isNaN(realqty)) {
+            let realval = realqty * realpmp;
+            $(this).closest('tr').find('input[name^=realvaluation]').val(realval.toFixed(2));
+        }
+        $('.realqty').trigger('change');
+        updateTotalValuation();
+    }
 });
 
-$('input[name^=realvaluation]').on('change', function () {
-	let inputQtyReal = $(this).closest('tr').find('.realqty');
-	let realqty = $(inputQtyReal).val();
-	let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
-	let inputRealValuation = $(this).closest('tr').find('input[name^=realvaluation]');
-	let realPmpClassname = $(inputPmp).attr('class').match(/[\w-]*realpmp[\w-]*/g)[0];
-	let realvaluation = $(inputRealValuation).val();
-	if (!isNaN(realvaluation) && !isNaN(realqty) && realvaluation !== '' && realqty !== '' && realqty !== 0) {
-		let realpmp = realvaluation / realqty
-		$('.'+realPmpClassname).val(realpmp); //For batch case if pmp is changed we change it everywhere it's same product and calc back everything
-		$('.realqty').trigger('change');
-		updateTotalValuation();
-	}
+$('input[name^=realvaluation]').on('change', function() {
+    let inputQtyReal = $(this).closest('tr').find('.realqty');
+    let realqty = $(inputQtyReal).val();
+    let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
+    let inputRealValuation = $(this).closest('tr').find('input[name^=realvaluation]');
+    let realPmpClassname = $(inputPmp).attr('class').match(/[\w-]*realpmp[\w-]*/g)[0];
+    let realvaluation = $(inputRealValuation).val();
+    if (!isNaN(realvaluation) && !isNaN(realqty) && realvaluation !== '' && realqty !== '' && realqty !== 0) {
+        let realpmp = realvaluation / realqty
+        $('.' + realPmpClassname).val(
+            realpmp
+            ); //For batch case if pmp is changed we change it everywhere it's same product and calc back everything
+        $('.realqty').trigger('change');
+        updateTotalValuation();
+    }
 });
 
 function updateTotalValuation() {
-	let total = 0;
-	$('input[name^=realvaluation]').each(function( index ) {
-		let val = $(this).val();
-		if(!isNaN(val)) total += parseFloat($(this).val());
-	});
-	let currencyFractionDigits = new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: 'EUR',
-	}).resolvedOptions().maximumFractionDigits;
-	$('#totalRealValuation').html(total.toLocaleString('fr-FR', {
-		maximumFractionDigits: currencyFractionDigits
-	}));
+    let total = 0;
+    $('input[name^=realvaluation]').each(function(index) {
+        let val = $(this).val();
+        if (!isNaN(val)) total += parseFloat($(this).val());
+    });
+    let currencyFractionDigits = new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'EUR',
+    }).resolvedOptions().maximumFractionDigits;
+    $('#totalRealValuation').html(total.toLocaleString('fr-FR', {
+        maximumFractionDigits: currencyFractionDigits
+    }));
 }
-
-
 </script>
-	<?php
+<?php
 }
 
 // End of page
