@@ -1,3 +1,4 @@
+-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
 --
 -- Script run when an upgrade of Dolibarr is done. Whatever is the Dolibarr version.
 --

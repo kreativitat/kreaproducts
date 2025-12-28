@@ -1,5 +1,6 @@
 <?php
 /**
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Setup script to convert inventory.date_inventory to DATETIME
  */
 

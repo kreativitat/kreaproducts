@@ -1,3 +1,4 @@
+-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
 -- Rename legacy kreap_syncprice extrafield to kreap_updatebuyprice (safe when column is missing)
 SET @schema = DATABASE();
 

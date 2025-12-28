@@ -1,4 +1,7 @@
 <?php
+/*
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ */
 // Load Dolibarr environment
 $res = 0;
 // Try main.inc.php into web root known defined into CONTEXT_DOCUMENT_ROOT (not always defined)

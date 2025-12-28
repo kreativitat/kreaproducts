@@ -2,7 +2,7 @@
 /* Copyright (C) 2004-2018  Laurent Destailleur     <eldy@users.sourceforge.net>
  * Copyright (C) 2018-2019  Nicolas ZABOURI         <info@inovea-conseil.com>
  * Copyright (C) 2019-2020  Frédéric France         <frederic.france@netlogic.fr>
- * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026  Kreativitat             <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.75';
+		$this->version = '2.76';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 

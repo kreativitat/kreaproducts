@@ -1,3 +1,4 @@
+-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
 --
 -- Uncomment and run the script to declare triggers to be used by the agenda module for automatic logging of events into agenda (table llx_actioncomm).
 --

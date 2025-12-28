@@ -1,5 +1,6 @@
 <?php
 /**
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Setup script to add sync columns to product_association table
  *
  * This script safely adds the necessary columns for ProductUpdater

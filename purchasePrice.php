@@ -12,7 +12,7 @@
  * Copyright (C) 2019      Tim Otte			    <otte@meuser.it>
  * Copyright (C) 2020      Pierre Ardoin        <mapiolca@me.com>
  * Copyright (C) 2023	   Joachim Kueter		<git-jk@bloxera.com>
- * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *

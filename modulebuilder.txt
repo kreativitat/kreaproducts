@@ -1,3 +1,4 @@
+# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
 # DO NOT DELETE THIS FILE MANUALLY
 # File to flag module built using official module template.
 # When this file is present into a module directory, you can edit it with the module builder tool. 

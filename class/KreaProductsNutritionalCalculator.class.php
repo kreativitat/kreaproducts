@@ -1,6 +1,7 @@
 <?php
 
 /**
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Enhanced KreaProductsNutritionalCalculator Class
  *
  * This class builds a father→child map for a given product using BFS,

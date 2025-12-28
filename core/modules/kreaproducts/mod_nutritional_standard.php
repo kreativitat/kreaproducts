@@ -3,6 +3,7 @@
  * Copyright (C) 2005-2009	Regis Houssin				<regis.houssin@inodbox.com>
  * Copyright (C) 2024		MDW							<mdeweerd@users.noreply.github.com>
  * Copyright (C) 2025		Marcelo Marinho de Araujo	<marcelomarinhoaraujo@gmail.com>
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

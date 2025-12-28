@@ -13,7 +13,7 @@
  * Copyright (C) 2016		Ferran Marcet			<fmarcet@2byte.es>
  * Copyright (C) 2018-2020  Frédéric France         <frederic.france@netlogic.fr>
  * Copyright (C) 2018		Nicolas ZABOURI			<info@inovea-conseil.com>
- * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *

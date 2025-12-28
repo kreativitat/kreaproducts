@@ -1,6 +1,7 @@
 <?php
 /* Copyright (C) 2023		Laurent Destailleur			<eldy@users.sourceforge.net>
  * Copyright (C) 2025		Marcelo Marinho de Araujo	<marcelomarinhoaraujo@gmail.com>
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

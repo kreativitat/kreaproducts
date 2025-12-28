@@ -7,7 +7,7 @@
  * Copyright (C) 2011-2014  Juanjo Menent           <jmenent@2byte.es>
  * Copyright (C) 2015       Raphaël Doursenaud      <rdoursenaud@gpcsolutions.fr>
  * Copyright (C) 2023       Benjamin Falière        <benjamin.faliere@altairis.fr>
- * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *

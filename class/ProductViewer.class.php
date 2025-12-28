@@ -1,6 +1,7 @@
 <?php
 
 /**
+ * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Enhanced ProductHierarchyTree Class
  *
  * Provides methods to build a non-recursive map of product associations, display

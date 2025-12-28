@@ -1,34 +1,69 @@
-# KreaProducts para Dolibarr ERP CRM
+<!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
+# KreaProducts para Dolibarr ERP/CRM
 
-KreaProducts é um módulo avançado e poderoso, especialmente desenvolvido para aprimorar o módulo de produtos do [Dolibarr ERP CRM](https://www.dolibarr.org). Ele expande as funcionalidades padrão do Dolibarr, oferecendo ferramentas inovadoras para gestão nutricional, controle de alérgenos, visualização hierárquica de produtos, gerenciamento de Bill Of Materials (BOM) e recalculação automática de custos.
+KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/CRM](https://www.dolibarr.org). Ele amplia o módulo de produtos com nutrição, alergénios, BOM, inventário e automatizações de custos e stock.
 
-## Principais Características
+## Funcionalidades
 
-- **Cálculo de Tabela de Nutrientes:** Realiza o cálculo automático e detalhado dos nutrientes de cada produto, garantindo informações precisas para a gestão nutricional.
-- **Propagação de Nutrientes e Alérgenos:** Permite a disseminação dos valores nutricionais e dados de alérgenos entre produtos pai e filho, com opção de configuração automática ou manual para maior controle.
-- **Visualização da Hierarquia de Produtos:** Exibe uma árvore completa dos produtos — incluindo filhos, netos, pais e avós — facilitando a identificação e resolução de inconsistências na estrutura hierárquica.
-- **Gestão de Bill Of Materials (BOM) e Auto-Demontagem:** Possibilita a configuração e o gerenciamento dinâmico de BOM, com função de desmontagem automática de produtos. Ideal para setores como o de restaurantes, onde diferentes embalagens podem ser combinadas em um produto final genérico.
-- **Integração na Ficha Técnica:** Exibe a origem do BOM e indica se um produto faz parte de uma BOM diretamente na ficha técnica, promovendo maior transparência e rastreabilidade.
-- **Recalculo Automático de Custos:** Atualiza automaticamente os custos de todos os produtos da árvore sempre que um subproduto é alterado, garantindo que os preços reflitam as mudanças em tempo real.
+### Nutrição e alergénios
+- Tabela nutricional com cálculo, validação e atualização automática.
+- Propagação de nutrientes entre produtos pai/filho e suporte a produtos não alimentares.
+- Gestão de alergénios e vestígios na ficha do produto.
 
-## Instalação e Configuração
+### Estrutura de produtos e BOM
+- Árvore completa de produtos (associações + BOM MRP, quando ativo).
+- BOM de montagem e desmontagem com origem e relacionamentos visíveis na ficha técnica.
+- Recálculo automático de custos em cascata baseado em filhos/BOM.
 
-_Para instruções detalhadas de instalação e procedimentos de configuração, consulte nosso guia de instalação incluído no pacote do módulo._
+### Inventário e stock
+- Pré-preenchimento de linhas de inventário com stock atual.
+- Referência de inventário baseada em data e categoria (quando configurado).
+- Folha de inventário em PDF e bloqueio de alterações após fecho.
+- Ajustes de movimentos de stock em faturas de fornecedor e inventários (configurável).
 
-## Git
+### Produtividade e listas
+- Lista de produtos simplificada com opção de ocultar itens.
+- Simulador de preços (Métricas e Margens) com markup de teste.
 
-Para acessar o código-fonte, enviar sugestões ou contribuir com o desenvolvimento, visite nosso [repositório no GitHub](https://github.com/kreativitat).
+## Requisitos
+- Dolibarr >= 11
+- PHP >= 7.0
+- Módulos obrigatórios: Produtos, Stock, Fornecedores
+- Opcional: BOM/MRP, Lotes (productbatch)
+
+## Instalação
+1. Copiar o módulo para `custom/kreaproducts`.
+2. Ativar em Configuração -> Módulos/Aplicações -> KreaProducts.
+3. Ajustar as opções na página de configuração.
+4. Se necessário, importar os scripts em `sql/`.
+
+## Configuração (principais constantes)
+| Constante | Descrição |
+| --- | --- |
+| `KREAPRODUCTS_DEFAULT_WEIGHT_LABEL` | Classe de unidades para peso. |
+| `KREAPRODUCTS_NUTRITIONAL_TABLE_TAB` | Mostrar tabela nutricional na ficha técnica. |
+| `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE` | Propagar automaticamente o preço de custo. |
+| `KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE` | Propagar automaticamente a tabela nutricional. |
+| `KREAPRODUCTS_STOCK_MOVEMENT_DATA` | Usar data da fatura nos movimentos de stock. |
+| `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Hora aplicada a movimentos de fatura de fornecedor. |
+| `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Hora padrão ao criar inventário. |
+| `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Categoria raiz para seleção de inventário. |
+| `KREAPRODUCTS_DISMANTLE_CATEGORY` | Categoria que ativa desmontagem automática. |
+| `KREAPRODUCTS_DISMANTLE_BOMTYPE` | Tipo de BOM usado na desmontagem. |
+| `KREAPRODUCTS_DISMANTLE_WAREHOUSE` | Armazém para movimentos de desmontagem. |
+| `KREAPRODUCTS_SIM_ENABLE` | Ativar simulador de preços. |
+| `KREAPRODUCTS_SIM_DEFAULT_MARKUP` | Markup predefinido do simulador. |
+| `KREAPRODUCTS_REPLACE_PRODUCT_LIST` | Substituir a lista padrão de produtos. |
+
+## Permissões
+- Nutrição: leitura, escrita, remoção.
+- Alergénios: leitura, escrita, remoção.
+- Inventário: ver valores esperados.
 
 ## Licença
+- GPL-3.0-or-later (ver `LICENSE` e `COPYING`).
+- Licença proprietária disponível para uso comercial ou código fechado; contacte `mail@kreativitat.com`.
 
-### Código Principal
-
-Este módulo é distribuído sob a Licença Pública Geral GNU versão 3.0 (GPLv3) ou qualquer versão posterior. Para mais detalhes, veja o arquivo COPYING incluído no módulo.
-
-### Documentação
-
-Todo o conteúdo textual e documentação são licenciados sob a Licença de Documentação Livre GNU (GFDL).
-
-## Suporte e Contribuições
-
-Para suporte, solicitações de funcionalidades ou contribuições, visite nosso [repositório no GitHub](https://github.com/kreativitat).
+## Suporte e contribuições
+- GitHub: https://github.com/kreativitat
+- Website: https://www.kreativitat.com

@@ -1,3 +1,4 @@
+<!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 Stock Movement Cases (Inventory and Supplier Invoice)
 This file provides an exhaustive explanation of the four stock movement cases
 handled by KreaProducts triggers.
