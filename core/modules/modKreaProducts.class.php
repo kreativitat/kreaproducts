@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
 		$this->editor_url = 'http://kreativitat.com';
 
 		// Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '2.77';
+		$this->version = '2.80';
 		// Url to the file with your last numberversion of this module
 		//$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -184,7 +184,10 @@ class modKreaProducts extends DolibarrModules
 		// );
 		$this->const = array(
 			1 => array('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL', 'chaine', 'weight', '', 0, 'allentities', 1),
-			//	2 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
+			2 => array('KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT', 'chaine', '1.0', '', 0, 'allentities', 1),
+			3 => array('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT', 'chaine', '0.1', '', 0, 'allentities', 1),
+			4 => array('KREAPRODUCTS_DEBUG_LOG', 'chaine', '0', '', 0, 'allentities', 1),
+			//	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
 		);
 
 		// Some keys to add into the overwriting translation tables

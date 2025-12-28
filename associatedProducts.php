@@ -50,6 +50,16 @@ require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllerge
 // Load translation files required by the page
 $langs->loadLangs(array('bills', 'products', 'stocks', 'dolizsynch@dolizsynch'));
 
+if (!function_exists('kreaproducts_debug_log')) {
+	function kreaproducts_debug_log($message)
+	{
+		global $conf;
+		if (!empty($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
+			dol_syslog($message, LOG_DEBUG);
+		}
+	}
+}
+
 $id     = GETPOST('id', 'int');
 $ref    = GETPOST('ref', 'alpha');
 $action = GETPOST('action', 'aZ09');
@@ -227,7 +237,7 @@ if (empty($reshook)) {
 }
 
 if ($action == 'save_kreaproducts_nutrition') {
-	dol_syslog("Starting save_kreaproducts_nutrition action for product ID: " . (int) $object->id);
+	kreaproducts_debug_log("Starting save_kreaproducts_nutrition action for product ID: " . (int) $object->id);
 
 	// Check if a nutritional record already exists for this product.
 	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
@@ -237,7 +247,7 @@ if ($action == 'save_kreaproducts_nutrition') {
 	if ($resql && $db->num_rows($resql) > 0) {
 		$obj = $db->fetch_object($resql);
 		$existing_rowid = $obj->rowid;
-		dol_syslog("Existing nutrition record found: " . $existing_rowid);
+		kreaproducts_debug_log("Existing nutrition record found: " . $existing_rowid);
 	}
 	$db->free($resql);
 
@@ -253,11 +263,11 @@ if ($action == 'save_kreaproducts_nutrition') {
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (";
 		$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
 		$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
-		dol_syslog("Executing INSERT SQL: " . $sql);
+	kreaproducts_debug_log("Executing INSERT SQL: " . $sql);
 		$res = $db->query($sql);
 		if ($res) {
 			$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
-			dol_syslog("Nutritional record created with mandatory fields (Row ID: " . $existing_rowid . ")");
+			kreaproducts_debug_log("Nutritional record created with mandatory fields (Row ID: " . $existing_rowid . ")");
 		} else {
 			dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
 			setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
@@ -288,10 +298,10 @@ if ($action == 'save_kreaproducts_nutrition') {
 	$updateSQL .= implode(", ", $setClauses);
 	$updateSQL .= " WHERE rowid = " . (int)$existing_rowid;
 
-	dol_syslog("Executing UPDATE SQL: " . $updateSQL);
+	kreaproducts_debug_log("Executing UPDATE SQL: " . $updateSQL);
 	$resUpdate = $db->query($updateSQL);
 	if ($resUpdate) {
-		dol_syslog("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
+		kreaproducts_debug_log("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
 		setEventMessages($langs->trans("NutritionalDataUpdated"), null, 'mesgs');
 	} else {
 		dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
@@ -308,8 +318,55 @@ if ($action == 'save_kreaproducts_nutrition') {
 }
 
 if ($action == 'updateAllergens') {
-	KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0);
-	setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
+	$result = KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0);
+	if (!$result || KreaProductsAllergenUpdater::hasErrors()) {
+		$errors = KreaProductsAllergenUpdater::getAllErrors();
+		if (empty($errors)) {
+			$errors = array($langs->trans("Error"));
+		}
+		setEventMessages($langs->trans("Error"), $errors, 'errors');
+	} else {
+		$stats = KreaProductsAllergenUpdater::getProcessingStats();
+		if (!empty($stats) && isset($stats['allergens_updated']) && (int) $stats['allergens_updated'] === 0) {
+			setEventMessages($langs->trans("KREAPRODUCTS_ALLERGENS_UPDATE_EMPTY"), null, 'warnings');
+		} else {
+			setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
+		}
+	}
+}
+
+if ($action === 'setweight' && $usercancreate) {
+	$object->fetch($object->id);
+	$object->weight = GETPOST('weight', 'alpha');
+	$object->weight_units = GETPOST('weight_units', 'alpha'); // scale value
+
+	$result = $object->update($object->id, $user);
+	if ($result > 0) {
+		setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+	} else {
+		setEventMessages($object->error, $object->errors, 'errors');
+	}
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
+if ($usercancreate && preg_match('/^setweight_(\d+)$/', $action, $matches)) {
+	$childId = (int) $matches[1];
+	$childProduct = new Product($db);
+	if ($childId > 0 && $childProduct->fetch($childId) > 0) {
+		$childProduct->weight = GETPOST('weight', 'alpha');
+		$childProduct->weight_units = GETPOST('weight_units', 'alpha'); // scale value
+		$result = $childProduct->update($childId, $user);
+		if ($result > 0) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+		} else {
+			setEventMessages($childProduct->error, $childProduct->errors, 'errors');
+		}
+	} else {
+		setEventMessages($langs->trans("Error"), null, 'errors');
+	}
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
 }
 
 // Toggle food/non-food flag for nutritional handling
@@ -500,6 +557,7 @@ if ($id > 0 || !empty($ref)) {
 		if ($resFoodFlag) $db->free($resFoodFlag);
 
 		if ($object->type != Product::TYPE_SERVICE || getDolGlobalString('STOCK_SUPPORTS_SERVICES') || !getDolGlobalString('PRODUIT_MULTIPRICES')) {
+			$showWeightForm = $usercancreate && $object->type != Product::TYPE_SERVICE && !getDolGlobalString('PRODUCT_DISABLE_WEIGHT');
 			print '<div class="fichecenter">';
 			print '<div class="fichehalfleft">';
 			print '<div class="underbanner clearboth"></div>';
@@ -521,6 +579,19 @@ if ($id > 0 || !empty($ref)) {
 			print '<span class="fas ' . $foodIcon . '"></span>';
 			print '</a>';
 			print '</td></tr>';
+			if ($showWeightForm) {
+				$weightDisplay = '';
+				if ($object->weight != '') {
+					$weightDisplay = $object->weight . ' ' . measuringUnitString(0, 'weight', $object->weight_units);
+				}
+				$weightEdit = '<input name="weight" size="5" value="' . dol_escape_htmltag(GETPOSTISSET('weight') ? GETPOST('weight') : $object->weight) . '"> ';
+				$weightEdit .= $formproduct->selectMeasuringUnits("weight_units", "weight", GETPOSTISSET('weight_units') ? GETPOST('weight_units', 'alpha') : $object->weight_units, 0, 2);
+				print '<tr><td class="titlefield">';
+				print $form->editfieldkey("Weight", 'weight', $object->weight, $object, $usercancreate, 'asis');
+				print '</td><td>';
+				print $form->editfieldval("Weight", 'weight', $weightDisplay, $object, $usercancreate, 'asis', $weightEdit);
+				print '</td></tr>';
+			}
 			print '</table>';
 			print '</div><div class="fichehalfright">';
 			print '<div class="underbanner clearboth"></div>';
@@ -669,7 +740,7 @@ if ($id > 0 || !empty($ref)) {
 				if ($obj && !empty($obj->niveismenu)) {
 					$data = json_decode($obj->niveismenu, true);
 					if (json_last_error() === JSON_ERROR_NONE && is_array($data) && !empty($data)) {
-						dol_syslog("DoliZSynch Menu: found " . count($data) . " menu levels for product {$productId}", LOG_DEBUG);
+						kreaproducts_debug_log("DoliZSynch Menu: found " . count($data) . " menu levels for product {$productId}");
 						$chips = array();
 						foreach ($data as $idx => $menu) {
 							$level = isset($menu['nivel']) ? (int) $menu['nivel'] : ($idx + 1);
@@ -740,10 +811,10 @@ if ($id > 0 || !empty($ref)) {
 						}
 						$html = implode('', $chips);
 					} else {
-						dol_syslog("DoliZSynch Menu: niveismenu JSON empty or invalid for product {$productId}", LOG_DEBUG);
+						kreaproducts_debug_log("DoliZSynch Menu: niveismenu JSON empty or invalid for product {$productId}");
 					}
 				} else {
-					dol_syslog("DoliZSynch Menu: no niveismenu for product {$productId}", LOG_DEBUG);
+					kreaproducts_debug_log("DoliZSynch Menu: no niveismenu for product {$productId}");
 				}
 			}
 
@@ -1518,7 +1589,7 @@ if ($id > 0 || !empty($ref)) {
 		$key = 'kreap_calc_nut';
 		$fieldName = 'options_' . $key;
 		$label = $extrafields->attributes['product']['label'][$key];
-		dol_syslog('label: ' . $label, LOG_DEBUG);
+		kreaproducts_debug_log('label: ' . $label);
 		$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
 		$editorType = 'select;' . implode(',', array_map(
 			function ($k, $v) {
@@ -1606,7 +1677,7 @@ if ($id > 0 || !empty($ref)) {
 				$TAllergens[$obj->rowid] = $langs->trans($obj->code);
 			}
 		} else {
-			dol_syslog("Error loading allergens dictionary: " . $db->error());
+			dol_syslog("Error loading allergens dictionary: " . $db->error(), LOG_ERR);
 		}
 
 		// Reload saved allergen associations for current product
@@ -1623,7 +1694,7 @@ if ($id > 0 || !empty($ref)) {
 				}
 			}
 		} else {
-			dol_syslog("Error retrieving saved allergens: " . $db->error());
+			dol_syslog("Error retrieving saved allergens: " . $db->error(), LOG_ERR);
 		}
 
 		print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
@@ -1632,7 +1703,7 @@ if ($id > 0 || !empty($ref)) {
 		$key = 'kreap_calc_allergens';
 		$fieldName = 'options_' . $key;
 		$label = $extrafields->attributes['product']['label'][$key];
-		dol_syslog('label: ' . $label, LOG_DEBUG);
+		kreaproducts_debug_log('label: ' . $label);
 		$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
 		$editorType = 'select;' . implode(',', array_map(
 			function ($k, $v) {
@@ -1817,7 +1888,44 @@ if ($id > 0 || !empty($ref)) {
 
 
 
-
+print '<script>
+	(function() {
+		var key = "kreaproducts_associated_scroll";
+		function storeScroll() {
+			try {
+				var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+				sessionStorage.setItem(key, String(y));
+			} catch (e) {}
+		}
+		function restoreScroll() {
+			try {
+				var saved = sessionStorage.getItem(key);
+				if (saved !== null) {
+					sessionStorage.removeItem(key);
+					var y = parseInt(saved, 10);
+					if (!isNaN(y)) {
+						window.scrollTo(0, y);
+					}
+				}
+			} catch (e) {}
+		}
+		document.addEventListener("click", function(e) {
+			var link = e.target.closest(".editfielda");
+			if (link) {
+				storeScroll();
+			}
+		});
+		document.addEventListener("submit", function(e) {
+			var form = e.target;
+			if (!form || !form.querySelector) return;
+			var actionInput = form.querySelector("input[name=action]");
+			if (actionInput && actionInput.value && actionInput.value.indexOf("set") === 0) {
+				storeScroll();
+			}
+		}, true);
+		window.addEventListener("load", restoreScroll);
+	})();
+</script>';
 
 llxFooter();
 $db->close();

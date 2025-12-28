@@ -38,6 +38,8 @@ class KreaProductsAllergenUpdater
     private static $productCache = array();
     private static $allergenCache = array();
     private static $resolvedAllergenCache = array();
+    private static $unitMappingCache = array();
+    private static $weightConversionCache = array();
 
     /**
      * Update allergen attributes for a product hierarchy
@@ -216,8 +218,29 @@ class KreaProductsAllergenUpdater
             'allergens_updated' => 0,
             'database_operations' => 0
         );
-        
-        dol_syslog(__METHOD__ . " START (root=$rootProductId)", LOG_DEBUG);
+
+        self::logDebug(__METHOD__ . " START (root=$rootProductId)");
+    }
+
+    private static function isDebugEnabled()
+    {
+        global $conf;
+
+        return !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
+    }
+
+    private static function logDebug($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_DEBUG);
+        }
+    }
+
+    private static function logInfo($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_INFO);
+        }
     }
 
     /**
@@ -492,9 +515,14 @@ class KreaProductsAllergenUpdater
         $productsToClean = array();
         
         foreach ($hierarchyMap as $productId => $node) {
-            if (self::getCalculationOption($productId) === self::CALC_OPTION_AUTO) {
-                $productsToClean[] = $productId;
+            if (self::getCalculationOption($productId) !== self::CALC_OPTION_AUTO) {
+                continue;
             }
+            if (empty($node->children)) {
+                // Preserve leaf allergens so they can act as base data for parents.
+                continue;
+            }
+            $productsToClean[] = $productId;
         }
 
         if (empty($productsToClean)) {
@@ -543,7 +571,7 @@ class KreaProductsAllergenUpdater
         try {
             $node = isset($hierarchyMap[$productId]) ? $hierarchyMap[$productId] : null;
             if (!$node || empty($node->children)) {
-                dol_syslog("Leaf node $productId - no allergens calculated", LOG_DEBUG);
+                self::logDebug("Leaf node $productId - no allergens calculated");
                 return true;
             }
 
@@ -553,7 +581,7 @@ class KreaProductsAllergenUpdater
                 $hierarchyMap,
                 $forceTraces,
                 0,
-                array($productId => true)
+                array()
             );
             
             // Update database with aggregated allergens
@@ -562,7 +590,7 @@ class KreaProductsAllergenUpdater
             self::$processStats['products_processed']++;
             self::$processStats['allergens_updated'] += count($aggregatedAllergens);
             
-            dol_syslog("Updated product $productId with " . count($aggregatedAllergens) . " allergens", LOG_DEBUG);
+            self::logDebug("Updated product $productId with " . count($aggregatedAllergens) . " allergens");
             return true;
             
         } catch (Exception $e) {
@@ -578,6 +606,10 @@ class KreaProductsAllergenUpdater
     {
         $aggregated = array();
         $hasManualChildren = false;
+        $unitMapping = self::getUnitMappingCached();
+        $thresholds = self::getAllergenThresholds();
+        $childWeights = array();
+        $totalWeightInGrams = 0.0;
 
         if ($depth > self::MAX_HIERARCHY_DEPTH) {
             dol_syslog("Max hierarchy depth exceeded while aggregating allergens for product " . $node->id, LOG_WARNING);
@@ -586,6 +618,30 @@ class KreaProductsAllergenUpdater
 
         if (!isset($path[$node->id])) {
             $path[$node->id] = true;
+        }
+
+        // Pre-calculate total recipe weight in grams (exclude not-food children)
+        foreach ($node->children as $childId => $quantity) {
+            $childCalc = self::getCalculationOption($childId);
+            if ($childCalc === self::CALC_OPTION_NOT_FOOD || $quantity <= 0) {
+                continue;
+            }
+
+            $weightInfo = self::getProductWeightInfo($childId);
+            if ($weightInfo['weight'] === null || $weightInfo['weight'] <= 0) {
+                $childWeights[$childId] = null;
+                continue;
+            }
+
+            $perUnitGrams = self::convertToGrams($weightInfo['weight'], $weightInfo['weight_units'], $unitMapping);
+            if ($perUnitGrams <= 0) {
+                $childWeights[$childId] = null;
+                continue;
+            }
+
+            $childTotalGrams = $perUnitGrams * $quantity;
+            $childWeights[$childId] = $childTotalGrams;
+            $totalWeightInGrams += $childTotalGrams;
         }
 
         foreach ($node->children as $childId => $quantity) {
@@ -609,13 +665,26 @@ class KreaProductsAllergenUpdater
                 );
             }
 
+            $thresholdTrace = null;
+            if (isset($childWeights[$childId]) && $childWeights[$childId] !== null && $totalWeightInGrams > 0) {
+                $childPercent = ($childWeights[$childId] / $totalWeightInGrams) * 100;
+                if ($childPercent < $thresholds['trace']) {
+                    continue;
+                }
+                $thresholdTrace = ($childPercent < $thresholds['full']) ? self::TRACES_POSSIBLE : self::TRACES_ALLERGEN;
+            }
+
             // Merge allergens with trace level logic
             foreach ($childAllergens as $allergenId => $traces) {
+                $finalTraces = $traces;
+                if ($thresholdTrace !== null) {
+                    $finalTraces = max($finalTraces, $thresholdTrace);
+                }
                 if (!isset($aggregated[$allergenId])) {
-                    $aggregated[$allergenId] = $traces;
+                    $aggregated[$allergenId] = $finalTraces;
                 } else {
                     // Take the more restrictive trace level (0 = allergen, 1 = trace)
-                    $aggregated[$allergenId] = min($aggregated[$allergenId], $traces);
+                    $aggregated[$allergenId] = min($aggregated[$allergenId], $finalTraces);
                 }
             }
         }
@@ -671,8 +740,10 @@ class KreaProductsAllergenUpdater
 
         $node = isset($hierarchyMap[$productId]) ? $hierarchyMap[$productId] : null;
         if (!$node || empty($node->children)) {
-            self::$resolvedAllergenCache[$cacheKey] = array();
-            return self::$resolvedAllergenCache[$cacheKey];
+            // Auto leafs use any stored allergens as their base data.
+            $allergens = self::fetchProductAllergens($productId);
+            self::$resolvedAllergenCache[$cacheKey] = $allergens;
+            return $allergens;
         }
 
         $path[$productId] = true;
@@ -680,6 +751,196 @@ class KreaProductsAllergenUpdater
         self::$resolvedAllergenCache[$cacheKey] = $allergens;
 
         return $allergens;
+    }
+
+    /**
+     * Get allergen thresholds from configuration
+     */
+    private static function getAllergenThresholds()
+    {
+        global $conf;
+
+        $full = isset($conf->global->KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT)
+            ? (float) $conf->global->KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT
+            : 1.0;
+        $trace = isset($conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT)
+            ? (float) $conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT
+            : 0.1;
+
+        if ($full <= 0) {
+            $full = 1.0;
+        }
+        if ($trace < 0) {
+            $trace = 0.0;
+        }
+        if ($trace > $full) {
+            $trace = $full;
+        }
+
+        return array('full' => $full, 'trace' => $trace);
+    }
+
+    /**
+     * Get product weight and unit from cache or database
+     */
+    private static function getProductWeightInfo($productId)
+    {
+        if (isset(self::$productCache[$productId]['weight'])) {
+            return array(
+                'weight' => self::$productCache[$productId]['weight'],
+                'weight_units' => self::$productCache[$productId]['weight_units']
+            );
+        }
+
+        global $db;
+
+        $product = new Product($db);
+        if ($product->fetch($productId) <= 0) {
+            return array('weight' => null, 'weight_units' => 0);
+        }
+
+        $weight = is_numeric($product->weight) ? (float) $product->weight : null;
+        $weightUnits = ($product->weight_units === null || $product->weight_units === '') ? 0 : $product->weight_units;
+
+        if (!isset(self::$productCache[$productId])) {
+            self::$productCache[$productId] = array();
+        }
+
+        self::$productCache[$productId]['product'] = $product;
+        self::$productCache[$productId]['weight'] = $weight;
+        self::$productCache[$productId]['weight_units'] = $weightUnits;
+
+        return array('weight' => $weight, 'weight_units' => $weightUnits);
+    }
+
+    /**
+     * Convert weight to grams with unit support and caching
+     */
+    private static function convertToGrams($weight, $unit, $unitMapping)
+    {
+        $cacheKey = $weight . '_' . $unit;
+        if (isset(self::$weightConversionCache[$cacheKey])) {
+            return self::$weightConversionCache[$cacheKey];
+        }
+
+        $result = $weight; // Default fallback
+
+        if (is_numeric($unit)) {
+            $unitScale = self::resolveUnitScale((int) $unit, $unitMapping);
+            switch ($unitScale) {
+                case 98:
+                    $result = $weight / 35.274;
+                    break;
+                case 99:
+                    $result = $weight / 2.20462;
+                    break;
+                default:
+                    $result = $weight * pow(10, (int) $unitScale) * 1000;
+                    break;
+            }
+        } else {
+            $unit = strtolower(trim($unit));
+            switch ($unit) {
+                case 'kg':
+                    $result = $weight * 1000;
+                    break;
+                case 'g':
+                    $result = $weight;
+                    break;
+                case 'mg':
+                    $result = $weight / 1000;
+                    break;
+                case 'lb':
+                case 'lbs':
+                    $result = $weight / 2.20462;
+                    break;
+                case 'oz':
+                    $result = $weight * 28.3495;
+                    break;
+                default:
+                    $result = $weight;
+                    break;
+            }
+        }
+
+        self::$weightConversionCache[$cacheKey] = $result;
+        return $result;
+    }
+
+    /**
+     * Resolve unit scale from stored unit value
+     */
+    private static function resolveUnitScale($unit, $unitMapping)
+    {
+        if (self::isUnitStoredAsId() && isset($unitMapping['id'][$unit])) {
+            return $unitMapping['id'][$unit]['scale'];
+        }
+
+        if (isset($unitMapping['scale'][$unit])) {
+            return $unit;
+        }
+
+        if (isset($unitMapping['id'][$unit])) {
+            return $unitMapping['id'][$unit]['scale'];
+        }
+
+        return $unit;
+    }
+
+    /**
+     * Detect if weight units are stored as dictionary IDs (Dolibarr 10.0.0-10.0.2)
+     */
+    private static function isUnitStoredAsId()
+    {
+        if (!defined('DOL_VERSION')) {
+            return false;
+        }
+
+        return version_compare(DOL_VERSION, '10.0.0', '>=') && version_compare(DOL_VERSION, '10.0.2', '<=');
+    }
+
+    /**
+     * Get unit mapping with caching (scale and id)
+     */
+    private static function getUnitMappingCached()
+    {
+        if (!empty(self::$unitMappingCache)) {
+            return self::$unitMappingCache;
+        }
+
+        global $db, $conf;
+
+        $unitMapping = array(
+            'scale' => array(),
+            'id' => array()
+        );
+
+        $weightLabel = !empty($conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL)
+            ? $conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL
+            : 'weight';
+
+        $sql = "SELECT rowid, scale, short_label 
+                FROM " . MAIN_DB_PREFIX . "c_units 
+                WHERE unit_type = '" . $db->escape($weightLabel) . "' 
+                    AND active = 1";
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $scaleKey = is_numeric($obj->scale) ? (int)$obj->scale : $obj->scale;
+                $unitMapping['scale'][$scaleKey] = $obj->short_label;
+                $unitMapping['id'][(int)$obj->rowid] = array(
+                    'scale' => $scaleKey,
+                    'label' => $obj->short_label
+                );
+            }
+            $db->free($resql);
+        }
+
+        self::$unitMappingCache = $unitMapping;
+        self::$processStats['database_operations']++;
+
+        return $unitMapping;
     }
 
     /**
@@ -769,7 +1030,9 @@ class KreaProductsAllergenUpdater
         // Cache the result
         self::$productCache[$productId] = array(
             'calc_option' => $calcOption,
-            'product' => $product
+            'product' => $product,
+            'weight' => is_numeric($product->weight) ? (float) $product->weight : null,
+            'weight_units' => ($product->weight_units === null || $product->weight_units === '') ? 0 : $product->weight_units
         );
 
         return $calcOption;
@@ -878,7 +1141,7 @@ class KreaProductsAllergenUpdater
             'database_operations' => self::$processStats['database_operations']
         );
         
-        dol_syslog(__METHOD__ . " COMPLETED: " . json_encode($stats), LOG_INFO);
+        self::logInfo(__METHOD__ . " COMPLETED: " . json_encode($stats));
     }
 
     /**
@@ -920,6 +1183,8 @@ class KreaProductsAllergenUpdater
         self::$productCache = array();
         self::$allergenCache = array();
         self::$resolvedAllergenCache = array();
+        self::$unitMappingCache = array();
+        self::$weightConversionCache = array();
     }
 
     /**

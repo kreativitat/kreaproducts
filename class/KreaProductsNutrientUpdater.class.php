@@ -195,8 +195,29 @@ class KreaProductsNutrientUpdater
             'database_operations' => 0,
             'cache_hits' => 0
         );
-        
-        dol_syslog(__METHOD__ . " Starting updateNutrientAttributes for productId: $productId", LOG_DEBUG);
+
+        self::logDebug(__METHOD__ . " Starting updateNutrientAttributes for productId: $productId");
+    }
+
+    private static function isDebugEnabled()
+    {
+        global $conf;
+
+        return !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
+    }
+
+    private static function logDebug($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_DEBUG);
+        }
+    }
+
+    private static function logInfo($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_INFO);
+        }
     }
 
     /**
@@ -471,7 +492,7 @@ class KreaProductsNutrientUpdater
         // Sort by height (leaves first, then parents)
         asort($heights);
         
-        dol_syslog("Computed node heights: " . json_encode($heights), LOG_DEBUG);
+        self::logDebug("Computed node heights: " . json_encode($heights));
         return $heights;
     }
 
@@ -513,7 +534,7 @@ class KreaProductsNutrientUpdater
         foreach ($processingOrder as $nodeId => $height) {
             // Skip leaf nodes (height 0)
             if ($height == 0) {
-                dol_syslog("Skipping leaf node: $nodeId", LOG_DEBUG);
+                self::logDebug("Skipping leaf node: $nodeId");
                 continue;
             }
 
@@ -524,11 +545,11 @@ class KreaProductsNutrientUpdater
 
             $node = $productMap[$nodeId];
             if (empty($node->children)) {
-                dol_syslog("No children for node $nodeId", LOG_DEBUG);
+                self::logDebug("No children for node $nodeId");
                 continue;
             }
 
-            dol_syslog("Processing node $nodeId with height $height", LOG_DEBUG);
+            self::logDebug("Processing node $nodeId with height $height");
 
             // Calculate and update nutrition for this node
             if (self::processNodeNutrition($node, $productMap, $user)) {
@@ -557,7 +578,7 @@ class KreaProductsNutrientUpdater
             
             self::$processStats['products_processed']++;
             
-            dol_syslog("Updated nutritional record for node " . $node->id, LOG_DEBUG);
+            self::logDebug("Updated nutritional record for node " . $node->id);
             return true;
             
         } catch (Exception $e) {
@@ -600,7 +621,7 @@ class KreaProductsNutrientUpdater
             $childTotalWeight = $qty * $baseWeightInGrams;
             $totalWeightInGrams += $childTotalWeight;
 
-            dol_syslog("Child $childId: weight={$baseWeight}{$child->weight_units}, converted={$baseWeightInGrams}g, total={$childTotalWeight}g", LOG_DEBUG);
+            self::logDebug("Child $childId: weight={$baseWeight}{$child->weight_units}, converted={$baseWeightInGrams}g, total={$childTotalWeight}g");
 
             // Get child nutritional data
             $childNutrition = self::fetchNutritionalData($childId);
@@ -613,9 +634,9 @@ class KreaProductsNutrientUpdater
                     }
                 }
                 
-                dol_syslog("Updated totals for node " . $node->id . " after child $childId", LOG_DEBUG);
+                self::logDebug("Updated totals for node " . $node->id . " after child $childId");
             } else {
-                dol_syslog("No nutritional data found for child $childId", LOG_DEBUG);
+                self::logDebug("No nutritional data found for child $childId");
             }
         }
 
@@ -626,7 +647,7 @@ class KreaProductsNutrientUpdater
                 $normalized[$nutrient] = ($absoluteValue / $totalWeightInGrams) * 100;
             }
             
-            dol_syslog("Normalized values for node " . $node->id . ": " . json_encode($normalized), LOG_DEBUG);
+            self::logDebug("Normalized values for node " . $node->id . ": " . json_encode($normalized));
             return $normalized;
         } else {
             dol_syslog("Total weight is zero for node " . $node->id, LOG_WARNING);
@@ -726,7 +747,7 @@ class KreaProductsNutrientUpdater
             }
             
             self::$processStats['records_updated']++;
-            dol_syslog("Updated nutritional record for product $productId", LOG_DEBUG);
+            self::logDebug("Updated nutritional record for product $productId");
             
         } else {
             // Insert new record
@@ -742,7 +763,7 @@ class KreaProductsNutrientUpdater
             }
             
             self::$processStats['records_inserted']++;
-            dol_syslog("Inserted nutritional record for product $productId", LOG_DEBUG);
+            self::logDebug("Inserted nutritional record for product $productId");
         }
         
         self::$processStats['database_operations']++;
@@ -949,7 +970,7 @@ class KreaProductsNutrientUpdater
             'cache_hits' => self::$processStats['cache_hits']
         );
         
-        dol_syslog(__METHOD__ . " COMPLETED: " . json_encode($stats), LOG_INFO);
+        self::logInfo(__METHOD__ . " COMPLETED: " . json_encode($stats));
     }
 
     /**

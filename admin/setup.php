@@ -129,9 +129,19 @@ if (!isset($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DISMANTLE_BOMTYPE', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE = '1';
 }
-
-// Auto synch buy price
-$formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
+// Allergen thresholds (percent of total recipe weight)
+if (!isset($conf->global->KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT', '1.0', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT = '1.0';
+}
+if (!isset($conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT', '0.1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT = '0.1';
+}
+if (!isset($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_DEBUG_LOG', '0', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_DEBUG_LOG = '0';
+}
 
 // Setup weight unit with unique labels only
 $sql = "SELECT DISTINCT unit_type FROM " . MAIN_DB_PREFIX . "c_units ORDER BY unit_type DESC";
@@ -144,9 +154,6 @@ if ($resql) {
 } else {
 	dol_print_error($db);
 }
-$item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
-$item->setAsSelect($TField);
-$item->defaultFieldValue = '';
 
 // Product categories (for dismantle gate)
 $TCategories = array('' => $langs->trans('None'));
@@ -191,63 +198,88 @@ $TBomTypes = array(
 	'0' => $langs->trans('KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0'),
 );
 
-// Tabela nutricional dentro da aba das fichas técnicas dos produtos
-$formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
+// Sincronização de produtos
+$formSetup->newItem('ZS_SYNC_PRODUCTS_TITLE')->setAsTitle();
+$formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
 
-// Data de movimentos de stocks dia da fatura
-$formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
-
-// Hora a aplicar aos movimentos de stock de fatura de fornecedor (HH:MM ou HH:MM:SS)
-$item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
-$item->defaultFieldValue = '10:00';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
-$item->fieldAttr = array('type' => 'time', 'step' => '1');
-
-// Hora por defeito no inventário (HH:MM ou HH:MM:SS)
-$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_DEFAULT_TIME');
-$item->defaultFieldValue = '10:30';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP');
-$item->fieldAttr = array('type' => 'time', 'step' => '1');
-
-// Categoria raiz para limitar as categorias do inventário
-$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT');
-$item->setAsSelect($TInventoryCategoryRoots);
-$item->defaultFieldValue = '';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP');
-
-// Categoria que habilita a desmontagem automática (ID de categoria de produto)
-$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_CATEGORY');
-$item->setAsSelect($TCategories);
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_CATEGORY_HELP');
-$item->defaultFieldValue = '';
-
-// Tipo de BOM que representa desmontagem (bom_bom.bomtype). Padrão 1.
-$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_BOMTYPE');
-$item->setAsSelect($TBomTypes);
-$item->defaultFieldValue = '1';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP');
-
-// Armazém a usar para movimentos de desmontagem (fallback MAIN_DEFAULT_WAREHOUSE)
-$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_WAREHOUSE');
-$item->setAsSelect($TWarehouses);
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP');
-
-// Markup default for simulator
-$item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
-$item->defaultFieldValue = '3';
-$item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
-
-// Enable/disable replacement of core product list with Krea simplified list (use select to avoid ajax toggle issues)
+// Lista de produtos
 $item = $formSetup->newItem('KREAPRODUCTS_REPLACE_PRODUCT_LIST');
 $item->setAsSelect(array('1' => $langs->trans('Yes'), '0' => $langs->trans('No')));
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP');
 
-// Enable/disable price simulator block
+// Nutrição e alergénios
+$formSetup->newItem('KREAPRODUCTS_NUTRITION_SETTINGS_TITLE')->setAsTitle();
+$formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
+
+$item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
+$item->setAsSelect($TField);
+$item->defaultFieldValue = '';
+
+$item = $formSetup->newItem('KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT');
+$item->defaultFieldValue = '1.0';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT_HELP');
+$item->fieldAttr = array('type' => 'number', 'step' => '0.01', 'min' => '0');
+
+$item = $formSetup->newItem('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT');
+$item->defaultFieldValue = '0.1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT_HELP');
+$item->fieldAttr = array('type' => 'number', 'step' => '0.01', 'min' => '0');
+
+// Movimentos de stock
+$formSetup->newItem('KREAPRODUCTS_STOCK_SETTINGS_TITLE')->setAsTitle();
+$formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+
+$item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
+$item->defaultFieldValue = '10:00';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '1');
+
+// Inventário
+$formSetup->newItem('KREAPRODUCTS_INVENTORY_SETTINGS_TITLE')->setAsTitle();
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_DEFAULT_TIME');
+$item->defaultFieldValue = '10:30';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '1');
+
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT');
+$item->setAsSelect($TInventoryCategoryRoots);
+$item->defaultFieldValue = '';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP');
+
+// Desmontagem
+$formSetup->newItem('KREAPRODUCTS_DISMANTLE_SETTINGS_TITLE')->setAsTitle();
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_CATEGORY');
+$item->setAsSelect($TCategories);
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_CATEGORY_HELP');
+$item->defaultFieldValue = '';
+
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_BOMTYPE');
+$item->setAsSelect($TBomTypes);
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_WAREHOUSE');
+$item->setAsSelect($TWarehouses);
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP');
+
+// Simulador de preços
+$formSetup->newItem('KREAPRODUCTS_SIMULATOR_SETTINGS_TITLE')->setAsTitle();
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_ENABLE');
 $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('Enable or disable the price simulator (Métricas e Margens)');
+
+$item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
+$item->defaultFieldValue = '3';
+$item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
+
+// Debug e logs
+$formSetup->newItem('KREAPRODUCTS_DEBUG_SETTINGS_TITLE')->setAsTitle();
+$item = $formSetup->newItem('KREAPRODUCTS_DEBUG_LOG');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_DEBUG_LOG_HELP');
 
 /*
 // Enter here all parameters in your setup page

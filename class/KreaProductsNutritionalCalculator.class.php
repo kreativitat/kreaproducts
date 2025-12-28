@@ -197,8 +197,29 @@ class KreaProductsNutritionalCalculator
             'cache_hits' => 0,
             'products_processed' => 0
         );
-        
-        dol_syslog(__METHOD__ . " Starting nutritional calculation for product: $productId", LOG_DEBUG);
+
+        self::logDebug(__METHOD__ . " Starting nutritional calculation for product: $productId");
+    }
+
+    private static function isDebugEnabled()
+    {
+        global $conf;
+
+        return !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
+    }
+
+    private static function logDebug($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_DEBUG);
+        }
+    }
+
+    private static function logInfo($message)
+    {
+        if (self::isDebugEnabled()) {
+            dol_syslog($message, LOG_INFO);
+        }
     }
 
     /**
@@ -537,7 +558,7 @@ class KreaProductsNutritionalCalculator
             print '<tr><td colspan="14" class="opacitymedium">' . $langs->trans("NoSubproductsFound") . '</td></tr>';
         } else {
             // Display individual subproduct rows
-            self::displaySubproductRows($subList, $calculationResult['details']);
+            self::displaySubproductRows($productId, $subList, $calculationResult['details']);
         }
 
         // Display totals and normalized values
@@ -555,7 +576,10 @@ class KreaProductsNutritionalCalculator
         print '<tr class="liste_titre">';
         print '<td width="5%">' . $langs->trans("KreaProductsTableProductRef") . '</td>';
         print '<td width="25%">' . $langs->trans("KreaProductsTableProductName") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableProductWeight") . '</td>';
+        print '<td width="5%" style="text-align: right; white-space: nowrap; min-width: 220px;">'
+            . $langs->trans("KreaProductsTableProductWeight")
+            . ' <span class="classfortooltip valignmiddle" style="padding: 0px; padding: 0px; padding-right: 2px;" title="Peso por unidade do produto; nao altera a quantidade."><span class="fas fa-info-circle  em088 opacityhigh" style=" vertical-align: middle; cursor: help"></span></span>'
+            . '</td>';
         print '<td width="10%" style="text-align: right;">' . $langs->trans("KreaProductsTableProductQuantity") . '</td>';
         print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableQuantityWeight") . '</td>';
         print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableEnergy_kcal") . '</td>';
@@ -786,11 +810,19 @@ class KreaProductsNutritionalCalculator
     /**
      * Display subproduct rows
      */
-    private static function displaySubproductRows($subList, $details)
+    private static function displaySubproductRows($productId, $subList, $details)
     {
-        global $db;
+        global $db, $langs, $user;
 
+        require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
+        require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
         require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+
+        $form = new Form($db);
+        $formproduct = new FormProduct($db);
+        $canEditWeight = !getDolGlobalString('PRODUCT_DISABLE_WEIGHT')
+            && !empty($user)
+            && ((!empty($user->rights->produit->creer)) || (!empty($user->rights->service->creer)));
 
         foreach ($subList as $childId => $finalQty) {
             if (!isset($details[$childId])) {
@@ -808,15 +840,31 @@ class KreaProductsNutritionalCalculator
 
             // Display weight information
             $displayWeight = htmlspecialchars(
-                $detail['raw_weight'] . ' ' . $detail['weight_unit'], 
+                $detail['raw_weight'] . ' ' . $detail['weight_unit'],
                 ENT_QUOTES
             );
+            $weightCell = $displayWeight;
+            if ($canEditWeight && $childLp->type != Product::TYPE_SERVICE) {
+                $fieldName = 'weight_' . $childId;
+                $formObject = new stdClass();
+                $formObject->id = $childId;
+                $weightEdit = '<input name="weight" size="16" class="width150" value="' . dol_escape_htmltag(GETPOSTISSET('weight') ? GETPOST('weight') : $detail['raw_weight']) . '"> ';
+                $weightEdit .= $formproduct->selectMeasuringUnits(
+                    "weight_units",
+                    "weight",
+                    GETPOSTISSET('weight_units') ? GETPOST('weight_units', 'alpha') : $childLp->weight_units,
+                    0,
+                    2
+                );
+                $weightCell = $form->editfieldval("Weight", $fieldName, $displayWeight, $formObject, 1, 'asis', $weightEdit, null, null, 'id=' . $productId, 1, '', 'childid');
+                $weightCell .= $form->editfieldkey('', $fieldName, $displayWeight, $formObject, 1, 'asis', '&id=' . $productId, 0, 1, 'childid');
+            }
 
             // Display the row
             print '<tr style="font-style: italic;">';
             print '<td>' . $linkRef . '</td>';
             print '<td>' . $nameStr . '</td>';
-            print '<td style="text-align: right;">' . $displayWeight . '</td>';
+            print '<td style="text-align: right; white-space: nowrap; min-width: 220px;">' . $weightCell . '</td>';
             print '<td style="text-align: right;">x ' . number_format($detail['quantity'], 3, '.', '') . '</td>';
             print '<td style="text-align: right;">' . round($detail['total_weight'], self::DISPLAY_PRECISION) . '</td>';
             
@@ -1228,7 +1276,7 @@ class KreaProductsNutritionalCalculator
             'cache_hits' => self::$processStats['cache_hits']
         );
         
-        dol_syslog(__METHOD__ . " COMPLETED: " . json_encode($stats), LOG_INFO);
+        self::logInfo(__METHOD__ . " COMPLETED: " . json_encode($stats));
     }
 
     /**

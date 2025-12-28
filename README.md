@@ -7,8 +7,9 @@ KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/C
 
 ### Nutrição e alergénios
 - Tabela nutricional com cálculo, validação e atualização automática.
-- Propagação de nutrientes entre produtos pai/filho e suporte a produtos não alimentares.
-- Gestão de alergénios e vestígios na ficha do produto.
+- Propagação de nutrientes entre produtos pai/filho, incluindo BOM (MRP) quando ativo.
+- Gestão de alergénios com propagação por percentagem do peso total e marcação de traços.
+- Suporte a produtos não alimentares (excluídos do cálculo).
 
 ### Estrutura de produtos e BOM
 - Árvore completa de produtos (associações + BOM MRP, quando ativo).
@@ -44,6 +45,8 @@ KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/C
 | `KREAPRODUCTS_NUTRITIONAL_TABLE_TAB` | Mostrar tabela nutricional na ficha técnica. |
 | `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE` | Propagar automaticamente o preço de custo. |
 | `KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE` | Propagar automaticamente a tabela nutricional. |
+| `KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT` | Percentagem do peso total para considerar alergénios como presentes. |
+| `KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT` | Percentagem do peso total para marcar alergénios como traços. |
 | `KREAPRODUCTS_STOCK_MOVEMENT_DATA` | Usar data da fatura nos movimentos de stock. |
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Hora aplicada a movimentos de fatura de fornecedor. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Hora padrão ao criar inventário. |
@@ -54,6 +57,8 @@ KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/C
 | `KREAPRODUCTS_SIM_ENABLE` | Ativar simulador de preços. |
 | `KREAPRODUCTS_SIM_DEFAULT_MARKUP` | Markup predefinido do simulador. |
 | `KREAPRODUCTS_REPLACE_PRODUCT_LIST` | Substituir a lista padrão de produtos. |
+
+Nota: os limiares de alergénios são percentagens do peso total da receita do produto final.
 
 ## Permissões
 - Nutrição: leitura, escrita, remoção.
