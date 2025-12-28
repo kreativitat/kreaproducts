@@ -18,6 +18,7 @@ class KreaProductsAllergenUpdater
     const ALERT_ALLERGEN_ID = 999; // Must exist in your allergens table!
     const CALC_OPTION_MANUAL = 0;
     const CALC_OPTION_AUTO = 1;
+    const CALC_OPTION_NOT_FOOD = 2;
     
     // Constants for trace modes
     const TRACES_ALLERGEN = 0;
@@ -36,6 +37,7 @@ class KreaProductsAllergenUpdater
     private static $processStats = array();
     private static $productCache = array();
     private static $allergenCache = array();
+    private static $resolvedAllergenCache = array();
 
     /**
      * Update allergen attributes for a product hierarchy
@@ -206,6 +208,7 @@ class KreaProductsAllergenUpdater
     private static function initializeProcessing($rootProductId)
     {
         self::clearErrors();
+        self::$resolvedAllergenCache = array();
         self::$processStats = array(
             'start_time' => microtime(true),
             'root_product' => $rootProductId,
@@ -306,9 +309,36 @@ class KreaProductsAllergenUpdater
      */
     private static function fetchProductChildren($productId)
     {
-        global $db;
+        global $db, $conf;
         
         $children = array();
+        $source = array();
+
+        if (!empty($conf->bom->enabled)) {
+            $sql = "SELECT bl.fk_product as child_id, bl.qty as qty
+                    FROM " . MAIN_DB_PREFIX . "bom_bom b
+                    JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
+                    WHERE b.fk_product = " . (int)$productId . "
+                        AND b.bomtype IN (0,1)
+                        AND b.status = 1";
+
+            $resql = $db->query($sql);
+            if (!$resql) {
+                throw new Exception("Failed to fetch BOM children for product $productId: " . $db->lasterror());
+            }
+
+            while ($row = $db->fetch_object($resql)) {
+                $childId = (int)$row->child_id;
+                $quantity = (float)$row->qty;
+                if ($childId > 0 && $quantity > 0) {
+                    $children[$childId] = $quantity;
+                    $source[$childId] = 'bom';
+                }
+            }
+
+            $db->free($resql);
+            self::$processStats['database_operations']++;
+        }
         
         $sql = "SELECT fk_product_fils, qty 
                 FROM " . MAIN_DB_PREFIX . "product_association 
@@ -324,8 +354,12 @@ class KreaProductsAllergenUpdater
             $childId = (int)$row->fk_product_fils;
             $quantity = (float)$row->qty;
             
-            if ($childId > 0) {
+            if ($childId > 0 && $quantity > 0) {
+                if (isset($source[$childId]) && $source[$childId] === 'bom') {
+                    continue;
+                }
                 $children[$childId] = $quantity;
+                $source[$childId] = 'association';
             }
         }
         
@@ -513,8 +547,14 @@ class KreaProductsAllergenUpdater
                 return true;
             }
 
-            // Aggregate allergens from children
-            $aggregatedAllergens = self::aggregateChildAllergens($node, $forceTraces);
+            // Aggregate allergens from children (recursive)
+            $aggregatedAllergens = self::resolveProductAllergens(
+                $productId,
+                $hierarchyMap,
+                $forceTraces,
+                0,
+                array($productId => true)
+            );
             
             // Update database with aggregated allergens
             self::updateProductAllergens($productId, $aggregatedAllergens, $user);
@@ -534,18 +574,39 @@ class KreaProductsAllergenUpdater
     /**
      * Aggregate allergens from child products
      */
-    private static function aggregateChildAllergens($node, $forceTraces)
+    private static function aggregateChildAllergens($node, $hierarchyMap, $forceTraces, $depth = 0, $path = array())
     {
         $aggregated = array();
         $hasManualChildren = false;
 
+        if ($depth > self::MAX_HIERARCHY_DEPTH) {
+            dol_syslog("Max hierarchy depth exceeded while aggregating allergens for product " . $node->id, LOG_WARNING);
+            return $aggregated;
+        }
+
+        if (!isset($path[$node->id])) {
+            $path[$node->id] = true;
+        }
+
         foreach ($node->children as $childId => $quantity) {
             $childCalc = self::getCalculationOption($childId);
-            $childAllergens = self::fetchProductAllergens($childId);
+
+            if ($childCalc === self::CALC_OPTION_NOT_FOOD) {
+                continue;
+            }
 
             // Track manual children
             if ($childCalc === self::CALC_OPTION_MANUAL) {
                 $hasManualChildren = true;
+                $childAllergens = self::fetchProductAllergens($childId);
+            } else {
+                $childAllergens = self::resolveProductAllergens(
+                    $childId,
+                    $hierarchyMap,
+                    $forceTraces,
+                    $depth + 1,
+                    $path
+                );
             }
 
             // Merge allergens with trace level logic
@@ -572,6 +633,53 @@ class KreaProductsAllergenUpdater
         }
 
         return $aggregated;
+    }
+
+    /**
+     * Resolve allergens for a product, computing from children when auto
+     */
+    private static function resolveProductAllergens($productId, $hierarchyMap, $forceTraces, $depth = 0, $path = array())
+    {
+        $cacheKey = $productId . ':' . (int) $forceTraces;
+        if (isset(self::$resolvedAllergenCache[$cacheKey])) {
+            return self::$resolvedAllergenCache[$cacheKey];
+        }
+
+        if ($depth > self::MAX_HIERARCHY_DEPTH) {
+            dol_syslog("Max hierarchy depth exceeded while resolving allergens for product $productId", LOG_WARNING);
+            self::$resolvedAllergenCache[$cacheKey] = array();
+            return self::$resolvedAllergenCache[$cacheKey];
+        }
+
+        if (isset($path[$productId])) {
+            dol_syslog("Circular dependency detected while resolving allergens for product $productId", LOG_WARNING);
+            self::$resolvedAllergenCache[$cacheKey] = array();
+            return self::$resolvedAllergenCache[$cacheKey];
+        }
+
+        $calcOption = self::getCalculationOption($productId);
+        if ($calcOption === self::CALC_OPTION_NOT_FOOD) {
+            self::$resolvedAllergenCache[$cacheKey] = array();
+            return self::$resolvedAllergenCache[$cacheKey];
+        }
+
+        if ($calcOption === self::CALC_OPTION_MANUAL) {
+            $allergens = self::fetchProductAllergens($productId);
+            self::$resolvedAllergenCache[$cacheKey] = $allergens;
+            return $allergens;
+        }
+
+        $node = isset($hierarchyMap[$productId]) ? $hierarchyMap[$productId] : null;
+        if (!$node || empty($node->children)) {
+            self::$resolvedAllergenCache[$cacheKey] = array();
+            return self::$resolvedAllergenCache[$cacheKey];
+        }
+
+        $path[$productId] = true;
+        $allergens = self::aggregateChildAllergens($node, $hierarchyMap, $forceTraces, $depth + 1, $path);
+        self::$resolvedAllergenCache[$cacheKey] = $allergens;
+
+        return $allergens;
     }
 
     /**
@@ -711,6 +819,7 @@ class KreaProductsAllergenUpdater
      */
     private static function getInheritedAllergens($productId)
     {
+        self::$resolvedAllergenCache = array();
         $hierarchy = self::buildProductHierarchy($productId);
         $node = isset($hierarchy[$productId]) ? $hierarchy[$productId] : null;
         
@@ -718,7 +827,7 @@ class KreaProductsAllergenUpdater
             return array();
         }
 
-        return self::aggregateChildAllergens($node, 0);
+        return self::aggregateChildAllergens($node, $hierarchy, 0, 0, array($productId => true));
     }
 
     /**
@@ -810,6 +919,7 @@ class KreaProductsAllergenUpdater
     {
         self::$productCache = array();
         self::$allergenCache = array();
+        self::$resolvedAllergenCache = array();
     }
 
     /**

@@ -43,6 +43,7 @@ class KreaProductsNutrientUpdater
     private static $productCache = array();
     private static $nutritionCache = array();
     private static $weightConversionCache = array();
+    private static $unitMappingCache = array();
 
     /**
      * Updates the nutritional records for all non-leaf products in the tree.
@@ -229,6 +230,7 @@ class KreaProductsNutrientUpdater
         global $db;
         
         $map = array();
+        $associationCache = array();
         $queue = array($startId);
         $seen = array($startId => true);
         $depth = 0;
@@ -265,8 +267,19 @@ class KreaProductsNutrientUpdater
                         );
                     }
                     
-                    // Record association
-                    $map[$assoc['father']]->addChild($assoc['child'], $assoc['qty']);
+                    // Record association with BOM precedence
+                    $associationKey = $assoc['father'] . ':' . $assoc['child'];
+                    $quantity = (float)$assoc['qty'];
+                    $source = isset($assoc['source']) ? $assoc['source'] : 'association';
+                    if ($quantity > 0) {
+                        if (!isset($associationCache[$associationKey])) {
+                            $map[$assoc['father']]->setChildQuantity($assoc['child'], $quantity);
+                            $associationCache[$associationKey] = $source;
+                        } elseif ($source === 'bom' && $associationCache[$associationKey] !== 'bom') {
+                            $map[$assoc['father']]->setChildQuantity($assoc['child'], $quantity);
+                            $associationCache[$associationKey] = 'bom';
+                        }
+                    }
                     
                     // Queue unseen nodes
                     if (!isset($seen[$assoc['father']])) {
@@ -295,9 +308,52 @@ class KreaProductsNutrientUpdater
      */
     private static function fetchProductAssociations($productId)
     {
-        global $db;
+        global $db, $conf;
         
         $associations = array();
+
+        if (!empty($conf->bom->enabled)) {
+            $sql = "SELECT b.fk_product AS father,
+                           bl.fk_product AS child,
+                           bl.qty AS qty,
+                           pf.label AS father_label,
+                           pf.weight AS father_weight,
+                           pf.weight_units AS father_weight_units,
+                           pc.label AS child_label,
+                           pc.weight AS child_weight,
+                           pc.weight_units AS child_weight_units
+                    FROM " . MAIN_DB_PREFIX . "bom_bom b
+                    JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
+                    JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = b.fk_product)
+                    JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = bl.fk_product)
+                    WHERE b.bomtype IN (0,1)
+                        AND b.status = 1
+                        AND (b.fk_product = " . (int)$productId . " OR bl.fk_product = " . (int)$productId . ")";
+
+            $resql = $db->query($sql);
+            
+            if (!$resql) {
+                throw new Exception("Failed to fetch BOM associations for product $productId: " . $db->lasterror());
+            }
+
+            while ($obj = $db->fetch_object($resql)) {
+                $associations[] = array(
+                    'father' => (int)$obj->father,
+                    'child' => (int)$obj->child,
+                    'qty' => (float)$obj->qty,
+                    'father_label' => $obj->father_label,
+                    'father_weight' => (float)$obj->father_weight,
+                    'father_weight_units' => $obj->father_weight_units,
+                    'child_label' => $obj->child_label,
+                    'child_weight' => (float)$obj->child_weight,
+                    'child_weight_units' => $obj->child_weight_units,
+                    'source' => 'bom'
+                );
+            }
+            
+            $db->free($resql);
+            self::$processStats['database_operations']++;
+        }
         
         $sql = "SELECT pa.fk_product_pere AS father,
                        pa.fk_product_fils AS child,
@@ -329,7 +385,8 @@ class KreaProductsNutrientUpdater
                 'father_weight_units' => $obj->father_weight_units,
                 'child_label' => $obj->child_label,
                 'child_weight' => (float)$obj->child_weight,
-                'child_weight_units' => $obj->child_weight_units
+                'child_weight_units' => $obj->child_weight_units,
+                'source' => 'association'
             );
         }
         
@@ -696,17 +753,29 @@ class KreaProductsNutrientUpdater
      */
     private static function convertToGrams($weight, $unit)
     {
+        global $conf;
+
         $cacheKey = $weight . '_' . $unit;
         if (isset(self::$weightConversionCache[$cacheKey])) {
             return self::$weightConversionCache[$cacheKey];
         }
 
-        $unit = strtolower(trim($unit));
+        $unit = is_string($unit) ? strtolower(trim($unit)) : $unit;
         $result = $weight; // Default fallback
 
         if (is_numeric($unit)) {
             // Handle Dolibarr's numeric units
             $unitNum = (int)$unit;
+            $shouldResolveId = self::isUnitStoredAsId();
+            if (!$shouldResolveId && !in_array($unitNum, array(-9, -6, -3, 0, 3, 98, 99), true)) {
+                $shouldResolveId = true;
+            }
+            if ($shouldResolveId) {
+                $unitMapping = self::getUnitMappingCached($conf);
+                if (isset($unitMapping[$unitNum])) {
+                    $unitNum = (int)$unitMapping[$unitNum];
+                }
+            }
             switch ($unitNum) {
                 case self::UNIT_NUMERIC_OUNCES:
                     $result = $weight / 35.274;
@@ -755,6 +824,53 @@ class KreaProductsNutrientUpdater
         self::$weightConversionCache[$cacheKey] = $result;
         
         return $result;
+    }
+
+    /**
+     * Detect if weight units are stored as dictionary IDs (Dolibarr 10.0.0-10.0.2)
+     */
+    private static function isUnitStoredAsId()
+    {
+        if (!defined('DOL_VERSION')) {
+            return false;
+        }
+
+        return version_compare(DOL_VERSION, '10.0.0', '>=') && version_compare(DOL_VERSION, '10.0.2', '<=');
+    }
+
+    /**
+     * Get unit mapping (id => scale) with caching
+     */
+    private static function getUnitMappingCached($conf)
+    {
+        if (!empty(self::$unitMappingCache)) {
+            return self::$unitMappingCache;
+        }
+
+        global $db;
+        $unitMapping = array();
+
+        $weightLabel = !empty($conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL) 
+            ? $conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL 
+            : 'weight';
+
+        $sql = "SELECT rowid, scale 
+                FROM " . MAIN_DB_PREFIX . "c_units 
+                WHERE unit_type = '" . $db->escape($weightLabel) . "' 
+                    AND active = 1";
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            while ($obj = $db->fetch_object($resql)) {
+                $unitMapping[(int)$obj->rowid] = is_numeric($obj->scale) ? (int)$obj->scale : $obj->scale;
+            }
+            $db->free($resql);
+        }
+
+        self::$unitMappingCache = $unitMapping;
+        self::$processStats['database_operations']++;
+
+        return $unitMapping;
     }
 
     /**
@@ -875,6 +991,7 @@ class KreaProductsNutrientUpdater
         self::$productCache = array();
         self::$nutritionCache = array();
         self::$weightConversionCache = array();
+        self::$unitMappingCache = array();
     }
 
     /**
@@ -920,7 +1037,7 @@ class ProductNutritionNode
         $this->id = (int)$id;
         $this->label = $label;
         $this->weight = (float)$weight;
-        $this->weight_units = $weight_units ? $weight_units : 'g';
+        $this->weight_units = ($weight_units === null || $weight_units === '') ? 0 : $weight_units;
     }
 
     /**
@@ -933,6 +1050,24 @@ class ProductNutritionNode
         }
         $this->children[$childId] += (float)$quantity;
         $this->totalQuantity += (float)$quantity;
+    }
+
+    /**
+     * Set a child product quantity (override)
+     */
+    public function setChildQuantity($childId, $quantity)
+    {
+        $quantity = (float)$quantity;
+        if ($quantity <= 0) {
+            return;
+        }
+
+        if (isset($this->children[$childId])) {
+            $this->totalQuantity -= $this->children[$childId];
+        }
+
+        $this->children[$childId] = $quantity;
+        $this->totalQuantity += $quantity;
     }
 
     /**

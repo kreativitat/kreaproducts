@@ -36,6 +36,11 @@ class KreaProductsNutritionalCalculator
     // Default values
     const DEFAULT_WEIGHT = 1.0;
     const DEFAULT_UNIT = 'g';
+
+    // Nutrition calculation options
+    const CALC_OPTION_MANUAL = 0;
+    const CALC_OPTION_AUTO = 1;
+    const CALC_OPTION_NOT_FOOD = 2;
     
     // Cache and state management
     private static $productMap = array();
@@ -43,6 +48,9 @@ class KreaProductsNutritionalCalculator
     private static $nutritionCache = array();
     private static $unitMappingCache = array();
     private static $weightConversionCache = array();
+    private static $calculatedNutritionCache = array();
+    private static $calcOptionCache = array();
+    private static $associationCache = array();
     
     // Error handling
     private static $errors = array();
@@ -179,6 +187,9 @@ class KreaProductsNutritionalCalculator
     private static function initializeProcessing($productId)
     {
         self::clearErrors();
+        self::$calculatedNutritionCache = array();
+        self::$calcOptionCache = array();
+        self::$associationCache = array();
         self::$processStats = array(
             'start_time' => microtime(true),
             'root_product' => $productId,
@@ -226,28 +237,48 @@ class KreaProductsNutritionalCalculator
      */
     private static function buildEnhancedMapBFS($startId)
     {
-        global $db;
+        global $db, $conf;
         
         try {
             self::$productMap = array();
+            self::$associationCache = array();
             $queue = array($startId);
             $seen = array($startId => true);
             $depth = 0;
 
             // Enhanced SQL with better error handling
-            $sqlBase = "SELECT pa.fk_product_pere as father,
-                               pa.fk_product_fils as child,
-                               pa.qty as qty,
-                               pf.label as fatherLabel,
-                               pf.weight as fatherWeight,
-                               pf.weight_units as fatherWeightUnits,
-                               pc.label as childLabel,
-                               pc.weight as childWeight,
-                               pc.weight_units as childWeightUnits
-                        FROM " . MAIN_DB_PREFIX . "product_association pa
-                        JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
-                        JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                        WHERE pa.fk_product_pere = %d OR pa.fk_product_fils = %d";
+            $sqlAssociation = "SELECT pa.fk_product_pere as father,
+                                      pa.fk_product_fils as child,
+                                      pa.qty as qty,
+                                      pf.label as fatherLabel,
+                                      pf.weight as fatherWeight,
+                                      pf.weight_units as fatherWeightUnits,
+                                      pc.label as childLabel,
+                                      pc.weight as childWeight,
+                                      pc.weight_units as childWeightUnits,
+                                      'association' as source
+                               FROM " . MAIN_DB_PREFIX . "product_association pa
+                               JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
+                               JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
+                               WHERE pa.fk_product_pere = %d OR pa.fk_product_fils = %d";
+
+            $sqlBom = "SELECT b.fk_product as father,
+                              bl.fk_product as child,
+                              bl.qty as qty,
+                              pf.label as fatherLabel,
+                              pf.weight as fatherWeight,
+                              pf.weight_units as fatherWeightUnits,
+                              pc.label as childLabel,
+                              pc.weight as childWeight,
+                              pc.weight_units as childWeightUnits,
+                              'bom' as source
+                       FROM " . MAIN_DB_PREFIX . "bom_bom b
+                       JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
+                       JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = b.fk_product)
+                       JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = bl.fk_product)
+                       WHERE b.bomtype IN (0,1)
+                           AND b.status = 1
+                           AND (b.fk_product = %d OR bl.fk_product = %d)";
 
             while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
                 $currentLevel = $queue;
@@ -258,60 +289,76 @@ class KreaProductsNutritionalCalculator
                 }
 
                 foreach ($currentLevel as $current) {
-                    $sql = sprintf($sqlBase, (int)$current, (int)$current);
-                    $resql = $db->query($sql);
-                    
-                    if (!$resql) {
-                        throw new Exception("Database error: " . $db->lasterror());
+                    $queries = array();
+                    if (!empty($conf->bom->enabled)) {
+                        $queries[] = $sqlBom;
                     }
+                    $queries[] = $sqlAssociation;
 
-                    while ($obj = $db->fetch_object($resql)) {
-                        // Enhanced validation
-                        if (!self::validateAssociationData($obj)) {
-                            continue;
+                    foreach ($queries as $sqlTemplate) {
+                        $sql = sprintf($sqlTemplate, (int)$current, (int)$current);
+                        $resql = $db->query($sql);
+                        
+                        if (!$resql) {
+                            throw new Exception("Database error: " . $db->lasterror());
                         }
 
-                        // Create father product node
-                        if (!isset(self::$productMap[$obj->father])) {
-                            self::$productMap[$obj->father] = new EnhancedLocalProduct(
-                                $obj->father,
-                                $obj->fatherLabel,
-                                $obj->fatherWeight,
-                                $obj->fatherWeightUnits
-                            );
+                        while ($obj = $db->fetch_object($resql)) {
+                            // Enhanced validation
+                            if (!self::validateAssociationData($obj)) {
+                                continue;
+                            }
+
+                            // Create father product node
+                            if (!isset(self::$productMap[$obj->father])) {
+                                self::$productMap[$obj->father] = new EnhancedLocalProduct(
+                                    $obj->father,
+                                    $obj->fatherLabel,
+                                    $obj->fatherWeight,
+                                    $obj->fatherWeightUnits
+                                );
+                            }
+                            
+                            // Create child product node
+                            if (!isset(self::$productMap[$obj->child])) {
+                                self::$productMap[$obj->child] = new EnhancedLocalProduct(
+                                    $obj->child,
+                                    $obj->childLabel,
+                                    $obj->childWeight,
+                                    $obj->childWeightUnits
+                                );
+                            }
+                            
+                            // Set the father→child relationship with quantity validation
+                            $associationKey = $obj->father . ':' . $obj->child;
+                            $quantity = (float)$obj->qty;
+                            $source = isset($obj->source) ? $obj->source : 'association';
+                            if ($quantity > 0) {
+                                if (!isset(self::$associationCache[$associationKey])) {
+                                    self::$productMap[$obj->father]->setChildQuantity($obj->child, $quantity);
+                                    self::$associationCache[$associationKey] = array('source' => $source);
+                                } elseif ($source === 'bom' && self::$associationCache[$associationKey]['source'] !== 'bom') {
+                                    self::$productMap[$obj->father]->setChildQuantity($obj->child, $quantity);
+                                    self::$associationCache[$associationKey]['source'] = 'bom';
+                                }
+                            } else {
+                                self::addWarning("Invalid quantity ($quantity) for association {$obj->father} → {$obj->child}");
+                            }
+
+                            // Queue management with cycle prevention
+                            if (!isset($seen[$obj->father])) {
+                                $seen[$obj->father] = true;
+                                $queue[] = $obj->father;
+                            }
+                            if (!isset($seen[$obj->child])) {
+                                $seen[$obj->child] = true;
+                                $queue[] = $obj->child;
+                            }
                         }
                         
-                        // Create child product node
-                        if (!isset(self::$productMap[$obj->child])) {
-                            self::$productMap[$obj->child] = new EnhancedLocalProduct(
-                                $obj->child,
-                                $obj->childLabel,
-                                $obj->childWeight,
-                                $obj->childWeightUnits
-                            );
-                        }
-                        
-                        // Set the father→child relationship with quantity validation
-                        $quantity = (float)$obj->qty;
-                        if ($quantity > 0) {
-                            self::$productMap[$obj->father]->addChild($obj->child, $quantity);
-                        } else {
-                            self::addWarning("Invalid quantity ($quantity) for association {$obj->father} → {$obj->child}");
-                        }
-
-                        // Queue management with cycle prevention
-                        if (!isset($seen[$obj->father])) {
-                            $seen[$obj->father] = true;
-                            $queue[] = $obj->father;
-                        }
-                        if (!isset($seen[$obj->child])) {
-                            $seen[$obj->child] = true;
-                            $queue[] = $obj->child;
-                        }
+                        $db->free($resql);
+                        self::$processStats['database_operations']++;
                     }
-                    
-                    $db->free($resql);
-                    self::$processStats['database_operations']++;
                 }
                 
                 $depth++;
@@ -366,9 +413,54 @@ class KreaProductsNutritionalCalculator
      */
     private static function gatherSubProductsEnhanced($parentId, &$results)
     {
-        global $db;
+        global $db, $conf;
 
         try {
+            $source = array();
+
+            if (!empty($conf->bom->enabled)) {
+                $sql = "SELECT bl.fk_product AS childId, 
+                               bl.qty,
+                               p.label,
+                               p.weight,
+                               p.weight_units
+                        FROM " . MAIN_DB_PREFIX . "bom_bom b
+                        JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
+                        LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe 
+                            ON bl.fk_product = pe.fk_object
+                        LEFT JOIN " . MAIN_DB_PREFIX . "product p
+                            ON bl.fk_product = p.rowid
+                        WHERE b.fk_product = " . (int)$parentId . " 
+                            AND b.bomtype IN (0,1)
+                            AND b.status = 1
+                            AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
+                            AND p.rowid IS NOT NULL";
+
+                $resql = $db->query($sql);
+                
+                if (!$resql) {
+                    throw new Exception("Database error: " . $db->lasterror());
+                }
+
+                while ($obj = $db->fetch_object($resql)) {
+                    $childId = (int)$obj->childId;
+                    $quantity = (float)$obj->qty;
+                    
+                    // Enhanced validation
+                    if ($childId <= 0 || $quantity <= 0) {
+                        self::addWarning("Invalid child data: ID=$childId, Qty=$quantity");
+                        continue;
+                    }
+
+                    // BOM overrides associations
+                    $results[$childId] = $quantity;
+                    $source[$childId] = 'bom';
+                }
+                
+                $db->free($resql);
+                self::$processStats['database_operations']++;
+            }
+
             $sql = "SELECT pa.fk_product_fils AS childId, 
                            pa.qty,
                            p.label,
@@ -400,11 +492,16 @@ class KreaProductsNutritionalCalculator
                     continue;
                 }
 
+                if (isset($source[$childId]) && $source[$childId] === 'bom') {
+                    continue;
+                }
+
                 // Aggregate quantities if multiple entries exist
                 if (!isset($results[$childId])) {
                     $results[$childId] = 0;
                 }
                 $results[$childId] += $quantity;
+                $source[$childId] = 'association';
             }
             
             $db->free($resql);
@@ -504,17 +601,16 @@ class KreaProductsNutritionalCalculator
                 $rawWeight = $childLp->weight ? $childLp->weight : self::DEFAULT_WEIGHT;
                 $weightUnit = $childLp->weight_units !== null ? $childLp->weight_units : 0;
                 
-                // Get unit label for display
-                $weightUnitShortLabel = isset($unitMapping[$weightUnit]) 
-                    ? $unitMapping[$weightUnit] 
-                    : self::DEFAULT_UNIT;
+                // Get unit label and scale for display/conversion
+                $unitInfo = self::resolveUnitInfo($weightUnit, $unitMapping);
+                $weightUnitShortLabel = $unitInfo['label'];
 
                 // Convert weight to grams
-                $baseWeightInGrams = self::convertToGramsEnhanced($rawWeight, $weightUnit);
+                $baseWeightInGrams = self::convertToGramsEnhanced($rawWeight, $weightUnit, $unitInfo['scale']);
                 $subWeightInGrams = $finalQty * $baseWeightInGrams;
 
-                // Fetch nutritional data with caching
-                $nutritionData = self::fetchNutritionalDataCached($childId);
+                // Resolve nutritional data (recursive if child has its own children)
+                $nutritionData = self::resolveNutritionData($childId);
 
                 // Calculate nutritional contributions
                 $contributions = self::calculateNutritionalContributions(
@@ -589,6 +685,102 @@ class KreaProductsNutritionalCalculator
         }
 
         return $contributions;
+    }
+
+    /**
+     * Resolve nutritional data for a product, computing from children when needed
+     */
+    private static function resolveNutritionData($productId, $depth = 0, $path = array())
+    {
+        if (isset(self::$calculatedNutritionCache[$productId])) {
+            self::$processStats['cache_hits']++;
+            return self::$calculatedNutritionCache[$productId];
+        }
+
+        if ($depth > self::MAX_HIERARCHY_DEPTH) {
+            self::addWarning("Max hierarchy depth exceeded while resolving nutrition for product $productId");
+            return null;
+        }
+
+        if (isset($path[$productId])) {
+            self::addWarning("Circular dependency detected while resolving nutrition for product $productId");
+            return null;
+        }
+
+        if (self::isNotFoodProduct($productId)) {
+            self::$calculatedNutritionCache[$productId] = null;
+            return null;
+        }
+
+        $path[$productId] = true;
+
+        $product = self::getLocalProduct($productId);
+        if ($product && $product->hasChildren()) {
+            $calculated = self::calculateNutritionFromChildren($product, $depth + 1, $path);
+            self::$calculatedNutritionCache[$productId] = $calculated;
+            return $calculated;
+        }
+
+        $nutrition = self::fetchNutritionalDataCached($productId);
+        self::$calculatedNutritionCache[$productId] = $nutrition;
+        return $nutrition;
+    }
+
+    /**
+     * Calculate nutrition from a product's children (recursive)
+     */
+    private static function calculateNutritionFromChildren($product, $depth, $path)
+    {
+        global $conf;
+
+        $totals = array(
+            'energy_kcal' => 0, 'energy_kj' => 0, 'fat' => 0, 'saturates' => 0,
+            'carbohydrates' => 0, 'sugars' => 0, 'protein' => 0, 'salt' => 0, 'fiber' => 0
+        );
+        $totalWeightInGrams = 0;
+        $unitMapping = self::getUnitMappingCached($conf);
+
+        foreach ($product->children as $childId => $qty) {
+            if (self::isNotFoodProduct($childId)) {
+                continue;
+            }
+
+            $childProduct = self::getLocalProduct($childId);
+            if (!$childProduct) {
+                self::addWarning("Local product not found for child ID: $childId");
+                continue;
+            }
+
+            $rawWeight = $childProduct->weight ? $childProduct->weight : self::DEFAULT_WEIGHT;
+            $weightUnit = $childProduct->weight_units !== null ? $childProduct->weight_units : 0;
+            $unitInfo = self::resolveUnitInfo($weightUnit, $unitMapping);
+            $baseWeightInGrams = self::convertToGramsEnhanced($rawWeight, $weightUnit, $unitInfo['scale']);
+            $childTotalWeight = $qty * $baseWeightInGrams;
+            $totalWeightInGrams += $childTotalWeight;
+
+            $childNutrition = self::resolveNutritionData($childId, $depth, $path);
+            if ($childNutrition) {
+                foreach ($totals as $nutrient => $value) {
+                    if (isset($childNutrition[$nutrient])) {
+                        $totals[$nutrient] += ($childNutrition[$nutrient] / 100) * $childTotalWeight;
+                    }
+                }
+            }
+        }
+
+        if ($totalWeightInGrams <= 0) {
+            return null;
+        }
+
+        $normalized = array();
+        foreach ($totals as $nutrient => $absoluteValue) {
+            $normalized[$nutrient] = round(
+                ($absoluteValue / $totalWeightInGrams) * 100,
+                self::NUTRITION_PRECISION
+            );
+        }
+
+        return $normalized;
     }
 
     /**
@@ -734,9 +926,9 @@ class KreaProductsNutritionalCalculator
     /**
      * Enhanced weight conversion with caching
      */
-    private static function convertToGramsEnhanced($weight, $unit)
+    private static function convertToGramsEnhanced($weight, $unit, $resolvedScale = null)
     {
-        $cacheKey = $weight . '_' . $unit;
+        $cacheKey = $weight . '_' . $unit . '_' . ($resolvedScale === null ? 'n' : $resolvedScale);
         
         if (isset(self::$weightConversionCache[$cacheKey])) {
             self::$processStats['cache_hits']++;
@@ -746,7 +938,7 @@ class KreaProductsNutritionalCalculator
         $result = $weight; // Default fallback
 
         if (is_numeric($unit)) {
-            $unitNum = (int)$unit;
+            $unitNum = ($resolvedScale !== null) ? (int)$resolvedScale : (int)$unit;
             switch ($unitNum) {
                 case self::UNIT_NUMERIC_OUNCES:
                     $result = $weight / 35.274;
@@ -798,6 +990,58 @@ class KreaProductsNutritionalCalculator
     }
 
     /**
+     * Detect if weight units are stored as dictionary IDs (Dolibarr 10.0.0-10.0.2)
+     */
+    private static function isUnitStoredAsId()
+    {
+        if (!defined('DOL_VERSION')) {
+            return false;
+        }
+
+        return version_compare(DOL_VERSION, '10.0.0', '>=') && version_compare(DOL_VERSION, '10.0.2', '<=');
+    }
+
+    /**
+     * Resolve unit label and scale for conversion/display
+     */
+    private static function resolveUnitInfo($unit, $unitMapping)
+    {
+        $info = array(
+            'label' => self::DEFAULT_UNIT,
+            'scale' => null
+        );
+
+        if (is_numeric($unit)) {
+            $unitNum = (int)$unit;
+
+            if (self::isUnitStoredAsId() && isset($unitMapping['id'][$unitNum])) {
+                $info['label'] = $unitMapping['id'][$unitNum]['label'];
+                $info['scale'] = $unitMapping['id'][$unitNum]['scale'];
+                return $info;
+            }
+
+            if (isset($unitMapping['scale'][$unitNum])) {
+                $info['label'] = $unitMapping['scale'][$unitNum];
+                $info['scale'] = $unitNum;
+                return $info;
+            }
+
+            if (isset($unitMapping['id'][$unitNum])) {
+                $info['label'] = $unitMapping['id'][$unitNum]['label'];
+                $info['scale'] = $unitMapping['id'][$unitNum]['scale'];
+                return $info;
+            }
+        } else {
+            $unitStr = strtolower(trim($unit));
+            if ($unitStr !== '') {
+                $info['label'] = $unitStr;
+            }
+        }
+
+        return $info;
+    }
+
+    /**
      * Get unit mapping with caching
      */
     private static function getUnitMappingCached($conf)
@@ -809,13 +1053,16 @@ class KreaProductsNutritionalCalculator
 
         global $db;
         
-        $unitMapping = array();
+        $unitMapping = array(
+            'scale' => array(),
+            'id' => array()
+        );
         
         $weightLabel = !empty($conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL) 
             ? $conf->global->KREAPRODUCTS_DEFAULT_WEIGHT_LABEL 
             : 'weight';
         
-        $sql = "SELECT scale, short_label 
+        $sql = "SELECT rowid, scale, short_label 
                 FROM " . MAIN_DB_PREFIX . "c_units 
                 WHERE unit_type = '" . $db->escape($weightLabel) . "' 
                     AND active = 1";
@@ -824,7 +1071,12 @@ class KreaProductsNutritionalCalculator
         
         if ($resql) {
             while ($obj = $db->fetch_object($resql)) {
-                $unitMapping[$obj->scale] = $obj->short_label;
+                $scaleKey = is_numeric($obj->scale) ? (int)$obj->scale : $obj->scale;
+                $unitMapping['scale'][$scaleKey] = $obj->short_label;
+                $unitMapping['id'][(int)$obj->rowid] = array(
+                    'scale' => $scaleKey,
+                    'label' => $obj->short_label
+                );
             }
             $db->free($resql);
         } else {
@@ -835,6 +1087,47 @@ class KreaProductsNutritionalCalculator
         self::$processStats['database_operations']++;
         
         return $unitMapping;
+    }
+
+    /**
+     * Get nutrition calculation option with caching
+     */
+    private static function getCalcOptionCached($productId)
+    {
+        if (isset(self::$calcOptionCache[$productId])) {
+            self::$processStats['cache_hits']++;
+            return self::$calcOptionCache[$productId];
+        }
+
+        global $db;
+
+        $calcOption = null;
+        $sql = "SELECT pe.kreap_calc_nut 
+                FROM " . MAIN_DB_PREFIX . "product_extrafields pe 
+                WHERE pe.fk_object = " . (int)$productId;
+        $resql = $db->query($sql);
+
+        if ($resql) {
+            if ($obj = $db->fetch_object($resql)) {
+                $calcOption = $obj->kreap_calc_nut !== null ? (int)$obj->kreap_calc_nut : null;
+            }
+            $db->free($resql);
+        } else {
+            self::addWarning("Failed to fetch calc option for product $productId: " . $db->lasterror());
+        }
+
+        self::$calcOptionCache[$productId] = $calcOption;
+        self::$processStats['database_operations']++;
+
+        return $calcOption;
+    }
+
+    /**
+     * Check if product is marked as not food
+     */
+    private static function isNotFoodProduct($productId)
+    {
+        return self::getCalcOptionCached($productId) === self::CALC_OPTION_NOT_FOOD;
     }
 
     /**
@@ -990,6 +1283,9 @@ class KreaProductsNutritionalCalculator
         self::$nutritionCache = array();
         self::$unitMappingCache = array();
         self::$weightConversionCache = array();
+        self::$calculatedNutritionCache = array();
+        self::$calcOptionCache = array();
+        self::$associationCache = array();
     }
 
     /**
@@ -1033,7 +1329,7 @@ class EnhancedLocalProduct
         $this->id = (int)$id;
         $this->label = $label ? $label : '';
         $this->weight = $weight ? (float)$weight : 0;
-        $this->weight_units = $weight_units ? $weight_units : 'g';
+        $this->weight_units = ($weight_units === null || $weight_units === '') ? 0 : $weight_units;
     }
 
     /**
@@ -1048,6 +1344,24 @@ class EnhancedLocalProduct
             $this->children[$childId] += (float)$quantity;
             $this->totalQuantity += (float)$quantity;
         }
+    }
+
+    /**
+     * Set child quantity (overrides existing value)
+     */
+    public function setChildQuantity($childId, $quantity)
+    {
+        $quantity = (float)$quantity;
+        if ($quantity <= 0) {
+            return;
+        }
+
+        if (isset($this->children[$childId])) {
+            $this->totalQuantity -= $this->children[$childId];
+        }
+
+        $this->children[$childId] = $quantity;
+        $this->totalQuantity += $quantity;
     }
 
     /**
