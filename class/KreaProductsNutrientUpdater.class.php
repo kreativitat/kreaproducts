@@ -24,6 +24,11 @@ class KreaProductsNutrientUpdater
     // Constants for numeric units (Dolibarr standard)
     const UNIT_NUMERIC_OUNCES = 98;
     const UNIT_NUMERIC_POUNDS = 99;
+
+    // Nutrition calculation options
+    const CALC_OPTION_MANUAL = 0;
+    const CALC_OPTION_AUTO = 1;
+    const CALC_OPTION_NOT_FOOD = 2;
     
     // Processing limits
     const MAX_HIERARCHY_DEPTH = 50;
@@ -44,6 +49,7 @@ class KreaProductsNutrientUpdater
     private static $nutritionCache = array();
     private static $weightConversionCache = array();
     private static $unitMappingCache = array();
+    private static $calcOptionCache = array();
 
     /**
      * Updates the nutritional records for all non-leaf products in the tree.
@@ -549,6 +555,12 @@ class KreaProductsNutrientUpdater
                 continue;
             }
 
+            $calcOption = self::getCalcOptionCached($nodeId);
+            if ($calcOption === self::CALC_OPTION_MANUAL || $calcOption === self::CALC_OPTION_NOT_FOOD) {
+                self::logDebug("Skipping node $nodeId due to calc option: " . $calcOption);
+                continue;
+            }
+
             self::logDebug("Processing node $nodeId with height $height");
 
             // Calculate and update nutrition for this node
@@ -703,6 +715,39 @@ class KreaProductsNutrientUpdater
         }
         
         return $nutrition;
+    }
+
+    /**
+     * Get nutrition calculation option with caching
+     */
+    private static function getCalcOptionCached($productId)
+    {
+        if (isset(self::$calcOptionCache[$productId])) {
+            self::$processStats['cache_hits']++;
+            return self::$calcOptionCache[$productId];
+        }
+
+        global $db;
+
+        $calcOption = null;
+        $sql = "SELECT pe.kreap_calc_nut
+                FROM " . MAIN_DB_PREFIX . "product_extrafields pe
+                WHERE pe.fk_object = " . (int) $productId;
+        $resql = $db->query($sql);
+
+        if ($resql) {
+            if ($obj = $db->fetch_object($resql)) {
+                $calcOption = $obj->kreap_calc_nut !== null ? (int) $obj->kreap_calc_nut : null;
+            }
+            $db->free($resql);
+        } else {
+            self::addError("Failed to fetch calc option for product $productId: " . $db->lasterror());
+        }
+
+        self::$calcOptionCache[$productId] = $calcOption;
+        self::$processStats['database_operations']++;
+
+        return $calcOption;
     }
 
     /**

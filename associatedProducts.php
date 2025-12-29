@@ -40,6 +40,7 @@
 
 // Load Dolibarr environment
 require '../../main.inc.php';
+require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -48,7 +49,7 @@ require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrien
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllergenUpdater.class.php';
 
 // Load translation files required by the page
-$langs->loadLangs(array('bills', 'products', 'stocks', 'dolizsynch@dolizsynch'));
+$langs->loadLangs(array('bills', 'products', 'stocks', 'dolizsynch@dolizsynch', 'kreaproducts@kreaproducts'));
 
 if (!function_exists('kreaproducts_debug_log')) {
 	function kreaproducts_debug_log($message)
@@ -57,6 +58,109 @@ if (!function_exists('kreaproducts_debug_log')) {
 		if (!empty($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
 			dol_syslog($message, LOG_DEBUG);
 		}
+	}
+}
+
+if (!function_exists('kreaproducts_get_accessible_entities')) {
+	function kreaproducts_get_accessible_entities()
+	{
+		global $conf, $mc, $user;
+
+		$entityIds = array((int) $conf->entity);
+		if (isModEnabled('multicompany') && is_object($mc)) {
+			$canAccessAll = (!empty($user->admin) && empty($user->entity));
+			if (!empty($conf->global->MULTICOMPANY_TRANSVERSE_MODE) || $canAccessAll) {
+				$list = $mc->getEntitiesList(false, false, true);
+				if (!empty($list)) {
+					$entityIds = array_map('intval', array_keys($list));
+				}
+			}
+		}
+
+		$entityIds = array_values(array_unique(array_filter($entityIds, 'is_numeric')));
+		return $entityIds;
+	}
+}
+
+if (!function_exists('kreaproducts_select_produits_with_entities')) {
+	function kreaproducts_select_produits_with_entities($form, $selected, $htmlname, $entityList, $langs, $morecss = 'minwidth300')
+	{
+		$entityList = array_values(array_unique(array_filter($entityList, 'is_numeric')));
+		$method = new ReflectionMethod($form, 'select_produits');
+		$args = array();
+
+		foreach ($method->getParameters() as $param) {
+			switch ($param->getName()) {
+				case 'selected':
+					$args[] = $selected;
+					break;
+				case 'htmlname':
+					$args[] = $htmlname;
+					break;
+				case 'filtertype':
+					$args[] = '';
+					break;
+				case 'limit':
+					$args[] = 0;
+					break;
+				case 'price_level':
+					$args[] = 0;
+					break;
+				case 'status':
+					$args[] = -1;
+					break;
+				case 'finished':
+					$args[] = 2;
+					break;
+				case 'selected_input_value':
+					$args[] = '';
+					break;
+				case 'hidelabel':
+					$args[] = 0;
+					break;
+				case 'ajaxoptions':
+					$args[] = array();
+					break;
+				case 'socid':
+					$args[] = 0;
+					break;
+				case 'showempty':
+					$args[] = $langs->trans("RefOrLabel");
+					break;
+				case 'forcecombo':
+					$args[] = 0;
+					break;
+				case 'morecss':
+					$args[] = $morecss;
+					break;
+				case 'hidepriceinlabel':
+					$args[] = 0;
+					break;
+				case 'warehouseStatus':
+					$args[] = '';
+					break;
+				case 'selected_combinations':
+					$args[] = null;
+					break;
+				case 'nooutput':
+					$args[] = 1;
+					break;
+				case 'status_purchase':
+					$args[] = -1;
+					break;
+				case 'warehouseId':
+					$args[] = 0;
+					break;
+				case 'entitylist':
+				case 'entityList':
+					$args[] = $entityList;
+					break;
+				default:
+					$args[] = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : null;
+			}
+		}
+
+		return $method->invokeArgs($form, $args);
 	}
 }
 
@@ -315,6 +419,123 @@ if ($action == 'save_kreaproducts_nutrition') {
 	} else {
 		$message = "Nutritional attributes updated successfully for product ID $object->id.";
 	}
+}
+
+if ($action === 'copy_nutrition_to_product' && $usercancreate) {
+	$targetProductId = GETPOSTINT('target_product_id');
+	if ($targetProductId > 0) {
+		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $targetProductId;
+		$resql = $db->query($sql);
+		$existing_rowid = null;
+		if ($resql && $db->num_rows($resql) > 0) {
+			$obj = $db->fetch_object($resql);
+			$existing_rowid = $obj->rowid;
+		}
+		if ($resql) {
+			$db->free($resql);
+		}
+
+		if (!$existing_rowid) {
+			$mandatoryData = [
+				'fk_product'    => (int) $targetProductId,
+				'date_creation' => date('Y-m-d H:i:s'),
+				'fk_user_creat' => $user->id,
+			];
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (";
+			$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
+			$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
+			$res = $db->query($sql);
+			if ($res) {
+				$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
+			} else {
+				dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
+				setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
+				header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+				exit;
+			}
+		}
+
+		$fields = array('energy_kcal','energy_kj','fat','saturates','carbohydrates','sugars','protein','salt','fiber');
+		$updateData = array();
+		foreach ($fields as $field) {
+			$rawValue = GETPOST('avg_' . $field, 'alpha');
+			$val = price2num($rawValue, 'MS');
+			$updateData[$field] = ($rawValue !== '' && $val !== '') ? (float) $val : null;
+		}
+
+		$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET ";
+		$setClauses = [];
+		foreach ($updateData as $field => $value) {
+			$setClauses[] = ($value === null) ? "$field = NULL" : "$field = " . $db->escape($value);
+		}
+		$updateSQL .= implode(", ", $setClauses);
+		$updateSQL .= " WHERE rowid = " . (int) $existing_rowid;
+
+		$resUpdate = $db->query($updateSQL);
+		if ($resUpdate) {
+			setEventMessages($langs->trans("KreaProductsCopyAvgSuccess"), null, 'mesgs');
+		} else {
+			dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+		}
+
+		$result = KreaProductsNutrientUpdater::updateNutrientAttributes($targetProductId, $user);
+		if ($result < 0) {
+			kreaproducts_debug_log("Error updating nutritional attributes for product ID " . $targetProductId);
+		}
+	} else {
+		setEventMessages($langs->trans("Error"), null, 'errors');
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
+if ($action === 'copy_allergens_to_product' && $usercancreate) {
+	$targetProductId = GETPOSTINT('target_product_id_allergens');
+	if ($targetProductId <= 0) {
+		$targetProductId = GETPOSTINT('target_product_id');
+	}
+	if ($targetProductId > 0) {
+		$allergensToCopy = array();
+		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int) $object->id;
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$key = (int) $obj->fk_allergen . '-' . (int) $obj->traces;
+				if (!isset($allergensToCopy[$key])) {
+					$allergensToCopy[$key] = array(
+						'fk_allergen' => (int) $obj->fk_allergen,
+						'traces' => (int) $obj->traces,
+					);
+				}
+			}
+			$db->free($resql);
+		}
+
+		$resdel = $db->query("DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int) $targetProductId);
+		if ($resdel) {
+			if (!empty($allergensToCopy)) {
+				dol_include_once('/kreaproducts/class/productallergens.class.php');
+				foreach ($allergensToCopy as $row) {
+					$prodAllergen = new ProductAllergens($db);
+					$prodAllergen->fk_product = $targetProductId;
+					$prodAllergen->fk_allergen = $row['fk_allergen'];
+					$prodAllergen->traces = $row['traces'];
+					$prodAllergen->create($user);
+				}
+			}
+			setEventMessages($langs->trans("KreaProductsCopyAllergensSuccess"), null, 'mesgs');
+		} else {
+			dol_syslog("Error updating allergens: " . $db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+		}
+	} else {
+		setEventMessages($langs->trans("Error"), null, 'errors');
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
 }
 
 if ($action == 'updateAllergens') {
@@ -630,6 +851,7 @@ if ($id > 0 || !empty($ref)) {
 		print dol_get_fiche_end();
 
 		print '<br>';
+		$sectionSpacingStyle = 'margin-top: 22px;';
 
 		/**
 		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
@@ -667,7 +889,7 @@ if ($id > 0 || !empty($ref)) {
 			if (count($boms) > 0) {
 
 				// Only display the table if there is at least one BOM
-				print '<div class="fichecenter">';
+				print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 
 				// Print the title of the section
 				print load_fiche_titre($langs->trans("BOMExistsAndOriginProduct"), '', '');
@@ -854,7 +1076,7 @@ if ($id > 0 || !empty($ref)) {
 		// Show current product Menu (ZS) chips (from llxnm_dolizsynch_zsproduct.niveismenu)
 		$currentMenuHtml = $renderZsMenu($object->id);
 		if (!empty($currentMenuHtml)) {
-			print '<div class="fichecenter" style="margin-bottom:10px;">';
+			print '<div class="fichecenter" style="' . $sectionSpacingStyle . ' margin-bottom:10px;">';
 			$title = $langs->trans("DoliZSynchProductMenu");
 			$title = str_replace('(ZS)', '', $title);
 			$title = trim($title);
@@ -868,7 +1090,7 @@ if ($id > 0 || !empty($ref)) {
 		$hideChildList = ($hasBomParents && $nbofsubproducts === 0);
 
 		if (!$hideChildList) {
-			print '<div class="fichecenter">';
+			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			$atleastonenotdefined = 0;
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
 			print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
@@ -1229,7 +1451,7 @@ if ($id > 0 || !empty($ref)) {
 		// Only show the simulator if enabled, the product is for sale and DolizSynch is disabled.
 		$isSellable = (isset($object->status) && (int) $object->status === 1);
 		if (!isModEnabled('dolizsynch') && $isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
-			print '<div class="fichecenter" style="margin-top: 15px;">';
+			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			print load_fiche_titre('Métricas e Margens', '', '');
 			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
 			print '<input type="hidden" name="token" value="' . newToken() . '">';
@@ -1399,7 +1621,7 @@ if ($id > 0 || !empty($ref)) {
 				//print '<br>';
 
 				// Only display the table if there is at least one component
-				print '<div class="fichecenter">';
+				print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 
 				// Print the title of the section
 				print load_fiche_titre($langs->trans("ComponentsOfProduct"), '', '');
@@ -1436,8 +1658,7 @@ if ($id > 0 || !empty($ref)) {
 
 		// Lista de kits com este produto como componente
 		if (count($prodsfather) > 0) {
-			print '<br><br>';
-			print '<div class="fichecenter">';
+			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			print load_fiche_titre($langs->trans("ProductParentList"), '', '');
 			print '<table class="liste">';
 			print '<tr class="liste_titre">';
@@ -1522,7 +1743,7 @@ if ($id > 0 || !empty($ref)) {
 			if (count($menus) > 0) {
 				// Display the table
 				//print '<br>';
-				print '<div class="fichecenter">';
+				print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 				print load_fiche_titre($langs->trans("MenuWhereProductExistsAndOriginProduct"), '', '');
 				print '<table class="liste">';
 				print '<tr class="liste_titre">';
@@ -1580,7 +1801,8 @@ if ($id > 0 || !empty($ref)) {
 		if ($productIsFood) {
 		// Nutritional table
 		// Reusable spacing to keep titles and tables visually consistent.
-		$sectionMarginStyle = 'margin-top: 18px;';
+		$sectionMarginStyle = $sectionSpacingStyle;
+		$sectionMarginStyleLarge = 'margin-top: 32px;';
 		$tableMarginStyle = 'margin-top: 10px;';
 
 		print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
@@ -1809,6 +2031,22 @@ if ($id > 0 || !empty($ref)) {
 					print '</div>';
 				}
 			}
+
+			if ($usercancreate && $action != 'edit_allergens') {
+				$targetFieldName = 'target_product_id_allergens';
+				$entityList = kreaproducts_get_accessible_entities();
+				$selectHtml = kreaproducts_select_produits_with_entities($form, 0, $targetFieldName, $entityList, $langs, 'minwidth300');
+				print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
+				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
+				print '<input type="hidden" name="action" value="copy_allergens_to_product">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="id" value="' . $object->id . '">';
+				print '<span class="inline-block" style="margin-right: 8px;">' . $langs->trans("KreaProductsCopyAllergensToProduct") . '</span>';
+				print $selectHtml;
+				print ' <input type="submit" class="button" value="' . $langs->trans("KreaProductsCopyAllergensButton") . '">';
+				print '</form>';
+				print '</div>';
+			}
 		}
 
 		if (isset($object->array_options)) {
@@ -1849,7 +2087,7 @@ if ($id > 0 || !empty($ref)) {
 			$videoValue = isset($object->array_options['options_kreap_video']) ? $object->array_options['options_kreap_video'] : '';
 			$descriptionValue = isset($object->array_options['options_kreap_description']) ? $object->array_options['options_kreap_description'] : '';
 
-			print '<div class="fichecenter" id="myAllergenButtons" style="' . $sectionMarginStyle . '">';
+			print '<div class="fichecenter" id="myAllergenButtons" style="' . $sectionMarginStyleLarge . '">';
 			print '<div class="titre inline-block" style="margin: 0 0 12px;">' . $langs->trans("productRecipeTitle") . '</div>';
 
 			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';

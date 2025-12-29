@@ -1,6 +1,6 @@
 <?php
 /* Copyright (C) 2007-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
- * Copyright (C) 2024		Frédéric France			<frederic.france@free.fr>
+ * Copyright (C) 2024		Frederic France			<frederic.france@free.fr>
  * Copyright (C) 2025		MDW						<mdeweerd@users.noreply.github.com>
  * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
@@ -277,7 +277,7 @@ $form = new Form($db);
 $now = dol_now();
 
 $title = $langs->trans('Inventories');
-//$help_url="EN:Module_Inventory|FR:Module_Inventory_FR|ES:Módulo_Inventory";
+//$help_url="EN:Module_Inventory|FR:Module_Inventory_FR|ES:Modulo_Inventory";
 $help_url = '';
 $morejs = array();
 $morecss = array();
