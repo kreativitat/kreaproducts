@@ -172,6 +172,10 @@ $cancel  = GETPOST('cancel', 'alpha');
 $key     = GETPOST('key');
 $parent  = GETPOST('parent');
 $productIsFood = 1;
+$enableCopyAvgToProduct = !isset($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT)
+	|| !empty($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT);
+$enableCopyAllergensToProduct = !isset($conf->global->KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT)
+	|| !empty($conf->global->KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT);
 
 // Security check
 if (!empty($user->socid)) {
@@ -421,7 +425,7 @@ if ($action == 'save_kreaproducts_nutrition') {
 	}
 }
 
-if ($action === 'copy_nutrition_to_product' && $usercancreate) {
+if ($action === 'copy_nutrition_to_product' && $usercancreate && $enableCopyAvgToProduct) {
 	$targetProductId = GETPOSTINT('target_product_id');
 	if ($targetProductId > 0) {
 		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $targetProductId;
@@ -491,7 +495,7 @@ if ($action === 'copy_nutrition_to_product' && $usercancreate) {
 	exit;
 }
 
-if ($action === 'copy_allergens_to_product' && $usercancreate) {
+if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAllergensToProduct) {
 	$targetProductId = GETPOSTINT('target_product_id_allergens');
 	if ($targetProductId <= 0) {
 		$targetProductId = GETPOSTINT('target_product_id');
@@ -2032,7 +2036,7 @@ if ($id > 0 || !empty($ref)) {
 				}
 			}
 
-			if ($usercancreate && $action != 'edit_allergens') {
+			if ($usercancreate && $action != 'edit_allergens' && $enableCopyAllergensToProduct) {
 				$targetFieldName = 'target_product_id_allergens';
 				$entityList = kreaproducts_get_accessible_entities();
 				$selectHtml = kreaproducts_select_produits_with_entities($form, 0, $targetFieldName, $entityList, $langs, 'minwidth300');

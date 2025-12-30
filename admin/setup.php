@@ -138,6 +138,14 @@ if (!isset($conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT', '0.1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT = '0.1';
 }
+if (!isset($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT = '1';
+}
+if (!isset($conf->global->KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT = '1';
+}
 if (!isset($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DEBUG_LOG', '0', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_DEBUG_LOG = '0';
@@ -211,6 +219,12 @@ $item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HEL
 // Nutrição e alergénios
 $formSetup->newItem('KREAPRODUCTS_NUTRITION_SETTINGS_TITLE')->setAsTitle();
 $formSetup->newItem('KREAPRODUCTS_NUTRITIONAL_TABLE_TAB')->setAsYesNo();
+$item = $formSetup->newItem('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT');
+$item->setAsYesNo();
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT_HELP');
+$item = $formSetup->newItem('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT');
+$item->setAsYesNo();
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
 $item->setAsSelect($TField);

@@ -541,7 +541,7 @@ class KreaProductsNutritionalCalculator
      */
     private static function displayNutritionalTable($productId, $subList, $langs)
     {
-        global $db, $user;
+        global $db, $user, $conf;
 
         // Display table header and keep an empty row if there are no subproducts
         self::displayTableHeader($langs);
@@ -563,10 +563,12 @@ class KreaProductsNutritionalCalculator
 
         // Display totals and normalized values
         $copyInfo = self::displayTotalRows($calculationResult, $langs, $productId);
+        $enableCopyAvgToProduct = !isset($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT)
+            || !empty($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT);
 
         print '</table>';
 
-        if (!empty($copyInfo) && !empty($copyInfo['show_copy'])) {
+        if (!empty($copyInfo) && !empty($copyInfo['show_copy']) && $enableCopyAvgToProduct) {
             require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
             $form = new Form($db);
             $selectHtml = self::buildProductSelector($form, 0, 'target_product_id', $langs, 'minwidth300');

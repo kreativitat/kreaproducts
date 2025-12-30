@@ -54,7 +54,7 @@ class modKreaProducts extends DolibarrModules
 
         // Id for module (must be unique).
         // Use here a free id (See in Home -> System information -> Dolibarr for list of used modules id).
-        // ID 156550 - 156599: Kreativitat Works (http://kreativitat.com)
+        // ID 156550 - 156599: Kreativität Works (http://kreativitat.com)
         // ID 156550 kreaproducts
         // ID 156551 degema
         // ID 156554 kreareports
@@ -68,7 +68,7 @@ class modKreaProducts extends DolibarrModules
 
         // Family can be 'base' (core modules),'crm','financial','hr','projects','products','ecm','technic' (transverse modules),'interface' (link with external tools),'other','...'
         // It is used to group modules by family in module setup page
-        $this->family = "Kreativitat Works";
+        $this->family = "Kreativität Works";
 
         // Module position in the family on 2 digits ('01', '10', '20', ...)
         $this->module_position = '90';
@@ -84,11 +84,11 @@ class modKreaProducts extends DolibarrModules
         $this->descriptionlong = "KreaProductsDescription";
 
         // Author
-        $this->editor_name = 'Kreativitat Works';
+        $this->editor_name = 'Kreativität Works';
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.87';
+        $this->version = '2.88';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -157,7 +157,7 @@ class modKreaProducts extends DolibarrModules
         // A condition to hide module
         $this->hidden = false;
         // List of module class names that must be enabled if this module is enabled. Example: array('always'=>array('modModuleToEnable1','modModuleToEnable2'), 'FR'=>array('modModuleToEnableFR')...)
-        $this->depends = array('modProduct', 'modStock', 'modFournisseur');
+        $this->depends = array('modProduct', 'modStock', 'modFournisseur', 'modBom', 'modMrp');
         // List of module class names to disable if this one is disabled. Example: array('modModuleToDisable1', ...)
         $this->requiredby = array();
         // List of module class names this module is in conflict with. Example: array('modModuleToDisable1', ...)
@@ -168,7 +168,7 @@ class modKreaProducts extends DolibarrModules
 
         // Prerequisites
         $this->phpmin = array(7, 0); // Minimum version of PHP required by module
-        $this->need_dolibarr_version = array(11, -3); // Minimum version of Dolibarr required by module
+        $this->need_dolibarr_version = array(19, -3); // Minimum version of Dolibarr required by module
         $this->need_javascript_ajax = 0;
 
         // Messages at activation
@@ -396,7 +396,7 @@ class modKreaProducts extends DolibarrModules
             'url' => '/kreaproducts/productallergens_list.php',
             'langs' => 'kreaproducts@kreaproducts',
             'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts")',
+            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
             'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
             'target' => '',
             'user' => 2,
@@ -411,7 +411,7 @@ class modKreaProducts extends DolibarrModules
             'url' => '/kreaproducts/productallergens_list.php',
             'langs' => 'kreaproducts@kreaproducts',
             'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts")',
+            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
             'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
             'target' => '',
             'user' => 2,
@@ -426,7 +426,7 @@ class modKreaProducts extends DolibarrModules
             'url' => '/kreaproducts/productallergens_card.php?action=create',
             'langs' => 'kreaproducts@kreaproducts',
             'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts")',
+            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
             'perms' => '$user->hasRight("kreaproducts", "productallergens", "write")',
             'target' => '',
             'user' => 2,
@@ -441,7 +441,7 @@ class modKreaProducts extends DolibarrModules
             'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
             'langs' => 'kreaproducts@kreaproducts',
             'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("stock")',
+            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("stock") && isModEnabled("dolizsynch")',
             'perms' => '$user->hasRight("stock", "lire") || $user->hasRight("stock", "inventory_advance", "read")',
             'target' => '_blank',
             'user' => 2
