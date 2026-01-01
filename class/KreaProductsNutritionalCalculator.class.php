@@ -281,7 +281,7 @@ class KreaProductsNutritionalCalculator
                                FROM " . MAIN_DB_PREFIX . "product_association pa
                                JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                                JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                               WHERE pa.fk_product_pere = %d OR pa.fk_product_fils = %d";
+                               WHERE pa.fk_product_pere = %d";
 
             $sqlBom = "SELECT b.fk_product as father,
                               bl.fk_product as child,
@@ -299,7 +299,7 @@ class KreaProductsNutritionalCalculator
                        JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = bl.fk_product)
                        WHERE b.bomtype IN (0,1)
                            AND b.status = 1
-                           AND (b.fk_product = %d OR bl.fk_product = %d)";
+                           AND b.fk_product = %d";
 
             while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
                 $currentLevel = $queue;
@@ -317,7 +317,7 @@ class KreaProductsNutritionalCalculator
                     $queries[] = $sqlAssociation;
 
                     foreach ($queries as $sqlTemplate) {
-                        $sql = sprintf($sqlTemplate, (int)$current, (int)$current);
+                        $sql = sprintf($sqlTemplate, (int)$current);
                         $resql = $db->query($sql);
                         
                         if (!$resql) {
@@ -367,10 +367,6 @@ class KreaProductsNutritionalCalculator
                             }
 
                             // Queue management with cycle prevention
-                            if (!isset($seen[$obj->father])) {
-                                $seen[$obj->father] = true;
-                                $queue[] = $obj->father;
-                            }
                             if (!isset($seen[$obj->child])) {
                                 $seen[$obj->child] = true;
                                 $queue[] = $obj->child;
