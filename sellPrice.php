@@ -669,10 +669,9 @@ if (empty($reshook)) {
 		$rowid = GETPOST('rowid', 'int');
 		$priceid = GETPOST('priceid', 'int');
 		$newprice = price2num(GETPOST("price"), 'MU', 2);
-		// $newminprice=price2num(GETPOST("price_min"),'MU'); // TODO : Add min price management
 		$quantity = price2num(GETPOST('quantity'), 'MS', 2);
 		$remise_percent = price2num(GETPOST('remise_percent'), '', 2);
-		$remise = 0; // TODO : allow discount by amount when available on documents
+		$remise = 0;
 
 		if (empty($quantity)) {
 			$error++;
@@ -1145,16 +1144,23 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '<!-- Default VAT Rate -->';
 			print '<tr><td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td><td>';
 
-			// TODO We show localtax from $object, but this properties may not be correct. Only value $object->default_vat_code is guaranted.
 			$positiverates = '';
-			if (price2num($object->tva_tx)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->tva_tx);
+			$vatRate = $object->tva_tx;
+			$vatRateWithCode = $vatRate . ($object->default_vat_code ? ' (' . $object->default_vat_code . ')' : '');
+			$localtaxarray = getLocalTaxesFromRate($vatRateWithCode, 0, $mysoc, $mysoc);
+			$localtax1_type = $localtaxarray[0] ?? 0;
+			$localtax1_tx = $localtaxarray[1] ?? 0;
+			$localtax2_type = $localtaxarray[2] ?? 0;
+			$localtax2_tx = $localtaxarray[3] ?? 0;
+
+			if (price2num($vatRate)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($vatRate);
 			}
-			if (price2num($object->localtax1_type)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->localtax1_tx);
+			if (price2num($localtax1_type)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($localtax1_tx);
 			}
-			if (price2num($object->localtax2_type)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->localtax2_tx);
+			if (price2num($localtax2_type)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($localtax2_tx);
 			}
 			if (empty($positiverates)) {
 				$positiverates = '0';
@@ -1299,7 +1305,7 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 	print '</td></tr>';
 
 	// Price by quantity
-	if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {    // TODO Fix the form inside tr instead of td
+	if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {
 		print '<tr><td>' . $langs->trans("PriceByQuantity");
 		if ($object->prices_by_qty[0] == 0) {
 			print '&nbsp; <a href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=activate_price_by_qty&level=1&token=' . newToken() . '">(' . $langs->trans("Activate") . ')';
@@ -1309,6 +1315,17 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 		print '</td><td>';
 
 		if ($object->prices_by_qty[0] == 1) {
+			$priceByQtyForms = '';
+			$addFormId = 'price_by_qty_add_' . $object->id;
+			if ($action != 'edit_price_by_qty') {
+				$priceByQtyForms .= '<form id="' . $addFormId . '" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
+				$priceByQtyForms .= '<input type="hidden" name="token" value="' . newToken() . '">';
+				$priceByQtyForms .= '<input type="hidden" name="action" value="update_price_by_qty">';
+				$priceByQtyForms .= '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">';
+				$priceByQtyForms .= '<input type="hidden" value="0" name="rowid">';
+				$priceByQtyForms .= '</form>';
+			}
+
 			print '<table width="50%" class="border" summary="List of quantities">';
 			print '<tr class="liste_titre">';
 			//print '<td>' . $langs->trans("PriceByQuantityRange") . '</td>';
@@ -1320,44 +1337,38 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '<td>&nbsp;</td>';
 			print '</tr>';
 			if ($action != 'edit_price_by_qty') {
-				print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">'; // FIXME a form into a table is not allowed
-				print '<input type="hidden" name="token" value="' . newToken() . '">';
-				print '<input type="hidden" name="action" value="update_price_by_qty">';
-				print '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">'; // id in product_price
-				print '<input type="hidden" value="0" name="rowid">'; // id in product_price_by_qty
-
-				print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
-				print '<td><input size="5" type="text" value="1" name="quantity"></td>';
-				print '<td class="right"><input class="width50 right" type="text" value="0" name="price"></td>';
+				print '<tr class="pair">';
+				print '<td><input size="5" type="text" value="1" name="quantity" form="' . $addFormId . '"></td>';
+				print '<td class="right"><input class="width50 right" type="text" value="0" name="price" form="' . $addFormId . '"></td>';
 				print '<td>';
 				//print $object->price_base_type;
 				print '</td>';
 				print '<td class="right">&nbsp;</td>';
-				print '<td class="right nowraponall"><input type="text" class="width50 right" value="0" name="remise_percent"> %</td>';
-				print '<td class="center"><input type="submit" value="' . $langs->trans("Add") . '" class="button"></td>';
+				print '<td class="right nowraponall"><input type="text" class="width50 right" value="0" name="remise_percent" form="' . $addFormId . '"> %</td>';
+				print '<td class="center"><input type="submit" value="' . $langs->trans("Add") . '" class="button" form="' . $addFormId . '"></td>';
 				print '</tr>';
-
-				print '</form>';
 			}
 			foreach ($object->prices_by_qty_list[0] as $ii => $prices) {
 				if ($action == 'edit_price_by_qty' && $rowid == $prices['rowid'] && ($user->rights->produit->creer || $user->rights->service->creer)) {
-					print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
-					print '<input type="hidden" name="token" value="' . newToken() . '">';
-					print '<input type="hidden" name="action" value="update_price_by_qty">';
-					print '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">'; // id in product_price
-					print '<input type="hidden" value="' . $prices['rowid'] . '" name="rowid">'; // id in product_price_by_qty
+					$editFormId = 'price_by_qty_edit_' . $prices['rowid'];
+					$priceByQtyForms .= '<form id="' . $editFormId . '" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
+					$priceByQtyForms .= '<input type="hidden" name="token" value="' . newToken() . '">';
+					$priceByQtyForms .= '<input type="hidden" name="action" value="update_price_by_qty">';
+					$priceByQtyForms .= '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">';
+					$priceByQtyForms .= '<input type="hidden" value="' . $prices['rowid'] . '" name="rowid">';
+					$priceByQtyForms .= '</form>';
+
 					print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
-					print '<td><input size="5" type="text" value="' . $prices['quantity'] . '" name="quantity"></td>';
-					print '<td class="right"><input class="width50 right" type="text" value="' . price2num($prices['price'], 'MU') . '" name="price"></td>';
+					print '<td><input size="5" type="text" value="' . $prices['quantity'] . '" name="quantity" form="' . $editFormId . '"></td>';
+					print '<td class="right"><input class="width50 right" type="text" value="' . price2num($prices['price'], 'MU') . '" name="price" form="' . $editFormId . '"></td>';
 					print '<td class="right">';
 					//print $object->price_base_type;
 					print $prices['price_base_type'];
 					print '</td>';
 					print '<td class="right">&nbsp;</td>';
-					print '<td class="right nowraponall"><input class="width50 right" type="text" value="' . $prices['remise_percent'] . '" name="remise_percent"> %</td>';
-					print '<td class="center"><input type="submit" value="' . $langs->trans("Modify") . '" class="button"></td>';
+					print '<td class="right nowraponall"><input class="width50 right" type="text" value="' . $prices['remise_percent'] . '" name="remise_percent" form="' . $editFormId . '"> %</td>';
+					print '<td class="center"><input type="submit" value="' . $langs->trans("Modify") . '" class="button" form="' . $editFormId . '"></td>';
 					print '</tr>';
-					print '</form>';
 				} else {
 					print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
 					print '<td>' . $prices['quantity'] . '</td>';
@@ -1382,6 +1393,9 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 				}
 			}
 			print '</table>';
+			if ($priceByQtyForms !== '') {
+				print $priceByQtyForms;
+			}
 		} else {
 			print $langs->trans("No");
 		}

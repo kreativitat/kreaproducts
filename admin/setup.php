@@ -104,6 +104,21 @@ if (!class_exists('FormSetup')) {
 }
 $formSetup = new FormSetup($db);
 
+$kreaObjects = array(
+	'nutritional' => array(
+		'label' => $langs->trans('Nutritional'),
+		'includerefgeneration' => 1,
+		'includedocgeneration' => 0,
+		'class' => 'Nutritional',
+	),
+	'productallergens' => array(
+		'label' => $langs->trans('ProductAllergens'),
+		'includerefgeneration' => 1,
+		'includedocgeneration' => 0,
+		'class' => 'ProductAllergens',
+	),
+);
+
 // Ensure simulator is ON by default if not yet defined
 if (!isset($conf->global->KREAPRODUCTS_SIM_ENABLE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SIM_ENABLE', '1', 'chaine', 0, '', $conf->entity);
@@ -434,11 +449,37 @@ if ($action == 'updateMask') {
 		dol_syslog($langs->trans("ErrorModuleNotFound"), LOG_ERR);
 	}
 } elseif ($action == 'setmod') {
-	// TODO Check if numbering module chosen can be activated by calling method canBeActivated
 	$tmpobjectkey = GETPOST('object');
-	if (!empty($tmpobjectkey)) {
+	if (!empty($tmpobjectkey) && !empty($value)) {
 		$constforval = 'KREAPRODUCTS_' . strtoupper($tmpobjectkey) . "_ADDON";
-		dolibarr_set_const($db, $constforval, $value, 'chaine', 0, '', $conf->entity);
+		$canActivate = true;
+
+		if (!empty($kreaObjects[$tmpobjectkey])) {
+			$objectclass = $kreaObjects[$tmpobjectkey]['class'];
+			dol_include_once('/kreaproducts/class/' . strtolower($tmpobjectkey) . '.class.php');
+			if (class_exists($objectclass)) {
+				$tmpobject = new $objectclass($db);
+
+				dol_include_once('/kreaproducts/core/modules/kreaproducts/' . $value . '.php');
+				if (class_exists($value)) {
+					$module = new $value($db);
+					if (method_exists($module, 'canBeActivated') && ! $module->canBeActivated($tmpobject)) {
+						$canActivate = false;
+						setEventMessages($module->error ?: $langs->trans("ErrorModuleNotFound"), null, 'errors');
+					}
+				} else {
+					$canActivate = false;
+					setEventMessages($langs->trans("ErrorModuleNotFound"), null, 'errors');
+				}
+			} else {
+				$canActivate = false;
+				setEventMessages($langs->trans("ErrorModuleNotFound"), null, 'errors');
+			}
+		}
+
+		if ($canActivate) {
+			dolibarr_set_const($db, $constforval, $value, 'chaine', 0, '', $conf->entity);
+		}
 	}
 } elseif ($action == 'set') {
 	// Activate a model
@@ -519,9 +560,7 @@ if ($action == 'edit') {
 
 
 $moduledir = 'kreaproducts';
-$myTmpObjects = array();
-// TODO Scan list of objects
-$myTmpObjects['myobject'] = array('label' => 'MyObject', 'includerefgeneration' => 0, 'includedocgeneration' => 0, 'class' => 'MyObject');
+$myTmpObjects = $kreaObjects;
 
 
 foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {

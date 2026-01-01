@@ -468,9 +468,8 @@ if (empty($reshook)) {
 					dol_print_error($db, $tmp->error, $tmp->errors);
 				}
 			} else {
-				// Clear var
-				$_POST['batch'] = '';		// TODO Replace this with a var
-				$_POST['qtytoadd'] = '';
+				$batch = '';
+				$qty = null;
 			}
 		}
 	}
@@ -1062,7 +1061,7 @@ if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STAT
 	print '</td>';
 	if (isModEnabled('productbatch')) {
 		print '<td>';
-		print '<input type="text" name="batch" class="maxwidth100" value="' . (GETPOSTISSET('batch') ? GETPOST('batch') : '') . '">';
+		print '<input type="text" name="batch" class="maxwidth100" value="' . dol_escape_htmltag($batch) . '">';
 		print '</td>';
 	}
 	print '<td class="right"></td>';

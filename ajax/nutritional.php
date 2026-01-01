@@ -57,6 +57,15 @@ if (!$res) {
 }
 dol_include_once('/kreaproducts/class/nutritional.class.php');
 
+$token = GETPOST('token', 'alpha');
+if (empty($token) || !hash_equals(currentToken(), $token)) {
+	top_httphead('application/json');
+	http_response_code(403);
+	print json_encode(['status' => 'error', 'message' => 'Invalid CSRF token']);
+	$db->close();
+	exit;
+}
+
 $mode = GETPOST('mode', 'aZ09');
 $objectId = GETPOST('objectId', 'aZ09');
 $field = GETPOST('field', 'aZ09');
@@ -76,7 +85,7 @@ if (!$user->hasRight('kreaproducts', 'nutritional', 'write')) {
 
 dol_syslog("Call ajax kreaproducts/ajax/nutritional.php");
 
-top_httphead();
+top_httphead('application/json');
 
 // Update the object field with the new value
 if ($objectId && $field && isset($value)) {

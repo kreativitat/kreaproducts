@@ -223,14 +223,6 @@ if ($result > 0) {
 	print $object->num_payment ? ' - '.$object->num_payment : '';
 	print '</td></tr>';
 
-	// Payment numero
-	/* TODO Add field num_payment into payment table and save it
-	print '<tr><td>'.$form->editfieldkey("Numero",'num_paiement',$object->num_paiement,$object,$object->statut == 0 && $user->hasRight("fournisseur", "facture", "creer")).'</td>';
-	print '<td>';
-	print $form->editfieldval("Numero",'num_paiement',$object->num_paiement,$object,$object->statut == 0 && $user->hasRight("fournisseur", "facture", "creer"),'string','',null,$langs->trans('PaymentNumberUpdateSucceeded'));
-	print '</td></tr>';
-	*/
-
 	// Amount
 	print '<tr><td>'.$langs->trans('Amount').'</td>';
 	print '<td><span class="amount">'.price($object->amount, 0, $langs, 0, 0, -1, $conf->currency).'</span></td></tr>';
@@ -430,7 +422,7 @@ if ($result > 0) {
 	}
 
 	// Presend form
-	$modelmail = ''; //TODO: Add new 'payment receipt' model in email models
+	$modelmail = '';
 	$defaulttopic = 'SendPaymentReceipt';
 	$diroutput = $conf->fournisseur->payment->dir_output;
 	$autocopy = 'MAIN_MAIL_AUTOCOPY_SUPPLIER_INVOICE_TO';
