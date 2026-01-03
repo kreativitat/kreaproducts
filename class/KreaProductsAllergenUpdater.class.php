@@ -11,6 +11,14 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
  * Handles allergen propagation in product hierarchies with BFS and bottom-up processing.
  * Provides comprehensive allergen management with proper validation, error handling,
  * and performance optimization for complex product hierarchies.
+ *
+ * Disclaimer:
+ * Allergen data is entered by users or derived from their inputs and is not verified.
+ * It is provided for informational purposes only and is not medical, dietary, or regulatory advice.
+ * Users are solely responsible for accuracy, labeling, and compliance with applicable laws and regulations.
+ * This software is provided as is, without warranties of any kind, express or implied, including
+ * but not limited to merchantability and fitness for a particular purpose. To the maximum extent
+ * permitted by law, the authors and distributors disclaim all liability for damages arising from its use.
  */
 class KreaProductsAllergenUpdater
 {

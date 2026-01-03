@@ -30,7 +30,7 @@
 # Module label 'ModuleKreaProductsName'
 ModuleKreaProductsName = KreaProducts
 # Module description 'ModuleKreaProductsDesc'
-ModuleKreaProductsDesc = KreaProducts description
+ModuleKreaProductsDesc = KreaProducts is an advanced product management module for Dolibarr ERP/CRM. It extends the Products module with nutrition, allergens, BOM/technical sheets, inventory, and cost/stock automations - built for hospitality and retail operations that need consistency, traceability, and accurate food cost. Data is entered by users or derived from their inputs and is not verified; it is for informational purposes only and not medical, dietary, or regulatory advice. Users are solely responsible for accuracy, labeling, and compliance with applicable laws and regulations. This module is provided as is, without warranties of any kind, express or implied, including merchantability and fitness for a particular purpose, and the authors and distributors disclaim all liability for damages arising from its use.
 
 #
 # Admin page
@@ -122,3 +122,5 @@ KreaProductsCopyAvgSuccess = Nutritional values copied successfully.
 KreaProductsCopyAllergensToProduct = Copy allergens to product
 KreaProductsCopyAllergensButton = Copy allergens
 KreaProductsCopyAllergensSuccess = Allergens copied successfully.
+KreaProductsNutritionDisclaimer = Disclaimer: Nutrition information is provided by the user. Accuracy and compliance are the user's responsibility.
+KreaProductsAllergensDisclaimer = Disclaimer: Allergen information is provided by the user. Accuracy and compliance are the user's responsibility.

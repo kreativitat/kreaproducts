@@ -10,6 +10,14 @@
  * 
  * Enhanced with comprehensive error handling, input validation, performance optimization,
  * security improvements, and proper transaction management for enterprise-level use.
+ *
+ * Disclaimer:
+ * Nutrition data is entered by users or derived from their inputs and is not verified.
+ * It is provided for informational purposes only and is not medical, dietary, or regulatory advice.
+ * Users are solely responsible for accuracy, labeling, and compliance with applicable laws and regulations.
+ * This software is provided as is, without warranties of any kind, express or implied, including
+ * but not limited to merchantability and fitness for a particular purpose. To the maximum extent
+ * permitted by law, the authors and distributors disclaim all liability for damages arising from its use.
  */
 class KreaProductsNutritionalCalculator
 {
@@ -583,6 +591,8 @@ class KreaProductsNutritionalCalculator
             print '</form>';
             print '</div>';
         }
+
+        print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
     }
 
     private static function buildProductSelector($form, $selected, $htmlname, $langs, $morecss = 'minwidth300')

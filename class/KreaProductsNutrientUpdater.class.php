@@ -11,6 +11,14 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
  * Enhanced class for updating nutritional records for all non-leaf products
  * in the product tree by traversing the association map and normalizing nutrient values.
  * Provides comprehensive validation, error handling, and performance optimization.
+ *
+ * Disclaimer:
+ * Nutrition data is entered by users or derived from their inputs and is not verified.
+ * It is provided for informational purposes only and is not medical, dietary, or regulatory advice.
+ * Users are solely responsible for accuracy, labeling, and compliance with applicable laws and regulations.
+ * This software is provided as is, without warranties of any kind, express or implied, including
+ * but not limited to merchantability and fitness for a particular purpose. To the maximum extent
+ * permitted by law, the authors and distributors disclaim all liability for damages arising from its use.
  */
 class KreaProductsNutrientUpdater
 {

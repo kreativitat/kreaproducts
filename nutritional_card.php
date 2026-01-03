@@ -50,7 +50,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/lib/images.lib.php';
 //$permissiontoadd = (($object->type == Product::TYPE_PRODUCT && $user->hasRight('produit', 'creer')) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
 
 // Load language translations
-$langs->loadLangs(array('other', 'products'));
+$langs->loadLangs(array('other', 'products', 'kreaproducts@kreaproducts'));
 
 // Retrieve GET parameters
 $id = GETPOST('id', 'int');

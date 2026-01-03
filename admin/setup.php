@@ -303,13 +303,6 @@ $item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
 $item->defaultFieldValue = '3';
 $item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
 
-// Debug e logs
-$formSetup->newItem('KREAPRODUCTS_DEBUG_SETTINGS_TITLE')->setAsTitle();
-$item = $formSetup->newItem('KREAPRODUCTS_DEBUG_LOG');
-$item->setAsYesNo();
-$item->defaultFieldValue = '0';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_DEBUG_LOG_HELP');
-
 /*
 // Enter here all parameters in your setup page
 
@@ -564,114 +557,6 @@ $myTmpObjects = $kreaObjects;
 
 
 foreach ($myTmpObjects as $myTmpObjectKey => $myTmpObjectArray) {
-	if ($myTmpObjectArray['includerefgeneration']) {
-		/*
-		 * Orders Numbering model
-		 */
-		$setupnotempty++;
-
-		print load_fiche_titre($langs->trans("NumberingModules", $myTmpObjectArray['label']), '', '');
-
-		print '<table class="noborder centpercent">';
-		print '<tr class="liste_titre">';
-		print '<td>' . $langs->trans("Name") . '</td>';
-		print '<td>' . $langs->trans("Description") . '</td>';
-		print '<td class="nowrap">' . $langs->trans("Example") . '</td>';
-		print '<td class="center" width="60">' . $langs->trans("Status") . '</td>';
-		print '<td class="center" width="16">' . $langs->trans("ShortInfo") . '</td>';
-		print '</tr>' . "\n";
-
-		clearstatcache();
-
-		foreach ($dirmodels as $reldir) {
-			$dir = dol_buildpath($reldir . "core/modules/" . $moduledir);
-
-			if (is_dir($dir)) {
-				$handle = opendir($dir);
-				if (is_resource($handle)) {
-					while (($file = readdir($handle)) !== false) {
-						if (strpos($file, 'mod_' . strtolower($myTmpObjectKey) . '_') === 0 && substr($file, dol_strlen($file) - 3, 3) == 'php') {
-							$file = substr($file, 0, dol_strlen($file) - 4);
-
-							require_once $dir . '/' . $file . '.php';
-
-							$module = new $file($db);
-
-							// Show modules according to features level
-							if ($module->version == 'development' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 2) {
-								continue;
-							}
-							if ($module->version == 'experimental' && getDolGlobalInt('MAIN_FEATURES_LEVEL') < 1) {
-								continue;
-							}
-
-							if ($module->isEnabled()) {
-								dol_include_once('/' . $moduledir . '/class/' . strtolower($myTmpObjectKey) . '.class.php');
-
-								print '<tr class="oddeven"><td>' . $module->name . "</td><td>\n";
-								print $module->info($langs);
-								print '</td>';
-
-								// Show example of numbering model
-								print '<td class="nowrap">';
-								$tmp = $module->getExample();
-								if (preg_match('/^Error/', $tmp)) {
-									$langs->load("errors");
-									print '<div class="error">' . $langs->trans($tmp) . '</div>';
-								} elseif ($tmp == 'NotConfigured') {
-									print $langs->trans($tmp);
-								} else {
-									print $tmp;
-								}
-								print '</td>' . "\n";
-
-								print '<td class="center">';
-								$constforvar = 'KREAPRODUCTS_' . strtoupper($myTmpObjectKey) . '_ADDON';
-								if (getDolGlobalString($constforvar) == $file) {
-									print img_picto($langs->trans("Activated"), 'switch_on');
-								} else {
-									print '<a href="' . $_SERVER["PHP_SELF"] . '?action=setmod&token=' . newToken() . '&object=' . strtolower($myTmpObjectKey) . '&value=' . urlencode($file) . '">';
-									print img_picto($langs->trans("Disabled"), 'switch_off');
-									print '</a>';
-								}
-								print '</td>';
-
-								$nameofclass = $myTmpObjectArray['class'];
-								$mytmpinstance = new $nameofclass($db);
-								$mytmpinstance->initAsSpecimen();
-
-								// Info
-								$htmltooltip = '';
-								$htmltooltip .= '' . $langs->trans("Version") . ': <b>' . $module->getVersion() . '</b><br>';
-
-								$nextval = $module->getNextValue($mytmpinstance);
-								if ("$nextval" != $langs->trans("NotAvailable")) {  // Keep " on nextval
-									$htmltooltip .= '' . $langs->trans("NextValue") . ': ';
-									if ($nextval) {
-										if (preg_match('/^Error/', $nextval) || $nextval == 'NotConfigured') {
-											$nextval = $langs->trans($nextval);
-										}
-										$htmltooltip .= $nextval . '<br>';
-									} else {
-										$htmltooltip .= $langs->trans($module->error) . '<br>';
-									}
-								}
-
-								print '<td class="center">';
-								print $form->textwithpicto('', $htmltooltip, 1, 0);
-								print '</td>';
-
-								print "</tr>\n";
-							}
-						}
-					}
-					closedir($handle);
-				}
-			}
-		}
-		print "</table><br>\n";
-	}
-
 	if ($myTmpObjectArray['includedocgeneration']) {
 		/*
 		 * Document templates generators

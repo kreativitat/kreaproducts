@@ -1,0 +1,257 @@
+# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+#
+# This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+#
+# GPL-3.0 License:
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Proprietary License:
+# For commercial use, support, or if you prefer not to disclose your source code modifications,
+# please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+#
+# For more information, visit <https://www.kreativitat.com>.
+#
+
+#
+# Generic
+#
+
+# Module label 'ModuleKreaProductsName'
+ModuleKreaProductsName = KreaProducts
+
+# Module description 'ModuleKreaProductsDesc'
+ModuleKreaProductsDesc = KreaProducts è un modulo avanzato per la gestione dei prodotti in Dolibarr ERP/CRM. Estende il modulo Prodotti con nutrizione, allergeni, BOM/schede tecniche, inventario e automazioni di costi e stock - pensato per ristorazione e retail che richiedono coerenza, tracciabilità e un food cost sempre corretto. I dati sono inseriti dall'utente o derivati dai suoi input e non sono verificati; sono forniti solo a scopo informativo e non costituiscono consulenza medica, dietetica o normativa. L'utente è l'unico responsabile dell'accuratezza, dell'etichettatura e della conformità alle leggi applicabili. Questo modulo è fornito così com'è, senza garanzie di alcun tipo, espresse o implicite, incluse le garanzie di commerciabilità e idoneità a uno scopo specifico, e gli autori e i distributori declinano ogni responsabilità per danni derivanti dal suo utilizzo.
+
+#
+# Admin page
+#
+KreaProductsSetup = Configurazione KreaProducts
+Settings = Impostazioni
+KreaProductsSetupPage = Pagina di configurazione KreaProducts
+ZS_SYNC_PRODUCTS_TITLE = Sincronizzazione prodotti
+KREAPRODUCTS_NUTRITION_SETTINGS_TITLE = Nutrizione e allergeni
+KREAPRODUCTS_STOCK_SETTINGS_TITLE = Movimenti di magazzino
+KREAPRODUCTS_INVENTORY_SETTINGS_TITLE = Inventario
+KREAPRODUCTS_DISMANTLE_SETTINGS_TITLE = Smontaggio
+KREAPRODUCTS_SIMULATOR_SETTINGS_TITLE = Simulatore prezzi
+KREAPRODUCTS_DEBUG_SETTINGS_TITLE = Debug e log
+KREAPRODUCTS_DEBUG_LOG = Abilita log di debug di KreaProducts
+KREAPRODUCTS_DEBUG_LOG_HELP = Registra informazioni di debug dettagliate per KreaProducts (include calcoli e SQL)
+KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configurare la classe di unità di peso esistente nel dizionario "Unità di misura"
+KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT = Soglia allergeni (presenza) (%)
+KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT_HELP = Percentuale del peso totale della ricetta oltre la quale l'allergene è considerato presente (non tracce)
+KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT = Soglia allergeni (tracce) (%)
+KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT_HELP = Percentuale del peso totale della ricetta oltre la quale l'allergene è marcato come tracce; al di sotto viene ignorato
+KREAPRODUCTS_ALLERGENS_UPDATE_EMPTY = Nessun allergene è stato calcolato. Verificare gli allergeni di base, i pesi e le soglie.
+KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Tabella nutrizionale nella scheda tecnica
+KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT = Abilita copia dei valori medi al prodotto
+KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT_HELP = Mostra selettore e pulsante per copiare i valori medi per 100 g su un altro prodotto
+KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT = Abilita copia degli allergeni al prodotto
+KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP = Mostra selettore e pulsante per copiare gli allergeni su un altro prodotto
+KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Propagazione automatica del prezzo di costo
+KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Propagazione automatica della tabella nutrizionale
+KREAPRODUCTS_STOCK_MOVEMENT_DATA = La data dei movimenti di magazzino è la data della fattura
+KREAPRODUCTS_SUPPLIER_MOVE_TIME = Ora per i movimenti delle fatture fornitore
+KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Ora (HH:MM o HH:MM:SS) applicata ai movimenti di magazzino delle fatture fornitore
+KREAPRODUCTS_INVENTORY_DEFAULT_TIME = Ora predefinita per l'inventario
+KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP = Ora (HH:MM o HH:MM:SS) usata come valore predefinito nella creazione dell'inventario
+KREAPRODUCTS_INVENTORY_CATEGORY_ROOT = Categoria radice per l'inventario
+KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP = Limitare la selezione delle categorie di inventario alle sottocategorie di questa categoria
+KREAPRODUCTS_INVENTORY_PRINT_SHEET = Scheda inventario
+KREAPRODUCTS_INVENTORY_PRINT_TITLE = INVENTARIO SETTIMANALE
+KREAPRODUCTS_INVENTORY_PRINT_STORE = NEGOZIO
+KREAPRODUCTS_INVENTORY_PRINT_DATE = DATA
+KREAPRODUCTS_INVENTORY_PRINT_CODE = Codice di registrazione
+KREAPRODUCTS_INVENTORY_PRINT_PRODUCT = Descrizione del prodotto da contare
+KREAPRODUCTS_INVENTORY_PRINT_COUNTED = Unità conteggiate (stock)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT = Unità di registrazione stock
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_COUNT = Unità (CONTARE)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_WEIGHT = Kilogrammi (PESARE)
+KREAPRODUCTS_INVENTORY_PRINT_UNIT_VOLUME = Litri (MISURARE)
+KREAPRODUCTS_INVENTORY_STARTED = Avviato
+KREAPRODUCTS_INVENTORY_DELETE_CLOSED = Gli inventari chiusi non possono essere eliminati
+KREAPRODUCTS_INVENTORY_CLOSED_LOCKED = Gli inventari chiusi non possono essere modificati
+KREAPRODUCTS_DISMANTLE_CATEGORY = Categoria per smontaggio automatico
+KREAPRODUCTS_DISMANTLE_CATEGORY_HELP = ID della categoria prodotto che attiva la logica di smontaggio automatico
+KREAPRODUCTS_DISMANTLE_BOMTYPE = Tipo BOM di smontaggio
+KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP = Valore di bom_bom.bomtype che identifica la BOM di smontaggio (predefinito 1)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION1 = Tipo 1 (Smontaggio standard)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0 = Tipo 0 (Assemblaggio/produzione)
+KREAPRODUCTS_DISMANTLE_WAREHOUSE = Magazzino per lo smontaggio
+KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP = ID del magazzino usato nei movimenti di smontaggio (o MAIN_DEFAULT_WAREHOUSE se vuoto)
+KREAPRODUCTS_SIM_ENABLE = Abilita simulatore prezzi (Metriche e Margini)
+KREAPRODUCTS_SIM_DEFAULT_MARKUP = Markup di test predefinito (es.: 3 = 300%)
+QtyInStockWhenInventoryWasCreated = Quantità in stock quando l'inventario è stato creato (prima della correzione dello stock)
+
+#
+# About page
+#
+About = Informazioni
+KreaProductsAbout = Informazioni su KreaProducts
+KreaProductsAboutPage = Pagina informativa di KreaProducts
+
+#
+# Products card
+#
+StockableProduct = Gestire il magazzino
+StockableProductDescription = Se questa opzione è attiva, la modifica di stock di questo elemento viene mantenuta. Se disattivata, la modifica di stock di questo elemento non viene mantenuta.
+
+kreap_syncprice = Sincronizza automaticamente il prezzo di costo
+kreap_updatebuyprice = Aggiorna automaticamente il prezzo di costo
+EnableCostPriceSyncForThisProduct = Abilita la sincronizzazione automatica del prezzo di costo per questo prodotto quando i prodotti figli vengono aggiornati
+kreap_hideproduct = Nascondi prodotto
+kreap_hideproduct_help = Nascondi questo prodotto dalle liste e dalle sincronizzazioni
+KreapProductSimpleList = Lista prodotti
+KreapShowHiddenProducts = Mostra prodotti contrassegnati come nascosti
+KreapHideHiddenProducts = Nascondi prodotti contrassegnati come nascosti
+KreapPriceWithVat = Prezzo IVA inclusa
+KreapPriceWithoutVat = Prezzo IVA esclusa
+KreapCostWithoutVat = Costo IVA esclusa
+kreaproducts_nuttable = Tabella nutrizionale
+NutritionalCard = Tabella nutrizionale
+kreap_calc_nut = Tab. nutrizionale manuale/automatica
+kreap_void_nut = Tab. allergeni manuale/automatica
+KreaProductsNutritionalDeclaration = Dichiarazione nutrizionale KreaProducts
+KreaProductsEnergy_kcal = Energia (kcal/100g)
+KreaProductsEnergy_kj = Energia (kJ/100g)
+KreaProductsFat = Grassi (g/100g)
+KreaProductsSaturates = Grassi saturi (g/100g)
+KreaProductsCarbohydrates = Carboidrati (g/100g)
+KreaProductsSugars = Zuccheri (g/100g)
+KreaProductsProtein = Proteine (g/100g)
+KreaProductsSalt = Sale (g/100g)
+KreaProductsFiber = Fibre (g/100g)
+KreaProductsProductAssociations = Tabella nutrizionale
+KreaProductsTableProductRef = Rif.
+KreaProductsTableProductName = Descrizione
+KreaProductsTableProductWeight = Peso del prodotto
+KreaProductsTableProductQuantity = Qtà
+KreaProductsTableQuantityWeight = Peso della quantità (g)
+KreaProductsTableEnergy_kcal = Energia (kcal)
+KreaProductsTableEnergy_kj = Energia (kJ)
+KreaProductsTableFat = Grassi (g)
+KreaProductsTableSaturates = Grassi saturi (g)
+KreaProductsTableCarbohydrates = Carboidrati (g)
+KreaProductsTableSugars = Zuccheri (g)
+KreaProductsTableProtein = Proteine (g)
+KreaProductsTableSalt = Sale (g)
+KreaProductsTableFiber = Fibre (g)
+AverageValuesPer100g = Valori medi per 100 g
+EstimatedTotalsForTheProduct = Totali stimati del prodotto
+KreaProductsCopyAvgToProduct = Copia valori medi per 100 g al prodotto
+KreaProductsCopyAvgButton = Copia valori
+KreaProductsCopyAvgSuccess = Valori nutrizionali copiati con successo.
+KreaProductsCopyAllergensToProduct = Copia allergeni al prodotto
+KreaProductsCopyAllergensButton = Copia allergeni
+KreaProductsCopyAllergensSuccess = Allergeni copiati con successo.
+KreaProductsNutritionDisclaimer = Avviso: Le informazioni nutrizionali sono inserite dall'utente. Accuratezza e conformità sono responsabilità dell'utente.
+KreaProductsAllergensDisclaimer = Avviso: Le informazioni sugli allergeni sono inserite dall'utente. Accuratezza e conformità sono responsabilità dell'utente.
+KREAPRODUCTS_REPLACE_PRODUCT_LIST = Sostituire l'elenco standard dei prodotti
+KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Usare l'elenco semplificato KreaProducts invece di /product/list.php
+
+#
+# Associated products card
+#
+BOMExistsAndOriginProduct = MRP - Prodotto originale prima dello smontaggio
+ComponentsOfProduct = MRP - Prodotto finale dopo lo smontaggio
+OriginProductId = Componenti
+ComponentProductId = Componenti
+ComponentProduct = Etichetta
+kreaproducts_BOM = BOM
+BOMExists = Lista materiali
+BOMReference = Lista materiali
+OriginProduct = Etichetta
+MenuWhereProductExistsAndOriginProduct = Menu in cui questo prodotto è incluso
+KreaProducts_Energy_kcal = Energia (kcal/100g)
+KreaProducts_Energy_kj = Energia (kJ/100g)
+KreaProducts_Fat = Grassi (g/100g)
+KreaProducts_Saturates = Grassi saturi (g/100g)
+KreaProducts_Carbohydrates = Carboidrati (g/100g)
+KreaProducts_Sugars = Zuccheri (g/100g)
+KreaProducts_Protein = Proteine (g/100g)
+KreaProducts_Salt = Sale (g/100g)
+KreaProducts_Fiber = Fibre (g/100g)
+KreaProductAllergensTableTitle = Tabella allergeni
+KreaProductsTableTitle = Tabella nutrizionale
+productRecipeTitle = Altre caratteristiche
+productRecipeInline = Preparazione
+NoneSelected = Nessuno selezionato
+Allergens = Allergeni
+AllergensTraces = Tracce di allergeni
+kreap_brand = Marca del prodotto
+KreaProductsProductsCardTitle = Allergeni dei prodotti KreaProducts
+Krea_Products_Allergens = Allergeni
+Krea_Products_AllergensTraces = Tracce di allergeni
+NoneSelected = Non selezionato
+NOAL = Senza allergeni
+CELE = Sedano
+PEAN = Arachidi
+CRUS = Crostacei
+TNUT = Frutta a guscio
+GLUT = Glutine
+LEIT = Latte
+MOLU = Molluschi
+MUST = Senape
+EGGS = Uova
+FISH = Pesce
+SESA = Semi di sesamo
+SOYA = Soia
+SULP = Solfiti
+LUPI = Lupino
+TabelaNutricionalInserida = Tabella nutrizionale inserita
+TabelaNutricionalCalculada = Tabella nutrizionale calcolata
+NaoEUmAlimento = Non è un alimento
+TabelaAllergensInserida = Tabella allergeni inserita
+TabelaAllergensCalculada = Tabella allergeni calcolata
+updateAllergens = Aggiorna allergeni
+kreap_calc_allergens = Tabella allergeni
+AllergenUpdateFired = Aggiornamento allergeni avviato
+kreap_brand_Inline = Marca del prodotto
+kreap_video_Inline = Video del prodotto
+kreap_description_Inline = Descrizione del prodotto
+KreaFoodProduct = Prodotto alimentare
+KreaNonFoodProduct = Prodotto non alimentare
+
+#
+# Products tree card
+#
+ProductTree = Albero
+FichaTecnica = Scheda tecnica
+PrecoCusto = Prezzo di costo
+Reference = Riferimento
+Designation = Descrizione
+Qty = Qtà
+Type = Tipo
+CostPrice = Costo
+Subproducts = Sottoprodotti
+
+
+#
+# Sample widget
+#
+MyWidget = Il mio widget
+MyWidgetDescription = Descrizione del mio widget
+
+#
+# PriceSell Page
+#
+ForceSynchronization = ZSync
+Update VAT = Aggiorna IVA
+ForceSyncSuccess = Sincronizzato con successo
+CalculatePriceOnCost = Percentuale sul costo
+
+#
+# PurchasePrice Page
+#
+spreadCostPrice = Propagare il costo

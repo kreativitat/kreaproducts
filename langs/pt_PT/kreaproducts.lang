@@ -31,7 +31,7 @@
 ModuleKreaProductsName = KreaProducts
 
 # Module description 'ModuleKreaProductsDesc'
-ModuleKreaProductsDesc = KreaProducts description
+ModuleKreaProductsDesc = KreaProducts é um módulo avançado para gestão de produtos no Dolibarr ERP/CRM. Amplia o módulo de Produtos com nutrição, alergénios, BOM/Fichas Técnicas, inventário e automatizações de custos e stock - pensado para operações de restauração e retalho que precisam de consistência, rastreabilidade e food cost sempre certo. Os dados são inseridos pelo utilizador ou derivados das suas entradas e não são verificados; destinam-se apenas a fins informativos e não constituem aconselhamento médico, dietético ou regulamentar. O utilizador é o único responsável pela exatidão, rotulagem e conformidade com a legislação aplicável. Este módulo é fornecido tal como está, sem garantias de qualquer tipo, expressas ou implícitas, incluindo garantias de comercialização e adequação a um fim específico, e os autores e distribuidores rejeitam toda a responsabilidade por danos decorrentes da sua utilização.
 
 #
 # Admin page
@@ -155,6 +155,8 @@ KreaProductsCopyAvgSuccess = Valores nutricionais copiados com sucesso.
 KreaProductsCopyAllergensToProduct = Copiar alergénios para produto
 KreaProductsCopyAllergensButton = Copiar alergénios
 KreaProductsCopyAllergensSuccess = Alergénios copiados com sucesso.
+KreaProductsNutritionDisclaimer = Aviso: A informação nutricional é inserida pelo utilizador. A precisão e a conformidade são da responsabilidade do utilizador.
+KreaProductsAllergensDisclaimer = Aviso: A informação sobre alergénios é inserida pelo utilizador. A precisão e a conformidade são da responsabilidade do utilizador.
 KREAPRODUCTS_REPLACE_PRODUCT_LIST = Substituir lista padrão de produtos
 KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Usar a lista simplificada do KreaProducts em vez de /product/list.php
 
