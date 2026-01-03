@@ -52,7 +52,9 @@ KREAPRODUCTS_MYPARAM1Tooltip = My param 1 tooltip
 KREAPRODUCTS_MYPARAM2=My param 2
 KREAPRODUCTS_MYPARAM2Tooltip=My param 2 tooltip
 KREAPRODUCTS_SIM_ENABLE = Enable price simulator (Metrics & Markup)
+KREAPRODUCTS_SIM_ENABLE_HELP = Enable or disable the price simulator (Metrics & Markup)
 KREAPRODUCTS_SIM_DEFAULT_MARKUP = Default test markup (e.g. 3 = 300%)
+KREAPRODUCTS_SIM_DEFAULT_MARKUP_HELP = Default markup used in the price simulator (e.g. 3 = 300%)
 KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT = Allergen full threshold (%)
 KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT_HELP = Percentage of total recipe weight above which allergens are treated as present (not traces)
 KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT = Allergen trace threshold (%)

@@ -187,6 +187,14 @@ class modKreaProducts extends DolibarrModules
             2 => array('KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT', 'chaine', '1.0', '', 0, 'allentities', 1),
             3 => array('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT', 'chaine', '0.1', '', 0, 'allentities', 1),
             4 => array('KREAPRODUCTS_DEBUG_LOG', 'chaine', '0', '', 0, 'allentities', 1),
+            5 => array('KREAPRODUCTS_SIM_ENABLE', 'chaine', '1', '', 0, 'allentities', 1),
+            6 => array('KREAPRODUCTS_SIM_DEFAULT_MARKUP', 'chaine', '3', '', 0, 'allentities', 1),
+            7 => array('KREAPRODUCTS_REPLACE_PRODUCT_LIST', 'chaine', '1', '', 0, 'allentities', 1),
+            8 => array('KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:00', '', 0, 'allentities', 1),
+            9 => array('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '10:30', '', 0, 'allentities', 1),
+            10 => array('KREAPRODUCTS_DISMANTLE_BOMTYPE', 'chaine', '1', '', 0, 'allentities', 1),
+            11 => array('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
+            12 => array('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 
@@ -568,7 +576,8 @@ class modKreaProducts extends DolibarrModules
         $field_name = "kreap_updatebuyprice";
         $field_label = $langs->trans("kreap_updatebuyprice");
         $field_help = $langs->trans("EnableCostPriceSyncForThisProduct");
-        $result2 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $result2 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_name = "kreap_hideproduct";
         $field_label = $langs->trans("kreap_hideproduct");

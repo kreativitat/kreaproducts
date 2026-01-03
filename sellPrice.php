@@ -1734,12 +1734,10 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		$tva_tx_output = $object->tva_tx;
 		print '<script>
     document.addEventListener("DOMContentLoaded", () => {
-        console.log("DOM fully loaded and parsed");
 
         // Retrieve the cost price and TVA from PHP
         const costPrice = ' . json_encode($cost_price_output) . ';
         const tvaTx = ' . json_encode($tva_tx_output) . ';
-        console.log("Cost Price:", costPrice, "TVA:", tvaTx);
 
         // Function to calculate and update the price
         function calculatePrice(i) {
@@ -1750,7 +1748,6 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             if (percentageInput && priceOutput && htTtcSelect) {
                 const percentageValue = parseFloat(percentageInput.value) || 0;
                 const baseType = htTtcSelect.value;
-                console.log(`i=${i}, percentage=${percentageValue}, baseType=${baseType}`);
 
                 let priceValue;
                 if (baseType === "TTC") {
@@ -1759,10 +1756,9 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
                     priceValue = (costPrice * (1 + percentageValue / 100)).toFixed(2);
                 }
 
-                console.log(`Computed price_${i} value: ${priceValue}`);
                 priceOutput.value = priceValue;
             } else {
-                console.warn(`Elements for percentage_${i}, price_${i}, or select_multiprices_base_type[${i}] not found.`);
+                // No-op if expected elements are not found.
             }
         }
 
@@ -1775,24 +1771,19 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
 
             if (percentageInput && htTtcSelect) {
-                console.log(`Adding event listeners for percentage_${i} and select_multiprices_base_type[${i}]`);
 
                 // Event listener for percentage input
                 percentageInput.addEventListener("input", () => {
-                    console.log(`Input event triggered for percentage_${i}`);
                     calculatePrice(i);
                 });
 
                 // Event listener for HT/TTC select
                 htTtcSelect.addEventListener("change", () => {
-                    console.log(`Change event triggered for select_multiprices_base_type[${i}]`);
                     calculatePrice(i);
                 });
 
                 // Initial calculation on page load
                 //calculatePrice(i);
-            } else {
-                console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
             }
         });
 

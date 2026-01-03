@@ -165,6 +165,38 @@ if (!isset($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DEBUG_LOG', '0', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_DEBUG_LOG = '0';
 }
+if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+
+	$field_name = "kreap_updatebuyprice";
+	$field_label = $langs->trans("kreap_updatebuyprice");
+	$field_help = $langs->trans("EnableCostPriceSyncForThisProduct");
+	$extrafields->updateExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');
+	$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_updatebuyprice) ";
+	$sql .= "SELECT p.rowid, 1 FROM " . MAIN_DB_PREFIX . "product p ";
+	$sql .= "LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe ON pe.fk_object = p.rowid ";
+	$sql .= "WHERE pe.fk_object IS NULL";
+	if (empty($sharedProducts)) {
+		$sql .= " AND p.entity = " . ((int) $conf->entity);
+	}
+	$db->query($sql);
+
+	if (empty($sharedProducts)) {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields pe ";
+		$sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = pe.fk_object ";
+		$sql .= "SET pe.kreap_updatebuyprice = 1 ";
+		$sql .= "WHERE p.entity = " . ((int) $conf->entity);
+	} else {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields SET kreap_updatebuyprice = 1";
+	}
+	$db->query($sql);
+
+	dolibarr_set_const($db, 'KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED = '1';
+}
 
 // Setup weight unit with unique labels only
 $sql = "SELECT DISTINCT unit_type FROM " . MAIN_DB_PREFIX . "c_units ORDER BY unit_type DESC";
@@ -297,11 +329,11 @@ $formSetup->newItem('KREAPRODUCTS_SIMULATOR_SETTINGS_TITLE')->setAsTitle();
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_ENABLE');
 $item->setAsYesNo();
 $item->defaultFieldValue = '1';
-$item->helpText = $langs->transnoentities('Enable or disable the price simulator (Métricas e Margens)');
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_SIM_ENABLE_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_SIM_DEFAULT_MARKUP');
 $item->defaultFieldValue = '3';
-$item->helpText = $langs->transnoentities('Default markup used in the price simulator (ex: 3 = 300%)');
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_SIM_DEFAULT_MARKUP_HELP');
 
 /*
 // Enter here all parameters in your setup page

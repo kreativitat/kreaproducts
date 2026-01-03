@@ -67,9 +67,9 @@ if (empty($token) || !hash_equals(currentToken(), $token)) {
 }
 
 $mode = GETPOST('mode', 'aZ09');
-$objectId = GETPOST('objectId', 'aZ09');
-$field = GETPOST('field', 'aZ09');
-$value = GETPOST('value', 'aZ09');
+$objectId = GETPOSTINT('objectId');
+$field = GETPOST('field', 'alphanohtml');
+$valueRaw = GETPOST('value', 'alpha');
 
 // @phan-suppress-next-line PhanUndeclaredClass
 $object = new ProductAllergens($db);
@@ -87,19 +87,59 @@ dol_syslog("Call ajax kreaproducts/ajax/productallergens.php");
 
 top_httphead('application/json');
 
-// Update the object field with the new value
-if ($objectId && $field && isset($value)) {
-	$object->fetch($objectId);
-	if ($object->id > 0) {
-		$object->$field = $value;
-	}
-	$result = $object->update($user);
+$allowedFields = array(
+	'fk_allergen' => 'int',
+	'traces' => 'int',
+);
 
-	if ($result < 0) {
-		print json_encode(['status' => 'error', 'message' => 'Error updating '. $field]);
-	} else {
-		print json_encode(['status' => 'success', 'message' => $field . ' updated successfully']);
+if ($objectId <= 0) {
+	http_response_code(400);
+	print json_encode(['status' => 'error', 'message' => 'Invalid object id']);
+	$db->close();
+	exit;
+}
+
+if (empty($field) || !isset($allowedFields[$field])) {
+	http_response_code(400);
+	print json_encode(['status' => 'error', 'message' => 'Invalid field']);
+	$db->close();
+	exit;
+}
+
+$valueRaw = trim((string) $valueRaw);
+$value = null;
+if ($valueRaw !== '') {
+	switch ($allowedFields[$field]) {
+		case 'int':
+			if (!preg_match('/^\d+$/', $valueRaw)) {
+				http_response_code(400);
+				print json_encode(['status' => 'error', 'message' => 'Invalid integer value']);
+				$db->close();
+				exit;
+			}
+			$value = (int) $valueRaw;
+			break;
+		default:
+			$value = $valueRaw;
 	}
+}
+
+// Update the object field with the new value
+$object->fetch($objectId);
+if ($object->id <= 0) {
+	http_response_code(404);
+	print json_encode(['status' => 'error', 'message' => 'Object not found']);
+	$db->close();
+	exit;
+}
+
+$object->$field = $value;
+$result = $object->update($user);
+
+if ($result < 0) {
+	print json_encode(['status' => 'error', 'message' => 'Error updating ' . $field]);
+} else {
+	print json_encode(['status' => 'success', 'message' => $field . ' updated successfully']);
 }
 
 $db->close();

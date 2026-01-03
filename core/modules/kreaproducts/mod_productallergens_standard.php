@@ -98,8 +98,10 @@ class mod_productallergens_standard extends ModeleNumRefProductAllergens
 		$sql .= " WHERE ref LIKE '".$db->escape($this->prefix)."____-%'";
 		if ($object->ismultientitymanaged == 1) {
 			$sql .= " AND entity = ".$conf->entity;
-		} elseif ($object->ismultientitymanaged == 2) { // @phan-suppress-current-line PhanPluginEmptyStatementIf
-			// TODO
+		} elseif ($object->ismultientitymanaged == 2) {
+			if (isset($object->fields['entity'])) {
+				$sql .= " AND entity IN (0,".$conf->entity.")";
+			}
 		}
 
 		$resql = $db->query($sql);
@@ -137,7 +139,9 @@ class mod_productallergens_standard extends ModeleNumRefProductAllergens
 		if ($object->ismultientitymanaged == 1) {
 			$sql .= " AND entity = ".$conf->entity;
 		} elseif ($object->ismultientitymanaged == 2) {
-			// TODO
+			if (isset($object->fields['entity'])) {
+				$sql .= " AND entity IN (0,".$conf->entity.")";
+			}
 		}
 
 		$resql = $db->query($sql);

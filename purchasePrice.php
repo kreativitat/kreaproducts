@@ -230,37 +230,27 @@ if ($action == 'setcost_price') {
 			$error++;
 			setEventMessages($object->error, $object->errors, 'errors');
 		}
-		// Debug: Enable logging and add debug info
-		dol_syslog("DEBUG: About to call ProductHierarchy::updateProductAttributes for product ID: " . $object->id, LOG_INFO);
-
-		// Check if classes exist
-		if (!class_exists('ProductUpdater')) {
-			dol_syslog("ERROR: ProductUpdater class not found!", LOG_ERR);
-		} else {
-			dol_syslog("DEBUG: ProductUpdater class exists", LOG_INFO);
+		$debugEnabled = !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
+		if ($debugEnabled) {
+			dol_syslog("KreaProducts: updateProductAttributes for product ID: " . $object->id, LOG_DEBUG);
 		}
 
 		if (!class_exists('ProductHierarchy')) {
 			dol_syslog("ERROR: ProductHierarchy class not found!", LOG_ERR);
 		} else {
-			dol_syslog("DEBUG: ProductHierarchy class exists", LOG_INFO);
-		}
-
-		ProductUpdater::setDebug(true);
-
-		try {
-			// Run self-test first
-			$testResults = ProductUpdater::runSelfTest();
-			dol_syslog("DEBUG: ProductUpdater self-test results: " . print_r($testResults, true), LOG_INFO);
-
-			$result = ProductHierarchy::updateProductAttributes($object->id, $user);
-			dol_syslog("DEBUG: ProductHierarchy::updateProductAttributes returned: " . $result, LOG_INFO);
-			// Also refresh dismantle BOM children cost trees
-			kreaUpdateDismantleBomChildren($object->id, $db, $user);
-		} catch (Exception $e) {
-			dol_syslog("ERROR: ProductHierarchy::updateProductAttributes failed: " . $e->getMessage(), LOG_ERR);
-		} catch (Error $e) {
-			dol_syslog("FATAL ERROR: " . $e->getMessage(), LOG_ERR);
+			ProductUpdater::setDebug($debugEnabled);
+			try {
+				$result = ProductHierarchy::updateProductAttributes($object->id, $user);
+				if ($debugEnabled) {
+					dol_syslog("KreaProducts: updateProductAttributes returned: " . $result, LOG_DEBUG);
+				}
+				// Also refresh dismantle BOM children cost trees
+				kreaUpdateDismantleBomChildren($object->id, $db, $user);
+			} catch (Exception $e) {
+				dol_syslog("ERROR: ProductHierarchy::updateProductAttributes failed: " . $e->getMessage(), LOG_ERR);
+			} catch (Error $e) {
+				dol_syslog("FATAL ERROR: " . $e->getMessage(), LOG_ERR);
+			}
 		}
 	}
 }
@@ -671,7 +661,6 @@ if ($id > 0 || $ref) {
 					print '<script type="text/javascript">
 					$(document).ready(function () {
 						$("#search_id_fourn").change(load_vat)
-						console.log("Requesting default VAT rate for the supplier...")
 					});
 					function load_vat() {
 						// get soc id
@@ -701,7 +690,6 @@ if ($id > 0 || $ref) {
 
 					}
 					function replaceVATWithSupplierValue(vat_rate) {
-						console.log("Default VAT rate for the supplier: " + vat_rate + "%")
 						$("[name=\'tva_tx\']")[0].value = vat_rate;
 					}
 				</script>';
@@ -876,7 +864,6 @@ if ($id > 0 || $ref) {
 	<!-- javascript to autocalculate the minimum price -->
     <script type="text/javascript">
         function update_price_from_multicurrency() {
-			console.log("update_price_from_multicurrency");
             var multicurrency_price = price2numjs($('input[name="multicurrency_price"]').val());
             var multicurrency_tx = price2numjs($('input[name="multicurrency_tx"]').val());
 			if (multicurrency_tx != 0) {
@@ -910,7 +897,6 @@ if ($id > 0 || $ref) {
 
             var currencies_array = $currencies;
             $('select[name="multicurrency_code"]').change(function () {
-				console.log("We change the currency");
                 $('input[name="multicurrency_tx"]').val(currencies_array[$(this).val()]);
                 update_price_from_multicurrency();
             });

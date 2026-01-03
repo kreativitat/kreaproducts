@@ -7,6 +7,7 @@
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsInventoryService.class.php';
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsStockMovementService.class.php';
@@ -34,13 +35,25 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		switch ($action) {
 			case 'PRODUCT_PRICE_MODIFY':
-				if (!empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
-					ProductHierarchy::updateProductAttributes($object->id, $user);
-				}
+				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
 				return 1;
 
 			case 'PRODUCT_MODIFY':
+				if ($this->hasCostPriceChanged($object)) {
+					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				}
+				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
+					KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
+				}
+				return 1;
+
+			case 'PRODUCT_SUBPRODUCT_ADD':
+			case 'PRODUCT_SUBPRODUCT_DELETE':
+				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				return 1;
+
 			case 'PRODUCT_SUBPRODUCT_UPDATE':
+				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
 				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
 					KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
 				}
@@ -64,6 +77,45 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			default:
 				return 0;
 		}
+	}
+
+	private function syncCostPriceIfEnabled(int $productId, User $user, Conf $conf): void
+	{
+		static $inProgress = false;
+
+		if ($productId <= 0 || $inProgress || empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
+			return;
+		}
+
+		$inProgress = true;
+		try {
+			ProductHierarchy::updateProductAttributes($productId, $user);
+		} finally {
+			$inProgress = false;
+		}
+	}
+
+	private function hasCostPriceChanged($object): bool
+	{
+		if (!is_object($object)) {
+			return false;
+		}
+
+		if (!isset($object->oldcopy) || !is_object($object->oldcopy)) {
+			return true;
+		}
+
+		$oldCost = $object->oldcopy->cost_price ?? null;
+		$newCost = $object->cost_price ?? null;
+
+		if ($oldCost === null && $newCost === null) {
+			return false;
+		}
+		if ($oldCost === null || $newCost === null) {
+			return true;
+		}
+
+		return abs((float) $oldCost - (float) $newCost) > 0.0001;
 	}
 
 }

@@ -91,7 +91,9 @@ KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0 = Type 0 (Assemblage/production)
 KREAPRODUCTS_DISMANTLE_WAREHOUSE = Entrepôt pour le démontage
 KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP = ID de l'entrepôt utilisé pour les mouvements de démontage (ou MAIN_DEFAULT_WAREHOUSE si vide)
 KREAPRODUCTS_SIM_ENABLE = Activer le simulateur de prix (Métriques et marges)
+KREAPRODUCTS_SIM_ENABLE_HELP = Activer ou désactiver le simulateur de prix (Métriques et marges)
 KREAPRODUCTS_SIM_DEFAULT_MARKUP = Marge test par défaut (ex. : 3 = 300%)
+KREAPRODUCTS_SIM_DEFAULT_MARKUP_HELP = Marge par défaut utilisée dans le simulateur (ex. : 3 = 300%)
 QtyInStockWhenInventoryWasCreated = Quantité en stock lors de la création de l'inventaire (avant correction du stock)
 
 #

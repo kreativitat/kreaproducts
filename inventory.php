@@ -720,7 +720,6 @@ if ($object->status == Inventory::STATUS_VALIDATED) {
 								objecttofill.value = object.innerText;
 								jQuery(".realqty").trigger("change");
 							})
-							console.log("Values filled (after click on fillwithexpected)");
 							/* disablebuttonmakemovementandclose(); */
 							return false;
 				        });';
@@ -754,7 +753,6 @@ if ($action == 'updatebyscaning') {
 		var errortab4 = [];
 
 		function barcodescannerjs(){
-			console.log("We catch inputs in scanner box");
 			jQuery("#scantoolmessage").text();
 
 			var selectaddorreplace = $("select[name=selectaddorreplace]").val();
@@ -775,19 +773,13 @@ if ($action == 'updatebyscaning') {
 			if(textarray.some((element) => element != "")){
 				$(".expectedqty").each(function(){
 					id = this.id;
-					console.log("Analyze the line "+id+" in inventory, barcodemode="+barcodemode);
 					warehouse = $("#"+id+"_warehouse").attr(\'data-ref\');
-					//console.log(warehouse);
 					productbarcode = $("#"+id+"_product").attr(\'data-barcode\');
-					//console.log(productbarcode);
 					productbatchcode = $("#"+id+"_batch").attr(\'data-batch\');
-					//console.log(productbatchcode);
 
 					if (barcodemode != "barcodeforproduct") {
 						tabproduct.forEach(product=>{
-							console.log("product.Batch="+product.Batch+" productbatchcode="+productbatchcode);
 							if(product.Batch != "" && product.Batch == productbatchcode){
-								console.log("duplicate batch code found for batch code "+productbatchcode);
 								duplicatedbatchcode.push(productbatchcode);
 							}
 						})
@@ -799,9 +791,7 @@ if ($action == 'updatebyscaning') {
 					tabproduct.push({\'Id\':id,\'Warehouse\':warehouse,\'Barcode\':productbarcode,\'Batch\':productbatchcode,\'Qty\':productinput,\'fetched\':false});
 				});
 
-				console.log("Loop on each record entered in the textarea");
 				textarray.forEach(function(element,index){
-					console.log("Process record element="+element+" id="+id);
 					var verify_batch = false;
 					var verify_barcode = false;
 					switch(barcodemode){
@@ -825,8 +815,6 @@ if ($action == 'updatebyscaning') {
 					} else if (verify_batch == true && verify_barcode == true) {		/* If the 2 flags are true, error: we don t know which one to take */
 						errortab3.push(element);
 					} else if (verify_batch == true) {
-						console.log("element="+element);
-						console.log(duplicatedbatchcode);
 						if (duplicatedbatchcode.includes(element)) {
 							errortab1.push(element);
 						}
@@ -836,7 +824,6 @@ if ($action == 'updatebyscaning') {
 				if (Object.keys(errortab1).length < 1 && Object.keys(errortab2).length < 1 && Object.keys(errortab3).length < 1) {
 					tabproduct.forEach(product => {
 						if(product.Qty!=0){
-							console.log("We change #"+product.Id+"_input to match input in scanner box");
 							if(product.hasOwnProperty("reelqty")){
 								$.ajax({ url: \'' . DOL_URL_ROOT . '/product/inventory/ajax/searchfrombarcode.php\',
 									data: { "token":"' . newToken() . '", "action":"addnewlineproduct", "fk_entrepot":product.Warehouse, "batch":product.Batch, "fk_inventory":' . dol_escape_js($object->id) . ', "fk_product":product.fk_product, "reelqty":product.reelqty},
@@ -845,7 +832,6 @@ if ($action == 'updatebyscaning') {
 									success: function(response) {
 										response = JSON.parse(response);
 										if(response.status == "success"){
-											console.log(response.message);
 											$("<input type=\'text\' value=\'"+product.Qty+"\' />")
 											.attr("id", "id_"+response.id_line+"_input")
 											.attr("name", "id_"+response.id_line)
@@ -916,7 +902,6 @@ if ($action == 'updatebyscaning') {
 					success: function(response) {
 						response = JSON.parse(response);
 						if (response.status == "success"){
-							console.log(response.message);
 							if(!newproductrow){
 								newproductrow = response.object;
 							}
@@ -931,7 +916,6 @@ if ($action == 'updatebyscaning') {
 					   console.error("Error on barcodeserialforproduct function");
 					},
 			    });
-				console.log("Product "+(index+=1)+": "+element);
 				if(mode == "barcode"){
 					testonproduct = product.Barcode
 				}else if (mode == "lotserial"){
@@ -974,14 +958,12 @@ if ($action == 'updatebyscaning') {
 print '<script>';
 print 'jQuery(document).ready(function() {
 	$("#clearqty").on("click", function() {
-		console.log("Clear all values");
 		/* disablebuttonmakemovementandclose(); */
 		jQuery(".realqty").val("");
 		jQuery(".realqty").trigger("change");
 		return false;	/* disable submit */
 	});
 	$(".undochangesqty").on("click", function undochangesqty() {
-		console.log("Clear value of inventory line");
 		id = this.id;
 		id = id.split("_")[1];
 		tmpvalue = $("#id_"+id+"_input_tmp").val()
@@ -1448,7 +1430,6 @@ print '</div>';
 if ($object->status != $object::STATUS_VALIDATED || !$hasinput) {
 	print '<script type="text/javascript">
 				jQuery(document).ready(function() {
-					console.log("Call disablebuttonmakemovementandclose because status = '.((int) $object->status).' or $hasinput = '.((int) $hasinput).'");
 					disablebuttonmakemovementandclose();
 				});
 			</script>';
@@ -1518,7 +1499,6 @@ $('input[class*=realpmp]').on('change', function() {
     let inputQtyReal = $(this).closest('tr').find('.realqty');
     let realqty = $(inputQtyReal).val();
     let inputPmp = $(this).closest('tr').find('input[class*=realpmp]');
-    console.log(inputPmp);
     let realPmpClassname = $(inputPmp).attr('class').match(/[\w-]*realpmp[\w-]*/g)[0];
     let realpmp = $(inputPmp).val();
     if (!isNaN(realpmp)) {
