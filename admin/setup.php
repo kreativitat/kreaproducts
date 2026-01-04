@@ -214,7 +214,7 @@ if ($resql) {
 $TCategories = array('' => $langs->trans('None'));
 $sql = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "categorie
         WHERE type = 0
-          AND entity IN (0,1)
+          AND entity IN (0," . ((int) $conf->entity) . ")
         ORDER BY label";
 $resql = $db->query($sql);
 if ($resql) {

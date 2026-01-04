@@ -137,6 +137,7 @@ class modKreaProducts extends DolibarrModules
                     'productlist',
                     'inventorycard',
                     'inventorylist',
+                    'bomlist',
                     'supplierpaymentcard',
                     'globalcard',
                     'leftblock',

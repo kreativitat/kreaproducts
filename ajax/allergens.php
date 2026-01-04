@@ -69,7 +69,7 @@ if (empty($token) || !hash_equals(currentToken(), $token)) {
 $mode = GETPOST('mode', 'aZ09');
 $objectId = GETPOSTINT('objectId');
 $field = GETPOST('field', 'alphanohtml');
-$valueRaw = GETPOST('value', 'alpha');
+$valueRaw = GETPOST('value', 'restricthtml');
 
 // @phan-suppress-next-line PhanUndeclaredClass
 $object = new Allergens($db);
@@ -111,8 +111,8 @@ if (empty($field) || !isset($allowedFields[$field])) {
 $valueRaw = trim((string) $valueRaw);
 $value = null;
 if ($valueRaw !== '') {
-	switch ($allowedFields[$field]) {
-		case 'int':
+	switch ($field) {
+		case 'active':
 			if (!preg_match('/^\d+$/', $valueRaw)) {
 				http_response_code(400);
 				print json_encode(['status' => 'error', 'message' => 'Invalid integer value']);
@@ -121,7 +121,31 @@ if ($valueRaw !== '') {
 			}
 			$value = (int) $valueRaw;
 			break;
-		case 'string':
+		case 'code':
+			if (!preg_match('/^[A-Za-z0-9]{1,5}$/', $valueRaw)) {
+				http_response_code(400);
+				print json_encode(['status' => 'error', 'message' => 'Invalid code value']);
+				$db->close();
+				exit;
+			}
+			$value = $valueRaw;
+			break;
+		case 'icon':
+			if (!preg_match('/^[A-Za-z0-9._-]{1,120}$/', $valueRaw)) {
+				http_response_code(400);
+				print json_encode(['status' => 'error', 'message' => 'Invalid icon value']);
+				$db->close();
+				exit;
+			}
+			$value = $valueRaw;
+			break;
+		case 'label':
+			if (strlen($valueRaw) > 255) {
+				http_response_code(400);
+				print json_encode(['status' => 'error', 'message' => 'Label is too long']);
+				$db->close();
+				exit;
+			}
 			$value = $valueRaw;
 			break;
 		default:

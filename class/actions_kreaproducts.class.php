@@ -207,10 +207,24 @@ class ActionsKreaProducts extends CommonHookActions
 	{
 		global $db, $conf, $user, $langs;
 
+		$this->ensureBomlistHookContext();
+
 		$error = 0;
 		$handled = $this->redirectToCustomPages($parameters, $object, $action);
 		if ($handled) {
 			return 0;
+		}
+
+		if ($this->canSetSharedBomEntity() && is_object($object) && $object->element === 'bom' && ($action === 'add' || $action === 'update')) {
+			$requestedEntity = null;
+			if (GETPOSTISSET('kreap_entity')) {
+				$requestedEntity = GETPOSTINT('kreap_entity');
+			} elseif (GETPOSTISSET('entity')) {
+				$requestedEntity = GETPOSTINT('entity');
+			}
+			if ($requestedEntity !== null) {
+				$object->entity = ($requestedEntity === 0 ? 0 : (int) $conf->entity);
+			}
 		}
 
 		if ($object->element === 'inventory' && $action === 'confirm_validate') {
@@ -266,6 +280,151 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 
 		return $error ? -1 : 0;
+	}
+
+	/**
+	 * Normalize shared-entity selector on BOM add/edit forms.
+	 *
+	 * @param  array<string,mixed> $parameters Hook metadata
+	 * @param  CommonObject        $object     The object to process
+	 * @param  ?string             $action     Current action
+	 * @param  HookManager         $hookmanager Hook manager
+	 * @return int
+	 */
+	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
+	{
+		global $allowSharedEntity;
+
+		static $sharedEntitySelectorPrinted = false;
+
+		if (!is_object($object) || $object->element !== 'bom') {
+			return 0;
+		}
+		if ($action !== 'create' && $action !== 'edit') {
+			return 0;
+		}
+		if ($sharedEntitySelectorPrinted) {
+			return 0;
+		}
+
+		$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+		if (strpos($scriptPath, '/bom/bom_card.php') === false) {
+			return 0;
+		}
+
+		$multicompanyEnabled = isModEnabled('multicompany');
+
+		$script = '';
+		if ($multicompanyEnabled && !empty($allowSharedEntity)) {
+			$script = '<script>
+	jQuery(function($) {
+		var $entitySelects = $(\'select[name="entity"]\');
+		if ($entitySelects.length < 2) {
+			return;
+		}
+		var $primary = $entitySelects.filter(\':visible\').first();
+		if (!$primary.length) {
+			$primary = $entitySelects.first();
+		}
+		$entitySelects.not($primary).each(function() {
+			$(this).val($primary.val()).closest(\'tr\').hide();
+		});
+		$primary.on(\'change\', function() {
+			var val = $(this).val();
+			$entitySelects.not($primary).val(val);
+		});
+	});
+</script>';
+		} else {
+			$script = '<script>
+	jQuery(function($) {
+		$(\'select[name="entity"]\').closest(\'tr\').hide();
+	});
+</script>';
+		}
+
+		if ($script === '') {
+			return 0;
+		}
+
+		$this->resprints = '<tr class="field_kreap_entity_helper" style="display:none;"><td colspan="2">'.$script.'</td></tr>';
+		$sharedEntitySelectorPrinted = true;
+		return 0;
+	}
+
+	/**
+	 * Allow shared BOM records (entity 0) to be visible across entities.
+	 *
+	 * @param  array<string,mixed> $parameters Hook metadata
+	 * @param  CommonObject|null   $object     The object to process
+	 * @param  ?string             $action     Current action
+	 * @param  HookManager         $hookmanager Hook manager
+	 * @return int
+	 */
+	public function hookGetEntity($parameters, &$object, &$action, $hookmanager)
+	{
+		if (!isModEnabled('multicompany')) {
+			return 0;
+		}
+		$element = $parameters['element'] ?? '';
+		if ($element !== 'bom' && $element !== 'bom_bom' && $element !== 'bomline' && $element !== 'bom_bomline') {
+			return 0;
+		}
+
+		$out = isset($parameters['out']) ? (string) $parameters['out'] : '';
+		if ($out === '') {
+			return 0;
+		}
+
+		$entities = preg_split('/\s*,\s*/', $out, -1, PREG_SPLIT_NO_EMPTY);
+		if (!in_array('0', $entities, true)) {
+			$entities[] = '0';
+		}
+		$entities = array_values(array_unique($entities));
+
+		$this->resprints = implode(',', $entities);
+		return 1;
+	}
+
+	/**
+	 * Allow shared BOM records (entity 0) to be accessed across entities.
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata
+	 * @param CommonObject|null $object The object to process
+	 * @param ?string $action Current action
+	 * @param HookManager $hookmanager Hook manager
+	 * @return int
+	 */
+	public function restrictedArea($parameters, &$object, &$action, $hookmanager)
+	{
+		global $user;
+
+		if (($parameters['features'] ?? '') !== 'bom') {
+			return 0;
+		}
+
+		$objectId = isset($parameters['objectid']) ? (int) $parameters['objectid'] : 0;
+		if ($objectId <= 0) {
+			return 0;
+		}
+
+		if (!$user->hasRight('bom', 'read') && !$user->hasRight('bom', 'lire')) {
+			return 0;
+		}
+
+		$sql = 'SELECT entity FROM ' . MAIN_DB_PREFIX . 'bom_bom WHERE rowid = ' . $objectId;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return 0;
+		}
+
+		$row = $this->db->fetch_object($resql);
+		if ($row && (int) $row->entity === 0) {
+			$this->results['result'] = 1;
+			return 1;
+		}
+
+		return 0;
 	}
 
 	/**
@@ -356,6 +515,62 @@ class ActionsKreaProducts extends CommonHookActions
 		return false;
 	}
 
+	/**
+	 * Ensure bomlist hook context is registered in module parts.
+	 *
+	 * @return void
+	 */
+	private function ensureBomlistHookContext()
+	{
+		static $checked = false;
+
+		if ($checked) {
+			return;
+		}
+		$checked = true;
+
+		global $conf, $user;
+
+		if (empty($user) || empty($user->admin)) {
+			return;
+		}
+		$rawHooks = getDolGlobalString('MAIN_MODULE_KREAPRODUCTS_HOOKS');
+		if ($rawHooks === '') {
+			return;
+		}
+
+		$hooks = json_decode($rawHooks, true);
+		if (!is_array($hooks)) {
+			$hooks = preg_split('/[,:;]/', $rawHooks, -1, PREG_SPLIT_NO_EMPTY);
+		}
+		$hooks = array_values(array_unique(array_filter(array_map('trim', $hooks))));
+
+		if (in_array('bomlist', $hooks, true)) {
+			return;
+		}
+
+		$hooks[] = 'bomlist';
+		$newValue = json_encode($hooks);
+
+		if (!function_exists('dolibarr_set_const')) {
+			require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
+		}
+		dolibarr_set_const($this->db, 'MAIN_MODULE_KREAPRODUCTS_HOOKS', $newValue, 'chaine', 0, '', $conf->entity);
+		$conf->global->MAIN_MODULE_KREAPRODUCTS_HOOKS = $newValue;
+		$conf->modules_parts['hooks']['kreaproducts'] = $hooks;
+	}
+
+	/**
+	 * Only allow shared BOM entity selection for multicompany admins.
+	 *
+	 * @return bool
+	 */
+	private function canSetSharedBomEntity()
+	{
+		global $user;
+
+		return (isModEnabled('multicompany') && $user->admin);
+	}
 
 	/* Add other hook methods here... */
 }

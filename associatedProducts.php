@@ -859,20 +859,32 @@ if ($id > 0 || !empty($ref)) {
 
 		/**
 		 * This code snippet checks if the current product has an associated **disassemble BOM** (Bill of Materials) in the system. 
-		 * If a BOM of type "disassemble" exists (where `bomtype = 1`), the script fetches and displays the **origin product** 
+		 * If a BOM of type "disassemble" exists (configured by `KREAPRODUCTS_DISMANTLE_BOMTYPE`), the script fetches and displays the **origin product** 
 		 * associated with the BOM. The origin product is displayed as a clickable link that directs the user to the product's 
 		 * detailed page. 
 		 * 
 		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
 		 */
 		if (!empty($conf->bom->enabled)) {
+			$bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
 
 			// Fetch all BOMs and the origin product for the current product
 			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label, bl.qty as line_qty
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
+                LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
-                WHERE bl.fk_product = " . (int)$object->id . " AND b.bomtype = 1";
+                WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$object->id . " AND b.bomtype = " . $bomType . "
+                AND b.status = 1
+                AND b.entity IN (0," . getEntity('bom') . ")
+                AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                    SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                    WHERE b2.fk_product = b.fk_product
+                      AND b2.entity = " . ((int) $conf->entity) . "
+                      AND b2.bomtype = b.bomtype AND b2.status = 1
+                )))
+                AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                AND p.entity IN (" . getEntity('product') . ")";
 
 			$resql_bom = $db->query($sql_bom);
 			$boms = [];
@@ -1598,11 +1610,30 @@ if ($id > 0 || !empty($ref)) {
 		if (!empty($conf->bom->enabled)) {
 
 			// Fetch all BOMs and the components for the current product
-			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype, bl.fk_product AS fk_product_component, bl.qty as line_qty, p.ref, p.label
+			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype,
+                               COALESCE(bl.fk_product, cb.fk_product) AS fk_product_component,
+                               bl.qty as line_qty,
+                               COALESCE(p.ref, cprod.ref) AS ref,
+                               COALESCE(p.label, cprod.label) AS label
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
-                JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
-                WHERE b.fk_product = " . (int)$object->id; // . " AND b.bomtype = 1";
+                LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
+                LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
+                LEFT JOIN " . MAIN_DB_PREFIX . "product AS cprod ON cprod.rowid = cb.fk_product
+                WHERE b.fk_product = " . (int)$object->id . "
+                AND b.bomtype = 0
+                AND b.status = 1
+                AND b.entity IN (0," . getEntity('bom') . ")
+                AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                    SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                    WHERE b2.fk_product = b.fk_product
+                      AND b2.entity = " . ((int) $conf->entity) . "
+                      AND b2.bomtype = b.bomtype AND b2.status = 1
+                )))
+                AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))
+                AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))
+                AND COALESCE(bl.fk_product, cb.fk_product) IS NOT NULL"; // . " AND b.bomtype = 1";
 
 			$resql_bom = $db->query($sql_bom);
 			$components = [];
@@ -1611,13 +1642,15 @@ if ($id > 0 || !empty($ref)) {
 			if ($resql_bom) {
 				while ($obj_bom = $db->fetch_object($resql_bom)) {
 					// Store each component's product details and BOM ID
-					$components[] = array(
-						'bom_id' => $obj_bom->bom_id,                  // The BOM ID
-						'product_id' => $obj_bom->fk_product_component, // The component product ID
-						'ref' => $obj_bom->ref,                        // The component product reference
-						'label' => $obj_bom->label,                    // The component product label
-						'qty' => $obj_bom->line_qty                    // Component quantity
-					);
+					if (!empty($obj_bom->fk_product_component)) {
+						$components[] = array(
+							'bom_id' => $obj_bom->bom_id,                  // The BOM ID
+							'product_id' => $obj_bom->fk_product_component, // The component product ID
+							'ref' => $obj_bom->ref,                        // The component product reference
+							'label' => $obj_bom->label,                    // The component product label
+							'qty' => $obj_bom->line_qty                    // Component quantity
+						);
+					}
 				}
 			}
 			if (count($components) > 0) {

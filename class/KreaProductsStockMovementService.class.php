@@ -13,34 +13,53 @@ class KreaProductsStockMovementService
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
-		if (empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA)) {
-			return 0;
+		$applyMovementDates = !empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA);
+		$skipDismantle = $this->isDismantleMovement($move);
+
+		// First: adjust timestamps on this move (optional)
+		if ($applyMovementDates) {
+			if ($move->origintype === 'invoice_supplier') {
+				$this->shiftSupplierInvoiceMoveToNoon($move, $db);
+			}
+			if ($move->origintype === 'inventory') {
+				$this->alignInventoryMoveToDateInventory($move, $db);
+			}
 		}
 
-		// First: adjust timestamps on this move
-		if ($move->origintype === 'invoice_supplier') {
-			$this->shiftSupplierInvoiceMoveToNoon($move, $db);
-		}
-		if ($move->origintype === 'inventory') {
-			$this->alignInventoryMoveToDateInventory($move, $db);
-		}
 		// Then: full routines
-		if ($move->origintype === 'inventory') {
+		if ($move->origintype === 'inventory' && $applyMovementDates) {
 			// Recompute stock levels after this inventory move
 			$this->recalculateAfterInventory($move, $db);
 		}
 		if ($move->origintype === 'invoice_supplier') {
-			// Recompute stock levels after this supplier-invoice move
-			$this->recalculateAfterSupplierInvoice($move, $db);
+			if ($applyMovementDates) {
+				// Recompute stock levels after this supplier-invoice move
+				$this->recalculateAfterSupplierInvoice($move, $db);
+			}
 
-			// Before dismantling, refresh cost prices of BOM children (including nested)
-			$this->updateDismantleChildrenBeforeTrigger($move, $db, $user);
+			if ($skipDismantle) {
+				dol_syslog(__METHOD__ . " skip dismantle for movement id=" . (int) $move->id . " label=" . $move->label, LOG_DEBUG);
+			} else {
+				// Before dismantling, refresh cost prices of BOM children (including nested)
+				$this->updateDismantleChildrenBeforeTrigger($move, $db, $user);
 
-			// Then run any BOM dismantle logic
-			$this->dismantleIfNeeded($move, $db);
+				// Then run any BOM dismantle logic
+				$this->dismantleIfNeeded($move, $db, $user);
+			}
 		}
 
 		return 1;
+	}
+
+	protected function isDismantleMovement($move)
+	{
+		if (empty($move->label)) {
+			return false;
+		}
+
+		$label = (string) $move->label;
+
+		return (strpos($label, 'Consume for MO') !== false || strpos($label, 'Produce for MO') !== false);
 	}
 
 	protected function shiftSupplierInvoiceMoveToNoon($move, $db)
@@ -163,11 +182,13 @@ class KreaProductsStockMovementService
 			return;
 		}
 
-		$sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
+        $sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
                 FROM " . MAIN_DB_PREFIX . "bom_bom b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-                WHERE b.rowid = " . (int) $bomId . " AND b.bomtype = 1";
+                WHERE b.rowid = " . (int) $bomId . "
+                AND b.entity IN (0," . getEntity('bom') . ")
+                AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
 
 		$res = $db->query($sql);
 		if (!$res) {
@@ -193,7 +214,7 @@ class KreaProductsStockMovementService
 		}
 	}
 
-	protected function dismantleIfNeeded($move, $db)
+	protected function dismantleIfNeeded($move, $db, $user = null)
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
@@ -212,7 +233,8 @@ class KreaProductsStockMovementService
 			$move->label,
 			$move->origin_id,
 			$move->origintype,
-			dol_stringtotime($move->datem)
+			dol_stringtotime($move->datem),
+			$user
 		);
 	}
 

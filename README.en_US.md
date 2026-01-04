@@ -21,6 +21,8 @@ KreaProducts is an advanced product management module for the [Dolibarr ERP/CRM]
 - Reverse view (_where used_): list of kits/technical sheets and menus where the item is used as a component, enabling the impact analysis of cost changes, substitutions, and raw-material normalization.
 - Dismantling BOM with origin and relationships visible on the technical sheet.
 - Automatic cascading cost recalculation based on components/technical sheets.
+- Nested BOM support (BOM lines referencing another BOM), with correct propagation of costs, nutrition, and allergens.
+- Multicompany: shared BOMs (entity=0) are available across entities, with priority given to the current entity BOM when it exists.
 
 ### Correct stock and inventory dates (invoice date and value date)
 

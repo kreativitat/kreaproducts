@@ -21,6 +21,8 @@ KreaProducts ist ein fortschrittliches Modul zur Produktverwaltung für das [Dol
 - Inverse Ansicht (_wo verwendet_): Liste der Kits/technischen Datenblätter und Menüs, in denen der Artikel als Komponente verwendet wird, zur Bewertung der Auswirkungen von Kostenänderungen, Ersatz und Normalisierung von Rohstoffen.
 - Demontage-BOM mit Ursprung und Beziehungen sichtbar im technischen Datenblatt.
 - Automatische Kaskaden-Neuberechnung der Kosten basierend auf Komponenten/technischen Datenblättern.
+- Unterstützung verschachtelter BOMs (BOM-Zeilen, die auf eine andere BOM verweisen), mit korrekter Weitergabe von Kosten, Nährwerten und Allergenen.
+- Multicompany: Gemeinsame BOMs (entity=0) sind in allen Entitäten verfügbar, mit Priorität für die BOM der aktuellen Entität, wenn vorhanden.
 
 ### Korrekte Lager- und Inventardaten (Rechnungsdatum und Wertstellungsdatum)
 

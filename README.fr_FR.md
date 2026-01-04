@@ -21,6 +21,8 @@ KreaProducts est un module avancé de gestion des produits pour le [Dolibarr ERP
 - Vue inverse (_où c’est utilisé_) : liste des kits/fiches techniques et menus où l’article est utilisé comme composant, permettant d’évaluer l’impact des changements de coût, des substitutions et de la normalisation des matières premières.
 - BOM de démontage avec origine et relations visibles sur la fiche technique.
 - Recalcul automatique des coûts en cascade basé sur les composants/fiches techniques.
+- Prise en charge des BOM imbriquées (lignes de BOM référant une autre BOM), avec propagation correcte des coûts, de la nutrition et des allergènes.
+- Multi-sociétés : BOM partagées (entity=0) disponibles dans toutes les entités, avec priorité pour la BOM de l’entité courante lorsqu’elle existe.
 
 ### Dates correctes de stock et d’inventaire (date de facture et date de valeur)
 

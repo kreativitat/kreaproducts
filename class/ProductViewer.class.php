@@ -267,7 +267,9 @@ class ProductHierarchyTree
                        NULL as fk_bom_child
                 FROM " . MAIN_DB_PREFIX . "product_association pa
                 JOIN " . MAIN_DB_PREFIX . "product p ON (p.rowid = pa.fk_product_pere)
-                JOIN " . MAIN_DB_PREFIX . "product f ON (f.rowid = pa.fk_product_fils)";
+                JOIN " . MAIN_DB_PREFIX . "product f ON (f.rowid = pa.fk_product_fils)
+                WHERE p.entity IN (" . getEntity('product') . ")
+                  AND f.entity IN (" . getEntity('product') . ")";
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -299,7 +301,20 @@ class ProductHierarchyTree
                        JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
                        LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
                        LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-                       LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product";
+                       LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
+                       WHERE b.bomtype IN (0,1)
+                         AND b.status = 1
+                         AND b.entity IN (0," . getEntity('bom') . ")
+                         AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                             SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                             WHERE b2.fk_product = b.fk_product
+                               AND b2.entity = " . ((int) $conf->entity) . "
+                               AND b2.bomtype = b.bomtype AND b2.status = 1
+                         )))
+                         AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                         AND p.entity IN (" . getEntity('product') . ")
+                         AND (f.rowid IS NULL OR f.entity IN (" . getEntity('product') . "))
+                         AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
 
             $resBom = $db->query($sqlBom);
             if (!$resBom) {
@@ -339,8 +354,10 @@ class ProductHierarchyTree
                     FROM " . MAIN_DB_PREFIX . "product_association pa
                     JOIN " . MAIN_DB_PREFIX . "product p ON (p.rowid = pa.fk_product_pere)
                     JOIN " . MAIN_DB_PREFIX . "product f ON (f.rowid = pa.fk_product_fils)
-                    WHERE pa.fk_product_pere = " . (int)$current . " 
-                       OR pa.fk_product_fils = " . (int)$current;
+                    WHERE (pa.fk_product_pere = " . (int)$current . " 
+                       OR pa.fk_product_fils = " . (int)$current . ")
+                      AND p.entity IN (" . getEntity('product') . ")
+                      AND f.entity IN (" . getEntity('product') . ")";
 
             $resql = $db->query($sql);
             
@@ -377,7 +394,7 @@ class ProductHierarchyTree
      */
     private static function processBomAssociations($current, &$queue, &$seen)
     {
-        global $db;
+        global $db, $conf;
 
         try {
             // Use COALESCE to pull the produced product when a BOM line references another BOM (fk_bom_child)
@@ -401,7 +418,20 @@ class ProductHierarchyTree
                  LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
                  LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
                  LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
-                 WHERE b.fk_product = " . (int)$current,
+                 WHERE b.fk_product = " . (int)$current . "
+                   AND b.bomtype IN (0,1)
+                   AND b.status = 1
+                   AND b.entity IN (0," . getEntity('bom') . ")
+                   AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                       SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                       WHERE b2.fk_product = b.fk_product
+                         AND b2.entity = " . ((int) $conf->entity) . "
+                         AND b2.bomtype = b.bomtype AND b2.status = 1
+                   )))
+                   AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                   AND p.entity IN (" . getEntity('product') . ")
+                   AND (f.rowid IS NULL OR f.entity IN (" . getEntity('product') . "))
+                   AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))",
                 // Current product is a BOM component (Produtos Pai)
                 "SELECT b.fk_product as father,
                         COALESCE(bl.fk_product, cb.fk_product) as child,
@@ -421,7 +451,20 @@ class ProductHierarchyTree
                  LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
                  LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
                  LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
-                 WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$current
+                 WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$current . "
+                   AND b.bomtype IN (0,1)
+                   AND b.status = 1
+                   AND b.entity IN (0," . getEntity('bom') . ")
+                   AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                       SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                       WHERE b2.fk_product = b.fk_product
+                         AND b2.entity = " . ((int) $conf->entity) . "
+                         AND b2.bomtype = b.bomtype AND b2.status = 1
+                   )))
+                   AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                   AND p.entity IN (" . getEntity('product') . ")
+                   AND (f.rowid IS NULL OR f.entity IN (" . getEntity('product') . "))
+                   AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))"
             );
 
             foreach ($queries as $sql) {
@@ -451,7 +494,7 @@ class ProductHierarchyTree
      */
     private static function processChildBom($bomId, &$queue, &$seen)
     {
-        global $db;
+        global $db, $conf;
 
         // Avoid loops on the same BOM id
         if (!empty(self::$processedBomIds[$bomId])) {
@@ -477,7 +520,20 @@ class ProductHierarchyTree
                 LEFT JOIN " . MAIN_DB_PREFIX . "product f ON f.rowid = bl.fk_product
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
                 LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
-                WHERE b.rowid = " . (int)$bomId;
+                WHERE b.rowid = " . (int)$bomId . "
+                  AND b.bomtype IN (0,1)
+                  AND b.status = 1
+                  AND b.entity IN (0," . getEntity('bom') . ")
+                  AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                      SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                      WHERE b2.fk_product = b.fk_product
+                        AND b2.entity = " . ((int) $conf->entity) . "
+                        AND b2.bomtype = b.bomtype AND b2.status = 1
+                  )))
+                  AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                  AND p.entity IN (" . getEntity('product') . ")
+                  AND (f.rowid IS NULL OR f.entity IN (" . getEntity('product') . "))
+                  AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
 
         $resql = $db->query($sql);
         if (!$resql) {

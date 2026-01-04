@@ -289,25 +289,40 @@ class KreaProductsNutritionalCalculator
                                FROM " . MAIN_DB_PREFIX . "product_association pa
                                JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                                JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                               WHERE pa.fk_product_pere = %d";
+                               WHERE pa.fk_product_pere = %d
+                                 AND pf.entity IN (" . getEntity('product') . ")
+                                 AND pc.entity IN (" . getEntity('product') . ")";
 
             $sqlBom = "SELECT b.fk_product as father,
-                              bl.fk_product as child,
+                              COALESCE(bl.fk_product, cb.fk_product) as child,
                               bl.qty as qty,
                               pf.label as fatherLabel,
                               pf.weight as fatherWeight,
                               pf.weight_units as fatherWeightUnits,
-                              pc.label as childLabel,
-                              pc.weight as childWeight,
-                              pc.weight_units as childWeightUnits,
+                              COALESCE(pc.label, cprod.label) as childLabel,
+                              COALESCE(pc.weight, cprod.weight) as childWeight,
+                              COALESCE(pc.weight_units, cprod.weight_units) as childWeightUnits,
                               'bom' as source
                        FROM " . MAIN_DB_PREFIX . "bom_bom b
                        JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
                        JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = b.fk_product)
-                       JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = bl.fk_product)
+                       LEFT JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = bl.fk_product)
+                       LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+                       LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
                        WHERE b.bomtype IN (0,1)
                            AND b.status = 1
-                           AND b.fk_product = %d";
+                           AND b.fk_product = %d
+                           AND b.entity IN (0," . getEntity('bom') . ")
+                           AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                               SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                               WHERE b2.fk_product = b.fk_product
+                                 AND b2.entity = " . ((int) $conf->entity) . "
+                                 AND b2.bomtype = b.bomtype AND b2.status = 1
+                           )))
+                           AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
+                           AND pf.entity IN (" . getEntity('product') . ")
+                           AND (pc.rowid IS NULL OR pc.entity IN (" . getEntity('product') . "))
+                           AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
 
             while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
                 $currentLevel = $queue;
@@ -444,22 +459,35 @@ class KreaProductsNutritionalCalculator
             $source = array();
 
             if (!empty($conf->bom->enabled)) {
-                $sql = "SELECT bl.fk_product AS childId, 
+                $sql = "SELECT COALESCE(bl.fk_product, cb.fk_product) AS childId, 
                                bl.qty,
-                               p.label,
-                               p.weight,
-                               p.weight_units
+                               COALESCE(p.label, cprod.label) AS label,
+                               COALESCE(p.weight, cprod.weight) AS weight,
+                               COALESCE(p.weight_units, cprod.weight_units) AS weight_units
                         FROM " . MAIN_DB_PREFIX . "bom_bom b
                         JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
+                        LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
                         LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe 
-                            ON bl.fk_product = pe.fk_object
+                            ON pe.fk_object = COALESCE(bl.fk_product, cb.fk_product)
                         LEFT JOIN " . MAIN_DB_PREFIX . "product p
                             ON bl.fk_product = p.rowid
+                        LEFT JOIN " . MAIN_DB_PREFIX . "product cprod
+                            ON cb.fk_product = cprod.rowid
                         WHERE b.fk_product = " . (int)$parentId . " 
                             AND b.bomtype IN (0,1)
                             AND b.status = 1
+                            AND b.entity IN (0," . getEntity('bom') . ")
+                            AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+                                SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+                                WHERE b2.fk_product = b.fk_product
+                                  AND b2.entity = " . ((int) $conf->entity) . "
+                                  AND b2.bomtype = b.bomtype AND b2.status = 1
+                            )))
+                            AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
                             AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
-                            AND p.rowid IS NOT NULL";
+                            AND (p.rowid IS NOT NULL OR cprod.rowid IS NOT NULL)
+                            AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))
+                            AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
 
                 $resql = $db->query($sql);
                 
@@ -499,6 +527,7 @@ class KreaProductsNutritionalCalculator
                     WHERE pa.fk_product_pere = " . (int)$parentId . " 
                         AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
                         AND p.rowid IS NOT NULL
+                        AND p.entity IN (" . getEntity('product') . ")
                     ORDER BY pa.rang ASC";
 
             $resql = $db->query($sql);

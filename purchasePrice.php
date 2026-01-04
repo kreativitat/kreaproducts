@@ -175,7 +175,9 @@ function kreaUpdateDismantleBomChildren($productId, $db, $user)
             FROM " . MAIN_DB_PREFIX . "bom_bom b
             JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
             LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-            WHERE b.rowid = " . ((int) $bomId) . " AND b.bomtype = 1";
+            WHERE b.rowid = " . ((int) $bomId) . "
+            AND b.entity IN (0," . getEntity('bom') . ")
+            AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
 
 	$res = $db->query($sql);
 	if (!$res) {
@@ -456,12 +458,17 @@ if ($action == 'save_price') {
 }
 
 if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
-	ProductHierarchy::updateProductAttributes($object->id, $user);
-	// Also propagate down dismantle BOM children so their nested cost trees are refreshed
-	kreaUpdateDismantleBomChildren($object->id, $db, $user);
-	setEventMessages("Peços de custo actualizados!", null, 'mesgs');
-	header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
-	exit;
+	$token = GETPOST('token', 'alpha');
+	if (empty($token) || !hash_equals(currentToken(), $token)) {
+		setEventMessages($langs->trans("ErrorBadToken"), null, 'errors');
+	} else {
+		ProductHierarchy::updateProductAttributes($object->id, $user);
+		// Also propagate down dismantle BOM children so their nested cost trees are refreshed
+		kreaUpdateDismantleBomChildren($object->id, $db, $user);
+		setEventMessages("Peços de custo actualizados!", null, 'mesgs');
+		header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
+		exit;
+	}
 }
 
 /*
@@ -537,6 +544,7 @@ if ($id > 0 || $ref) {
 			print '</td>';
 			print '<td align="right">';
 			print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block; margin-right: 5px;">';
+			print '<input type="hidden" name="token" value="' . newToken() . '">';
 			print '<input type="hidden" name="action" value="updateProductAttributes">';
 			print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
 			print '</form>';
@@ -547,8 +555,18 @@ if ($id > 0 || $ref) {
 				$sql_check_bom = "SELECT COUNT(DISTINCT b.rowid) as bom_count
 								  FROM " . MAIN_DB_PREFIX . "bom_bomline bl
 								  JOIN " . MAIN_DB_PREFIX . "bom_bom b ON b.rowid = bl.fk_bom
-								  WHERE bl.fk_product = " . (int)$object->id . "
-								  AND b.status IN (0, 1)";
+									  LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
+									  WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$object->id . "
+									  AND b.bomtype = 0
+									  AND b.status = 1
+									  AND b.entity IN (0," . getEntity('bom') . ")
+								  AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
+									  SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
+									  WHERE b2.fk_product = b.fk_product
+										AND b2.entity = " . ((int) $conf->entity) . "
+										AND b2.bomtype = b.bomtype AND b2.status = 1
+								  )))
+								  AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
 
 				$resql_check = $db->query($sql_check_bom);
 				$has_bom = false;
@@ -559,6 +577,7 @@ if ($id > 0 || $ref) {
 
 				if ($has_bom) {
 					print '<form name="updateBOMPriceForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block;">';
+					print '<input type="hidden" name="token" value="' . newToken() . '">';
 					print '<input type="hidden" name="action" value="updateBOMPrice">';
 					print '<input type="submit" class="button" value="Atualizar Preço BOM" title="Atualizar preço baseado na BOM com compras mais recentes">';
 					print '</form>';

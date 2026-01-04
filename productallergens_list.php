@@ -283,7 +283,7 @@ $form = new Form($db);
 
 $now = dol_now();
 
-$title = $langs->trans("ProductAllergenss");
+$title = $langs->trans("ProductAllergens");
 //$help_url = "EN:Module_ProductAllergens|FR:Module_ProductAllergens_FR|ES:Módulo_ProductAllergens";
 $help_url = '';
 $morejs = array();

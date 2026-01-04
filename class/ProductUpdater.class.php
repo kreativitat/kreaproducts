@@ -38,6 +38,11 @@ class ProductUpdater
     private static $reverseList = [];
 
     /**
+     * @var array Cached cost calculations per product id
+     */
+    private static $costCache = [];
+
+    /**
      * @var bool Map loaded flag
      */
     private static $mapLoaded = false;
@@ -46,6 +51,11 @@ class ProductUpdater
      * @var bool Debug mode
      */
     private static $debug = false;
+
+    /**
+     * @var array Cached sync flags per product id
+     */
+    private static $syncFlagsCache = [];
 
     /**
      * Set debug mode
@@ -205,6 +215,8 @@ class ProductUpdater
         $sql .= MAIN_DB_PREFIX."product as p, ";
         $sql .= MAIN_DB_PREFIX."product as f ";
         $sql .= "WHERE p.rowid = pa.fk_product_pere AND f.rowid = pa.fk_product_fils";
+        $sql .= " AND p.entity IN (".getEntity('product').")";
+        $sql .= " AND f.entity IN (".getEntity('product').")";
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -279,18 +291,31 @@ class ProductUpdater
         self::debug("Loading BOM relationships");
 
         // Query to get BOM relationships (manufacturing type only)
-        $sql = "SELECT b.fk_product as parent, bl.fk_product as child, bl.qty as qty, ";
+        $sql = "SELECT b.fk_product as parent, COALESCE(bl.fk_product, cb.fk_product) as child, bl.qty as qty, ";
         // Parent product info
         $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
         // Child product info
-        $sql .= "f.label as f_label, f.ref as f_ref, f.cost_price as f_cost_price, ";
+        $sql .= "COALESCE(f.label, cprod.label) as f_label, COALESCE(f.ref, cprod.ref) as f_ref, COALESCE(f.cost_price, cprod.cost_price) as f_cost_price, ";
         // BOM info
         $sql .= "b.rowid as bom_id, b.ref as bom_ref ";
         $sql .= "FROM ".MAIN_DB_PREFIX."bom_bom as b ";
         $sql .= "JOIN ".MAIN_DB_PREFIX."bom_bomline as bl ON b.rowid = bl.fk_bom ";
         $sql .= "JOIN ".MAIN_DB_PREFIX."product as p ON p.rowid = b.fk_product ";
-        $sql .= "JOIN ".MAIN_DB_PREFIX."product as f ON f.rowid = bl.fk_product ";
+        $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."product as f ON f.rowid = bl.fk_product ";
+        $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."bom_bom as cb ON cb.rowid = bl.fk_bom_child ";
+        $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."product as cprod ON cprod.rowid = cb.fk_product ";
         $sql .= "WHERE b.bomtype IN (0,1) AND b.status = 1"; // Include manufacturing and dismantle BOMs
+        $sql .= " AND b.entity IN (0,".getEntity('bom').")";
+        $sql .= " AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (";
+        $sql .= "SELECT 1 FROM ".MAIN_DB_PREFIX."bom_bom b2";
+        $sql .= " WHERE b2.fk_product = b.fk_product";
+        $sql .= " AND b2.entity = " . ((int) $conf->entity);
+        $sql .= " AND b2.bomtype = b.bomtype AND b2.status = 1";
+        $sql .= ")))";
+        $sql .= " AND (cb.rowid IS NULL OR cb.entity IN (0,".getEntity('bom')."))";
+        $sql .= " AND p.entity IN (".getEntity('product').")";
+        $sql .= " AND (f.rowid IS NULL OR f.entity IN (".getEntity('product')."))";
+        $sql .= " AND (cprod.rowid IS NULL OR cprod.entity IN (".getEntity('product')."))";
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -373,6 +398,8 @@ class ProductUpdater
     {
         self::$productMap = [];
         self::$mapLoaded = false;
+        self::$costCache = [];
+        self::$syncFlagsCache = [];
     }
 
     /**
@@ -421,9 +448,14 @@ class ProductUpdater
     {
         global $db;
 
+        if (isset(self::$syncFlagsCache[$productId])) {
+            return self::$syncFlagsCache[$productId];
+        }
+
         // Load product and its extrafields
         $product = new Product($db);
         if ($product->fetch($productId) <= 0) {
+            self::$syncFlagsCache[$productId] = false;
             return false;
         }
 
@@ -435,10 +467,12 @@ class ProductUpdater
         $syncFields = ['options_kreap_updatebuyprice', 'options_kreap_syncprice'];
         foreach ($syncFields as $fieldName) {
             if (!empty($product->array_options[$fieldName])) {
+                self::$syncFlagsCache[$productId] = true;
                 return true;
             }
         }
 
+        self::$syncFlagsCache[$productId] = false;
         return false;
     }
 
@@ -548,8 +582,17 @@ class ProductUpdater
      * @param int $productId
      * @return float
      */
-    private static function calculateCostPriceFromChildren(int $productId): float
+    private static function calculateCostPriceFromChildren(int $productId, array $path = []): float
     {
+        if (isset(self::$costCache[$productId])) {
+            return self::$costCache[$productId];
+        }
+        if (in_array($productId, $path, true)) {
+            self::debug("Cycle detected in product hierarchy at product ID: " . $productId);
+            return 0.0;
+        }
+        $path[] = $productId;
+
         $children = self::getChildren($productId);
         if (empty($children)) {
             return 0.0;
@@ -577,7 +620,7 @@ class ProductUpdater
 
             // If child has its own children, calculate recursively
             if (!empty($childProduct['children'])) {
-                $childCostPrice = self::calculateCostPriceFromChildren($child['id']);
+                $childCostPrice = self::calculateCostPriceFromChildren($child['id'], $path);
                 self::debug("  Child {$childProduct['ref']}: calculated cost {$childCostPrice} * qty {$child['qty']} = " .
                           ($childCostPrice * $child['qty']) . " [source: {$source}]{$bomInfo}");
             } else {
@@ -591,6 +634,7 @@ class ProductUpdater
         }
 
         self::debug("Total calculated cost for {$parentRef}: {$totalCostPrice}");
+        self::$costCache[$productId] = $totalCostPrice;
         return $totalCostPrice;
     }
 
