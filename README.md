@@ -68,6 +68,7 @@ Esta funcionalidade é especialmente relevante em operações com muitas receita
 
 - Lista de produtos simplificada com opção de ocultar itens.
 - Simulador de preços (Métricas e Margens) com markup de teste.
+- Lista de movimentos de stock por produto com indicação de **stock total**.
 
 ## Requisitos
 

@@ -68,6 +68,7 @@ Cette fonctionnalité est particulièrement pertinente dans les opérations avec
 
 - Liste de produits simplifiée avec option de masquer des éléments.
 - Simulateur de prix (Métriques et Marges) avec markup de test.
+- Liste des mouvements de stock par produit avec **stock total**.
 
 ## Exigences
 

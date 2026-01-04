@@ -68,6 +68,7 @@ Diese Funktion ist besonders relevant in Betrieben mit vielen Rezepten und häuf
 
 - Vereinfachte Produktliste mit Option zum Ausblenden von Artikeln.
 - Preis-Simulator (Metriken und Margen) mit Test-Markup.
+- Bestandsbewegungsliste pro Produkt mit **Gesamtbestand**.
 
 ## Anforderungen
 

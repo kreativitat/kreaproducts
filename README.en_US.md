@@ -68,6 +68,7 @@ This feature is especially relevant in operations with many recipes and frequent
 
 - Simplified product list with an option to hide items.
 - Price simulator (Metrics and Markup) with test markup.
+- Stock movement list by product shows **total stock**.
 
 ## Requirements
 
