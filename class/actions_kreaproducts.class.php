@@ -587,32 +587,71 @@ class ActionsKreaProducts extends CommonHookActions
 		if (empty($user) || empty($user->admin)) {
 			return;
 		}
-		$rawHooks = getDolGlobalString('MAIN_MODULE_KREAPRODUCTS_HOOKS');
-		if ($rawHooks === '') {
-			return;
+		$entities = array($conf->entity);
+		if (isModEnabled('multicompany')) {
+			$entities = array();
+			$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "entity";
+			$resql = $this->db->query($sql);
+			if ($resql) {
+				while ($obj = $this->db->fetch_object($resql)) {
+					$entities[] = (int) $obj->rowid;
+				}
+				$this->db->free($resql);
+			}
 		}
-
-		$hooks = json_decode($rawHooks, true);
-		if (!is_array($hooks)) {
-			$hooks = preg_split('/[,:;]/', $rawHooks, -1, PREG_SPLIT_NO_EMPTY);
-		}
-		$hooks = array_values(array_unique(array_filter(array_map('trim', $hooks))));
-
-		$required = array('bomlist', 'stockmovementlist');
-		$missing = array_diff($required, $hooks);
-		if (empty($missing)) {
-			return;
-		}
-
-		$hooks = array_values(array_unique(array_merge($hooks, $missing)));
-		$newValue = json_encode($hooks);
 
 		if (!function_exists('dolibarr_set_const')) {
 			require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 		}
-		dolibarr_set_const($this->db, 'MAIN_MODULE_KREAPRODUCTS_HOOKS', $newValue, 'chaine', 0, '', $conf->entity);
-		$conf->global->MAIN_MODULE_KREAPRODUCTS_HOOKS = $newValue;
-		$conf->modules_parts['hooks']['kreaproducts'] = $hooks;
+
+		foreach ($entities as $entityId) {
+			$rawHooks = $this->getConstValueForEntity('MAIN_MODULE_KREAPRODUCTS_HOOKS', $entityId);
+			if ($rawHooks === '') {
+				continue;
+			}
+
+			$hooks = json_decode($rawHooks, true);
+			if (!is_array($hooks)) {
+				$hooks = preg_split('/[,:;]/', $rawHooks, -1, PREG_SPLIT_NO_EMPTY);
+			}
+			$hooks = array_values(array_unique(array_filter(array_map('trim', $hooks))));
+
+			$required = array('bomlist', 'stockmovementlist');
+			$missing = array_diff($required, $hooks);
+			if (empty($missing)) {
+				continue;
+			}
+
+			$hooks = array_values(array_unique(array_merge($hooks, $missing)));
+			$newValue = json_encode($hooks);
+
+			dolibarr_set_const($this->db, 'MAIN_MODULE_KREAPRODUCTS_HOOKS', $newValue, 'chaine', 0, '', $entityId);
+			if ((int) $entityId === (int) $conf->entity) {
+				$conf->global->MAIN_MODULE_KREAPRODUCTS_HOOKS = $newValue;
+				$conf->modules_parts['hooks']['kreaproducts'] = $hooks;
+			}
+		}
+	}
+
+	/**
+	 * Fetch a const value for a specific entity without switching context.
+	 *
+	 * @param string $name Const name
+	 * @param int $entityId Entity id
+	 * @return string
+	 */
+	private function getConstValueForEntity($name, $entityId)
+	{
+		$sql = "SELECT value FROM " . MAIN_DB_PREFIX . "const";
+		$sql .= " WHERE name = '" . $this->db->escape($name) . "'";
+		$sql .= " AND entity = " . (int) $entityId;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return '';
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return $obj ? (string) $obj->value : '';
 	}
 
 	/**
