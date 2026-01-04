@@ -198,6 +198,29 @@ if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	$conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED = '1';
 }
 
+if (empty($conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED)) {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+
+	$field_name = "kreap_dismantle";
+	$field_label = $langs->trans("kreap_dismantle");
+	$field_help = $langs->trans("kreap_dismantle_help");
+	$extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');
+	$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_dismantle) ";
+	$sql .= "SELECT p.rowid, 0 FROM " . MAIN_DB_PREFIX . "product p ";
+	$sql .= "LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe ON pe.fk_object = p.rowid ";
+	$sql .= "WHERE pe.fk_object IS NULL";
+	if (empty($sharedProducts)) {
+		$sql .= " AND p.entity = " . ((int) $conf->entity);
+	}
+	$db->query($sql);
+
+	dolibarr_set_const($db, 'KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED = '1';
+}
+
 // Setup weight unit with unique labels only
 $sql = "SELECT DISTINCT unit_type FROM " . MAIN_DB_PREFIX . "c_units ORDER BY unit_type DESC";
 $resql = $db->query($sql);
@@ -208,19 +231,6 @@ if ($resql) {
 	}
 } else {
 	dol_print_error($db);
-}
-
-// Product categories (for dismantle gate)
-$TCategories = array('' => $langs->trans('None'));
-$sql = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "categorie
-        WHERE type = 0
-          AND entity IN (0," . ((int) $conf->entity) . ")
-        ORDER BY label";
-$resql = $db->query($sql);
-if ($resql) {
-	while ($obj = $db->fetch_object($resql)) {
-		$TCategories[$obj->rowid] = $obj->label;
-	}
 }
 
 // Product categories tree (for inventory category filter)
@@ -310,11 +320,6 @@ $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_
 
 // Desmontagem
 $formSetup->newItem('KREAPRODUCTS_DISMANTLE_SETTINGS_TITLE')->setAsTitle();
-$item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_CATEGORY');
-$item->setAsSelect($TCategories);
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_DISMANTLE_CATEGORY_HELP');
-$item->defaultFieldValue = '';
-
 $item = $formSetup->newItem('KREAPRODUCTS_DISMANTLE_BOMTYPE');
 $item->setAsSelect($TBomTypes);
 $item->defaultFieldValue = '1';

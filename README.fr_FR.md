@@ -23,6 +23,7 @@ KreaProducts est un module avancé de gestion des produits pour le [Dolibarr ERP
 - Recalcul automatique des coûts en cascade basé sur les composants/fiches techniques.
 - Prise en charge des BOM imbriquées (lignes de BOM référant une autre BOM), avec propagation correcte des coûts, de la nutrition et des allergènes.
 - Multi-sociétés : BOM partagées (entity=0) disponibles dans toutes les entités, avec priorité pour la BOM de l’entité courante lorsqu’elle existe.
+- Le démontage s’active par produit via le champ extra `kreap_dismantle`.
 
 ### Dates correctes de stock et d’inventaire (date de facture et date de valeur)
 
@@ -32,6 +33,7 @@ KreaProducts corrige cette limitation avec deux automatisations essentielles :
 
 - **Entrée de stock à la date de facture (fournisseurs) :** les produits sont enregistrés en stock avec la **date de facture/date d’entrée**, au lieu de la date à laquelle le document est saisi dans Dolibarr. Cela élimine les écarts lorsque la facture est saisie plusieurs jours après.
 - **Inventaire à date de valeur (rétroactif) :** l’ajustement d’inventaire est appliqué en fonction de la **date d’inventaire (date de valeur)**, et non de la date de validation. Cela permet de saisir un inventaire avec une date de valeur antérieure (par exemple, d’il y a une semaine) et de garantir la cohérence des corrections et des rapports - ce que le module standard ne garantit pas.
+- **Recalcul basé sur l’inventaire physique :** le stock est recalculé à partir de la **quantité comptée** (qty_stock) lorsqu’elle est disponible, avec qty_view en secours, ce qui évite les écarts sur les mouvements rétrodatés.
 
 ### Gestion intelligente des emballages et du coût unitaire (démontage automatique)
 
@@ -96,7 +98,6 @@ Cette fonctionnalité est particulièrement pertinente dans les opérations avec
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Heure appliquée aux mouvements de factures fournisseurs. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Heure par défaut lors de la création d’un inventaire. |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Catégorie racine pour la sélection de l’inventaire. |
-| `KREAPRODUCTS_DISMANTLE_CATEGORY` | Catégorie qui active le démontage automatique. |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE` | Type de BOM utilisé pour le démontage. |
 | `KREAPRODUCTS_DISMANTLE_WAREHOUSE` | Entrepôt pour les mouvements de démontage. |
 | `KREAPRODUCTS_SIM_ENABLE` | Activer le simulateur de prix. |

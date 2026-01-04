@@ -164,6 +164,34 @@ if (!function_exists('kreaproducts_select_produits_with_entities')) {
 	}
 }
 
+if (!function_exists('kreaproducts_has_bom_for_product')) {
+	function kreaproducts_has_bom_for_product($db, $productId)
+	{
+		global $conf;
+
+		$productId = (int) $productId;
+		if ($productId <= 0 || empty($conf->bom->enabled)) {
+			return false;
+		}
+
+		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "bom_bom"
+			. " WHERE fk_product = " . $productId
+			. " AND bomtype = 1"
+			. " AND status IN (0,1)"
+			. " AND entity IN (0," . getEntity('bom') . ")"
+			. " LIMIT 1";
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog("Error checking BOM for product " . $productId . ": " . $db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$hasBom = ($db->num_rows($resql) > 0);
+		$db->free($resql);
+
+		return $hasBom;
+	}
+}
+
 $id     = GETPOST('id', 'int');
 $ref    = GETPOST('ref', 'alpha');
 $action = GETPOST('action', 'aZ09');
@@ -630,6 +658,22 @@ if ($action === 'toggle_is_food' && $usercancreate) {
 	exit;
 }
 
+if ($action === 'toggle_dismantle' && $usercancreate) {
+	$newValue = GETPOST('value', 'int') ? 1 : 0;
+
+	if (kreaproducts_has_bom_for_product($db, $object->id)) {
+		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_dismantle) VALUES ("
+			. (int) $object->id . ", " . (int) $newValue . ") "
+			. "ON DUPLICATE KEY UPDATE kreap_dismantle = " . (int) $newValue;
+		if (!$db->query($sql)) {
+			setEventMessages($langs->trans("Error"), array($db->lasterror()), 'errors');
+		}
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
 if ($action == 'saveAllergens' && $usercancreate) {
 	// Retrieve submitted allergens (non-traces and traces)
 	$selectedAllergens       = GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
@@ -780,6 +824,7 @@ if ($id > 0 || !empty($ref)) {
 			$foodRowId = (int) $foodObj->rowid;
 		}
 		if ($resFoodFlag) $db->free($resFoodFlag);
+		$productHasBom = kreaproducts_has_bom_for_product($db, $object->id);
 
 		if ($object->type != Product::TYPE_SERVICE || getDolGlobalString('STOCK_SUPPORTS_SERVICES') || !getDolGlobalString('PRODUIT_MULTIPRICES')) {
 			$showWeightForm = $usercancreate && $object->type != Product::TYPE_SERVICE && !getDolGlobalString('PRODUCT_DISABLE_WEIGHT');
@@ -804,6 +849,18 @@ if ($id > 0 || !empty($ref)) {
 			print '<span class="fas ' . $foodIcon . '"></span>';
 			print '</a>';
 			print '</td></tr>';
+			// Dismantle toggle (only if product has a BOM)
+			if ($productHasBom) {
+				$dismantleFieldName = 'options_kreap_dismantle';
+				$dismantleValue = isset($object->array_options[$dismantleFieldName]) ? (int) $object->array_options[$dismantleFieldName] : 0;
+				$dismantleIcon = $dismantleValue ? 'fa-toggle-on font-status4' : 'fa-toggle-off opacitymedium';
+				$dismantleToggleUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=toggle_dismantle&value=' . ($dismantleValue ? 0 : 1);
+				print '<tr><td class="titlefield">' . $langs->trans("kreap_dismantle") . '</td><td>';
+				print '<a class="linkobject" href="' . $dismantleToggleUrl . '" title="' . $langs->trans("kreap_dismantle") . '">';
+				print '<span class="fas ' . $dismantleIcon . '"></span>';
+				print '</a>';
+				print '</td></tr>';
+			}
 			if ($showWeightForm) {
 				$weightDisplay = '';
 				if ($object->weight != '') {
@@ -867,6 +924,8 @@ if ($id > 0 || !empty($ref)) {
 		 */
 		if (!empty($conf->bom->enabled)) {
 			$bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
+			$productRef = trim((string) $object->ref);
+			$productRefEscaped = ($productRef !== '') ? $db->escape($productRef) : '';
 
 			// Fetch all BOMs and the origin product for the current product
 			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label, bl.qty as line_qty
@@ -874,17 +933,19 @@ if ($id > 0 || !empty($ref)) {
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
                 JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product
-                WHERE COALESCE(bl.fk_product, cb.fk_product) = " . (int)$object->id . " AND b.bomtype = " . $bomType . "
-                AND b.status = 1
+                LEFT JOIN " . MAIN_DB_PREFIX . "product AS lp ON lp.rowid = bl.fk_product
+                LEFT JOIN " . MAIN_DB_PREFIX . "product AS cp ON cp.rowid = cb.fk_product
+                WHERE (COALESCE(bl.fk_product, cb.fk_product) = " . (int)$object->id;
+			if ($productRefEscaped !== '') {
+				$sql_bom .= " OR lp.ref = '" . $productRefEscaped . "' OR cp.ref = '" . $productRefEscaped . "'";
+			}
+			$sql_bom .= ") AND b.bomtype IN (0,1)
+                AND b.status IN (0,1)
                 AND b.entity IN (0," . getEntity('bom') . ")
-                AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
-                    SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
-                    WHERE b2.fk_product = b.fk_product
-                      AND b2.entity = " . ((int) $conf->entity) . "
-                      AND b2.bomtype = b.bomtype AND b2.status = 1
-                )))
                 AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
-                AND p.entity IN (" . getEntity('product') . ")";
+                AND p.entity IN (0," . getEntity('product') . ")
+                AND (lp.rowid IS NULL OR lp.entity IN (0," . getEntity('product') . "))
+                AND (cp.rowid IS NULL OR cp.entity IN (0," . getEntity('product') . "))";
 
 			$resql_bom = $db->query($sql_bom);
 			$boms = [];
@@ -1608,6 +1669,9 @@ if ($id > 0 || !empty($ref)) {
 		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
 		 */
 		if (!empty($conf->bom->enabled)) {
+			$bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
+			$productRef = trim((string) $object->ref);
+			$productRefEscaped = ($productRef !== '') ? $db->escape($productRef) : '';
 
 			// Fetch all BOMs and the components for the current product
 			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype,
@@ -1620,19 +1684,19 @@ if ($id > 0 || !empty($ref)) {
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
                 LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product
                 LEFT JOIN " . MAIN_DB_PREFIX . "product AS cprod ON cprod.rowid = cb.fk_product
-                WHERE b.fk_product = " . (int)$object->id . "
-                AND b.bomtype = 0
-                AND b.status = 1
+                LEFT JOIN " . MAIN_DB_PREFIX . "product AS bp ON bp.rowid = b.fk_product
+                WHERE (b.fk_product = " . (int)$object->id;
+			if ($productRefEscaped !== '') {
+				$sql_bom .= " OR bp.ref = '" . $productRefEscaped . "'";
+			}
+			$sql_bom .= ")
+                AND b.bomtype IN (0,1)
+                AND b.status IN (0,1)
                 AND b.entity IN (0," . getEntity('bom') . ")
-                AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
-                    SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
-                    WHERE b2.fk_product = b.fk_product
-                      AND b2.entity = " . ((int) $conf->entity) . "
-                      AND b2.bomtype = b.bomtype AND b2.status = 1
-                )))
                 AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
-                AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))
-                AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))
+                AND (p.rowid IS NULL OR p.entity IN (0," . getEntity('product') . "))
+                AND (cprod.rowid IS NULL OR cprod.entity IN (0," . getEntity('product') . "))
+                AND (bp.rowid IS NULL OR bp.entity IN (0," . getEntity('product') . "))
                 AND COALESCE(bl.fk_product, cb.fk_product) IS NOT NULL"; // . " AND b.bomtype = 1";
 
 			$resql_bom = $db->query($sql_bom);

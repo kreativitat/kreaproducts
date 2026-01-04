@@ -23,6 +23,7 @@ KreaProducts è un modulo avanzato per la gestione dei prodotti in [Dolibarr ERP
 - Ricalcolo automatico dei costi in cascata basato su componenti/schede tecniche.
 - Supporto alle BOM annidate (righe BOM che referenziano un'altra BOM), con propagazione corretta di costi, nutrizione e allergeni.
 - Multi-azienda: BOM condivise (entity=0) disponibili per tutte le entità, con priorità alla BOM dell'entità corrente quando presente.
+- Lo smontaggio si attiva per prodotto tramite il campo extra `kreap_dismantle`.
 
 ### Date corrette di stock e inventario (data fattura e data-valuta)
 
@@ -32,6 +33,7 @@ KreaProducts corregge questa limitazione con due automazioni essenziali:
 
 - **Entrata di stock per data fattura (fornitori):** i prodotti vengono registrati in stock con la **data della fattura/data di entrata**, invece della data in cui il documento viene inserito in Dolibarr. Questo elimina discrepanze quando la fattura viene registrata giorni dopo.
 - **Inventario per data-valuta (retroattivo):** l'aggiustamento dell'inventario viene applicato in base alla **data dell'inventario (data-valuta)**, e non alla data di validazione. In questo modo è possibile registrare un inventario con data-valuta precedente (ad esempio, di una settimana fa) e garantire che correzioni e report rimangano coerenti - cosa che il modulo standard non garantisce.
+- **Ricalcolo su inventario fisico:** lo stock viene ricalcolato usando la **quantità contata** (qty_stock) quando disponibile, con qty_view solo come fallback, evitando scostamenti sui movimenti retrodatati.
 
 ### Gestione intelligente degli imballaggi e costo unitario (smontaggio automatico)
 
@@ -96,7 +98,6 @@ Questa funzionalità è particolarmente rilevante in operazioni con molte ricett
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Ora applicata ai movimenti di fatture fornitori. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Ora predefinita alla creazione dell'inventario. |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Categoria radice per la selezione dell'inventario. |
-| `KREAPRODUCTS_DISMANTLE_CATEGORY` | Categoria che attiva lo smontaggio automatico. |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE` | Tipo di BOM usato per lo smontaggio. |
 | `KREAPRODUCTS_DISMANTLE_WAREHOUSE` | Magazzino per i movimenti di smontaggio. |
 | `KREAPRODUCTS_SIM_ENABLE` | Attivare il simulatore di prezzi. |

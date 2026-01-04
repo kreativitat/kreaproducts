@@ -9,6 +9,7 @@ Scope and shared rules
   product, and product_batch (if productbatch is enabled).
 - Movement sums only include non-inventory movements: origintype <> 'inventory'.
 - Dates are normalized to DB datetime strings before comparison.
+- Inventory anchors use qty_stock when available, with qty_view as fallback.
 - Batch handling:
   - If a batch is set, queries filter by that batch.
   - If batch is empty, queries match NULL or empty batch.
@@ -27,14 +28,14 @@ Goal
   movement stock impact).
 
 Process
-1) Load the current inventory line qty_view (the snapshot at this date).
+1) Load the current inventory line qty_stock (fallback qty_view).
 2) Find the next inventory movement (origintype = 'inventory') and read its
-   inventory line qty_view.
+   inventory line qty_stock (fallback qty_view).
 3) Sum all non-inventory movements between the current inventory date and the
    next inventory date.
 4) Compute the expected stock at the current inventory date:
-   expected = next_qty_view - moved_between.
-5) Compute the delta: delta = current_qty_view - expected.
+   expected = next_qty - moved_between.
+5) Compute the delta: delta = current_qty - expected.
 6) Update the next inventory movement value:
    value = value - delta.
 7) Undo the stock impact of the inserted inventory movement
@@ -54,10 +55,10 @@ Goal
 - Recalculate stock directly from this inventory snapshot.
 
 Process
-1) Use the current inventory line qty_view as the anchor.
+1) Use the current inventory line qty_stock (fallback qty_view) as the anchor.
 2) Sum all non-inventory movements after date_inventory.
 3) Compute new reel:
-   reel = qty_view(anchor) + moved_after.
+   reel = anchor_qty + moved_after.
 4) Update product_stock.reel, and product.stock totals.
 5) If batch is used, update product_batch first, then product_stock.
 
@@ -97,18 +98,16 @@ Condition
   product/warehouse/batch.
 
 Goal
-- Recalculate current stock at the invoice datetime using the latest prior
-  inventory snapshot as anchor.
+- Recalculate current stock using the latest prior inventory snapshot as anchor.
 - Do not modify any inventory movement rows.
 
 Process
 1) Find the latest recorded inventory anchor with date_inventory <= invoice
    datetime.
-2) Sum all non-inventory movements strictly after the anchor date and up to
-   and including the invoice datetime:
-   moved = SUM(value) WHERE datem > anchor_date AND datem <= invoice_datetime.
+2) Sum all non-inventory movements strictly after the anchor date:
+   moved = SUM(value) WHERE datem > anchor_date.
 3) Compute new reel:
-   reel = qty_view(anchor) + moved.
+   reel = anchor_qty + moved.
 4) Update product_stock.reel and product.stock totals.
 5) If batch is used, update product_batch first, then product_stock.
 

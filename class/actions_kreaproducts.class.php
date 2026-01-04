@@ -74,6 +74,7 @@ class ActionsKreaProducts extends CommonHookActions
 	public function __construct($db)
 	{
 		$this->db = $db;
+		$this->ensureBomlistHookContext();
 	}
 
 
@@ -516,7 +517,116 @@ class ActionsKreaProducts extends CommonHookActions
 	}
 
 	/**
-	 * Ensure bomlist hook context is registered in module parts.
+	 * Show per-warehouse real stock summary on stock movement list when a product is selected.
+	 *
+	 * @param array<string,mixed> $parameters Hook metadata
+	 * @param mixed $object Context object
+	 * @param ?string $action Current action
+	 * @param HookManager $hookmanager Hook manager
+	 * @return int
+	 */
+	public function printFieldPreListTitle($parameters, &$object, &$action, $hookmanager)
+	{
+		global $langs;
+
+		$currentcontext = $parameters['currentcontext'] ?? '';
+		if (strpos($currentcontext, 'stockmovementlist') === false) {
+			return 0;
+		}
+
+		$productId = GETPOSTINT('product_id');
+		if ($productId <= 0) {
+			$productId = GETPOSTINT('idproduct');
+		}
+		if ($productId <= 0) {
+			$searchProductRef = trim(GETPOST('search_product_ref', 'alphanohtml'));
+			if ($searchProductRef !== '') {
+				$sqlProduct = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product"
+					. " WHERE ref = '" . $this->db->escape($searchProductRef) . "'"
+					. " AND entity IN (" . getEntity('product') . ")";
+				$resProduct = $this->db->query($sqlProduct);
+				if ($resProduct) {
+					$objProduct = $this->db->fetch_object($resProduct);
+					if ($objProduct) {
+						$productId = (int) $objProduct->rowid;
+					}
+					$this->db->free($resProduct);
+				}
+			}
+		}
+		if ($productId <= 0) {
+			$searchProductLabel = trim(GETPOST('search_product', 'alphanohtml'));
+			if ($searchProductLabel !== '') {
+				$sqlProduct = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product"
+					. " WHERE label = '" . $this->db->escape($searchProductLabel) . "'"
+					. " AND entity IN (" . getEntity('product') . ")"
+					. " LIMIT 2";
+				$resProduct = $this->db->query($sqlProduct);
+				if ($resProduct) {
+					if ($this->db->num_rows($resProduct) === 1) {
+						$objProduct = $this->db->fetch_object($resProduct);
+						if ($objProduct) {
+							$productId = (int) $objProduct->rowid;
+						}
+					}
+					$this->db->free($resProduct);
+				}
+			}
+		}
+		if ($productId <= 0) {
+			return 0;
+		}
+
+		$langs->load('stocks');
+
+		$sql = "SELECT e.ref, e.label, ps.reel"
+			. " FROM " . MAIN_DB_PREFIX . "product_stock ps"
+			. " JOIN " . MAIN_DB_PREFIX . "entrepot e ON e.rowid = ps.fk_entrepot"
+			. " WHERE ps.fk_product = " . (int) $productId
+			. " AND e.entity IN (" . getEntity('stock') . ")"
+			. " ORDER BY e.ref, e.label";
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . " error loading warehouse stock: " . $this->db->lasterror(), LOG_ERR);
+			return 0;
+		}
+
+		$rows = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$label = (string) $obj->ref;
+			if (!empty($obj->label) && $obj->label !== $obj->ref) {
+				$label .= ' - ' . $obj->label;
+			}
+			$rows[] = array(
+				'label' => $label,
+				'qty' => (float) $obj->reel,
+			);
+		}
+		$this->db->free($resql);
+
+		if (empty($rows)) {
+			return 0;
+		}
+
+		$out = '<table class="noborder centpercent">';
+		$out .= '<tr class="liste_titre">';
+		$out .= '<td class="left">' . $langs->trans('Warehouse') . '</td>';
+		$out .= '<td class="right">' . $langs->trans('RealStock') . '</td>';
+		$out .= '</tr>';
+		foreach ($rows as $row) {
+			$out .= '<tr>';
+			$out .= '<td class="left">' . dol_escape_htmltag($row['label']) . '</td>';
+			$out .= '<td class="right">' . price($row['qty'], 0, $langs, 0, -1, -1) . '</td>';
+			$out .= '</tr>';
+		}
+		$out .= '</table>';
+
+		$this->resprints = $out;
+		return 0;
+	}
+
+	/**
+	 * Ensure required list hook contexts are registered in module parts.
 	 *
 	 * @return void
 	 */
@@ -545,11 +655,13 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 		$hooks = array_values(array_unique(array_filter(array_map('trim', $hooks))));
 
-		if (in_array('bomlist', $hooks, true)) {
+		$required = array('bomlist', 'stockmovementlist');
+		$missing = array_diff($required, $hooks);
+		if (empty($missing)) {
 			return;
 		}
 
-		$hooks[] = 'bomlist';
+		$hooks = array_values(array_unique(array_merge($hooks, $missing)));
 		$newValue = json_encode($hooks);
 
 		if (!function_exists('dolibarr_set_const')) {

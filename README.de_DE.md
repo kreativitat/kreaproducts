@@ -23,6 +23,7 @@ KreaProducts ist ein fortschrittliches Modul zur Produktverwaltung für das [Dol
 - Automatische Kaskaden-Neuberechnung der Kosten basierend auf Komponenten/technischen Datenblättern.
 - Unterstützung verschachtelter BOMs (BOM-Zeilen, die auf eine andere BOM verweisen), mit korrekter Weitergabe von Kosten, Nährwerten und Allergenen.
 - Multicompany: Gemeinsame BOMs (entity=0) sind in allen Entitäten verfügbar, mit Priorität für die BOM der aktuellen Entität, wenn vorhanden.
+- Demontage wird pro Produkt über das Extrafeld `kreap_dismantle` aktiviert.
 
 ### Korrekte Lager- und Inventardaten (Rechnungsdatum und Wertstellungsdatum)
 
@@ -32,6 +33,7 @@ KreaProducts behebt diese Einschränkung mit zwei wesentlichen Automatisierungen
 
 - **Lagerzugang nach Rechnungsdatum (Lieferanten):** Produkte werden mit dem **Rechnungsdatum/Eingangsdatum** ins Lager gebucht, statt mit dem Datum, an dem das Dokument in Dolibarr erfasst wird. Das beseitigt Abweichungen, wenn eine Rechnung erst Tage später erfasst wird.
 - **Inventur nach Wertstellungsdatum (rückwirkend):** Die Inventuranpassung erfolgt anhand des **Inventurdatums (Wertstellungsdatum)** und nicht anhand des Validierungsdatums. Dadurch lässt sich eine Inventur mit einem früheren Wertstellungsdatum (z. B. vor einer Woche) erfassen und Korrekturen sowie Berichte bleiben konsistent - etwas, das das Standardmodul nicht garantiert.
+- **Neuberechnung nach physischem Inventar:** Der Bestand wird anhand der **gezählten Menge** (qty_stock) neu berechnet, qty_view nur als Fallback - so werden Abweichungen bei rückdatierten Bewegungen vermieden.
 
 ### Intelligentes Verpackungs- und Stückkostenmanagement (automatische Demontage)
 
@@ -96,7 +98,6 @@ Diese Funktion ist besonders relevant in Betrieben mit vielen Rezepten und häuf
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Zeitangabe für Lieferantenrechnungsbewegungen. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Standardzeit beim Erstellen einer Inventur. |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Stammkategorie für die Inventurauswahl. |
-| `KREAPRODUCTS_DISMANTLE_CATEGORY` | Kategorie, die die automatische Demontage aktiviert. |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE` | BOM-Typ für die Demontage. |
 | `KREAPRODUCTS_DISMANTLE_WAREHOUSE` | Lager für Demontagebewegungen. |
 | `KREAPRODUCTS_SIM_ENABLE` | Preis-Simulator aktivieren. |

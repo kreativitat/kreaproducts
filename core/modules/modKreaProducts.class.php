@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.90';
+        $this->version = '2.93';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -137,6 +137,7 @@ class modKreaProducts extends DolibarrModules
                     'productlist',
                     'inventorycard',
                     'inventorylist',
+                    'stockmovementlist',
                     'bomlist',
                     'supplierpaymentcard',
                     'globalcard',
@@ -584,6 +585,12 @@ class modKreaProducts extends DolibarrModules
         $field_label = $langs->trans("kreap_hideproduct");
         $field_help = $langs->trans("kreap_hideproduct_help");
         $result3 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 8, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+        $field_name = "kreap_dismantle";
+        $field_label = $langs->trans("kreap_dismantle");
+        $field_help = $langs->trans("kreap_dismantle_help");
+        $result3b = $extrafields->addExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_recipe");
         $result4 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

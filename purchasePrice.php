@@ -160,7 +160,7 @@ function kreaUpdateDismantleBomChildren($productId, $db, $user)
 
 	$dismantle = new ProductDismantleController($db);
 
-	// Only run for dismantle-category products with a dismantle BOM
+	// Only run for products flagged for dismantle with a dismantle BOM
 	if (!$dismantle->productInDismantleCategory($productId)) {
 		return;
 	}

@@ -1,5 +1,8 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 CHANGELOG KREAPRODUCTS FOR DOLIBARR ERP CRM
+2.91
+Stock recalculation now anchors on counted inventory quantity (qty_stock), falling back to qty_view when needed to prevent drift on backdated movements.
+
 2.77
 Nested BOM lines (fk_bom_child) are now handled across cost, nutrition, allergen, and product tree flows.
 Multicompany: shared BOMs (entity=0) are visible across entities, with preference for the current entity BOM when available.

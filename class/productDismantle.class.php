@@ -44,113 +44,30 @@ class ProductDismantleController extends CommonObject
             AND bomtype = " . $bomType . "
             AND status = 1
             AND entity IN (0," . getEntity('bom') . ")
-            ORDER BY (entity = " . ((int) $conf->entity) . ") DESC, (entity = 0) DESC, rowid DESC";
+            ORDER BY (entity = " . ((int) $conf->entity) . ") DESC, (entity = 0) DESC, rowid DESC
+            LIMIT 2";
 
         $resql = $this->db->query($sql);
         if (!$resql) {
             dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
             return false;
         }
+
+        $rows = $this->db->num_rows($resql);
+        if ($rows > 1) {
+            dol_syslog(
+                "Multiple active BOMs found for product ID " . $productId . " (bomtype=" . $bomType . "). Using most specific/newest.",
+                LOG_WARNING
+            );
+        }
+
         if ($obj = $this->db->fetch_object($resql)) {
+            $this->db->free($resql);
             return (int) $obj->rowid;
         }
 
-        $sqlFallback = "SELECT rowid, status FROM " . MAIN_DB_PREFIX . "bom_bom
-            WHERE fk_product = " . (int) $productId . "
-            AND bomtype = " . $bomType . "
-            AND status IN (0,1)
-            AND entity IN (0," . getEntity('bom') . ")
-            ORDER BY (entity = " . ((int) $conf->entity) . ") DESC, (entity = 0) DESC, rowid DESC";
-        $resqlFallback = $this->db->query($sqlFallback);
-        if (!$resqlFallback) {
-            dol_syslog("findBom fallback query failed for product ID " . $productId, LOG_ERR);
-            return false;
-        }
-        if ($obj = $this->db->fetch_object($resqlFallback)) {
-            dol_syslog("Using draft BOM #" . (int) $obj->rowid . " for product ID " . $productId . " (validate BOM to avoid fallback)", LOG_WARNING);
-            return (int) $obj->rowid;
-        }
-        $productRef = '';
-        $defaultBomId = 0;
-        $sqlProduct = "SELECT ref, fk_default_bom FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . (int) $productId;
-        $resProduct = $this->db->query($sqlProduct);
-        if ($resProduct) {
-            $objProduct = $this->db->fetch_object($resProduct);
-            if ($objProduct && !empty($objProduct->ref)) {
-                $productRef = (string) $objProduct->ref;
-            }
-            if ($objProduct && !empty($objProduct->fk_default_bom)) {
-                $defaultBomId = (int) $objProduct->fk_default_bom;
-            }
-        }
-        if ($defaultBomId > 0) {
-            $sqlDefaultBom = "SELECT rowid, bomtype, status FROM " . MAIN_DB_PREFIX . "bom_bom
-                WHERE rowid = " . $defaultBomId . "
-                AND entity IN (0," . getEntity('bom') . ")";
-            $resDefaultBom = $this->db->query($sqlDefaultBom);
-            if ($resDefaultBom && ($objDefaultBom = $this->db->fetch_object($resDefaultBom))) {
-                if (in_array((int) $objDefaultBom->status, [0, 1], true)) {
-                    if ((int) $objDefaultBom->bomtype !== $bomType) {
-                        dol_syslog("Default BOM #" . (int) $objDefaultBom->rowid . " bomtype " . (int) $objDefaultBom->bomtype . " differs from configured bomtype " . $bomType . " for product ID " . $productId, LOG_WARNING);
-                    }
-                    if ((int) $objDefaultBom->status !== 1) {
-                        dol_syslog("Using default BOM #" . (int) $objDefaultBom->rowid . " in draft for product ID " . $productId, LOG_WARNING);
-                    }
-                    dol_syslog("Using default BOM #" . (int) $objDefaultBom->rowid . " for product ID " . $productId, LOG_DEBUG);
-                    return (int) $objDefaultBom->rowid;
-                }
-                dol_syslog("Default BOM #" . (int) $defaultBomId . " has unsupported status for product ID " . $productId, LOG_DEBUG);
-            }
-        }
-        if ($productRef !== '') {
-            $sqlRef = "SELECT b.rowid FROM " . MAIN_DB_PREFIX . "bom_bom b
-                JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
-                WHERE p.ref = '" . $this->db->escape($productRef) . "'
-                AND b.bomtype = " . $bomType . "
-                AND b.status IN (0,1)
-                AND b.entity IN (0," . getEntity('bom') . ")
-                ORDER BY (b.entity = " . ((int) $conf->entity) . ") DESC, (b.entity = 0) DESC, b.rowid DESC";
-            $resRef = $this->db->query($sqlRef);
-            if ($resRef && ($objRef = $this->db->fetch_object($resRef))) {
-                dol_syslog("Using BOM #" . (int) $objRef->rowid . " matched by product ref " . $productRef . " for product ID " . $productId, LOG_WARNING);
-                return (int) $objRef->rowid;
-            }
-        }
-        if (in_array($bomType, [0, 1], true)) {
-            $fallbackBomType = ($bomType === 1 ? 0 : 1);
-            $sqlFallbackType = "SELECT rowid, status FROM " . MAIN_DB_PREFIX . "bom_bom
-                WHERE fk_product = " . (int) $productId . "
-                AND bomtype = " . $fallbackBomType . "
-                AND status IN (0,1)
-                AND entity IN (0," . getEntity('bom') . ")
-                ORDER BY (entity = " . ((int) $conf->entity) . ") DESC, (entity = 0) DESC, rowid DESC";
-            $resFallbackType = $this->db->query($sqlFallbackType);
-            if ($resFallbackType && ($objFallbackType = $this->db->fetch_object($resFallbackType))) {
-                if ((int) $objFallbackType->status !== 1) {
-                    dol_syslog("Using draft BOM #" . (int) $objFallbackType->rowid . " with bomtype " . $fallbackBomType . " for product ID " . $productId, LOG_WARNING);
-                }
-                dol_syslog("Using BOM #" . (int) $objFallbackType->rowid . " with bomtype " . $fallbackBomType . " as fallback (configured bomtype " . $bomType . ") for product ID " . $productId, LOG_WARNING);
-                return (int) $objFallbackType->rowid;
-            }
-            if ($productRef !== '') {
-                $sqlRefFallbackType = "SELECT b.rowid, b.status FROM " . MAIN_DB_PREFIX . "bom_bom b
-                    JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = b.fk_product
-                    WHERE p.ref = '" . $this->db->escape($productRef) . "'
-                    AND b.bomtype = " . $fallbackBomType . "
-                    AND b.status IN (0,1)
-                    AND b.entity IN (0," . getEntity('bom') . ")
-                    ORDER BY (b.entity = " . ((int) $conf->entity) . ") DESC, (b.entity = 0) DESC, b.rowid DESC";
-                $resRefFallbackType = $this->db->query($sqlRefFallbackType);
-                if ($resRefFallbackType && ($objRefFallbackType = $this->db->fetch_object($resRefFallbackType))) {
-                    if ((int) $objRefFallbackType->status !== 1) {
-                        dol_syslog("Using draft BOM #" . (int) $objRefFallbackType->rowid . " matched by product ref " . $productRef . " with bomtype " . $fallbackBomType . " for product ID " . $productId, LOG_WARNING);
-                    }
-                    dol_syslog("Using BOM #" . (int) $objRefFallbackType->rowid . " matched by product ref " . $productRef . " with bomtype " . $fallbackBomType . " as fallback (configured bomtype " . $bomType . ") for product ID " . $productId, LOG_WARNING);
-                    return (int) $objRefFallbackType->rowid;
-                }
-            }
-        }
-        dol_syslog("No dismantle BOM found for product ID " . $productId . " (bomtype=" . $bomType . ")", LOG_DEBUG);
+        $this->db->free($resql);
+        dol_syslog("No active BOM found for product ID " . $productId . " (bomtype=" . $bomType . ")", LOG_DEBUG);
         return false;
     }
 
@@ -158,31 +75,28 @@ class ProductDismantleController extends CommonObject
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
 
-        global $conf;
-
-        $productDismantleCategory = 0;
-        if (!empty($conf->global->KREAPRODUCTS_DISMANTLE_CATEGORY)) {
-            $productDismantleCategory = (int) $conf->global->KREAPRODUCTS_DISMANTLE_CATEGORY;
-        } elseif (!empty($conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY)) {
-            // Backward compatibility
-            $productDismantleCategory = (int) $conf->global->KREAGENPRODUCT_PRODUCT_DISMANTLE_CATEGORY;
-        }
-
-        if ($productDismantleCategory <= 0) {
-            dol_syslog("No dismantle category configured", LOG_DEBUG);
+        $productId = (int) $productId;
+        if ($productId <= 0) {
             return false;
         }
 
-        $sql = "SELECT fk_categorie FROM " . MAIN_DB_PREFIX . "categorie_product WHERE fk_product = " . (int) $productId;
+        $sql = "SELECT pe.kreap_dismantle"
+            . " FROM " . MAIN_DB_PREFIX . "product_extrafields pe"
+            . " WHERE pe.fk_object = " . $productId
+            . " LIMIT 1";
         $resql = $this->db->query($sql);
-        if ($resql) {
-            while ($obj = $this->db->fetch_object($resql)) {
-                if ($obj->fk_categorie == $productDismantleCategory) { // Dismantle category ID
-                    return true;
-                }
-            }
+        if (!$resql) {
+            dol_syslog("Error checking dismantle flag: " . $this->db->lasterror(), LOG_ERR);
+            return false;
         }
-        dol_syslog("Product ID " . (int) $productId . " not in dismantle category " . (int) $productDismantleCategory, LOG_DEBUG);
+
+        $obj = $this->db->fetch_object($resql);
+        $flag = ($obj && $obj->kreap_dismantle !== null) ? (int) $obj->kreap_dismantle : 0;
+        if ($flag === 1) {
+            return true;
+        }
+
+        dol_syslog("Product ID " . $productId . " not flagged for dismantle", LOG_DEBUG);
         return false;
     }
 

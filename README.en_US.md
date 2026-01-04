@@ -23,6 +23,7 @@ KreaProducts is an advanced product management module for the [Dolibarr ERP/CRM]
 - Automatic cascading cost recalculation based on components/technical sheets.
 - Nested BOM support (BOM lines referencing another BOM), with correct propagation of costs, nutrition, and allergens.
 - Multicompany: shared BOMs (entity=0) are available across entities, with priority given to the current entity BOM when it exists.
+- Dismantling is enabled per product via the `kreap_dismantle` extra field.
 
 ### Correct stock and inventory dates (invoice date and value date)
 
@@ -32,6 +33,7 @@ KreaProducts addresses this limitation with two essential automations:
 
 - **Stock entry by invoice date (suppliers):** products are posted to stock with the **invoice date/receipt date**, instead of the date the document is entered in Dolibarr. This eliminates discrepancies when the invoice is registered days later.
 - **Inventory by value date (backdated):** inventory adjustment is applied based on the **inventory date (value date)**, not the validation date. This makes it possible to enter an inventory with a prior value date (for example, a week ago) and keep corrections and reports consistent - something the standard module does not guarantee.
+- **Inventory anchored to counted stock:** recalculation uses the **counted quantity** (qty_stock) when available, falling back to qty_view only when needed, preventing drift on backdated movements.
 
 ### Smart packaging and unit cost management (automatic dismantling)
 
@@ -96,7 +98,6 @@ This feature is especially relevant in operations with many recipes and frequent
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Time applied to supplier invoice movements. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Default time when creating inventory. |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Root category for inventory selection. |
-| `KREAPRODUCTS_DISMANTLE_CATEGORY` | Category that triggers automatic dismantling. |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE` | BOM type used for dismantling. |
 | `KREAPRODUCTS_DISMANTLE_WAREHOUSE` | Warehouse for dismantling movements. |
 | `KREAPRODUCTS_SIM_ENABLE` | Enable the price simulator. |
