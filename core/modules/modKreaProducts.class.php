@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.94';
+        $this->version = '2.0.98';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -127,11 +127,12 @@ class modKreaProducts extends DolibarrModules
             ),
             // Set this to relative path of js file if module must load a js on all pages
             'js' => array(
-                //   '/kreaproducts/js/kreaproducts.js.php',
+                // '/custom/kreaproducts/js/kreaproducts.js',
             ),
             // Set here all hooks context managed by module. To find available hook context, make a "grep -r '>initHooks(' *" on source code. You can also set hook context to 'all'
             'hooks' => array(
                 'data' => array(
+                    'main',
                     'productcard',
                     'productservicelist',
                     'productlist',
@@ -139,6 +140,7 @@ class modKreaProducts extends DolibarrModules
                     'inventorylist',
                     'stockmovementlist',
                     'bomlist',
+                    'bomnetneeds',
                     'supplierpaymentcard',
                     'globalcard',
                     'leftblock',
@@ -332,44 +334,36 @@ class modKreaProducts extends DolibarrModules
 
         // Permissions provided by this module
         $this->rights = array();
-        $r = 0;
         // Add here entries to declare new permissions
         /* BEGIN MODULEBUILDER PERMISSIONS */
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 0 + 1);
-        $this->rights[$r][1] = 'Read Nutritional object of KreaProducts';
-        $this->rights[$r][4] = 'nutritional';
-        $this->rights[$r][5] = 'read';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 1 + 1);
-        $this->rights[$r][1] = 'Create/Update Nutritional object of KreaProducts';
-        $this->rights[$r][4] = 'nutritional';
-        $this->rights[$r][5] = 'write';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (0 * 10) + 2 + 1);
-        $this->rights[$r][1] = 'Delete Nutritional object of KreaProducts';
-        $this->rights[$r][4] = 'nutritional';
-        $this->rights[$r][5] = 'delete';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 0 + 1);
-        $this->rights[$r][1] = 'Read ProductAllergens object of KreaProducts';
-        $this->rights[$r][4] = 'productallergens';
-        $this->rights[$r][5] = 'read';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 1 + 1);
-        $this->rights[$r][1] = 'Create/Update ProductAllergens object of KreaProducts';
-        $this->rights[$r][4] = 'productallergens';
-        $this->rights[$r][5] = 'write';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (1 * 10) + 2 + 1);
-        $this->rights[$r][1] = 'Delete ProductAllergens object of KreaProducts';
-        $this->rights[$r][4] = 'productallergens';
-        $this->rights[$r][5] = 'delete';
-        $r++;
-        $this->rights[$r][0] = $this->numero . sprintf('%02d', (2 * 10) + 0 + 1);
-        $this->rights[$r][1] = 'View expected inventory values';
-        $this->rights[$r][4] = 'inventory';
-        $this->rights[$r][5] = 'expected';
-        $r++;
+        $this->rights[0][0] = $this->numero . sprintf('%02d', 1);
+        $this->rights[0][1] = 'Read Nutritional object of KreaProducts';
+        $this->rights[0][4] = 'nutritional';
+        $this->rights[0][5] = 'read';
+        $this->rights[1][0] = $this->numero . sprintf('%02d', 2);
+        $this->rights[1][1] = 'Create/Update Nutritional object of KreaProducts';
+        $this->rights[1][4] = 'nutritional';
+        $this->rights[1][5] = 'write';
+        $this->rights[2][0] = $this->numero . sprintf('%02d', 3);
+        $this->rights[2][1] = 'Delete Nutritional object of KreaProducts';
+        $this->rights[2][4] = 'nutritional';
+        $this->rights[2][5] = 'delete';
+        $this->rights[3][0] = $this->numero . sprintf('%02d', 11);
+        $this->rights[3][1] = 'Read ProductAllergens object of KreaProducts';
+        $this->rights[3][4] = 'productallergens';
+        $this->rights[3][5] = 'read';
+        $this->rights[4][0] = $this->numero . sprintf('%02d', 12);
+        $this->rights[4][1] = 'Create/Update ProductAllergens object of KreaProducts';
+        $this->rights[4][4] = 'productallergens';
+        $this->rights[4][5] = 'write';
+        $this->rights[5][0] = $this->numero . sprintf('%02d', 13);
+        $this->rights[5][1] = 'Delete ProductAllergens object of KreaProducts';
+        $this->rights[5][4] = 'productallergens';
+        $this->rights[5][5] = 'delete';
+        $this->rights[6][0] = $this->numero . sprintf('%02d', 21);
+        $this->rights[6][1] = 'View expected inventory values';
+        $this->rights[6][4] = 'inventory';
+        $this->rights[6][5] = 'expected';
 
         /* END MODULEBUILDER PERMISSIONS */
 

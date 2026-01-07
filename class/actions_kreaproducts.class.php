@@ -216,6 +216,36 @@ class ActionsKreaProducts extends CommonHookActions
 			return 0;
 		}
 
+		if (is_object($object) && $object->element === 'bom' && $action === 'setkreap_entity') {
+			if (!$this->canSetSharedBomEntity()) {
+				accessforbidden();
+			}
+
+			if (GETPOST('cancel', 'alpha')) {
+				header('Location: ' . DOL_URL_ROOT . '/bom/bom_card.php?id=' . (int) $object->id);
+				exit;
+			}
+
+			$newEntity = GETPOSTINT('kreap_entity');
+			$currentEntity = isset($object->entity) ? (int) $object->entity : (int) $conf->entity;
+			$allowedEntities = array_values(array_unique(array(0, $currentEntity, (int) $conf->entity)));
+			if (!in_array($newEntity, $allowedEntities, true)) {
+				$langs->load('errors');
+				setEventMessages($langs->trans('ErrorBadValueForField', $langs->transnoentitiesnoconv('Entity')), null, 'errors');
+				return -1;
+			}
+
+			$object->entity = $newEntity;
+			$result = $object->update($user);
+			if ($result > 0) {
+				header('Location: ' . DOL_URL_ROOT . '/bom/bom_card.php?id=' . (int) $object->id);
+				exit;
+			}
+
+			setEventMessages($object->error, $object->errors, 'errors');
+			return -1;
+		}
+
 		if ($this->canSetSharedBomEntity() && is_object($object) && $object->element === 'bom' && ($action === 'add' || $action === 'update')) {
 			$requestedEntity = null;
 			if (GETPOSTISSET('kreap_entity')) {
@@ -294,14 +324,11 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $allowSharedEntity;
+		global $conf, $langs, $form, $mc;
 
 		static $sharedEntitySelectorPrinted = false;
 
 		if (!is_object($object) || $object->element !== 'bom') {
-			return 0;
-		}
-		if ($action !== 'create' && $action !== 'edit') {
 			return 0;
 		}
 		if ($sharedEntitySelectorPrinted) {
@@ -315,11 +342,73 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$multicompanyEnabled = isModEnabled('multicompany');
 
+		$entityRowHtml = '';
+		if ($multicompanyEnabled) {
+			if (!is_object($form)) {
+				require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
+				$form = new Form($this->db);
+			}
+
+			$entityLabel = $langs->trans('Entity');
+			$allEntitiesLabel = $langs->trans('AllEntities');
+			if (GETPOSTISSET('kreap_entity')) {
+				$selectedEntity = GETPOSTINT('kreap_entity');
+			} elseif (GETPOSTISSET('entity')) {
+				$selectedEntity = GETPOSTINT('entity');
+			} elseif (!empty($object->id)) {
+				$selectedEntity = (int) $object->entity;
+			} else {
+				$selectedEntity = (int) $conf->entity;
+			}
+
+			$alternateEntityId = ($selectedEntity === 0 ? (int) $conf->entity : (int) $selectedEntity);
+			if ($alternateEntityId <= 0) {
+				$alternateEntityId = (int) $conf->entity;
+			}
+
+			$alternateEntityLabel = $entityLabel . ' ' . $alternateEntityId;
+			if (is_object($mc) && method_exists($mc, 'getInfo') && $alternateEntityId > 0) {
+				$mc->getInfo($alternateEntityId);
+				if (!empty($mc->label)) {
+					$alternateEntityLabel = $mc->label;
+				}
+			}
+
+			$selectOptions = array(
+				'0' => $allEntitiesLabel . ' (0)',
+			);
+			if ($alternateEntityId > 0) {
+				$selectOptions[(string) $alternateEntityId] = $alternateEntityLabel;
+			}
+
+			$selectTypeParts = array();
+			foreach ($selectOptions as $key => $label) {
+				$selectTypeParts[] = $key . ':' . str_replace(',', ' ', $label);
+			}
+			$selectType = 'select;' . implode(',', $selectTypeParts);
+
+			$canEdit = $this->canSetSharedBomEntity();
+			$isEditMode = in_array($action, array('create', 'edit'), true);
+			if ($isEditMode && $canEdit) {
+				$selectHtml = $form->selectarray('kreap_entity', $selectOptions, $selectedEntity, 0, 0, 0, '', 0, 0, 0, '', 'minwidth100 maxwidth500');
+				$entityRowHtml = '<tr class="kreap-entity-row"><td class="titlefieldcreate">'.$entityLabel.'</td><td class="valuefieldcreate">'.$selectHtml.'</td></tr>';
+			} elseif ($canEdit) {
+				$keyHtml = $form->editfieldkey('Entity', 'kreap_entity', $selectedEntity, $object, 1, $selectType);
+				$valHtml = $form->editfieldval('Entity', 'kreap_entity', $selectedEntity, $object, 1, $selectType);
+				$entityRowHtml = '<tr class="kreap-entity-row"><td class="titlefield">'.$keyHtml.'</td><td class="valuefield">'.$valHtml.'</td></tr>';
+			} else {
+				$entityValue = ($selectedEntity === 0)
+					? $allEntitiesLabel . ' (0)'
+					: $alternateEntityLabel;
+				$entityRowHtml = '<tr class="kreap-entity-row"><td class="titlefield">'.$entityLabel.'</td><td class="valuefield">'.dol_escape_htmltag($entityValue).'</td></tr>';
+			}
+		}
+
 		$script = '';
-		if ($multicompanyEnabled && !empty($allowSharedEntity)) {
+		if ($multicompanyEnabled) {
 			$script = '<script>
 	jQuery(function($) {
-		var $entitySelects = $(\'select[name="entity"]\');
+		var $entitySelects = $(\'select[name="entity"], select[name="kreap_entity"]\');
 		if ($entitySelects.length < 2) {
 			return;
 		}
@@ -336,19 +425,19 @@ class ActionsKreaProducts extends CommonHookActions
 		});
 	});
 </script>';
-		} else {
-			$script = '<script>
-	jQuery(function($) {
-		$(\'select[name="entity"]\').closest(\'tr\').hide();
-	});
-</script>';
 		}
 
-		if ($script === '') {
+		if ($script === '' && $entityRowHtml === '') {
 			return 0;
 		}
 
-		$this->resprints = '<tr class="field_kreap_entity_helper" style="display:none;"><td colspan="2">'.$script.'</td></tr>';
+		$this->resprints = '';
+		if ($entityRowHtml !== '') {
+			$this->resprints .= $entityRowHtml;
+		}
+		if ($script !== '') {
+			$this->resprints .= '<tr class="field_kreap_entity_helper" style="display:none;"><td colspan="2">'.$script.'</td></tr>';
+		}
 		$sharedEntitySelectorPrinted = true;
 		return 0;
 	}
@@ -398,10 +487,30 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function restrictedArea($parameters, &$object, &$action, $hookmanager)
 	{
-		global $user;
+		global $conf, $user;
 
 		if (($parameters['features'] ?? '') !== 'bom') {
 			return 0;
+		}
+
+		if (!empty($conf->bom) && !empty($conf->bom->multidir_output) && is_array($conf->bom->multidir_output)) {
+			if (!array_key_exists(0, $conf->bom->multidir_output)) {
+				$fallback = null;
+				if (isset($conf->bom->multidir_output[$conf->entity])) {
+					$fallback = $conf->bom->multidir_output[$conf->entity];
+				} elseif (isset($conf->bom->multidir_output[1])) {
+					$fallback = $conf->bom->multidir_output[1];
+				} else {
+					$values = array_values($conf->bom->multidir_output);
+					$fallback = $values[0] ?? null;
+				}
+				if (($fallback === null || $fallback === '') && !empty($conf->bom->dir_output)) {
+					$fallback = $conf->bom->dir_output;
+				}
+				if ($fallback !== null && $fallback !== '') {
+					$conf->bom->multidir_output[0] = $fallback;
+				}
+			}
 		}
 
 		$objectId = isset($parameters['objectid']) ? (int) $parameters['objectid'] : 0;
@@ -440,6 +549,17 @@ class ActionsKreaProducts extends CommonHookActions
 	public function llxHeader($parameters, &$object, &$action, $hookmanager)
 	{
 		$this->redirectToCustomPages($parameters, $object, $action);
+
+		$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+		if (preg_match('#/bom/bom_card\.php$#', $scriptPath)) {
+			$arrayofjs = $parameters['arrayofjs'] ?? array();
+			if (!is_array($arrayofjs)) {
+				$arrayofjs = array($arrayofjs);
+			}
+			$arrayofjs = array_filter($arrayofjs, 'strlen');
+			$arrayofjs[] = '/custom/kreaproducts/js/kreaproducts.js';
+			$parameters['arrayofjs'] = array_values(array_unique($arrayofjs));
+		}
 		return 0;
 	}
 
@@ -616,7 +736,7 @@ class ActionsKreaProducts extends CommonHookActions
 			}
 			$hooks = array_values(array_unique(array_filter(array_map('trim', $hooks))));
 
-			$required = array('bomlist', 'stockmovementlist');
+			$required = array('bomlist', 'bomnetneeds', 'stockmovementlist', 'main');
 			$missing = array_diff($required, $hooks);
 			if (empty($missing)) {
 				continue;
