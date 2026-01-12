@@ -125,8 +125,8 @@ $arrayfields = array(
 	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 4),
 	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 5),
 	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 6),
-	'p.tobuy' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Buy') . ')', 'checked' => 1, 'position' => 7),
-	'p.tosell' => array('label' => $langs->trans('Status') . ' (' . $langs->trans('Sell') . ')', 'checked' => 1, 'position' => 8),
+	'p.tobuy' => array('label' => 'Compra', 'checked' => 1, 'position' => 7),
+	'p.tosell' => array('label' => 'Venda', 'checked' => 1, 'position' => 8),
 );
 
 // SQL build
@@ -306,8 +306,9 @@ foreach ($arrayfields as $key => $val) {
 		$align = '';
 		if ($key === 'cost_price' || $key === 'sell_price' || $key === 'sell_price_ttc') {
 			$align = 'right ';
-		}
-		if ($key === 'p.entity' || $key === 'p.tobuy' || $key === 'p.tosell') {
+		} elseif ($key === 'p.entity') {
+			$align = 'center nowrap ';
+		} elseif ($key === 'p.tobuy' || $key === 'p.tosell') {
 			$align = 'center ';
 		}
 		print_liste_field_titre($val['label'], $_SERVER["PHP_SELF"], $key, '', $param, '', $sortfield, $sortorder, $align);
@@ -373,10 +374,10 @@ while ($i < min($num, $limit)) {
 			case 'cost_price':
 				print '<td class="right">' . price($costPriceDisplay) . '</td>';
 				break;
-			case 'p.entity':
-				$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
-				print '<td class="center"><div class="refidno multicompany-entity-card-container"><span class="fa fa-globe"></span><span class="multiselect-selected-title-text">' . dol_escape_htmltag($entityLabel) . '</span></div></td>';
-				break;
+		case 'p.entity':
+			$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
+			print '<td class="center nowrap"><div class="refidno multicompany-entity-card-container" style="white-space: nowrap;"><span class="fa fa-globe"></span><span class="multiselect-selected-title-text" style="white-space: nowrap; max-width: none; overflow: visible; text-overflow: clip;">' . dol_escape_htmltag($entityLabel) . '</span></div></td>';
+			break;
 		case 'p.tobuy':
 			$canEditBuy = ($productstatic->type == Product::TYPE_SERVICE) ? !empty($user->rights->service->creer) : !empty($user->rights->produit->creer);
 			if ($canEditBuy) {

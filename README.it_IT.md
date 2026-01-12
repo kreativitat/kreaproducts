@@ -123,6 +123,7 @@ Nota: le soglie degli allergeni sono percentuali del peso totale della ricetta d
 
 - GitHub: https://github.com/kreativitat
 - Website: https://www.kreativitat.com
+- Demo: https://dolibarr.kreativitat.com
 
 ## Avviso legale
 

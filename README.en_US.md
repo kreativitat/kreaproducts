@@ -123,6 +123,7 @@ Note: allergen thresholds are percentages of the total recipe weight of the fina
 
 - GitHub: https://github.com/kreativitat
 - Website: https://www.kreativitat.com
+- Demo: https://dolibarr.kreativitat.com
 
 ## Disclaimer
 

@@ -123,6 +123,7 @@ Nota: os limiares de alergénios são percentagens do peso total da receita do p
 
 - GitHub: https://github.com/kreativitat
 - Website: https://www.kreativitat.com
+- Demo: https://dolibarr.kreativitat.com
 
 ## Aviso legal
 

@@ -269,7 +269,7 @@ $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
 
 // Lista de produtos
 $item = $formSetup->newItem('KREAPRODUCTS_REPLACE_PRODUCT_LIST');
-$item->setAsSelect(array('1' => $langs->trans('Yes'), '0' => $langs->trans('No')));
+$item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP');
 

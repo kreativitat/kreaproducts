@@ -123,6 +123,7 @@ Note : les seuils d’allergènes sont des pourcentages du poids total de la rec
 
 - GitHub : https://github.com/kreativitat
 - Website : https://www.kreativitat.com
+- Demo : https://dolibarr.kreativitat.com
 
 ## Avertissement légal
 

@@ -123,6 +123,7 @@ Nota: los umbrales de alérgenos son porcentajes del peso total de la receta del
 
 - GitHub: https://github.com/kreativitat
 - Website: https://www.kreativitat.com
+- Demo: https://dolibarr.kreativitat.com
 
 ## Aviso legal
 

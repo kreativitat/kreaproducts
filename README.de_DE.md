@@ -123,6 +123,7 @@ Hinweis: Die Allergen-Schwellenwerte sind Prozentsätze des Gesamtgewichts der R
 
 - GitHub: https://github.com/kreativitat
 - Website: https://www.kreativitat.com
+- Demo: https://dolibarr.kreativitat.com
 
 ## Rechtlicher Hinweis
 
