@@ -55,24 +55,25 @@ class ProductHierarchyTree
     public static function getCompletePage($productId)
     {
         global $db, $langs, $conf;
+        $langs->loadLangs(array('kreaproducts@kreaproducts', 'products', 'other'));
 
         try {
             self::initializeProcessing($productId);
             
             // Enhanced input validation
             if (!self::validateInputs($productId)) {
-                return self::generateErrorOutput("Invalid product ID provided");
+                return self::generateErrorOutput($langs->trans('KreapInvalidProductIdProvided'));
             }
 
             // Build enhanced BFS tree with error handling
             if (!self::buildEnhancedMapBFS($productId)) {
-                return self::generateErrorOutput("Failed to build product hierarchy");
+                return self::generateErrorOutput($langs->trans('KreapBuildHierarchyFailed'));
             }
 
             // Load and validate top-level product
             $prod = self::loadAndValidateProduct($productId);
             if (!$prod) {
-                return self::generateErrorOutput("Product #$productId not found or invalid");
+                return self::generateErrorOutput($langs->trans('KreapProductNotFound', $productId));
             }
 
             // Start output buffering with error handling
@@ -98,7 +99,7 @@ class ProductHierarchyTree
         } catch (Exception $e) {
             self::addError("Page generation failed: " . $e->getMessage());
             dol_syslog(__METHOD__ . " Error: " . $e->getMessage(), LOG_ERR);
-            return self::generateErrorOutput("An error occurred while generating the page");
+            return self::generateErrorOutput($langs->trans('KreapPageGenerationError'));
         }
     }
 
@@ -681,8 +682,8 @@ class ProductHierarchyTree
             $nbChildren = $lp ? count($lp->children) : 0;
             $nbParents = $lp ? count($lp->parents) : 0;
             
-            print '<tr><td class="titlefield">Número de produtos que compõem este kit</td><td colspan="3">' . $nbChildren . '</td></tr>';
-            print '<tr><td class="titlefield">Número de produtos de embalagem fonte</td><td colspan="3">' . $nbParents . '</td></tr>';
+            print '<tr><td class="titlefield">' . $langs->trans('KreapKitChildCount') . '</td><td colspan="3">' . $nbChildren . '</td></tr>';
+            print '<tr><td class="titlefield">' . $langs->trans('KreapSourcePackageCount') . '</td><td colspan="3">' . $nbParents . '</td></tr>';
             print '</table>';
             print '</div>';
             print '<div class="clearboth"></div>';
@@ -690,7 +691,7 @@ class ProductHierarchyTree
             
         } catch (Exception $e) {
             self::addError("Failed to generate header section: " . $e->getMessage());
-            print '<p style="color:red;">Error generating header section.</p>';
+            print '<p style="color:red;">' . $langs->trans('KreapErrorHeaderSection') . '</p>';
         }
     }
 
@@ -713,7 +714,7 @@ class ProductHierarchyTree
 				return;
 			}
 
-			print '<p><strong>Lista de produtos/serviços que são componentes deste kit</strong></p>';
+			print '<p><strong>' . $langs->trans('KreapKitComponentsList') . '</strong></p>';
 			print '<table class="noborder" width="100%">';
 			
 			self::printChildParentTableHead($langs);
@@ -731,7 +732,7 @@ class ProductHierarchyTree
             
         } catch (Exception $e) {
             self::addError("Failed to generate children section: " . $e->getMessage());
-            print '<p style="color:red;">Error generating children section.</p>';
+            print '<p style="color:red;">' . $langs->trans('KreapErrorChildrenSection') . '</p>';
         }
     }
 
@@ -741,7 +742,7 @@ class ProductHierarchyTree
     private static function generateParentsSection($productId, $langs)
     {
         try {
-            print '<p><strong>Lista de kits com este produto como componente</strong></p>';
+            print '<p><strong>' . $langs->trans('KreapKitParentsList') . '</strong></p>';
             print '<table class="noborder" width="100%">';
             
             self::printChildParentTableHead($langs);
@@ -759,7 +760,7 @@ class ProductHierarchyTree
             
         } catch (Exception $e) {
             self::addError("Failed to generate parents section: " . $e->getMessage());
-            print '<p style="color:red;">Error generating parents section.</p>';
+            print '<p style="color:red;">' . $langs->trans('KreapErrorParentsSection') . '</p>';
         }
     }
 
@@ -774,15 +775,15 @@ class ProductHierarchyTree
             print '<tr class="liste_titre">';
             print '<td width="10%">' . $langs->trans("Reference") . '</td>';
             print '<td width="50%">' . $langs->trans("Label") . '</td>';
-            print '<td width="20%">Qty</td>';
-            print '<td width="20%">Tipo</td>';
-            print '<td width="10%">CostPrice</td>';
-            print '<td width="10%">Subtotal</td>';
+            print '<td width="20%">' . $langs->trans('Qty') . '</td>';
+            print '<td width="20%">' . $langs->trans('Type') . '</td>';
+            print '<td width="10%">' . $langs->trans('CostPrice') . '</td>';
+            print '<td width="10%">' . $langs->trans('SubTotal') . '</td>';
             print '</tr>';
 
             $lp = self::getLocalProduct($productId);
             if (!$lp) {
-                print '<tr><td colspan="6">No product data available</td></tr>';
+                print '<tr><td colspan="6">' . $langs->trans('KreapNoProductData') . '</td></tr>';
                 print '</table>';
                 return;
             }
@@ -805,7 +806,7 @@ class ProductHierarchyTree
             
         } catch (Exception $e) {
             self::addError("Failed to generate technical sheet: " . $e->getMessage());
-            print '<p style="color:red;">Error generating technical sheet.</p>';
+            print '<p style="color:red;">' . $langs->trans('KreapErrorTechnicalSheet') . '</p>';
         }
     }
 
@@ -922,7 +923,7 @@ class ProductHierarchyTree
             $assoc = self::buildAssociationInfo($qty, $lp);
 
             // Determine type
-            $type = (!empty($lp->children)) ? 'Ficha Técnica' : '';
+            $type = (!empty($lp->children)) ? $langs->trans('KreapTechnicalSheetType') : '';
             
             // Format price
             $priceStr = self::formatPrice($lp->buyprice, $conf);
@@ -1089,10 +1090,13 @@ class ProductHierarchyTree
      */
     private static function compareIconEnhanced($val1, $val2)
     {
+        global $langs;
         if (abs($val1 - $val2) < self::PRICE_COMPARISON_DELTA) {
-            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/tick.png" alt="tick" title="Values match">';
+            $matchLabel = $langs->trans('KreapValuesMatch');
+            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/tick.png" alt="' . dol_escape_htmltag($matchLabel) . '" title="' . dol_escape_htmltag($matchLabel) . '">';
         } else {
-            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/error.png" alt="error" title="Values differ">';
+            $diffLabel = $langs->trans('KreapValuesDiffer');
+            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/error.png" alt="' . dol_escape_htmltag($diffLabel) . '" title="' . dol_escape_htmltag($diffLabel) . '">';
         }
     }
 

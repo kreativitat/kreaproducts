@@ -58,7 +58,7 @@ if (isModEnabled('barcode')) {
 	dol_include_once('/core/class/html.formbarcode.class.php');
 }
 // Load translation files required by the page
-$langs->loadLangs(array('products', 'suppliers', 'bills', 'margins', 'stocks'));
+$langs->loadLangs(array('products', 'suppliers', 'bills', 'margins', 'stocks', 'other', 'kreaproducts@kreaproducts'));
 
 $id = GETPOST('id', 'int');
 $ref = GETPOST('ref', 'alpha');
@@ -465,7 +465,7 @@ if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
 		ProductHierarchy::updateProductAttributes($object->id, $user);
 		// Also propagate down dismantle BOM children so their nested cost trees are refreshed
 		kreaUpdateDismantleBomChildren($object->id, $db, $user);
-		setEventMessages("Peços de custo actualizados!", null, 'mesgs');
+		setEventMessages($langs->trans('KreapCostPricesUpdated'), null, 'mesgs');
 		header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
 		exit;
 	}
@@ -579,7 +579,7 @@ if ($id > 0 || $ref) {
 					print '<form name="updateBOMPriceForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block;">';
 					print '<input type="hidden" name="token" value="' . newToken() . '">';
 					print '<input type="hidden" name="action" value="updateBOMPrice">';
-					print '<input type="submit" class="button" value="Atualizar Preço BOM" title="Atualizar preço baseado na BOM com compras mais recentes">';
+					print '<input type="submit" class="button" value="' . $langs->trans('KreapUpdateBomPrice') . '" title="' . dol_escape_htmltag($langs->trans('KreapUpdateBomPriceTitle')) . '">';
 					print '</form>';
 				}
 			}
@@ -1520,7 +1520,7 @@ LIMIT 10";
 						}
 					}
 
-					print_barre_liste("Alterações de preço", $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
+					print_barre_liste($langs->trans('KreapPriceChanges'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
 
 					// Suppliers list title - krea lista de fornec
 					print '<div class="div-table-responsive">';
@@ -1529,10 +1529,10 @@ LIMIT 10";
 					$param = "&amp;action=latest";
 
 					print '<tr class="liste_titre">';
-					print_liste_field_titre("Data de Modificação", $_SERVER["PHP_SELF"], '', '', $param, $sortfield, $sortorder);
-					print_liste_field_titre("Fornecedor", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("SKU", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("Preço", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
+					print_liste_field_titre($langs->trans('KreapLabelModifiedDate'), $_SERVER["PHP_SELF"], '', '', $param, $sortfield, $sortorder);
+					print_liste_field_titre($langs->trans('KreapLabelSupplier'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelSku'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelPrice'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
 					print "</tr>\n";
 
 
@@ -1593,7 +1593,7 @@ LIMIT 10";
 						}
 					}
 
-					print_barre_liste("Compras", $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
+					print_barre_liste($langs->trans('KreapPurchases'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
 
 
 					// Suppliers list title - krea lista de fornec
@@ -1603,14 +1603,14 @@ LIMIT 10";
 					$param = "&amp;action=latest";
 
 					print '<tr class="liste_titre">';
-					print_liste_field_titre("Loja", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("Data Compra", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder);
-					print_liste_field_titre("Fornecedores", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("Factura", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("SKU", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
-					print_liste_field_titre("Quantidade", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
-					print_liste_field_titre("IVA", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
-					print_liste_field_titre("Preço", $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
+					print_liste_field_titre($langs->trans('KreapLabelStore'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelPurchaseDate'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder);
+					print_liste_field_titre($langs->trans('KreapLabelSuppliers'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelInvoice'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelSku'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'left ');
+					print_liste_field_titre($langs->trans('KreapLabelQuantity'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
+					print_liste_field_titre($langs->trans('KreapLabelVat'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
+					print_liste_field_titre($langs->trans('KreapLabelPrice'), $_SERVER["PHP_SELF"], '', '', $param, '', $sortfield, $sortorder, 'right ');
 					print "</tr>\n";
 
 

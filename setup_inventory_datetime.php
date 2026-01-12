@@ -19,43 +19,45 @@ if (!$res) {
 	die("Include of main fails");
 }
 
-echo "<h1>Inventory date_inventory DATETIME setup</h1>\n";
+$langs->loadLangs(array('kreaproducts@kreaproducts', 'other'));
+
+echo "<h1>" . $langs->trans('KreapInventoryDatetimeSetupTitle') . "</h1>\n";
 
 // Check if user has admin rights
 if (empty($user->admin)) {
-	echo "<p style='color:red;'><strong>Error: Admin rights required!</strong></p>";
+	echo "<p style='color:red;'><strong>" . $langs->trans('KreapInventoryDatetimeAdminRequired') . "</strong></p>";
 	exit;
 }
 
 $table = MAIN_DB_PREFIX . "inventory";
 
-echo "<h2>1. Current Column Definition</h2>\n";
+echo "<h2>" . $langs->trans('KreapInventoryDatetimeCurrentColumn') . "</h2>\n";
 $sql = "SHOW COLUMNS FROM " . $table . " LIKE 'date_inventory'";
 $resql = $db->query($sql);
 if (!$resql) {
-	echo "<p style='color:red;'>Error: " . $db->lasterror() . "</p>";
+	echo "<p style='color:red;'>" . $langs->trans('KreapInventoryDatetimeError', dol_escape_htmltag($db->lasterror())) . "</p>";
 	exit;
 }
 
 $col = $db->fetch_object($resql);
 if (!$col) {
-	echo "<p style='color:red;'>Column date_inventory not found on " . $table . "</p>";
+	echo "<p style='color:red;'>" . $langs->trans('KreapInventoryDatetimeColumnNotFound', dol_escape_htmltag($table)) . "</p>";
 	exit;
 }
-echo "<p>date_inventory type: <strong>" . $col->Type . "</strong></p>";
+echo "<p>" . $langs->trans('KreapInventoryDatetimeTypeLabel', '<strong>' . dol_escape_htmltag($col->Type) . '</strong>') . "</p>";
 
-echo "<h2>2. Convert to DATETIME (if needed)</h2>\n";
+echo "<h2>" . $langs->trans('KreapInventoryDatetimeConvert') . "</h2>\n";
 if (stripos($col->Type, 'datetime') !== false) {
-	echo "<p style='color:green;'>✓ Column is already DATETIME</p>";
+	echo "<p style='color:green;'>✓ " . $langs->trans('KreapInventoryDatetimeAlready') . "</p>";
 } else {
 	$sql = "ALTER TABLE " . $table . " MODIFY date_inventory DATETIME DEFAULT NULL";
 	$resql = $db->query($sql);
 	if ($resql) {
-		echo "<p style='color:green;'>✓ Column converted to DATETIME</p>";
+		echo "<p style='color:green;'>✓ " . $langs->trans('KreapInventoryDatetimeConverted') . "</p>";
 	} else {
-		echo "<p style='color:red;'>✗ Failed to alter column: " . $db->lasterror() . "</p>";
+		echo "<p style='color:red;'>✗ " . $langs->trans('KreapInventoryDatetimeConvertFailed', dol_escape_htmltag($db->lasterror())) . "</p>";
 	}
 }
 
-echo "<h2>3. Done</h2>\n";
-echo "<p>New inventories can now store time in date_inventory.</p>";
+echo "<h2>" . $langs->trans('KreapInventoryDatetimeDone') . "</h2>\n";
+echo "<p>" . $langs->trans('KreapInventoryDatetimeDoneText') . "</p>";

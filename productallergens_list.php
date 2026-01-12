@@ -216,7 +216,7 @@ if ($user->socid > 0) {
 //$isdraft = (($object->status == $object::STATUS_DRAFT) ? 1 : 0);
 //restrictedArea($user, $object->module, 0, $object->table_element, $object->element, 'fk_soc', 'rowid', $isdraft);
 if (!isModEnabled("kreaproducts")) {
-	accessforbidden('Module kreaproducts not enabled');
+	accessforbidden($langs->trans('KreapModuleNotEnabled'));
 }
 if (!$permissiontoread) {
 	accessforbidden();

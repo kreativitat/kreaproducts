@@ -125,8 +125,8 @@ $arrayfields = array(
 	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 4),
 	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 5),
 	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 6),
-	'p.tobuy' => array('label' => 'Compra', 'checked' => 1, 'position' => 7),
-	'p.tosell' => array('label' => 'Venda', 'checked' => 1, 'position' => 8),
+	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 7),
+	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 8),
 );
 
 // SQL build
@@ -213,6 +213,7 @@ $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
 ), '', '&', PHP_QUERY_RFC3986);
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
+$toggleShortLabel = $show_hidden ? $langs->trans('KreapHideHiddenShort') : $langs->trans('KreapShowHiddenShort');
 
 // Filter on categories (header area before list)
 $moreforfilter = '';
@@ -273,7 +274,7 @@ if (!empty($moreforfilter)) {
 	print '<td class="left">' . $moreforfilter . '</td>';
 	print '<td class="right" style="width:1%;">';
 	print '<div class="tabBarInsideButAction valignmiddle" style="background: transparent; border: none !important; box-shadow: none; padding: 0; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">';
-	print '<span class="valignmiddle" style="color: rgb(96, 96, 111); white-space: nowrap;">Mostrar ocultos</span>';
+	print '<span class="valignmiddle" style="color: rgb(96, 96, 111); white-space: nowrap;">' . $toggleShortLabel . '</span>';
 	print '<a class="btnTitle" style="background: transparent; color: rgb(96, 96, 111) !important; border: none !important; box-shadow: none; outline: none; padding: 0;" href="' . dol_escape_htmltag($toggleUrl) . '" title="' . dol_escape_htmltag($toggleLabel) . '">';
 	print '<span class="fa fa-toggle-' . ($show_hidden ? 'on' : 'off') . ' valignmiddle btnTitle-icon"></span>';
 	print '</a>';

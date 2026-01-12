@@ -123,17 +123,17 @@ $supportEmail = 'mail@kreativitat.com';
 print '<div class="fichecenter" style="margin-top: 18px; display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">';
 
 print '<div style="flex:1 1 260px; max-width:320px; text-align:center;">';
-print '<img src="' . $logoUrl . '" alt="KreaProducts" style="max-width: 260px; height: auto;">';
+print '<img src="' . $logoUrl . '" alt="' . dol_escape_htmltag($moduleName) . '" style="max-width: 260px; height: auto;">';
 print '</div>';
 
 print '<div style="flex:2 1 340px; min-width:320px;">';
 print '<table class="border centpercent tableforfield">';
-print '<tr><td class="titlefield">Módulo</td><td>' . dol_escape_htmltag($moduleName) . '</td></tr>';
-print '<tr><td class="titlefield">Versão</td><td>' . dol_escape_htmltag($moduleVersion) . '</td></tr>';
-print '<tr><td class="titlefield">Editor</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorName) . '</a></td></tr>';
-print '<tr><td class="titlefield">Licença</td><td>GPL v3 ou licença proprietária (contacte-nos)</td></tr>';
-print '<tr><td class="titlefield">Suporte</td><td><a href="mailto:' . dol_escape_htmltag($supportEmail) . '">' . dol_escape_htmltag($supportEmail) . '</a></td></tr>';
-print '<tr><td class="titlefield">Website</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorUrl) . '</a></td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutModuleLabel') . '</td><td>' . dol_escape_htmltag($moduleName) . '</td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutVersionLabel') . '</td><td>' . dol_escape_htmltag($moduleVersion) . '</td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutEditorLabel') . '</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorName) . '</a></td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutLicenseLabel') . '</td><td>' . $langs->trans('KreapAboutLicenseValue') . '</td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutSupportLabel') . '</td><td><a href="mailto:' . dol_escape_htmltag($supportEmail) . '">' . dol_escape_htmltag($supportEmail) . '</a></td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutWebsiteLabel') . '</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorUrl) . '</a></td></tr>';
 print '</table>';
 print '</div>';
 

@@ -164,7 +164,7 @@ $upload_dir = $conf->kreaproducts->multidir_output[isset($object->entity) ? $obj
 //$isdraft = (isset($object->status) && ($object->status == $object::STATUS_DRAFT) ? 1 : 0);
 //restrictedArea($user, $object->module, $object, $object->table_element, $object->element, 'fk_soc', 'rowid', $isdraft);
 if (!isModEnabled($object->module)) {
-	accessforbidden("Module ".$object->module." not enabled");
+	accessforbidden($langs->trans('KreapModuleNotEnabledName', $object->module));
 }
 if (!$permissiontoread) {
 	accessforbidden();

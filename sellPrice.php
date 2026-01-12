@@ -59,7 +59,7 @@ if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES)) {
 }
 
 // Load translation files required by the page
-$langs->loadLangs(array('products', 'bills', 'companies', 'other'));
+$langs->loadLangs(array('products', 'bills', 'companies', 'other', 'kreaproducts@kreaproducts'));
 
 $error = 0;
 $errors = array();
@@ -1187,11 +1187,11 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print ' <a class="editfielda" href="' . $_SERVER["PHP_SELF"] . '?action=editlabelsellingprice&token=' . newToken() . '&pricelevel=' . $i . '&id=' . $object->id . '">' . img_edit($langs->trans('EditSellingPriceLabel'), 0) . '</a>';
 		}
 		print '</td>';
-		print '<td style="text-align: right">' . "Preço Venda CIVA" . '</td>';
-		print '<td style="text-align: right">' . "Preço Venda SIVA" . '</td>';
-		print '<td style="text-align: right">' . "Preço Compra SIVA" . '</td>';
-		print '<td style="text-align: right">' . "Margem" . '</td>';
-		print '<td style="text-align: right">' . "Preço Min. SIVA" . '</td>';
+		print '<td style="text-align: right">' . $langs->trans('KreapSellPriceVatIncluded') . '</td>';
+		print '<td style="text-align: right">' . $langs->trans('KreapSellPriceVatExcluded') . '</td>';
+		print '<td style="text-align: right">' . $langs->trans('KreapBuyPriceVatExcluded') . '</td>';
+		print '<td style="text-align: right">' . $langs->trans('KreapMargin') . '</td>';
+		print '<td style="text-align: right">' . $langs->trans('KreapMinPriceVatExcluded') . '</td>';
 		print '</tr>';
 
 		for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
@@ -1218,11 +1218,11 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '</td>';
 
 			// Krea Multipreços
-			print '<td class="right"><span class="amount">' . price($object->multiprices_ttc[$i]) . ' ' . "IVA incluido" . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->multiprices[$i]) . ' ' . "IVA excluido" . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->cost_price) . ' ' . "IVA excluido" . '</td>';
+			print '<td class="right"><span class="amount">' . price($object->multiprices_ttc[$i]) . ' ' . $langs->trans('KreapVatIncluded') . '</td>';
+			print '<td class="right"><span class="amount">' . price($object->multiprices[$i]) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
+			print '<td class="right"><span class="amount">' . price($object->cost_price) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
 			print '<td class="right"><span class="amount">' . (($object->cost_price == 0 || $object->multiprices[$i] == 0) ? " 0%" : (round(($object->multiprices[$i] / $object->cost_price - 1) * 100, 2) . "%")) . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->multiprices_min[$i]) . ' ' . "IVA excluido" . '</td>';
+			print '<td class="right"><span class="amount">' . price($object->multiprices_min[$i]) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
 			print '</tr>';
 		}
 	}
@@ -1256,18 +1256,18 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 
 		// krea Preço IVA incluido
 		print '<tr class="field_selling_price"><td>' . $langs->trans("SellingPrice") . '</td><td>';
-		print price($object->price_ttc) . ' ' . "IVA incluido";
+		print price($object->price_ttc) . ' ' . $langs->trans('KreapVatIncluded');
 
 		// krea Preço IVA excluido
 		print '<tr class="field_selling_price"><td></td><td>';
-		print price($object->price) . ' ' . "IVA excluido";
+		print price($object->price) . ' ' . $langs->trans('KreapVatExcluded');
 
 		// krea Preço de compra IVA excluido
-		print '<tr class="field_selling_price"><td>Preço de compra<td>';
-		print price($object->cost_price) . ' ' . "IVA excluido";
+		print '<tr class="field_selling_price"><td>' . $langs->trans('KreapPurchasePrice') . '<td>';
+		print price($object->cost_price) . ' ' . $langs->trans('KreapVatExcluded');
 
 		// krea Margem IVA excluido
-		print '<tr class="field_selling_price"><td>Margem<td>';
+		print '<tr class="field_selling_price"><td>' . $langs->trans('KreapMargin') . '<td>';
 		print ($object->cost_price == 0) ? "0%" : round(($object->price / $object->cost_price - 1) * 100, 2) . "%";
 	} else {
 		// Price
@@ -1294,9 +1294,9 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 	// Price minimum
 	print '<tr class="field_min_price"><td>' . $langs->trans("MinPrice") . '</td><td>';
 	if ($object->price_base_type == 'TTC') {
-		print price($object->price_min_ttc) . ' ' . "IVA incluido";
+		print price($object->price_min_ttc) . ' ' . $langs->trans('KreapVatIncluded');
 	} else {
-		print price($object->price_min) . ' ' . "IVA incluido";
+		print price($object->price_min) . ' ' . $langs->trans('KreapVatIncluded');
 		if (!empty($conf->global->PRODUCT_DISPLAY_VAT_INCL_PRICES) && !empty($object->price_min_ttc)) {
 			print '<i class="opacitymedium"> - ' . price($object->price_min_ttc) . ' ' . $langs->trans('TTC') . '</i>';
 		}
@@ -1722,7 +1722,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		print '<td class="center">' . $langs->trans("CalculatePriceOnCost") . '</td>';
 		print '<td class="center">' . $langs->trans("MinPrice") . '</td>';
 		if (!empty($conf->dolizsynch->enabled)) {
-			print '<td class="center" title="Preço Variável (Zone Soft)">Var</td>';
+			print '<td class="center" title="' . dol_escape_htmltag($langs->trans('KreapVariablePriceLabel')) . '">' . $langs->trans('KreapVariablePriceAbbr') . '</td>';
 		}
 		if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 			print '<td></td>';
@@ -1929,7 +1929,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 				if ($isVariablePrice) {
 					print ' checked';
 				}
-				print ' title="Preço Variável (Zone Soft) - Marque para definir preço variável no ZS BMS"';
+				print ' title="' . dol_escape_htmltag($langs->trans('KreapVariablePriceTooltip')) . '"';
 				print ' data-price-level="' . $i . '">';
 				print '<label for="variable_price_' . $i . '"></label>';
 				print '</td>';

@@ -56,12 +56,13 @@ if (!$res) {
 	die("Include of main fails");
 }
 dol_include_once('/kreaproducts/class/nutritional.class.php');
+$langs->loadLangs(array('other', 'kreaproducts@kreaproducts'));
 
 $token = GETPOST('token', 'alpha');
 if (empty($token) || !hash_equals(currentToken(), $token)) {
 	top_httphead('application/json');
 	http_response_code(403);
-	print json_encode(['status' => 'error', 'message' => 'Invalid CSRF token']);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KreapInvalidCsrfToken')]);
 	$db->close();
 	exit;
 }
@@ -102,14 +103,14 @@ $allowedFields = array(
 
 if ($objectId <= 0) {
 	http_response_code(400);
-	print json_encode(['status' => 'error', 'message' => 'Invalid object id']);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KreapInvalidObjectId')]);
 	$db->close();
 	exit;
 }
 
 if (empty($field) || !isset($allowedFields[$field])) {
 	http_response_code(400);
-	print json_encode(['status' => 'error', 'message' => 'Invalid field']);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KreapInvalidField')]);
 	$db->close();
 	exit;
 }
@@ -121,7 +122,7 @@ if ($valueRaw !== '') {
 		case 'int':
 			if (!preg_match('/^\d+$/', $valueRaw)) {
 				http_response_code(400);
-				print json_encode(['status' => 'error', 'message' => 'Invalid integer value']);
+				print json_encode(['status' => 'error', 'message' => $langs->trans('KreapInvalidIntegerValue')]);
 				$db->close();
 				exit;
 			}
@@ -131,7 +132,7 @@ if ($valueRaw !== '') {
 			$value = price2num($valueRaw, 'MU');
 			if (!is_numeric($value)) {
 				http_response_code(400);
-				print json_encode(['status' => 'error', 'message' => 'Invalid numeric value']);
+				print json_encode(['status' => 'error', 'message' => $langs->trans('KreapInvalidNumericValue')]);
 				$db->close();
 				exit;
 			}
@@ -146,7 +147,7 @@ if ($valueRaw !== '') {
 $object->fetch($objectId);
 if ($object->id <= 0) {
 	http_response_code(404);
-	print json_encode(['status' => 'error', 'message' => 'Object not found']);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KreapObjectNotFound')]);
 	$db->close();
 	exit;
 }
@@ -155,9 +156,9 @@ $object->$field = $value;
 $result = $object->update($user);
 
 if ($result < 0) {
-	print json_encode(['status' => 'error', 'message' => 'Error updating ' . $field]);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KreapErrorUpdatingField', $field)]);
 } else {
-	print json_encode(['status' => 'success', 'message' => $field . ' updated successfully']);
+	print json_encode(['status' => 'success', 'message' => $langs->trans('KreapFieldUpdated', $field)]);
 }
 
 $db->close();

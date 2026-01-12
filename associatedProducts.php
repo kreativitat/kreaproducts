@@ -1103,7 +1103,7 @@ if ($id > 0 || !empty($ref)) {
 								. '<div class="zs-level-badge">'
 								. '<div class="zs-badge-title">' . $badgeTitle . '</div>'
 								. '</div>'
-								. ($isRequired ? '<div class="zs-req-pill">Obrigatório</div>' : '')
+								. ($isRequired ? '<div class="zs-req-pill">' . dol_escape_htmltag($langs->trans('KreapRequired')) . '</div>' : '')
 								. '</div>'
 								. $productsHtml
 								. '</div>';
@@ -1184,7 +1184,7 @@ if ($id > 0 || !empty($ref)) {
 			print '<td style="min-width:320px;">' . $langs->trans('Label') . '</td>';
 			// ZS Menu column removed in list view
 			// Ingredient cost (single column)
-			print '<td class="right" style="width:140px;">' . $langs->trans('Custo do ingrediente') . '</td>';
+			print '<td class="right" style="width:140px;">' . $langs->trans('KreapIngredientCost') . '</td>';
 			// Stock
 			if (isModEnabled('stock')) {
 				print '<td class="right" style="width:80px;">' . $langs->trans('Stock') . '</td>';
@@ -1196,7 +1196,7 @@ if ($id > 0 || !empty($ref)) {
 			// Qty in kit
 			print '<td class="center" style="width:120px;">' . $langs->trans('Qty') . '</td>';
 			// Valor por componente
-			print '<td class="right" style="width: 200px;">Custo por componente</td>';
+			print '<td class="right" style="width: 200px;">' . $langs->trans('KreapComponentCost') . '</td>';
 			// Stoc inc/dev
 			print '<td class="center">' . $langs->trans('ComposedProductIncDecStock') . '</td>';
 			// Move
@@ -1519,7 +1519,7 @@ if ($id > 0 || !empty($ref)) {
 		$testPrice = ($baseCost > 0) ? $baseCost * (1 + $testMarkupPct) : 0;
 		$testMargin = ($testPrice > 0) ? (($testPrice - $baseCost) / $testPrice) : 0;
 		$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
-		$priceBaseLabel = ($baseType === 'TTC') ? 'C/IVA' : 'S/IVA';
+		$priceBaseLabel = ($baseType === 'TTC') ? $langs->trans('KreapVatInclShort') : $langs->trans('KreapVatExclShort');
 
 		$fmtPct = function ($val) {
 			return number_format($val * 100, 2, '.', '') . ' %';
@@ -1529,7 +1529,7 @@ if ($id > 0 || !empty($ref)) {
 		$isSellable = (isset($object->status) && (int) $object->status === 1);
 		if (!isModEnabled('dolizsynch') && $isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
 			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
-			print load_fiche_titre('Métricas e Margens', '', '');
+			print load_fiche_titre($langs->trans('KreapMetricsAndMargins'), '', '');
 			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
 			print '<input type="hidden" name="token" value="' . newToken() . '">';
 			print '<input type="hidden" name="id" value="' . (int) $id . '">';
@@ -1542,14 +1542,14 @@ if ($id > 0 || !empty($ref)) {
 			print '<col style="width:20%; white-space: nowrap; text-align:right;">';
 			print '</colgroup>';
 			print '<tr class="liste_titre">';
-			print '<td>Métrica</td><td>Fórmula</td><td class="right">Resultado</td>';
+			print '<td>' . $langs->trans('KreapMetric') . '</td><td>' . $langs->trans('KreapFormula') . '</td><td class="right">' . $langs->trans('KreapResult') . '</td>';
 			print '</tr>';
 			if ($isMultiPrice) {
-				print '<tr><td>Nível de preço (quando definido)</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
+				print '<tr><td>' . $langs->trans('KreapPriceLevelWhenDefined') . '</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
 				$maxLevel = ($multiPriceLimit > 0) ? $multiPriceLimit : count($priceLevels);
 				for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
 					$labelKey = "PRODUIT_MULTIPRICES_LABEL" . $lvl;
-					$label = !empty($conf->global->$labelKey) ? $conf->global->$labelKey : 'Nível ' . $lvl;
+					$label = !empty($conf->global->$labelKey) ? $conf->global->$labelKey : $langs->trans('KreapLevelLabel', $lvl);
 					if (!isset($priceLevels[$lvl])) continue;
 					$pval = $priceLevels[$lvl];
 					$sel = ($lvl == $selectedPriceLevel) ? ' selected' : '';
@@ -1557,23 +1557,23 @@ if ($id > 0 || !empty($ref)) {
 				}
 				print '</select></td></tr>';
 			} else {
-				print '<tr><td>Preço</td><td>Preço atual</td><td class="right"><span id="krea-price-val">' . price($basePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+				print '<tr><td>' . $langs->trans('KreapLabelPrice') . '</td><td>' . $langs->trans('KreapCurrentPrice') . '</td><td class="right"><span id="krea-price-val">' . price($basePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
 			}
-			print '<tr><td>Custo do produto (S/IVA)</td><td>Custo atual</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			print '<tr><td>Margem de custo</td><td>Custo ÷ Preço</td><td class="right"><span id="krea-cost-margin">' . $fmtPct($costMargin) . '</span></td></tr>';
-			print '<tr><td>Lucro bruto</td><td>Preço − Custo</td><td class="right"><span id="krea-gross-profit">' . price($profit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapProductCostVatExcluded') . '</td><td>' . $langs->trans('KreapCurrentCost') . '</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapCostMargin') . '</td><td>' . $langs->trans('KreapCostDivPrice') . '</td><td class="right"><span id="krea-cost-margin">' . $fmtPct($costMargin) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapGrossProfit') . '</td><td>' . $langs->trans('KreapPriceMinusCost') . '</td><td class="right"><span id="krea-gross-profit">' . price($profit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
 			$vatRateDisplay = ($object->tva_tx ? (float)$object->tva_tx : 0);
 			$vatMultDisplay = number_format(1 + ($vatRateDisplay / 100), 3, '.', '');
-			print '<tr><td>Preço final (C/IVA)</td><td>Preço (C/IVA ' . $vatRateDisplay . '%)</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
-			print '<tr><td>Margem bruta</td><td>Lucro ÷ Preço</td><td class="right"><span id="krea-gross-margin">' . $fmtPct($grossMargin) . '</span></td></tr>';
-			print '<tr><td>Markup real</td><td>Lucro ÷ Custo</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
-			print '<tr><td>Markup de teste</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> (ex: 3 = 300%)</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
-			print '<tr><td>Margem bruta de teste</td><td>(Preço teste − Custo) ÷ Preço teste</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
-			print '<tr><td>Preço estimado (' . $priceBaseLabel . ')</td><td>Custo × (1 + Markup teste)</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			print '<tr><td>Atualizar preço para (C/IVA)</td><td><input type="text" id="krea-test-price-vat-input" class="right width75" placeholder="Informe o preço final com IVA"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapFinalPriceVat') . '</td><td>' . $langs->trans('KreapPriceVat', $vatRateDisplay) . '</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapGrossMargin') . '</td><td>' . $langs->trans('KreapProfitDivPrice') . '</td><td class="right"><span id="krea-gross-margin">' . $fmtPct($grossMargin) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapMarkupReal') . '</td><td>' . $langs->trans('KreapProfitDivCost') . '</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapTestMarkup') . '</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> ' . $langs->trans('KreapTestMarkupHint') . '</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapTestGrossMargin') . '</td><td>' . $langs->trans('KreapTestMarginFormula') . '</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapEstimatedPrice', $priceBaseLabel) . '</td><td>' . $langs->trans('KreapCostTimesOnePlusTestMarkup') . '</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+			print '<tr><td>' . $langs->trans('KreapUpdatePriceToVat') . '</td><td><input type="text" id="krea-test-price-vat-input" class="right width75" placeholder="' . dol_escape_htmltag($langs->trans('KreapFinalPriceVatPlaceholder')) . '"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
 			print '</table>';
 			print '<div class="center" style="margin-top: 6px;">';
-			print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
+			print '<input type="submit" class="button button-save" value="' . $langs->trans('KreapUpdateProductPrice') . '">';
 			print '</div>';
 			print '</form>';
 			print '</div>'; // wrapper

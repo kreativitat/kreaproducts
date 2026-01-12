@@ -1015,7 +1015,7 @@ if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
 	//krea titulo da diferença
 	print '<th class="liste_titre">&nbsp;</th>';
 	print '<th class="right liste_titre">';
-	print $showexpected ? $form->textwithpicto($langs->trans("Diferença"), "") : '&nbsp;';
+	print $showexpected ? $form->textwithpicto($langs->trans("KreapDifference"), "") : '&nbsp;';
 	print '</th>';
 }
 if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STATUS_VALIDATED) {

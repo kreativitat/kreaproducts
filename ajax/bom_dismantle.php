@@ -61,12 +61,13 @@ if (!$res) {
 }
 
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
+$langs->loadLangs(array('other', 'kreaproducts@kreaproducts'));
 
 $token = GETPOST('token', 'alpha');
 if (!empty($token) && !hash_equals(currentToken(), $token)) {
 	top_httphead('application/json');
 	http_response_code(403);
-	print json_encode(array('status' => 'error', 'message' => 'Invalid CSRF token'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapInvalidCsrfToken')));
 	$db->close();
 	exit;
 }
@@ -75,7 +76,7 @@ $bomId = GETPOSTINT('id');
 if ($bomId <= 0) {
 	top_httphead('application/json');
 	http_response_code(400);
-	print json_encode(array('status' => 'error', 'message' => 'Invalid BOM id'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapInvalidBomId')));
 	$db->close();
 	exit;
 }
@@ -86,7 +87,7 @@ $result = $object->fetch($bomId);
 if ($result <= 0) {
 	top_httphead('application/json');
 	http_response_code(404);
-	print json_encode(array('status' => 'error', 'message' => 'BOM not found'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapBomNotFound')));
 	$db->close();
 	exit;
 }
@@ -118,7 +119,6 @@ if ($productId > 0) {
 	}
 }
 
-$langs->loadLangs(array('other', 'kreaproducts@kreaproducts'));
 $entityLabel = $langs->trans('Entity');
 $allEntitiesLabel = $langs->trans('AllEntities');
 $entityValue = ($entityId === 0)
