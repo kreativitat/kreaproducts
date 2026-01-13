@@ -49,7 +49,7 @@ require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrien
 require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllergenUpdater.class.php';
 
 // Load translation files required by the page
-$langs->loadLangs(array('bills', 'products', 'stocks', 'dolizsynch@dolizsynch', 'kreaproducts@kreaproducts'));
+$langs->loadLangs(array('bills', 'products', 'stocks', 'other', 'dolizsynch@dolizsynch', 'kreaproducts@kreaproducts'));
 
 if (!function_exists('kreaproducts_debug_log')) {
 	function kreaproducts_debug_log($message)
@@ -412,16 +412,46 @@ if ($action == 'save_kreaproducts_nutrition') {
 	}
 
 	// Prepare additional nutritional data from the POST values.
+	$normalizeDecimalInput = function ($value) {
+		if ($value === null) {
+			return null;
+		}
+		$value = trim((string) $value);
+		if ($value === '') {
+			return null;
+		}
+		$commaPos = strrpos($value, ',');
+		$dotPos = strrpos($value, '.');
+		if ($commaPos !== false && $dotPos !== false) {
+			if ($commaPos > $dotPos) {
+				$value = str_replace('.', '', $value);
+				$value = str_replace(',', '.', $value);
+			} else {
+				$value = str_replace(',', '', $value);
+			}
+		} elseif ($commaPos !== false) {
+			$value = str_replace(',', '.', $value);
+		}
+		$value = preg_replace('/[^0-9\.\-]/', '', $value);
+		if ($value === '' || $value === '-' || $value === '.' || $value === '-.') {
+			return null;
+		}
+		if (!is_numeric($value)) {
+			return null;
+		}
+		return (float) $value;
+	};
+
 	$updateData = [
-		'energy_kcal'   => (isset($_POST['nutritional_energy_kcal']) && is_numeric($_POST['nutritional_energy_kcal'])) ? (float) $_POST['nutritional_energy_kcal'] : null,
-		'energy_kj'     => (isset($_POST['nutritional_energy_kj']) && is_numeric($_POST['nutritional_energy_kj'])) ? (float) $_POST['nutritional_energy_kj'] : null,
-		'fat'           => (isset($_POST['nutritional_fat']) && is_numeric($_POST['nutritional_fat'])) ? (float) $_POST['nutritional_fat'] : null,
-		'saturates'     => (isset($_POST['nutritional_saturates']) && is_numeric($_POST['nutritional_saturates'])) ? (float) $_POST['nutritional_saturates'] : null,
-		'carbohydrates' => (isset($_POST['nutritional_carbohydrates']) && is_numeric($_POST['nutritional_carbohydrates'])) ? (float) $_POST['nutritional_carbohydrates'] : null,
-		'sugars'        => (isset($_POST['nutritional_sugars']) && is_numeric($_POST['nutritional_sugars'])) ? (float) $_POST['nutritional_sugars'] : null,
-		'protein'       => (isset($_POST['nutritional_protein']) && is_numeric($_POST['nutritional_protein'])) ? (float) $_POST['nutritional_protein'] : null,
-		'salt'          => (isset($_POST['nutritional_salt']) && is_numeric($_POST['nutritional_salt'])) ? (float) $_POST['nutritional_salt'] : null,
-		'fiber'         => (isset($_POST['nutritional_fiber']) && is_numeric($_POST['nutritional_fiber'])) ? (float) $_POST['nutritional_fiber'] : null,
+		'energy_kcal'   => $normalizeDecimalInput($_POST['nutritional_energy_kcal'] ?? null),
+		'energy_kj'     => $normalizeDecimalInput($_POST['nutritional_energy_kj'] ?? null),
+		'fat'           => $normalizeDecimalInput($_POST['nutritional_fat'] ?? null),
+		'saturates'     => $normalizeDecimalInput($_POST['nutritional_saturates'] ?? null),
+		'carbohydrates' => $normalizeDecimalInput($_POST['nutritional_carbohydrates'] ?? null),
+		'sugars'        => $normalizeDecimalInput($_POST['nutritional_sugars'] ?? null),
+		'protein'       => $normalizeDecimalInput($_POST['nutritional_protein'] ?? null),
+		'salt'          => $normalizeDecimalInput($_POST['nutritional_salt'] ?? null),
+		'fiber'         => $normalizeDecimalInput($_POST['nutritional_fiber'] ?? null),
 	];
 
 	// Build and execute the UPDATE SQL query.
@@ -662,6 +692,23 @@ if ($action === 'toggle_dismantle' && $usercancreate) {
 	$newValue = GETPOST('value', 'int') ? 1 : 0;
 
 	if (kreaproducts_has_bom_for_product($db, $object->id)) {
+		// Ensure the extrafield column exists before inserting.
+		$columnReady = false;
+		$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "kreap_dismantle");
+		if ($colRes) {
+			$columnReady = ($db->num_rows($colRes) > 0);
+			$db->free($colRes);
+		}
+		if (!$columnReady) {
+			require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+			$extrafields = new ExtraFields($db);
+			$field_name = "kreap_dismantle";
+			$field_label = $langs->trans("kreap_dismantle");
+			$field_help = $langs->trans("kreap_dismantle_help");
+			$extrafields->addExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+			$extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		}
+
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_dismantle) VALUES ("
 			. (int) $object->id . ", " . (int) $newValue . ") "
 			. "ON DUPLICATE KEY UPDATE kreap_dismantle = " . (int) $newValue;
@@ -1175,30 +1222,42 @@ if ($id > 0 || !empty($ref)) {
 			print '<input type="hidden" name="action" value="save_composed_product" />';
 			print '<input type="hidden" name="id" value="' . $id . '" />';
 			print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
+			$headerCellStyle = 'white-space: nowrap; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;';
+			$getShortLabel = function ($key, $fallback) use ($langs) {
+				$translated = $langs->trans($key);
+				return ($translated === $key) ? $fallback : $translated;
+			};
+			$headerPosLabel = $getShortLabel('KreapHeaderPosShort', 'Pos.');
+			$headerChildLabel = $getShortLabel('KreapHeaderChildShort', 'Ref.');
+			$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
+			$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
+			$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
+			$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
+			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
 			print '<tr class="liste_titre nodrag nodrop">';
 			// Rank
-			print '<td style="width:60px;">' . $langs->trans('Position') . '</td>';
+			print '<td style="width:60px; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
 			// Product ref
-			print '<td style="width:12%;">' . $langs->trans('ComposedProduct') . '</td>';
+			print '<td style="width:12%; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
 			// Product label
-			print '<td style="min-width:320px;">' . $langs->trans('Label') . '</td>';
+			print '<td style="min-width:320px; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
 			// ZS Menu column removed in list view
 			// Ingredient cost (single column)
-			print '<td class="right" style="width:140px;">' . $langs->trans('KreapIngredientCost') . '</td>';
+			print '<td class="right" style="width:140px; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
 			// Stock
 			if (isModEnabled('stock')) {
-				print '<td class="right" style="width:80px;">' . $langs->trans('Stock') . '</td>';
+				print '<td class="right" style="width:80px; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
 			}
 			// Hook fields
 			$parameters = array();
 			$reshook = $hookmanager->executeHooks('printFieldListTitle', $parameters);
 			print $hookmanager->resPrint;
 			// Qty in kit
-			print '<td class="center" style="width:120px;">' . $langs->trans('Qty') . '</td>';
+			print '<td class="center" style="width:120px; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
 			// Valor por componente
-			print '<td class="right" style="width: 200px;">' . $langs->trans('KreapComponentCost') . '</td>';
+			print '<td class="right" style="width:200px; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
 			// Stoc inc/dev
-			print '<td class="center">' . $langs->trans('ComposedProductIncDecStock') . '</td>';
+			print '<td class="center" style="' . $headerCellStyle . '">' . $headerParentStockLabel . '</td>';
 			// Move
 			print '<td class="linecolmove" style="width: 10px"></td>';
 			print '</tr>' . "\n";
@@ -1373,11 +1432,12 @@ if ($id > 0 || !empty($ref)) {
 			print '<input type="hidden" name="action" value="add_prod">';
 			print '<input type="hidden" name="id" value="' . $id . '">';
 			print '<table class="noborder centpercent">';
+			$headerCellStyle = 'white-space: normal; line-height: 1.2; word-wrap: break-word;';
 			print '<tr class="liste_titre">';
-			print '<th class="liste_titre">' . $langs->trans("ComposedProduct") . '</th>';
-			print '<th class="liste_titre">' . $langs->trans("Label") . '</th>';
-			print '<th class="liste_titre right">' . $langs->trans("Qty") . '</th>';
-			print '<th class="center">' . $langs->trans('ComposedProductIncDecStock') . '</th>';
+			print '<th class="liste_titre" style="' . $headerCellStyle . '">' . $langs->trans("ComposedProduct") . '</th>';
+			print '<th class="liste_titre" style="' . $headerCellStyle . '">' . $langs->trans("Label") . '</th>';
+			print '<th class="liste_titre right" style="' . $headerCellStyle . '">' . $langs->trans("Qty") . '</th>';
+			print '<th class="center" style="' . $headerCellStyle . '">' . $langs->trans('KreapParentStockAdjust') . '</th>';
 			print '</tr>';
 			if ($resql) {
 				$num = $db->num_rows($resql);
@@ -1464,201 +1524,6 @@ if ($id > 0 || !empty($ref)) {
 			}
 			print '</form>';
 		}
-
-		// Margin and markup sandbox (read-only calculations + test markup)
-		$baseCost = price2num($object->cost_price, 'MU');
-
-		$isMultiPrice = !empty($conf->global->PRODUIT_MULTIPRICES);
-		$priceLevelRequested = GETPOST('price_level', 'int');
-		$multiPriceLimit = !empty($conf->global->PRODUIT_MULTIPRICES_LIMIT) ? (int) $conf->global->PRODUIT_MULTIPRICES_LIMIT : 0;
-		$priceLevels = array();
-
-		if ($isMultiPrice) {
-			$sqlPrice = "SELECT price_level, price FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " ORDER BY price_level ASC, rowid ASC";
-			$resPrice = $db->query($sqlPrice);
-			if ($resPrice) {
-				while ($objp = $db->fetch_object($resPrice)) {
-					$priceLevels[(int)$objp->price_level] = price2num($objp->price, 'MU');
-				}
-				$db->free($resPrice);
-			}
-			if (empty($priceLevels)) {
-				// Fallback to default price if no multiprice rows
-				$priceLevels[1] = price2num($object->price, 'MU');
-			}
-		} else {
-			$basePriceSingle = price2num($object->price, 'MU');
-			if ($basePriceSingle <= 0) {
-				$sqlPrice = "SELECT price FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " ORDER BY rowid ASC LIMIT 1";
-				$resPrice = $db->query($sqlPrice);
-				if ($resPrice && ($objp = $db->fetch_object($resPrice))) {
-					$basePriceSingle = price2num($objp->price, 'MU');
-				}
-				if ($resPrice) {
-					$db->free($resPrice);
-				}
-			}
-			$priceLevels['default'] = $basePriceSingle;
-		}
-
-		$selectedPriceLevel = $isMultiPrice ? ($priceLevelRequested > 0 ? $priceLevelRequested : (array_key_first($priceLevels))) : 'default';
-		$basePrice = isset($priceLevels[$selectedPriceLevel]) ? $priceLevels[$selectedPriceLevel] : reset($priceLevels);
-
-		$profit = price2num($basePrice - $baseCost, 'MU');
-		$costMargin = ($basePrice > 0) ? ($baseCost / $basePrice) : 0;
-		$grossMargin = ($basePrice > 0) ? ($profit / $basePrice) : 0;
-		$markupDefault = price2num(GETPOST('test_markup', 'alphanohtml'), 'MU');
-		if ($markupDefault <= 0) {
-			$markupDefault = price2num(getDolGlobalString('KREAPRODUCTS_SIM_DEFAULT_MARKUP', '3'), 'MU');
-			if ($markupDefault <= 0) {
-				$markupDefault = 3;
-			}
-		}
-		$markupPct = ($baseCost > 0) ? (($profit / $baseCost)) : 0;
-		$testMarkupPct = $markupDefault;
-		$testPrice = ($baseCost > 0) ? $baseCost * (1 + $testMarkupPct) : 0;
-		$testMargin = ($testPrice > 0) ? (($testPrice - $baseCost) / $testPrice) : 0;
-		$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
-		$priceBaseLabel = ($baseType === 'TTC') ? $langs->trans('KreapVatInclShort') : $langs->trans('KreapVatExclShort');
-
-		$fmtPct = function ($val) {
-			return number_format($val * 100, 2, '.', '') . ' %';
-		};
-
-		// Only show the simulator if enabled, the product is for sale and DolizSynch is disabled.
-		$isSellable = (isset($object->status) && (int) $object->status === 1);
-		if (!isModEnabled('dolizsynch') && $isSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
-			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
-			print load_fiche_titre($langs->trans('KreapMetricsAndMargins'), '', '');
-			print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
-			print '<input type="hidden" name="token" value="' . newToken() . '">';
-			print '<input type="hidden" name="id" value="' . (int) $id . '">';
-			print '<input type="hidden" name="action" value="update_sim_price">';
-			print '<input type="hidden" id="krea-sim-price-hidden" name="sim_price_value" value="">';
-			print '<table class="noborder krea-metrics" width="100%" style="table-layout: fixed;">';
-			print '<colgroup>';
-			print '<col style="width:35%; white-space: nowrap;">';
-			print '<col style="width:45%; white-space: nowrap;">';
-			print '<col style="width:20%; white-space: nowrap; text-align:right;">';
-			print '</colgroup>';
-			print '<tr class="liste_titre">';
-			print '<td>' . $langs->trans('KreapMetric') . '</td><td>' . $langs->trans('KreapFormula') . '</td><td class="right">' . $langs->trans('KreapResult') . '</td>';
-			print '</tr>';
-			if ($isMultiPrice) {
-				print '<tr><td>' . $langs->trans('KreapPriceLevelWhenDefined') . '</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
-				$maxLevel = ($multiPriceLimit > 0) ? $multiPriceLimit : count($priceLevels);
-				for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
-					$labelKey = "PRODUIT_MULTIPRICES_LABEL" . $lvl;
-					$label = !empty($conf->global->$labelKey) ? $conf->global->$labelKey : $langs->trans('KreapLevelLabel', $lvl);
-					if (!isset($priceLevels[$lvl])) continue;
-					$pval = $priceLevels[$lvl];
-					$sel = ($lvl == $selectedPriceLevel) ? ' selected' : '';
-					print '<option value="' . dol_escape_htmltag($lvl) . '"' . $sel . '>' . dol_escape_htmltag($label) . ' (' . price($pval, '', '', 0, 2, 2, $conf->currency) . ')</option>';
-				}
-				print '</select></td></tr>';
-			} else {
-				print '<tr><td>' . $langs->trans('KreapLabelPrice') . '</td><td>' . $langs->trans('KreapCurrentPrice') . '</td><td class="right"><span id="krea-price-val">' . price($basePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			}
-			print '<tr><td>' . $langs->trans('KreapProductCostVatExcluded') . '</td><td>' . $langs->trans('KreapCurrentCost') . '</td><td class="right"><span id="krea-cost-val">' . price($baseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapCostMargin') . '</td><td>' . $langs->trans('KreapCostDivPrice') . '</td><td class="right"><span id="krea-cost-margin">' . $fmtPct($costMargin) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapGrossProfit') . '</td><td>' . $langs->trans('KreapPriceMinusCost') . '</td><td class="right"><span id="krea-gross-profit">' . price($profit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			$vatRateDisplay = ($object->tva_tx ? (float)$object->tva_tx : 0);
-			$vatMultDisplay = number_format(1 + ($vatRateDisplay / 100), 3, '.', '');
-			print '<tr><td>' . $langs->trans('KreapFinalPriceVat') . '</td><td>' . $langs->trans('KreapPriceVat', $vatRateDisplay) . '</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapGrossMargin') . '</td><td>' . $langs->trans('KreapProfitDivPrice') . '</td><td class="right"><span id="krea-gross-margin">' . $fmtPct($grossMargin) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapMarkupReal') . '</td><td>' . $langs->trans('KreapProfitDivCost') . '</td><td class="right"><span id="krea-markup">' . $fmtPct($markupPct) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapTestMarkup') . '</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($testMarkupPct) . '" class="right width75"> ' . $langs->trans('KreapTestMarkupHint') . '</td><td class="right"><span id="krea-test-markup-val">' . $fmtPct($testMarkupPct) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapTestGrossMargin') . '</td><td>' . $langs->trans('KreapTestMarginFormula') . '</td><td class="right"><span id="krea-test-margin">' . $fmtPct($testMargin) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapEstimatedPrice', $priceBaseLabel) . '</td><td>' . $langs->trans('KreapCostTimesOnePlusTestMarkup') . '</td><td class="right"><span id="krea-test-price">' . price($testPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
-			print '<tr><td>' . $langs->trans('KreapUpdatePriceToVat') . '</td><td><input type="text" id="krea-test-price-vat-input" class="right width75" placeholder="' . dol_escape_htmltag($langs->trans('KreapFinalPriceVatPlaceholder')) . '"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
-			print '</table>';
-			print '<div class="center" style="margin-top: 6px;">';
-			print '<input type="submit" class="button button-save" value="' . $langs->trans('KreapUpdateProductPrice') . '">';
-			print '</div>';
-			print '</form>';
-			print '</div>'; // wrapper
-		}
-
-		$jsPriceMap = json_encode($priceLevels);
-		$jsCurrency = dol_escape_js($conf->currency);
-		print '<script>
-		(function(){
-			var cost = ' . json_encode($baseCost) . ';
-			var priceMap = ' . $jsPriceMap . ';
-			var currency = "' . $jsCurrency . '";
-			var vatRate = ' . json_encode($object->tva_tx ? (float)$object->tva_tx : 0) . ';
-			var sel = document.getElementById("krea-price-level");
-			var markupInput = document.getElementById("krea-test-markup");
-			var testPriceVatInput = document.getElementById("krea-test-price-vat-input");
-			var hiddenSimPrice = document.getElementById("krea-sim-price-hidden");
-			var baseType = ' . json_encode(strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT')) . ';
-			function fmtPct(v){return (v*100).toFixed(2)+" %";}
-			function fmtMoney(v){return Number(v).toFixed(2)+" "+currency;}
-			function getPrice(){
-				if(sel){ return parseFloat(priceMap[sel.value] || 0); }
-				return parseFloat(priceMap["default"] || 0);
-			}
-			function recalc(markupOverride, testPriceVatOverride, skipSetVatInput){
-				var price = getPrice();
-				var markup = (markupOverride !== undefined && markupOverride !== null)
-					? markupOverride
-					: parseFloat((markupInput ? markupInput.value : "0").replace(",", "."));
-				if(isNaN(markup)){ markup = 0; }
-				var profit = price - cost;
-				var priceVat = price * (1 + (vatRate/100));
-				var costMargin = price>0 ? cost/price : 0;
-				var grossMargin = price>0 ? profit/price : 0;
-				var markupPct = cost>0 ? profit/cost : 0;
-				var testPrice;
-				var testPriceVat;
-				if(testPriceVatOverride !== undefined && testPriceVatOverride !== null){
-					testPriceVat = testPriceVatOverride;
-					testPrice = testPriceVat / (1 + (vatRate/100));
-					markup = cost > 0 ? (testPrice / cost) - 1 : 0;
-				} else {
-					testPrice = cost>0 ? cost*(1+markup) : 0;
-					testPriceVat = testPrice * (1 + (vatRate/100));
-				}
-				var testMargin = testPrice>0 ? (testPrice - cost)/testPrice : 0;
-				var set = function(id, val){ var el=document.getElementById(id); if(el){ el.textContent = val; } };
-				set("krea-price-val", fmtMoney(price));
-				set("krea-price-vat", fmtMoney(priceVat));
-				set("krea-cost-val", fmtMoney(cost));
-				set("krea-cost-margin", fmtPct(costMargin));
-				set("krea-gross-profit", fmtMoney(profit));
-				set("krea-gross-margin", fmtPct(grossMargin));
-				set("krea-markup", fmtPct(markupPct));
-				set("krea-test-markup-val", fmtPct(markup));
-				if(markupInput){ markupInput.value = markup.toFixed(2); }
-				set("krea-test-price", fmtMoney(testPrice));
-				set("krea-test-price-vat", fmtMoney(testPriceVat));
-				set("krea-test-margin", fmtPct(testMargin));
-				if(testPriceVatInput && !skipSetVatInput){
-					testPriceVatInput.value = testPriceVat.toFixed(2);
-				}
-				if(hiddenSimPrice){
-					if(baseType === "TTC"){
-						hiddenSimPrice.value = testPriceVat.toFixed(6);
-					} else {
-						hiddenSimPrice.value = testPrice.toFixed(6);
-					}
-				}
-			}
-			if(sel){ sel.addEventListener("change", function(){ recalc(); }); }
-			if(markupInput){ markupInput.addEventListener("input", function(){ recalc(); }); }
-			if(testPriceVatInput){
-				testPriceVatInput.addEventListener("input", function(){
-					var raw = parseFloat(testPriceVatInput.value.replace(",", "."));
-					if(!isNaN(raw)){
-						recalc(null, raw, true);
-					}
-				});
-			}
-			recalc();
-
-		})();</script>';
-
-
 
 		/**
 		 * This code snippet checks if the current product acts as a parent in any **assemble BOM** (Bill of Materials) in the system.

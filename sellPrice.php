@@ -13,7 +13,7 @@
  * Copyright (C) 2016		Ferran Marcet			<fmarcet@2byte.es>
  * Copyright (C) 2018-2020  Frédéric France         <frederic.france@netlogic.fr>
  * Copyright (C) 2018		Nicolas ZABOURI			<info@inovea-conseil.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -59,7 +59,7 @@ if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES)) {
 }
 
 // Load translation files required by the page
-$langs->loadLangs(array('products', 'bills', 'companies', 'other', 'kreaproducts@kreaproducts'));
+$langs->loadLangs(array('products', 'bills', 'companies', 'other', 'dolizsynch@dolizsynch'));
 
 $error = 0;
 $errors = array();
@@ -128,6 +128,84 @@ if (empty($reshook)) {
 		$keyforlabel = 'PRODUIT_MULTIPRICES_LABEL' . GETPOST('pricelevel');
 		dolibarr_set_const($db, $keyforlabel, GETPOST('labelsellingprice', 'alpha'), 'chaine', 0, '', $conf->entity);
 		$action = '';
+	} elseif ($action === 'update_sim_price' && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1) && ($user->rights->produit->creer || $user->rights->service->creer)) {
+		$newpriceInput = price2num(GETPOST('sim_price_value', 'alpha'), 'MU');
+		$priceLevelPost = GETPOST('price_level', 'int');
+		$priceLevelUsed = ($priceLevelPost > 0 ? $priceLevelPost : 1);
+
+		if ($id && $newpriceInput > 0) {
+			$object->fetch($id);
+
+			$baseType = '';
+			if (!empty($conf->global->PRODUIT_MULTIPRICES) && !empty($object->multiprices_base_type[$priceLevelUsed])) {
+				$baseType = strtoupper($object->multiprices_base_type[$priceLevelUsed]);
+			}
+			if (empty($baseType)) {
+				$baseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : $object->price_base_type);
+			}
+			if (empty($baseType)) {
+				$baseType = 'HT';
+			}
+
+			// Resolve VAT: priority to level VAT, then product VAT, then VAT code lookup
+			$vat = 0;
+			$defaultVatCode = '';
+			if (!empty($conf->global->PRODUIT_MULTIPRICES) && isset($object->multiprices_tva_tx[$priceLevelUsed]) && $object->multiprices_tva_tx[$priceLevelUsed] !== '') {
+				$vat = (float) $object->multiprices_tva_tx[$priceLevelUsed];
+			} elseif ($object->tva_tx !== null && $object->tva_tx !== '') {
+				$vat = (float) $object->tva_tx;
+			}
+
+			// Load current price row for selected level to get VAT and VAT code if set per level
+			$sqlpr = "SELECT rowid, tva_tx, default_vat_code FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int)$object->id) . " AND price_level = " . ((int)$priceLevelUsed) . " ORDER BY rowid DESC LIMIT 1";
+			$respr = $db->query($sqlpr);
+			if ($respr && ($rowpr = $db->fetch_object($respr))) {
+				if ($rowpr->tva_tx !== null && $rowpr->tva_tx > 0) {
+					$vat = (float) $rowpr->tva_tx;
+				}
+				if (!empty($rowpr->default_vat_code)) {
+					$defaultVatCode = $rowpr->default_vat_code;
+				}
+			}
+			if ($respr) $db->free($respr);
+			if ($vat <= 0 && $object->tva_tx > 0) {
+				$vat = (float) $object->tva_tx;
+			}
+			if (empty($defaultVatCode) && !empty($object->default_vat_code)) {
+				$defaultVatCode = $object->default_vat_code;
+			}
+			// If still no VAT but we have a VAT code, try to resolve the rate
+			if ($vat <= 0 && !empty($defaultVatCode)) {
+				$sqlvat = "SELECT taux FROM " . MAIN_DB_PREFIX . "c_tva WHERE code = '" . $db->escape($defaultVatCode) . "' AND active = 1 ORDER BY taux DESC LIMIT 1";
+				$resvat = $db->query($sqlvat);
+				if ($resvat && ($rowvat = $db->fetch_object($resvat))) {
+					$vat = (float) $rowvat->taux;
+				}
+				if ($resvat) $db->free($resvat);
+			}
+
+			if ($baseType === 'TTC') {
+				$newprice_ttc = $newpriceInput;
+				$newprice_ht = ($vat >= 0) ? ($newprice_ttc / (1 + ($vat / 100))) : $newprice_ttc;
+			} else {
+				$newprice_ht = $newpriceInput;
+				$newprice_ttc = ($vat >= 0) ? ($newprice_ht * (1 + ($vat / 100))) : $newprice_ht;
+			}
+
+			$newpriceForBase = ($baseType === 'TTC') ? $newprice_ttc : $newprice_ht;
+			$res = $object->updatePrice($newpriceForBase, $baseType, $user, $vat, 0, $priceLevelUsed, 0, 0, 0, array(), $defaultVatCode, '', 0);
+
+			if ($res > 0) {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			} else {
+				setEventMessages($langs->trans("Error"), null, 'errors');
+			}
+		} else {
+			setEventMessages($langs->trans("Error"), null, 'errors');
+		}
+
+		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+		exit;
 	}
 
 	if (($action == 'update_vat') && !$cancel && ($user->rights->produit->creer || $user->rights->service->creer)) {
@@ -267,9 +345,71 @@ if (empty($reshook)) {
 		$error = 0;
 		$pricestoupdate = array();
 
-		$psq = GETPOST('psqflag');
-		$psq = empty($newpsq) ? 0 : $newpsq;
-		$maxpricesupplier = $object->min_recommended_price();
+			$psq = GETPOST('psqflag');
+			$psq = empty($newpsq) ? 0 : $newpsq;
+			$maxpricesupplier = $object->min_recommended_price();
+
+			// CRITICAL: Handle Variable Price checkboxes FIRST (before updatePrice calls)
+			// This ensures the llx_dolizsynch_zsproduct table is updated BEFORE the PRODUCT_MODIFY trigger fires
+			$variablePrices = GETPOST('variable_price', 'array');
+			if (!is_array($variablePrices)) {
+				$variablePrices = array();
+			}
+
+			// If no checkbox was ticked, infer variable prices from existing ZS table values (-1/-1)
+			$sqlZs = "SELECT precovenda, pvp1siva, pvp2, pvp2siva, pvp3, pvp3siva, pvp4, pvp4siva, pvp5, pvp5siva, pvp6, pvp6siva, pvp7, pvp7siva, pvp8, pvp8siva, pvp9, pvp9siva, pvp10, pvp10siva";
+			$sqlZs .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . ((int) $object->id);
+			if (!empty($conf->global->ZS_API_STORE)) {
+				$sqlZs .= " AND loja_zs = " . (int) $conf->global->ZS_API_STORE;
+			}
+			$sqlZs .= " LIMIT 1";
+
+			$newpricePost = GETPOST('price', 'array'); // raw posted prices to detect explicit user input
+			$resZs = $db->query($sqlZs);
+			if ($resZs && ($zsRow = $db->fetch_object($resZs))) {
+				$maxLevel = !empty($conf->global->PRODUIT_MULTIPRICES_LIMIT) ? (int) $conf->global->PRODUIT_MULTIPRICES_LIMIT : 1;
+				for ($i = 1; $i <= $maxLevel; $i++) {
+					if (!empty($variablePrices[$i])) {
+						continue; // already marked by user
+					}
+
+					// If user posted a price for this level, do NOT auto-detect variable (respect user intent)
+					if (isset($newpricePost[$i]) && $newpricePost[$i] !== '') {
+						continue;
+					}
+
+					if ($i == 1) {
+						$priceHT = isset($zsRow->pvp1siva) ? (float) $zsRow->pvp1siva : null;
+						$priceTTC = isset($zsRow->precovenda) ? (float) $zsRow->precovenda : null;
+					} else {
+						$fieldHT = 'pvp' . $i . 'siva';
+						$fieldTTC = 'pvp' . $i;
+						$priceHT = isset($zsRow->$fieldHT) ? (float) $zsRow->$fieldHT : null;
+						$priceTTC = isset($zsRow->$fieldTTC) ? (float) $zsRow->$fieldTTC : null;
+					}
+
+					$isVariable = ($priceHT === -1.0 && $priceTTC === -1.0);
+					if ($isVariable) {
+						$variablePrices[$i] = 1;
+						dol_syslog("sellPrice.php: Auto-detected variable price from ZS table for level $i (both -1)", LOG_DEBUG);
+					}
+				}
+				$db->free($resZs);
+			}
+
+			// Load ZS Product Synch class
+			dol_include_once('/dolizsynch/class/zsprodsynch.class.php');
+			$zsProductSync = new ZSProductSynch($db);
+
+		// Update variable prices in llx_dolizsynch_zsproduct table
+		// Always run even if no checkboxes were ticked so unchecking clears previous -1 markers
+		dol_syslog("sellPrice.php: Updating variable prices in ZS table BEFORE updatePrice() calls", LOG_INFO);
+		$updateResult = $zsProductSync->updateVariablePricesInLocalTable($object->id, $variablePrices);
+
+		if ($updateResult < 0) {
+			$error++;
+			setEventMessages("Error updating variable prices: " . $zsProductSync->error, $zsProductSync->errors, 'errors');
+		}
 
 		if (isModEnabled('dynamicprices')) {
 			$object->fk_price_expression = empty($eid) ? 0 : $eid; //0 discards expression
@@ -301,10 +441,49 @@ if (empty($reshook)) {
 			//Shall we generate prices using price rules?
 			$object->price_autogen = GETPOST('usePriceRules') == 'on';
 
-			for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
-				if (!isset($newprice[$i])) {
-					continue;
-				}
+				for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
+					// Check if this level is a variable price (from checkbox or auto-detect)
+					$isVariable = !empty($variablePrices[$i]);
+
+					if ($isVariable) {
+						// For variable prices, set to -1 in Dolibarr regardless of posted price fields
+						$priceBaseType = !empty($newpricebase[$i]) ? $newpricebase[$i] : (!empty($object->multiprices_base_type[$i]) ? $object->multiprices_base_type[$i] : 'HT');
+						$tva_tx = !empty($newvattx[$i]) ? $newvattx[$i] : ($object->multiprices_tva_tx[$i] ?? $object->tva_tx);
+
+						// Extract numeric VAT rate
+						if (preg_match('/\((.*)\)/', $tva_tx, $reg)) {
+							$tva_tx = preg_replace('/\s*\(.*\)/', '', $tva_tx);
+						}
+						$tva_tx = price2num(preg_replace('/\*/', '', $tva_tx));
+
+						dol_syslog("sellPrice.php: Variable price detected - calling updatePrice(-1) for level $i", LOG_DEBUG);
+						$ret = $object->updatePrice(-1, $priceBaseType, $user, $tva_tx, 0, $i);
+						dol_syslog("sellPrice.php: updatePrice(-1) result for level $i = " . $ret, LOG_DEBUG);
+
+						if ($ret < 0) {
+							$error++;
+							setEventMessages("Error setting variable price: " . $object->error, $object->errors, 'errors');
+						}
+
+						// Force database row to -1 even if updatePrice refused negatives
+						if (!empty($zsProductSync) && method_exists($zsProductSync, 'forceDolibarrPriceLevelToVariable')) {
+							$forceRes = $zsProductSync->forceDolibarrPriceLevelToVariable($object->id, $i);
+							dol_syslog("sellPrice.php: forceDolibarrPriceLevelToVariable level $i result = " . var_export($forceRes, true), LOG_DEBUG);
+						}
+
+						// Keep in-memory multiprices aligned to -1
+						$object->multiprices[$i] = -1;
+						$object->multiprices_ttc[$i] = -1;
+						$object->multiprices_min[$i] = -1;
+						$object->multiprices_min_ttc[$i] = -1;
+
+						continue; // Skip normal price update for this level
+					}
+
+					// If not variable and no posted price, skip
+					if (!isset($newprice[$i])) {
+						continue;
+					}
 
 				$tva_tx_txt = $newvattx[$i];
 
@@ -501,66 +680,8 @@ if (empty($reshook)) {
 			setEventMessages($object->error, $object->errors, 'errors');
 		}
 
-		// Handle Variable Price checkboxes (Zone Soft sync) - Only if dolizsynch module is active
-		if (!$error && !empty($conf->dolizsynch->enabled)) {
-			$variablePrices = GETPOST('variable_price', 'array');
-
-			// Load ZS Product Synch class
-			dol_include_once('/dolizsynch/class/zsprodsynch.class.php');
-			$zsProductSync = new ZSProductSynch($db);
-
-			// Update variable prices in llx_dolizsynch_zsproduct table
-			$updateResult = $zsProductSync->updateVariablePricesInLocalTable($object->id, $variablePrices);
-
-			if ($updateResult < 0) {
-				$error++;
-				setEventMessages("Error updating variable prices: " . $zsProductSync->error, $zsProductSync->errors, 'errors');
-			} else {
-				// Update Dolibarr product prices to -1 for variable prices
-				for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
-					$isVariable = !empty($variablePrices[$i]);
-
-					if ($isVariable) {
-						// Set price to -1 in Dolibarr for variable price
-						$priceBaseType = $object->multiprices_base_type[$i];
-						$tva_tx = $object->multiprices_tva_tx[$i];
-
-						// Update price to -1
-						$ret = $object->updatePrice(
-							-1,                     // Price = -1 (variable)
-							$priceBaseType,         // Price base type ('HT' or 'TTC')
-							$user,                  // User object
-							$tva_tx,                // VAT rate
-							-1,                     // Minimum price = -1
-							$i,                     // Price level
-							0,                      // Non-deductible VAT rate
-							0,                      // Minimum price in TTC
-							0,                      // Minimum price base type
-							array(),                // Local taxes array
-							''                      // VAT rate code
-						);
-
-						if ($ret < 0) {
-							dol_syslog("Failed to update Dolibarr price level $i to -1 for product ID {$object->id}: " . $object->error, LOG_ERR);
-							$error++;
-							setEventMessages("Error setting variable price in Dolibarr: " . $object->error, $object->errors, 'errors');
-							break;
-						}
-					}
-					// Note: If unchecked, the normal price was already set in the main price update loop above
-				}
-
-				// Trigger sync to Zone Soft BMS if configured
-				if (!$error && !empty($conf->global->ZS_API_ENABLE_PRODUCT_EXPORT)) {
-					$syncResult = $zsProductSync->syncVariablePricesToZoneSoft($object->id, $variablePrices);
-					if ($syncResult < 0) {
-						// Log warning but don't fail the transaction
-						dol_syslog("Warning: Failed to sync variable prices to Zone Soft: " . $zsProductSync->error, LOG_WARNING);
-						setEventMessages("Prices saved but sync to Zone Soft failed: " . $zsProductSync->error, null, 'warnings');
-					}
-				}
-			}
-		}
+		// NOTE: Variable prices are now handled BEFORE the updatePrice() loop above
+		// This ensures the llx_dolizsynch_zsproduct table is updated before the trigger fires
 
 		if (empty($error)) {
 			$action = '';
@@ -669,9 +790,10 @@ if (empty($reshook)) {
 		$rowid = GETPOST('rowid', 'int');
 		$priceid = GETPOST('priceid', 'int');
 		$newprice = price2num(GETPOST("price"), 'MU', 2);
+		// $newminprice=price2num(GETPOST("price_min"),'MU'); // TODO : Add min price management
 		$quantity = price2num(GETPOST('quantity'), 'MS', 2);
 		$remise_percent = price2num(GETPOST('remise_percent'), '', 2);
-		$remise = 0;
+		$remise = 0; // TODO : allow discount by amount when available on documents
 
 		if (empty($quantity)) {
 			$error++;
@@ -998,14 +1120,17 @@ if (GETPOST("type") == '1' || ($object->type == Product::TYPE_SERVICE)) {
 	$helpurl = 'EN:Module_Services_En|FR:Module_Services|ES:M&oacute;dulo_Servicios';
 }
 
-llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-card_krea_price');
+llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-dolizsynch page-sellprice');
 
 $head = product_prepare_head($object);
-//$head = product_prepare_head($product);
 $titre = $langs->trans("CardProduct" . $object->type);
 $picto = ($object->type == Product::TYPE_SERVICE ? 'service' : 'product');
 
-print dol_get_fiche_head($head, 'krea_price', $titre, -1, $picto);
+// Debug: Log the tabs in $head to see if dolizsynch_sellprice is present
+dol_syslog("sellPrice.php: Tabs in head array: " . print_r(array_column($head, 2), true), LOG_DEBUG);
+
+// Set the active tab to dolizsynch_sellprice (matches the tab ID in modDoliZSynch.class.php)
+print dol_get_fiche_head($head, 'dolizsynch_sellprice', $titre, -1, $picto);
 
 $linkback = '<a href="' . DOL_URL_ROOT . '/product/list.php?restore_lastsearch_values=1">' . $langs->trans("BackToList") . '</a>';
 $object->next_prev_filter = " fk_product_type = " . $object->type;
@@ -1144,23 +1269,16 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '<!-- Default VAT Rate -->';
 			print '<tr><td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td><td>';
 
+			// TODO We show localtax from $object, but this properties may not be correct. Only value $object->default_vat_code is guaranted.
 			$positiverates = '';
-			$vatRate = $object->tva_tx;
-			$vatRateWithCode = $vatRate . ($object->default_vat_code ? ' (' . $object->default_vat_code . ')' : '');
-			$localtaxarray = getLocalTaxesFromRate($vatRateWithCode, 0, $mysoc, $mysoc);
-			$localtax1_type = $localtaxarray[0] ?? 0;
-			$localtax1_tx = $localtaxarray[1] ?? 0;
-			$localtax2_type = $localtaxarray[2] ?? 0;
-			$localtax2_tx = $localtaxarray[3] ?? 0;
-
-			if (price2num($vatRate)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($vatRate);
+			if (price2num($object->tva_tx)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->tva_tx);
 			}
-			if (price2num($localtax1_type)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($localtax1_tx);
+			if (price2num($object->localtax1_type)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->localtax1_tx);
 			}
-			if (price2num($localtax2_type)) {
-				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($localtax2_tx);
+			if (price2num($object->localtax2_type)) {
+				$positiverates .= ($positiverates ? '<span class="opacitymedium">/</span>' : '') . price2num($object->localtax2_tx);
 			}
 			if (empty($positiverates)) {
 				$positiverates = '0';
@@ -1179,6 +1297,36 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 
 		print '<br>';
 
+		// Fetch variable price data from ZS product table
+		$zsProductPrices = null;
+		$store = !empty($conf->global->ZS_API_STORE) ? $conf->global->ZS_API_STORE : null;
+
+		dol_syslog("sellPrice.php: Display prices - Product ID: {$object->id}, Store config: " . var_export($store, true), LOG_INFO);
+
+		if (empty($store)) {
+			dol_syslog("sellPrice.php: WARNING - ZS_API_STORE not configured, cannot fetch variable price data", LOG_WARNING);
+		}
+
+		$sql = "SELECT precovenda, pvp1siva, pvp2, pvp2siva, pvp3, pvp3siva, pvp4, pvp4siva, pvp5, pvp5siva,";
+		$sql .= " pvp6, pvp6siva, pvp7, pvp7siva, pvp8, pvp8siva, pvp9, pvp9siva, pvp10, pvp10siva";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct";
+		$sql .= " WHERE fk_product = " . (int)$object->id;
+		if (!empty($store)) {
+			$sql .= " AND loja_zs = " . (int)$store;
+		}
+		dol_syslog("sellPrice.php: Fetching ZS product prices - SQL: {$sql}", LOG_DEBUG);
+		$resql = $db->query($sql);
+		if ($resql) {
+			$zsProductPrices = $db->fetch_object($resql);
+			if ($zsProductPrices) {
+				dol_syslog("sellPrice.php: ZS product prices loaded - precovenda: {$zsProductPrices->precovenda}, pvp1siva: {$zsProductPrices->pvp1siva}", LOG_DEBUG);
+			} else {
+				dol_syslog("sellPrice.php: No ZS product prices found for product {$object->id} in store {$store}", LOG_WARNING);
+			}
+		} else {
+			dol_syslog("sellPrice.php: Query failed - " . $db->lasterror(), LOG_ERR);
+		}
+
 		print '<table class="noborder tableforfield centpercent">';
 		print '<tr class="liste_titre">';
 		print '<td>';
@@ -1187,15 +1335,67 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print ' <a class="editfielda" href="' . $_SERVER["PHP_SELF"] . '?action=editlabelsellingprice&token=' . newToken() . '&pricelevel=' . $i . '&id=' . $object->id . '">' . img_edit($langs->trans('EditSellingPriceLabel'), 0) . '</a>';
 		}
 		print '</td>';
-		print '<td style="text-align: right">' . $langs->trans('KreapSellPriceVatIncluded') . '</td>';
-		print '<td style="text-align: right">' . $langs->trans('KreapSellPriceVatExcluded') . '</td>';
-		print '<td style="text-align: right">' . $langs->trans('KreapBuyPriceVatExcluded') . '</td>';
-		print '<td style="text-align: right">' . $langs->trans('KreapMargin') . '</td>';
-		print '<td style="text-align: right">' . $langs->trans('KreapMinPriceVatExcluded') . '</td>';
+		print '<td style="text-align: right">' . "Preço Venda CIVA" . '</td>';
+		print '<td style="text-align: right">' . "Preço Venda SIVA" . '</td>';
+		print '<td style="text-align: right">' . "Preço Compra SIVA" . '</td>';
+		print '<td style="text-align: right">' . "Margem" . '</td>';
+		print '<td style="text-align: right">' . "Preço Min. SIVA" . '</td>';
 		print '</tr>';
 
 		for ($i = 1; $i <= $conf->global->PRODUIT_MULTIPRICES_LIMIT; $i++) {
 			print '<tr class="oddeven">';
+
+			// Check if this specific price level is variable in ZS
+			$isVariablePrice = false;
+				if ($zsProductPrices) {
+					if ($i == 1) {
+						$priceTTC = $zsProductPrices->precovenda;
+						$priceHT = $zsProductPrices->pvp1siva;
+					} else {
+					$pvpField = 'pvp' . $i;
+					$pvpsivaField = 'pvp' . $i . 'siva';
+					$priceTTC = isset($zsProductPrices->$pvpField) ? $zsProductPrices->$pvpField : null;
+					$priceHT = isset($zsProductPrices->$pvpsivaField) ? $zsProductPrices->$pvpsivaField : null;
+				}
+
+				dol_syslog("sellPrice.php: Level {$i} - priceTTC: {$priceTTC}, priceHT: {$priceHT}, VAT: {$object->tva_tx}", LOG_DEBUG);
+
+				// Variable price can be indicated by:
+				// 1. Both prices are exactly -1
+				// 2. TTC price is -1 and HT price is -1 divided by (1 + VAT rate)
+				if ($priceTTC !== null && $priceHT !== null) {
+					if ($priceTTC == -1 && $priceHT == -1) {
+						$isVariablePrice = true;
+						dol_syslog("sellPrice.php: Level {$i} - Variable price detected (both -1)", LOG_INFO);
+					} elseif ($priceTTC == -1 && $object->tva_tx > 0) {
+						$expectedHtPrice = -1 / (1 + ($object->tva_tx / 100));
+						if (abs($priceHT - $expectedHtPrice) < 0.01) {
+							$isVariablePrice = true;
+							dol_syslog("sellPrice.php: Level {$i} - Variable price detected (TTC=-1, HT={$priceHT}, expected={$expectedHtPrice})", LOG_INFO);
+						}
+					} elseif ($priceHT == -1 && $object->tva_tx > 0) {
+						$expectedTtcPrice = -1 * (1 + ($object->tva_tx / 100));
+						if (abs($priceTTC - $expectedTtcPrice) < 0.01) {
+							$isVariablePrice = true;
+							dol_syslog("sellPrice.php: Level {$i} - Variable price detected (HT=-1, TTC={$priceTTC}, expected={$expectedTtcPrice})", LOG_INFO);
+						}
+					}
+					} else {
+						dol_syslog("sellPrice.php: Level {$i} - Skipping detection (priceTTC or priceHT is null)", LOG_DEBUG);
+					}
+				} else {
+					dol_syslog("sellPrice.php: Level {$i} - No ZS product prices object available", LOG_DEBUG);
+				}
+
+				// Fallback: if ZS data not available or not -1, trust Dolibarr multiprices -1 to show the badge
+				if (!$isVariablePrice) {
+					$mpHT = isset($object->multiprices[$i]) ? (float) $object->multiprices[$i] : null;
+					$mpTTC = isset($object->multiprices_ttc[$i]) ? (float) $object->multiprices_ttc[$i] : null;
+					if ($mpHT === -1.0 || $mpTTC === -1.0) {
+						$isVariablePrice = true;
+						dol_syslog("sellPrice.php: Level {$i} - Fallback variable detection from multiprices (-1)", LOG_INFO);
+					}
+				}
 
 			// Label of price
 			print '<td>';
@@ -1218,11 +1418,21 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '</td>';
 
 			// Krea Multipreços
-			print '<td class="right"><span class="amount">' . price($object->multiprices_ttc[$i]) . ' ' . $langs->trans('KreapVatIncluded') . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->multiprices[$i]) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->cost_price) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
-			print '<td class="right"><span class="amount">' . (($object->cost_price == 0 || $object->multiprices[$i] == 0) ? " 0%" : (round(($object->multiprices[$i] / $object->cost_price - 1) * 100, 2) . "%")) . '</td>';
-			print '<td class="right"><span class="amount">' . price($object->multiprices_min[$i]) . ' ' . $langs->trans('KreapVatExcluded') . '</td>';
+			if ($isVariablePrice) {
+				// Show variable price indicator in a box aligned to the right
+				print '<td class="right"><span style="display: inline-block; padding: 2px 8px; background-color: #666; border-radius: 3px; color: white; font-weight: bold; font-size: 0.85em;">variável</span></td>';
+				print '<td class="right"><span style="display: inline-block; padding: 2px 8px; background-color: #666; border-radius: 3px; color: white; font-weight: bold; font-size: 0.85em;">variável</span></td>';
+				print '<td class="right"><span class="amount">' . price($object->cost_price) . ' ' . "IVA excluido" . '</td>';
+				print '<td class="right"><span class="amount">-</span></td>';
+				print '<td class="right"><span class="amount">-</span></td>';
+			} else {
+				// Normal price display
+				print '<td class="right"><span class="amount">' . price($object->multiprices_ttc[$i]) . ' ' . "IVA incluido" . '</td>';
+				print '<td class="right"><span class="amount">' . price($object->multiprices[$i]) . ' ' . "IVA excluido" . '</td>';
+				print '<td class="right"><span class="amount">' . price($object->cost_price) . ' ' . "IVA excluido" . '</td>';
+				print '<td class="right"><span class="amount">' . (($object->cost_price == 0 || $object->multiprices[$i] == 0) ? " 0%" : (round(($object->multiprices[$i] / $object->cost_price - 1) * 100, 2) . "%")) . '</td>';
+				print '<td class="right"><span class="amount">' . price($object->multiprices_min[$i]) . ' ' . "IVA excluido" . '</td>';
+			}
 			print '</tr>';
 		}
 	}
@@ -1256,18 +1466,18 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 
 		// krea Preço IVA incluido
 		print '<tr class="field_selling_price"><td>' . $langs->trans("SellingPrice") . '</td><td>';
-		print price($object->price_ttc) . ' ' . $langs->trans('KreapVatIncluded');
+		print price($object->price_ttc) . ' ' . "IVA incluido";
 
 		// krea Preço IVA excluido
 		print '<tr class="field_selling_price"><td></td><td>';
-		print price($object->price) . ' ' . $langs->trans('KreapVatExcluded');
+		print price($object->price) . ' ' . "IVA excluido";
 
 		// krea Preço de compra IVA excluido
-		print '<tr class="field_selling_price"><td>' . $langs->trans('KreapPurchasePrice') . '<td>';
-		print price($object->cost_price) . ' ' . $langs->trans('KreapVatExcluded');
+		print '<tr class="field_selling_price"><td>Preço de compra<td>';
+		print price($object->cost_price) . ' ' . "IVA excluido";
 
 		// krea Margem IVA excluido
-		print '<tr class="field_selling_price"><td>' . $langs->trans('KreapMargin') . '<td>';
+		print '<tr class="field_selling_price"><td>Margem<td>';
 		print ($object->cost_price == 0) ? "0%" : round(($object->price / $object->cost_price - 1) * 100, 2) . "%";
 	} else {
 		// Price
@@ -1294,9 +1504,9 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 	// Price minimum
 	print '<tr class="field_min_price"><td>' . $langs->trans("MinPrice") . '</td><td>';
 	if ($object->price_base_type == 'TTC') {
-		print price($object->price_min_ttc) . ' ' . $langs->trans('KreapVatIncluded');
+		print price($object->price_min_ttc) . ' ' . "IVA incluido";
 	} else {
-		print price($object->price_min) . ' ' . $langs->trans('KreapVatIncluded');
+		print price($object->price_min) . ' ' . "IVA incluido";
 		if (!empty($conf->global->PRODUCT_DISPLAY_VAT_INCL_PRICES) && !empty($object->price_min_ttc)) {
 			print '<i class="opacitymedium"> - ' . price($object->price_min_ttc) . ' ' . $langs->trans('TTC') . '</i>';
 		}
@@ -1305,7 +1515,7 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 	print '</td></tr>';
 
 	// Price by quantity
-	if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {
+	if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {    // TODO Fix the form inside tr instead of td
 		print '<tr><td>' . $langs->trans("PriceByQuantity");
 		if ($object->prices_by_qty[0] == 0) {
 			print '&nbsp; <a href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=activate_price_by_qty&level=1&token=' . newToken() . '">(' . $langs->trans("Activate") . ')';
@@ -1315,17 +1525,6 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 		print '</td><td>';
 
 		if ($object->prices_by_qty[0] == 1) {
-			$priceByQtyForms = '';
-			$addFormId = 'price_by_qty_add_' . $object->id;
-			if ($action != 'edit_price_by_qty') {
-				$priceByQtyForms .= '<form id="' . $addFormId . '" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
-				$priceByQtyForms .= '<input type="hidden" name="token" value="' . newToken() . '">';
-				$priceByQtyForms .= '<input type="hidden" name="action" value="update_price_by_qty">';
-				$priceByQtyForms .= '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">';
-				$priceByQtyForms .= '<input type="hidden" value="0" name="rowid">';
-				$priceByQtyForms .= '</form>';
-			}
-
 			print '<table width="50%" class="border" summary="List of quantities">';
 			print '<tr class="liste_titre">';
 			//print '<td>' . $langs->trans("PriceByQuantityRange") . '</td>';
@@ -1337,38 +1536,44 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '<td>&nbsp;</td>';
 			print '</tr>';
 			if ($action != 'edit_price_by_qty') {
-				print '<tr class="pair">';
-				print '<td><input size="5" type="text" value="1" name="quantity" form="' . $addFormId . '"></td>';
-				print '<td class="right"><input class="width50 right" type="text" value="0" name="price" form="' . $addFormId . '"></td>';
+				print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">'; // FIXME a form into a table is not allowed
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="action" value="update_price_by_qty">';
+				print '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">'; // id in product_price
+				print '<input type="hidden" value="0" name="rowid">'; // id in product_price_by_qty
+
+				print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
+				print '<td><input size="5" type="text" value="1" name="quantity"></td>';
+				print '<td class="right"><input class="width50 right" type="text" value="0" name="price"></td>';
 				print '<td>';
 				//print $object->price_base_type;
 				print '</td>';
 				print '<td class="right">&nbsp;</td>';
-				print '<td class="right nowraponall"><input type="text" class="width50 right" value="0" name="remise_percent" form="' . $addFormId . '"> %</td>';
-				print '<td class="center"><input type="submit" value="' . $langs->trans("Add") . '" class="button" form="' . $addFormId . '"></td>';
+				print '<td class="right nowraponall"><input type="text" class="width50 right" value="0" name="remise_percent"> %</td>';
+				print '<td class="center"><input type="submit" value="' . $langs->trans("Add") . '" class="button"></td>';
 				print '</tr>';
+
+				print '</form>';
 			}
 			foreach ($object->prices_by_qty_list[0] as $ii => $prices) {
 				if ($action == 'edit_price_by_qty' && $rowid == $prices['rowid'] && ($user->rights->produit->creer || $user->rights->service->creer)) {
-					$editFormId = 'price_by_qty_edit_' . $prices['rowid'];
-					$priceByQtyForms .= '<form id="' . $editFormId . '" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
-					$priceByQtyForms .= '<input type="hidden" name="token" value="' . newToken() . '">';
-					$priceByQtyForms .= '<input type="hidden" name="action" value="update_price_by_qty">';
-					$priceByQtyForms .= '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">';
-					$priceByQtyForms .= '<input type="hidden" value="' . $prices['rowid'] . '" name="rowid">';
-					$priceByQtyForms .= '</form>';
-
+					print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
+					print '<input type="hidden" name="token" value="' . newToken() . '">';
+					print '<input type="hidden" name="action" value="update_price_by_qty">';
+					print '<input type="hidden" name="priceid" value="' . $object->prices_by_qty_id[0] . '">'; // id in product_price
+					print '<input type="hidden" value="' . $prices['rowid'] . '" name="rowid">'; // id in product_price_by_qty
 					print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
-					print '<td><input size="5" type="text" value="' . $prices['quantity'] . '" name="quantity" form="' . $editFormId . '"></td>';
-					print '<td class="right"><input class="width50 right" type="text" value="' . price2num($prices['price'], 'MU') . '" name="price" form="' . $editFormId . '"></td>';
+					print '<td><input size="5" type="text" value="' . $prices['quantity'] . '" name="quantity"></td>';
+					print '<td class="right"><input class="width50 right" type="text" value="' . price2num($prices['price'], 'MU') . '" name="price"></td>';
 					print '<td class="right">';
 					//print $object->price_base_type;
 					print $prices['price_base_type'];
 					print '</td>';
 					print '<td class="right">&nbsp;</td>';
-					print '<td class="right nowraponall"><input class="width50 right" type="text" value="' . $prices['remise_percent'] . '" name="remise_percent" form="' . $editFormId . '"> %</td>';
-					print '<td class="center"><input type="submit" value="' . $langs->trans("Modify") . '" class="button" form="' . $editFormId . '"></td>';
+					print '<td class="right nowraponall"><input class="width50 right" type="text" value="' . $prices['remise_percent'] . '" name="remise_percent"> %</td>';
+					print '<td class="center"><input type="submit" value="' . $langs->trans("Modify") . '" class="button"></td>';
 					print '</tr>';
+					print '</form>';
 				} else {
 					print '<tr class="' . ($ii % 2 == 0 ? 'pair' : 'impair') . '">';
 					print '<td>' . $prices['quantity'] . '</td>';
@@ -1393,9 +1598,6 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 				}
 			}
 			print '</table>';
-			if ($priceByQtyForms !== '') {
-				print $priceByQtyForms;
-			}
 		} else {
 			print $langs->trans("No");
 		}
@@ -1648,63 +1850,60 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			print $langs->trans('UseMultipriceRules') . ' <input type="checkbox" id="usePriceRules" name="usePriceRules" ' . ($object->price_autogen ? 'checked' : '') . '><br><br>';
 		}
 
-		// Fetch Zone Soft product data to check for variable prices - Only if dolizsynch module is active
+		// Fetch Zone Soft product data to check for variable prices
 		$zsProductData = null;
 		$zsVariablePrices = array(); // Array to store which price levels are variable
-		if (!empty($conf->dolizsynch->enabled)) {
-			$sql = "SELECT * FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . (int)$object->id;
-			if (!empty($conf->global->ZS_API_STORE)) {
-				$sql .= " AND loja_zs = " . (int)$conf->global->ZS_API_STORE;
-			}
-			$sql .= " LIMIT 1";
-			$resql = $db->query($sql);
-			if ($resql) {
-				$zsProductData = $db->fetch_object($resql);
-				if ($zsProductData) {
-					// Check each price level for variable price
-					// Variable price can be indicated by:
-					// 1. Both prices are exactly -1
-					// 2. TTC price is -1 and HT price is -1 divided by (1 + VAT rate)
-					// 3. HT price is -1 and TTC price is -1 multiplied by (1 + VAT rate)
-					for ($i = 1; $i <= 10; $i++) {
-						if ($i == 1) {
-							$priceHT = isset($zsProductData->pvp1siva) ? (float)$zsProductData->pvp1siva : null;
-							$priceTTC = isset($zsProductData->precovenda) ? (float)$zsProductData->precovenda : null;
-						} else {
-							$priceHT = isset($zsProductData->{'pvp'.$i.'siva'}) ? (float)$zsProductData->{'pvp'.$i.'siva'} : null;
-							$priceTTC = isset($zsProductData->{'pvp'.$i}) ? (float)$zsProductData->{'pvp'.$i} : null;
+		$sql = "SELECT * FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . (int)$object->id;
+		if (!empty($conf->global->ZS_API_STORE)) {
+			$sql .= " AND loja_zs = " . (int)$conf->global->ZS_API_STORE;
+		}
+		$sql .= " LIMIT 1";
+		$resql = $db->query($sql);
+		if ($resql) {
+			$zsProductData = $db->fetch_object($resql);
+			if ($zsProductData) {
+				// Check each price level for variable price
+				// Variable price can be indicated by:
+				// 1. Both prices are exactly -1
+				// 2. TTC price is -1 and HT price is -1 divided by (1 + VAT rate)
+				for ($i = 1; $i <= 10; $i++) {
+					if ($i == 1) {
+						$priceHT = isset($zsProductData->pvp1siva) ? (float)$zsProductData->pvp1siva : null;
+						$priceTTC = isset($zsProductData->precovenda) ? (float)$zsProductData->precovenda : null;
+					} else {
+						$priceHT = isset($zsProductData->{'pvp'.$i.'siva'}) ? (float)$zsProductData->{'pvp'.$i.'siva'} : null;
+						$priceTTC = isset($zsProductData->{'pvp'.$i}) ? (float)$zsProductData->{'pvp'.$i} : null;
+					}
+
+					if ($priceHT !== null && $priceTTC !== null) {
+						$isVariable = false;
+
+						// Check if both are exactly -1
+						if ($priceHT == -1 && $priceTTC == -1) {
+							$isVariable = true;
 						}
-
-						if ($priceHT !== null && $priceTTC !== null) {
-							$isVariable = false;
-
-							// Check if both are exactly -1
-							if ($priceHT == -1 && $priceTTC == -1) {
+						// Check if TTC is -1 and HT is calculated from it
+						elseif ($priceTTC == -1 && $object->tva_tx > 0) {
+							$expectedHtPrice = -1 / (1 + ($object->tva_tx / 100));
+							if (abs($priceHT - $expectedHtPrice) < 0.01) {
 								$isVariable = true;
 							}
-							// Check if TTC is -1 and HT is calculated from it
-							elseif ($priceTTC == -1 && $object->tva_tx > 0) {
-								$expectedHtPrice = -1 / (1 + ($object->tva_tx / 100));
-								if (abs($priceHT - $expectedHtPrice) < 0.01) {
-									$isVariable = true;
-								}
+						}
+						// Check if HT is -1 and TTC is calculated from it
+						elseif ($priceHT == -1 && $object->tva_tx > 0) {
+							$expectedTtcPrice = -1 * (1 + ($object->tva_tx / 100));
+							if (abs($priceTTC - $expectedTtcPrice) < 0.01) {
+								$isVariable = true;
 							}
-							// Check if HT is -1 and TTC is calculated from it
-							elseif ($priceHT == -1 && $object->tva_tx > 0) {
-								$expectedTtcPrice = -1 * (1 + ($object->tva_tx / 100));
-								if (abs($priceTTC - $expectedTtcPrice) < 0.01) {
-									$isVariable = true;
-								}
-							}
+						}
 
-							if ($isVariable) {
-								$zsVariablePrices[$i] = true;
-							}
+						if ($isVariable) {
+							$zsVariablePrices[$i] = true;
 						}
 					}
 				}
-				$db->free($resql);
 			}
+			$db->free($resql);
 		}
 
 		print '<div class="div-table-responsive-no-min">';
@@ -1721,9 +1920,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		print '<td class="center">' . $langs->trans("SellingPrice") . '</td>';
 		print '<td class="center">' . $langs->trans("CalculatePriceOnCost") . '</td>';
 		print '<td class="center">' . $langs->trans("MinPrice") . '</td>';
-		if (!empty($conf->dolizsynch->enabled)) {
-			print '<td class="center" title="' . dol_escape_htmltag($langs->trans('KreapVariablePriceLabel')) . '">' . $langs->trans('KreapVariablePriceAbbr') . '</td>';
-		}
+		print '<td class="center" title="Preço Variável (Zone Soft)">Var</td>';
 		if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 			print '<td></td>';
 		}
@@ -1734,10 +1931,12 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		$tva_tx_output = $object->tva_tx;
 		print '<script>
     document.addEventListener("DOMContentLoaded", () => {
+        console.log("DOM fully loaded and parsed");
 
         // Retrieve the cost price and TVA from PHP
         const costPrice = ' . json_encode($cost_price_output) . ';
         const tvaTx = ' . json_encode($tva_tx_output) . ';
+        console.log("Cost Price:", costPrice, "TVA:", tvaTx);
 
         // Function to calculate and update the price
         function calculatePrice(i) {
@@ -1748,6 +1947,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             if (percentageInput && priceOutput && htTtcSelect) {
                 const percentageValue = parseFloat(percentageInput.value) || 0;
                 const baseType = htTtcSelect.value;
+                console.log(`i=${i}, percentage=${percentageValue}, baseType=${baseType}`);
 
                 let priceValue;
                 if (baseType === "TTC") {
@@ -1756,9 +1956,10 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
                     priceValue = (costPrice * (1 + percentageValue / 100)).toFixed(2);
                 }
 
+                console.log(`Computed price_${i} value: ${priceValue}`);
                 priceOutput.value = priceValue;
             } else {
-                // No-op if expected elements are not found.
+                console.warn(`Elements for percentage_${i}, price_${i}, or select_multiprices_base_type[${i}] not found.`);
             }
         }
 
@@ -1771,19 +1972,24 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
 
             if (percentageInput && htTtcSelect) {
+                console.log(`Adding event listeners for percentage_${i} and select_multiprices_base_type[${i}]`);
 
                 // Event listener for percentage input
                 percentageInput.addEventListener("input", () => {
+                    console.log(`Input event triggered for percentage_${i}`);
                     calculatePrice(i);
                 });
 
                 // Event listener for HT/TTC select
                 htTtcSelect.addEventListener("change", () => {
+                    console.log(`Change event triggered for select_multiprices_base_type[${i}]`);
                     calculatePrice(i);
                 });
 
                 // Initial calculation on page load
                 //calculatePrice(i);
+            } else {
+                console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
             }
         });
 
@@ -1919,21 +2125,19 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 			}
 			print '</td>';
 
-			// Variable Price Checkbox (Zone Soft) - Only show if dolizsynch is active
-			if (!empty($conf->dolizsynch->enabled)) {
-				print '<td style="text-align: center">';
-				// Check if this price level is variable according to Zone Soft data
-				$isVariablePrice = !empty($zsVariablePrices[$i]);
+			// Variable Price Checkbox (Zone Soft)
+			print '<td style="text-align: center">';
+			// Check if this price level is variable according to Zone Soft data
+			$isVariablePrice = !empty($zsVariablePrices[$i]);
 
-				print '<input type="checkbox" class="flat variable-price-checkbox" id="variable_price_' . $i . '" name="variable_price[' . $i . ']" value="1"';
-				if ($isVariablePrice) {
-					print ' checked';
-				}
-				print ' title="' . dol_escape_htmltag($langs->trans('KreapVariablePriceTooltip')) . '"';
-				print ' data-price-level="' . $i . '">';
-				print '<label for="variable_price_' . $i . '"></label>';
-				print '</td>';
+			print '<input type="checkbox" class="flat variable-price-checkbox" id="variable_price_' . $i . '" name="variable_price[' . $i . ']" value="1"';
+			if ($isVariablePrice) {
+				print ' checked';
 			}
+			print ' title="Preço Variável (Zone Soft) - Marque para definir preço variável no ZS BMS"';
+			print ' data-price-level="' . $i . '">';
+			print '<label for="variable_price_' . $i . '"></label>';
+			print '</td>';
 
 			if (!empty($conf->global->PRODUCT_MINIMUM_RECOMMENDED_PRICE)) {
 				print '<td class="left">' . $langs->trans("MinimumRecommendedPrice", price($maxpricesupplier, 0, '', 1, -1, -1, 'auto')) . ' ' . img_warning() . '</td>';
@@ -1956,8 +2160,334 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 	}
 }
 
+$simZsPrices = null;
+$simZsStore = !empty($conf->global->ZS_API_STORE) ? (int) $conf->global->ZS_API_STORE : null;
+$simZsVat = (float) ($object->tva_tx ? $object->tva_tx : 0);
+$sqlSimZs = "SELECT precovenda, pvp1siva, pvp2, pvp2siva, pvp3, pvp3siva, pvp4, pvp4siva, pvp5, pvp5siva,";
+$sqlSimZs .= " pvp6, pvp6siva, pvp7, pvp7siva, pvp8, pvp8siva, pvp9, pvp9siva, pvp10, pvp10siva, precocompra, iva";
+$sqlSimZs .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . ((int) $object->id);
+if ($simZsStore) {
+	$sqlSimZs .= " AND loja_zs = " . $simZsStore;
+}
+$sqlSimZs .= " LIMIT 1";
+$resSimZs = $db->query($sqlSimZs);
+if ($resSimZs) {
+	$simZsPrices = $db->fetch_object($resSimZs);
+	if ($simZsPrices && isset($simZsPrices->iva) && $simZsPrices->iva !== null) {
+		$simZsVat = (float) $simZsPrices->iva;
+	}
+}
 
-// List of price changes - log historic (ordered by descending date)
+$simBaseCost = price2num($object->cost_price, 'MU');
+if ($simBaseCost <= 0 && $simZsPrices && isset($simZsPrices->precocompra) && $simZsPrices->precocompra > 0) {
+	$simBaseCost = price2num($simZsPrices->precocompra, 'MU');
+}
+if ($simBaseCost <= 0 && isset($object->pmp) && $object->pmp > 0) {
+	$simBaseCost = price2num($object->pmp, 'MU');
+}
+$simIsMultiPrice = !empty($conf->global->PRODUIT_MULTIPRICES);
+$simPriceLevelRequested = GETPOST('price_level', 'int');
+$simMultiPriceLimit = !empty($conf->global->PRODUIT_MULTIPRICES_LIMIT) ? (int) $conf->global->PRODUIT_MULTIPRICES_LIMIT : 0;
+$simPriceLevels = array();
+$simGetZsPriceHt = function ($level) use ($simZsPrices, $simZsVat) {
+	if (!$simZsPrices) {
+		return null;
+	}
+	$level = (int) $level;
+	if ($level <= 1) {
+		$priceHt = isset($simZsPrices->pvp1siva) ? (float) $simZsPrices->pvp1siva : null;
+		$priceTtc = isset($simZsPrices->precovenda) ? (float) $simZsPrices->precovenda : null;
+	} else {
+		$htField = 'pvp' . $level . 'siva';
+		$ttcField = 'pvp' . $level;
+		$priceHt = isset($simZsPrices->$htField) ? (float) $simZsPrices->$htField : null;
+		$priceTtc = isset($simZsPrices->$ttcField) ? (float) $simZsPrices->$ttcField : null;
+	}
+	if ($priceHt !== null && $priceHt > 0) {
+		return price2num($priceHt, 'MU');
+	}
+	if ($priceTtc !== null && $priceTtc > 0) {
+		$ht = ($simZsVat > 0) ? ($priceTtc / (1 + ($simZsVat / 100))) : $priceTtc;
+		return price2num($ht, 'MU');
+	}
+	return null;
+};
+
+if ($simIsMultiPrice) {
+	$sqlPrice = "SELECT price_level, price, price_ttc, price_base_type, tva_tx FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int) $object->id) . " ORDER BY price_level ASC, rowid ASC";
+	$resPrice = $db->query($sqlPrice);
+	if ($resPrice) {
+		while ($objp = $db->fetch_object($resPrice)) {
+			$basePrice = price2num($objp->price, 'MU');
+			if ($basePrice <= 0 && !empty($objp->price_ttc)) {
+				$priceTtc = price2num($objp->price_ttc, 'MU');
+				$vat = isset($objp->tva_tx) ? (float) $objp->tva_tx : 0.0;
+				$basePrice = ($vat > 0) ? ($priceTtc / (1 + ($vat / 100))) : $priceTtc;
+				$basePrice = price2num($basePrice, 'MU');
+			}
+			$simPriceLevels[(int) $objp->price_level] = $basePrice;
+		}
+		$db->free($resPrice);
+	}
+	if (empty($simPriceLevels)) {
+		$basePrice = price2num($object->price, 'MU');
+		if ($basePrice <= 0 && !empty($object->price_ttc)) {
+			$priceTtc = price2num($object->price_ttc, 'MU');
+			$vat = isset($object->tva_tx) ? (float) $object->tva_tx : 0.0;
+			$basePrice = ($vat > 0) ? ($priceTtc / (1 + ($vat / 100))) : $priceTtc;
+			$basePrice = price2num($basePrice, 'MU');
+		}
+		$simPriceLevels[1] = $basePrice;
+	}
+
+	$maxLevel = ($simMultiPriceLimit > 0) ? $simMultiPriceLimit : 10;
+	for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
+		if (!isset($simPriceLevels[$lvl]) || $simPriceLevels[$lvl] <= 0) {
+			$zsPriceHt = $simGetZsPriceHt($lvl);
+			if ($zsPriceHt !== null && $zsPriceHt > 0) {
+				$simPriceLevels[$lvl] = $zsPriceHt;
+			}
+		}
+	}
+} else {
+	$basePriceSingle = price2num($object->price, 'MU');
+	if ($basePriceSingle <= 0) {
+			$sqlPrice = "SELECT price FROM " . MAIN_DB_PREFIX . "product_price WHERE fk_product = " . ((int) $object->id) . " ORDER BY rowid ASC LIMIT 1";
+			$resPrice = $db->query($sqlPrice);
+			if ($resPrice && ($objp = $db->fetch_object($resPrice))) {
+				$basePriceSingle = price2num($objp->price, 'MU');
+			}
+			if ($resPrice) {
+				$db->free($resPrice);
+			}
+		}
+	if ($basePriceSingle <= 0 && !empty($object->price_ttc)) {
+		$priceTtc = price2num($object->price_ttc, 'MU');
+		$vat = isset($object->tva_tx) ? (float) $object->tva_tx : 0.0;
+		$basePriceSingle = ($vat > 0) ? ($priceTtc / (1 + ($vat / 100))) : $priceTtc;
+		$basePriceSingle = price2num($basePriceSingle, 'MU');
+	}
+	if ($basePriceSingle <= 0) {
+		$zsPriceHt = $simGetZsPriceHt(1);
+		if ($zsPriceHt !== null && $zsPriceHt > 0) {
+			$basePriceSingle = $zsPriceHt;
+		}
+	}
+	$simPriceLevels['default'] = $basePriceSingle;
+}
+
+	$simSelectedPriceLevel = $simIsMultiPrice ? ($simPriceLevelRequested > 0 ? $simPriceLevelRequested : (array_key_first($simPriceLevels))) : 'default';
+	$simBasePrice = isset($simPriceLevels[$simSelectedPriceLevel]) ? $simPriceLevels[$simSelectedPriceLevel] : reset($simPriceLevels);
+
+	$simProfit = price2num($simBasePrice - $simBaseCost, 'MU');
+	$simCostMargin = ($simBasePrice > 0) ? ($simBaseCost / $simBasePrice) : 0;
+	$simGrossMargin = ($simBasePrice > 0) ? ($simProfit / $simBasePrice) : 0;
+	$simMarkupDefault = price2num(GETPOST('test_markup', 'alphanohtml'), 'MU');
+	if ($simMarkupDefault <= 0) {
+		$simMarkupDefault = price2num(getDolGlobalString('KREAPRODUCTS_SIM_DEFAULT_MARKUP', '3'), 'MU');
+		if ($simMarkupDefault <= 0) {
+			$simMarkupDefault = 3;
+		}
+	}
+	$simMarkupPct = ($simBaseCost > 0) ? (($simProfit / $simBaseCost)) : 0;
+	$simTestMarkupPct = $simMarkupDefault;
+	$simTestPrice = ($simBaseCost > 0) ? $simBaseCost * (1 + $simTestMarkupPct) : 0;
+	$simTestMargin = ($simTestPrice > 0) ? (($simTestPrice - $simBaseCost) / $simTestPrice) : 0;
+	$simBaseType = strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT');
+	$simPriceBaseLabel = ($simBaseType === 'TTC') ? 'C/IVA' : 'S/IVA';
+
+	$simFmtPct = function ($val) {
+		return number_format($val * 100, 2, '.', '') . ' %';
+	};
+
+	$simIsSellable = (isset($object->status) && (int) $object->status === 1);
+	if ($simIsSellable && getDolGlobalInt('KREAPRODUCTS_SIM_ENABLE', 1)) {
+		print '<div class="fichecenter" style="margin-top: 15px;">';
+		print load_fiche_titre('Métricas e Margens', '', '');
+		print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
+		print '<input type="hidden" name="token" value="' . newToken() . '">';
+		print '<input type="hidden" name="id" value="' . (int) $id . '">';
+		print '<input type="hidden" name="action" value="update_sim_price">';
+		print '<input type="hidden" id="krea-sim-price-hidden" name="sim_price_value" value="">';
+		print '<table class="noborder krea-metrics" width="100%" style="table-layout: fixed;">';
+		print '<colgroup>';
+		print '<col style="width:35%; white-space: nowrap;">';
+		print '<col style="width:45%; white-space: nowrap;">';
+		print '<col style="width:20%; white-space: nowrap; text-align:right;">';
+		print '</colgroup>';
+		print '<tr class="liste_titre">';
+		print '<td>Métrica</td><td>Fórmula</td><td class="right">Resultado</td>';
+		print '</tr>';
+		if ($simIsMultiPrice) {
+			print '<tr><td>Nível de preço (quando definido)</td><td colspan="2" class="right"><select id="krea-price-level" name="price_level">';
+			$maxLevel = ($simMultiPriceLimit > 0) ? $simMultiPriceLimit : count($simPriceLevels);
+			for ($lvl = 1; $lvl <= $maxLevel; $lvl++) {
+				$labelKey = "PRODUIT_MULTIPRICES_LABEL" . $lvl;
+				$label = !empty($conf->global->$labelKey) ? $conf->global->$labelKey : 'Nível ' . $lvl;
+				if (!isset($simPriceLevels[$lvl])) continue;
+				$pval = $simPriceLevels[$lvl];
+				$sel = ($lvl == $simSelectedPriceLevel) ? ' selected' : '';
+				print '<option value="' . dol_escape_htmltag($lvl) . '"' . $sel . '>' . dol_escape_htmltag($label) . ' (' . price($pval, '', '', 0, 2, 2, $conf->currency) . ')</option>';
+			}
+			print '</select></td></tr>';
+		} else {
+			print '<tr><td>Preço</td><td>Preço atual</td><td class="right"><span id="krea-price-val">' . price($simBasePrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+		}
+		print '<tr><td>Custo do produto (S/IVA)</td><td>Custo atual</td><td class="right"><span id="krea-cost-val">' . price($simBaseCost, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+		print '<tr><td>Margem de custo</td><td>Custo ÷ Preço</td><td class="right"><span id="krea-cost-margin">' . $simFmtPct($simCostMargin) . '</span></td></tr>';
+		print '<tr><td>Lucro bruto</td><td>Preço − Custo</td><td class="right"><span id="krea-gross-profit">' . price($simProfit, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+		$vatRateDisplay = ($object->tva_tx ? (float)$object->tva_tx : 0);
+		$vatMultDisplay = number_format(1 + ($vatRateDisplay / 100), 3, '.', '');
+		print '<tr><td>Preço final (C/IVA)</td><td>Preço (C/IVA ' . $vatRateDisplay . '%)</td><td class="right"><span id="krea-price-vat"></span></td></tr>';
+		print '<tr><td>Margem bruta</td><td>Lucro ÷ Preço</td><td class="right"><span id="krea-gross-margin">' . $simFmtPct($simGrossMargin) . '</span></td></tr>';
+		print '<tr><td>Markup real</td><td>Lucro ÷ Custo</td><td class="right"><span id="krea-markup">' . $simFmtPct($simMarkupPct) . '</span></td></tr>';
+		print '<tr><td>Markup de teste</td><td><input type="text" id="krea-test-markup" value="' . dol_escape_htmltag($simTestMarkupPct) . '" class="right width75"> (ex: 3 = 300%)</td><td class="right"><span id="krea-test-markup-val">' . $simFmtPct($simTestMarkupPct) . '</span></td></tr>';
+		print '<tr><td>Margem bruta de teste</td><td>(Preço teste − Custo) ÷ Preço teste</td><td class="right"><span id="krea-test-margin">' . $simFmtPct($simTestMargin) . '</span></td></tr>';
+		print '<tr><td>Preço estimado (' . $simPriceBaseLabel . ')</td><td>Custo × (1 + Markup teste)</td><td class="right"><span id="krea-test-price">' . price($simTestPrice, '', '', 0, 2, 2, $conf->currency) . '</span></td></tr>';
+		print '<tr><td>Atualizar preço para (C/IVA)</td><td><input type="text" id="krea-test-price-vat-input" class="right width75" placeholder="Informe o preço final com IVA"></td><td class="right"><span id="krea-test-price-vat"></span></td></tr>';
+		print '</table>';
+		print '<div class="center" style="margin-top: 6px;">';
+		print '<input type="submit" class="button button-save" value="Atualizar preço do produto">';
+		print '</div>';
+		print '</form>';
+		print '</div>';
+	}
+
+	$jsSimPriceMap = json_encode($simPriceLevels);
+	$jsSimCurrency = dol_escape_js($conf->currency);
+	print '<script>
+(function(){
+	var costRaw = ' . json_encode($simBaseCost) . ';
+	var priceMap = ' . $jsSimPriceMap . ';
+	var currency = "' . $jsSimCurrency . '";
+	var vatRate = ' . json_encode($object->tva_tx ? (float)$object->tva_tx : 0) . ';
+	var sel = document.getElementById("krea-price-level");
+	var markupInput = document.getElementById("krea-test-markup");
+	var testPriceVatInput = document.getElementById("krea-test-price-vat-input");
+	var hiddenSimPrice = document.getElementById("krea-sim-price-hidden");
+	var baseType = ' . json_encode(strtoupper(!empty($conf->global->PRODUCT_PRICE_BASE_TYPE) ? $conf->global->PRODUCT_PRICE_BASE_TYPE : 'HT')) . ';
+	function fmtPct(v){return (v*100).toFixed(2)+" %";}
+	function fmtMoney(v){return Number(v).toFixed(2)+" "+currency;}
+	function parseLocaleNumber(val){
+		if(val === undefined || val === null){ return NaN; }
+		var raw = String(val).trim();
+		if(raw === ""){ return NaN; }
+		var sign = "";
+		if(raw[0] === "-" || raw[0] === "+"){
+			sign = raw[0];
+			raw = raw.slice(1);
+		}
+		raw = raw.replace(/\s+/g, "");
+		var lastComma = raw.lastIndexOf(",");
+		var lastDot = raw.lastIndexOf(".");
+		var decPos = Math.max(lastComma, lastDot);
+		if(decPos !== -1){
+			var intPart = raw.slice(0, decPos).replace(/[.,]/g, "");
+			var decPart = raw.slice(decPos + 1).replace(/[.,]/g, "");
+			raw = intPart + "." + decPart;
+		} else {
+			raw = raw.replace(/[.,]/g, "");
+		}
+		var num = parseFloat(sign + raw);
+		return isNaN(num) ? NaN : num;
+	}
+	var cost = parseLocaleNumber(costRaw);
+	if(isNaN(cost)){ cost = 0; }
+	var lastValidMarkup = parseLocaleNumber(markupInput ? markupInput.value : "0");
+	if(isNaN(lastValidMarkup)){ lastValidMarkup = 0; }
+	console.log("[krea-metrics] init", {
+		costRaw: costRaw,
+		cost: cost,
+		priceMap: priceMap,
+		selectedLevel: sel ? sel.value : null,
+		markupInput: markupInput ? markupInput.value : null,
+		vatRate: vatRate,
+		baseType: baseType
+	});
+	function getPrice(){
+		var raw = sel ? priceMap[sel.value] : priceMap["default"];
+		var parsed = parseLocaleNumber(raw);
+		console.log("[krea-metrics] getPrice", { raw: raw, parsed: parsed });
+		return isNaN(parsed) ? 0 : parsed;
+	}
+	function recalc(markupOverride, testPriceVatOverride, skipSetVatInput, skipSetMarkupInput){
+		var price = getPrice();
+		var markup = (markupOverride !== undefined && markupOverride !== null)
+			? markupOverride
+			: parseLocaleNumber(markupInput ? markupInput.value : "0");
+		if(isNaN(markup)){
+			markup = lastValidMarkup;
+		} else {
+			lastValidMarkup = markup;
+		}
+		console.log("[krea-metrics] recalc", {
+			price: price,
+			cost: cost,
+			markup: markup,
+			markupOverride: markupOverride,
+			testPriceVatOverride: testPriceVatOverride,
+			skipSetVatInput: skipSetVatInput,
+			skipSetMarkupInput: skipSetMarkupInput
+		});
+		var profit = price - cost;
+		var priceVat = price * (1 + (vatRate/100));
+		var costMargin = price>0 ? cost/price : 0;
+		var grossMargin = price>0 ? profit/price : 0;
+		var markupPct = cost>0 ? profit/cost : 0;
+		var testPrice;
+		var testPriceVat;
+		if(testPriceVatOverride !== undefined && testPriceVatOverride !== null){
+			testPriceVat = testPriceVatOverride;
+			testPrice = testPriceVat / (1 + (vatRate/100));
+			markup = cost > 0 ? (testPrice / cost) - 1 : 0;
+		} else {
+			testPrice = cost>0 ? cost*(1+markup) : 0;
+			testPriceVat = testPrice * (1 + (vatRate/100));
+		}
+		var testMargin = testPrice>0 ? (testPrice - cost)/testPrice : 0;
+		var set = function(id, val){ var el=document.getElementById(id); if(el){ el.textContent = val; } };
+		set("krea-price-val", fmtMoney(price));
+		set("krea-price-vat", fmtMoney(priceVat));
+		set("krea-cost-val", fmtMoney(cost));
+		set("krea-cost-margin", fmtPct(costMargin));
+		set("krea-gross-profit", fmtMoney(profit));
+		set("krea-gross-margin", fmtPct(grossMargin));
+		set("krea-markup", fmtPct(markupPct));
+		set("krea-test-markup-val", fmtPct(markup));
+		if(markupInput && !skipSetMarkupInput){ markupInput.value = markup.toFixed(2); }
+		set("krea-test-price", fmtMoney(testPrice));
+		set("krea-test-price-vat", fmtMoney(testPriceVat));
+		set("krea-test-margin", fmtPct(testMargin));
+		if(testPriceVatInput && !skipSetVatInput){
+			testPriceVatInput.value = testPriceVat.toFixed(2);
+		}
+		if(hiddenSimPrice){
+			if(baseType === "TTC"){
+				hiddenSimPrice.value = testPriceVat.toFixed(6);
+			} else {
+				hiddenSimPrice.value = testPrice.toFixed(6);
+			}
+		}
+	}
+	if(sel){ sel.addEventListener("change", function(){ recalc(); }); }
+	if(markupInput){
+		markupInput.addEventListener("input", function(){ recalc(null, null, false, true); });
+		markupInput.addEventListener("blur", function(){ recalc(); });
+	}
+	if(testPriceVatInput){
+		testPriceVatInput.addEventListener("input", function(){
+			var raw = parseLocaleNumber(testPriceVatInput.value);
+			if(!isNaN(raw)){
+				recalc(null, raw, true);
+			}
+		});
+	}
+	recalc();
+
+})();</script>';
+
+
+	// List of price changes - log historic (ordered by descending date)
 
 if ((empty($conf->global->PRODUIT_CUSTOMER_PRICES) || $action == 'showlog_default_price') && !in_array($action, array('edit_price', 'edit_vat'))) {
 	$sql = "SELECT p.rowid, p.price, p.price_ttc, p.price_base_type, p.tva_tx, p.default_vat_code, p.recuperableonly, p.localtax1_tx, p.localtax1_type, p.localtax2_tx, p.localtax2_type,";

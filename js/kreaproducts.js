@@ -30,12 +30,19 @@
   }
 
   function getToken() {
-    var meta = document.querySelector('meta[name="anti-csrf-currenttoken"]');
-    if (meta && meta.content) {
-      return meta.content;
+    var metaNew = document.querySelector('meta[name="anti-csrf-newtoken"]');
+    if (metaNew && metaNew.content) {
+      return metaNew.content;
     }
     var token = $('input[name="token"]').first().val();
-    return token || '';
+    if (token) {
+      return token;
+    }
+    var metaCurrent = document.querySelector('meta[name="anti-csrf-currenttoken"]');
+    if (metaCurrent && metaCurrent.content) {
+      return metaCurrent.content;
+    }
+    return '';
   }
 
   function insertRows(data, isEdit) {
@@ -54,8 +61,19 @@
       var toggleValue = data.dismantle_value ? 0 : 1;
       var toggleIcon = data.dismantle_value ? 'fa-toggle-on font-status4' : 'fa-toggle-off opacitymedium';
       var base = getBasePath();
-      var toggleUrl = base + '/custom/kreaproducts/associatedProducts.php?id=' + productId
-        + '&action=toggle_dismantle&value=' + toggleValue;
+      var bomId = getBomId();
+      var returnAction = getQueryParam('action') || '';
+      if (returnAction !== 'edit' && returnAction !== 'create') {
+        returnAction = '';
+      }
+      var returnParam = returnAction ? '&returnaction=' + encodeURIComponent(returnAction) : '';
+      var token = getToken();
+      var tokenParam = token ? '&token=' + encodeURIComponent(token) : '';
+      var toggleUrl = base + '/bom/bom_card.php?id=' + encodeURIComponent(bomId)
+        + '&action=toggle_dismantle&product_id=' + productId
+        + '&value=' + toggleValue
+        + returnParam
+        + tokenParam;
 
       dismantleRowHtml = '<tr class="kreap-dismantle-row">'
         + '<td class="titlefield">' + dismantleLabel + '</td>'
@@ -161,10 +179,34 @@
     }
 
     var action = getQueryParam('action') || '';
+    if (action === 'toggle_dismantle') {
+      var bomIdRedirect = getBomId();
+      if (bomIdRedirect) {
+        var returnActionRedirect = getQueryParam('returnaction') || '';
+        if (returnActionRedirect !== 'edit' && returnActionRedirect !== 'create') {
+          returnActionRedirect = '';
+        }
+        var target = getBasePath() + '/bom/bom_card.php?id=' + encodeURIComponent(bomIdRedirect);
+        if (returnActionRedirect) {
+          target += '&action=' + encodeURIComponent(returnActionRedirect);
+        }
+        window.location.replace(target);
+        return;
+      }
+    }
     var isEdit = action === 'edit';
     var isView = action === '' || action === 'view';
     if (!isEdit && !isView) {
       return;
+    }
+
+    var $existingTable = $('table.tableforfield, table.tableforfieldedit').first();
+    if ($existingTable.length) {
+      var hasDismantle = $existingTable.find('tr.kreap-dismantle-row').length > 0;
+      var hasEntity = $existingTable.find('tr.kreap-entity-row').length > 0;
+      if (hasDismantle && hasEntity) {
+        return;
+      }
     }
 
     var bomId = getBomId();

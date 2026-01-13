@@ -64,7 +64,7 @@ require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 $langs->loadLangs(array('other', 'kreaproducts@kreaproducts'));
 
 $token = GETPOST('token', 'alpha');
-if (!empty($token) && !hash_equals(currentToken(), $token)) {
+if (!empty($token) && !hash_equals(currentToken(), $token) && !hash_equals(newToken(), $token)) {
 	top_httphead('application/json');
 	http_response_code(403);
 	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapInvalidCsrfToken')));

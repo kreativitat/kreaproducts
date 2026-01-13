@@ -168,6 +168,7 @@ KreapVariablePriceTooltip = Variable price (Zone Soft) - check to set variable p
 KreapRequired = Required
 KreapIngredientCost = Ingredient cost
 KreapComponentCost = Cost per component
+KreapParentStockAdjust = Stock +/- (parent)
 KreapMetricsAndMargins = Metrics and margins
 KreapMetric = Metric
 KreapFormula = Formula

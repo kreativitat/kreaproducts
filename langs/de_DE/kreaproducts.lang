@@ -299,6 +299,7 @@ KreapVariablePriceTooltip = Variabler Preis (Zone Soft) – markieren, um variab
 KreapRequired = Erforderlich
 KreapIngredientCost = Zutatenkosten
 KreapComponentCost = Kosten pro Komponente
+KreapParentStockAdjust = Bestand +/- (Parent)
 KreapMetricsAndMargins = Kennzahlen und Margen
 KreapMetric = Kennzahl
 KreapFormula = Formel

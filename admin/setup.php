@@ -205,6 +205,7 @@ if (empty($conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED)) {
 	$field_name = "kreap_dismantle";
 	$field_label = $langs->trans("kreap_dismantle");
 	$field_help = $langs->trans("kreap_dismantle_help");
+	$extrafields->addExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 	$extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
 	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');

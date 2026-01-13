@@ -340,17 +340,64 @@ class ActionsKreaProducts extends CommonHookActions
 			return 0;
 		}
 
+		$langs->load('kreaproducts@kreaproducts');
+
 		$multicompanyEnabled = isModEnabled('multicompany');
 
+		$dismantleRowHtml = '';
+		$productId = (int) ($object->fk_product ?? 0);
+		if ($productId > 0) {
+			$dismantleValue = 0;
+			$columnReady = false;
+			$colRes = $this->db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "kreap_dismantle");
+			if ($colRes) {
+				$columnReady = ($this->db->num_rows($colRes) > 0);
+				$this->db->free($colRes);
+			}
+			if ($columnReady) {
+				$sql = "SELECT kreap_dismantle FROM " . MAIN_DB_PREFIX . "product_extrafields WHERE fk_object = " . $productId . " LIMIT 1";
+				$resql = $this->db->query($sql);
+				if ($resql) {
+					$obj = $this->db->fetch_object($resql);
+					if ($obj && $obj->kreap_dismantle !== null) {
+						$dismantleValue = (int) $obj->kreap_dismantle;
+					}
+					$this->db->free($resql);
+				}
+			}
+
+			$dismantleLabel = dol_html_entity_decode($langs->trans('kreap_dismantle'), ENT_QUOTES | ENT_HTML5);
+			$toggleValue = $dismantleValue ? 0 : 1;
+			$toggleIcon = $dismantleValue ? 'fa-toggle-on font-status4' : 'fa-toggle-off opacitymedium';
+			$returnAction = in_array($action, array('edit', 'create'), true)
+				? '&returnaction=' . urlencode($action)
+				: '';
+			$toggleToken = newToken();
+			if (empty($toggleToken)) {
+				$toggleToken = currentToken();
+			}
+			$toggleUrl = dol_buildpath('/bom/bom_card.php', 1) . '?id=' . ((int) $object->id)
+				. '&action=toggle_dismantle&product_id=' . $productId
+				. '&value=' . $toggleValue
+				. $returnAction
+				. '&token=' . $toggleToken;
+
+			$dismantleRowHtml = '<tr class="kreap-dismantle-row"><td class="titlefield">'
+				. $dismantleLabel
+				. '</td><td><a class="linkobject" href="' . $toggleUrl . '" title="' . $dismantleLabel . '">'
+				. '<span class="fas ' . $toggleIcon . '"></span>'
+				. '</a></td></tr>';
+		}
+
 		$entityRowHtml = '';
+		$entityLabel = $langs->trans('Entity');
+		$allEntitiesLabel = $langs->trans('AllEntities');
 		if ($multicompanyEnabled) {
 			if (!is_object($form)) {
 				require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 				$form = new Form($this->db);
 			}
 
-			$entityLabel = $langs->trans('Entity');
-			$allEntitiesLabel = $langs->trans('AllEntities');
 			if (GETPOSTISSET('kreap_entity')) {
 				$selectedEntity = GETPOSTINT('kreap_entity');
 			} elseif (GETPOSTISSET('entity')) {
@@ -374,9 +421,7 @@ class ActionsKreaProducts extends CommonHookActions
 				}
 			}
 
-			$selectOptions = array(
-				'0' => $allEntitiesLabel . ' (0)',
-			);
+			$selectOptions = array('0' => $allEntitiesLabel . ' (0)');
 			if ($alternateEntityId > 0) {
 				$selectOptions[(string) $alternateEntityId] = $alternateEntityLabel;
 			}
@@ -402,6 +447,12 @@ class ActionsKreaProducts extends CommonHookActions
 					: $alternateEntityLabel;
 				$entityRowHtml = '<tr class="kreap-entity-row"><td class="titlefield">'.$entityLabel.'</td><td class="valuefield">'.dol_escape_htmltag($entityValue).'</td></tr>';
 			}
+		} else {
+			$selectedEntity = (!empty($object->id) && isset($object->entity)) ? (int) $object->entity : (int) $conf->entity;
+			$entityValue = ($selectedEntity === 0)
+				? $allEntitiesLabel . ' (0)'
+				: $entityLabel . ' ' . $selectedEntity;
+			$entityRowHtml = '<tr class="kreap-entity-row"><td class="titlefield">'.$entityLabel.'</td><td class="valuefield">'.dol_escape_htmltag($entityValue).'</td></tr>';
 		}
 
 		$script = '';
@@ -427,11 +478,14 @@ class ActionsKreaProducts extends CommonHookActions
 </script>';
 		}
 
-		if ($script === '' && $entityRowHtml === '') {
+		if ($script === '' && $entityRowHtml === '' && $dismantleRowHtml === '') {
 			return 0;
 		}
 
 		$this->resprints = '';
+		if ($dismantleRowHtml !== '') {
+			$this->resprints .= $dismantleRowHtml;
+		}
 		if ($entityRowHtml !== '') {
 			$this->resprints .= $entityRowHtml;
 		}
@@ -557,7 +611,12 @@ class ActionsKreaProducts extends CommonHookActions
 				$arrayofjs = array($arrayofjs);
 			}
 			$arrayofjs = array_filter($arrayofjs, 'strlen');
-			$arrayofjs[] = '/custom/kreaproducts/js/kreaproducts.js';
+			$jsPath = '/custom/kreaproducts/js/kreaproducts.js';
+			$jsFile = DOL_DOCUMENT_ROOT . $jsPath;
+			if (file_exists($jsFile)) {
+				$jsPath .= '?v=' . ((int) filemtime($jsFile));
+			}
+			$arrayofjs[] = $jsPath;
 			$parameters['arrayofjs'] = array_values(array_unique($arrayofjs));
 		}
 		return 0;
