@@ -258,6 +258,52 @@ class ActionsKreaProducts extends CommonHookActions
 			}
 		}
 
+		if (is_object($object) && $object->element === 'bom' && $action === 'toggle_dismantle') {
+			$productId = GETPOSTINT('product_id');
+			if ($productId <= 0) {
+				return 0;
+			}
+
+			$newValue = GETPOSTINT('value') ? 1 : 0;
+
+			// Ensure the extrafield column exists
+			$columnReady = false;
+			$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "kreap_dismantle");
+			if ($colRes) {
+				$columnReady = ($db->num_rows($colRes) > 0);
+				$db->free($colRes);
+			}
+			if (!$columnReady) {
+				require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+				$extrafields = new ExtraFields($db);
+				$field_name = "kreap_dismantle";
+				$field_label = $langs->trans("kreap_dismantle");
+				$field_help = $langs->trans("kreap_dismantle_help");
+				$extrafields->addExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+				$extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+			}
+
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_dismantle) VALUES ("
+				. (int) $productId . ", " . (int) $newValue . ") "
+				. "ON DUPLICATE KEY UPDATE kreap_dismantle = " . (int) $newValue;
+			if (!$db->query($sql)) {
+				setEventMessages($langs->trans("Error"), array($db->lasterror()), 'errors');
+				return -1;
+			}
+
+			// Redirect back to BOM card with the returnaction parameter
+			$returnAction = GETPOST('returnaction', 'aZ09');
+			if (!in_array($returnAction, array('edit', 'create'), true)) {
+				$returnAction = '';
+			}
+			$redirectUrl = DOL_URL_ROOT . '/bom/bom_card.php?id=' . (int) $object->id;
+			if ($returnAction) {
+				$redirectUrl .= '&action=' . urlencode($returnAction);
+			}
+			header('Location: ' . $redirectUrl);
+			exit;
+		}
+
 		if ($object->element === 'inventory' && $action === 'confirm_validate') {
 			if ((int) $object->status === Inventory::STATUS_RECORDED) {
 				$langs->load('kreaproducts@kreaproducts');

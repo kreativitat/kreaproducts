@@ -129,6 +129,45 @@ KreaProductsCopyAllergensSuccess = Allergens copied successfully.
 KreaProductsNutritionDisclaimer = Disclaimer: Nutrition information is provided by the user. Accuracy and compliance are the user's responsibility.
 KreaProductsAllergensDisclaimer = Disclaimer: Allergen information is provided by the user. Accuracy and compliance are the user's responsibility.
 
+# Nutrition and allergens tables
+KreaProductsProductAssociations = Nutrition table
+TabelaNutricionalCalculada = Calculated nutrition table
+KreaProductsTableProductRef = Ref.
+KreaProductsTableProductName = Name
+KreaProductsTableProductWeight = Product weight
+KreaProductsTableProductQuantity = Qty
+KreaProductsTableQuantityWeight = Quantity weight (g)
+KreaProductsTableEnergy_kcal = Energy (kcal)
+KreaProductsTableEnergy_kj = Energy (kJ)
+KreaProductsTableFat = Fat (g)
+KreaProductsTableSaturates = Saturates (g)
+KreaProductsTableCarbohydrates = Carbohydrates (g)
+KreaProductsTableSugars = Sugars (g)
+KreaProductsTableProtein = Protein (g)
+KreaProductsTableSalt = Salt (g)
+KreaProductsTableFiber = Fiber (g)
+EstimatedTotalsForTheProduct = Estimated totals for the product
+AverageValuesPer100g = Average values per 100 g
+KreaProductAllergensTableTitle = Allergens table
+TabelaAllergensCalculada = Calculated allergens table
+AllergensTraces = Allergen traces
+updateAllergens = Update allergens
+productRecipeTitle = Other characteristics
+productRecipeInline = Preparation
+kreap_brand_Inline = Product brand
+kreap_video_Inline = Product video
+kreap_description_Inline = Product description
+KreaFoodProduct = Food product
+
+# Short list headers (components table)
+KreapHeaderPosShort = Pos.
+KreapHeaderChildShort = Ref.
+KreapHeaderLabelShort = Label
+KreapIngredientCostShort = Ingredient cost
+KreapHeaderQtyShort = Qty
+KreapComponentCostShort = Cost/comp.
+KreapParentStockAdjustShort = Stock +/-
+
 # UI additions
 KreapShowHiddenShort = Show hidden
 KreapHideHiddenShort = Hide hidden
@@ -283,3 +322,22 @@ KreapInventoryDatetimeConverted = Column converted to DATETIME
 KreapInventoryDatetimeConvertFailed = Failed to alter column: %s
 KreapInventoryDatetimeDone = 3. Done
 KreapInventoryDatetimeDoneText = New inventories can now store time in date_inventory.
+
+kreap_calc_nut = Nutrition table manual/automatic
+kreap_calc_allergens = Allergens table
+
+KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagate cost price
+KREAPRODUCTS_REPLACE_PRODUCT_LIST = Replace standard product list
+KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Use the simplified KreaProducts list instead of /product/list.php
+KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Nutrition table in technical sheet tab
+KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configure the weight unit class in the "Units of measure" dictionary
+KREAPRODUCTS_STOCK_MOVEMENT_DATA = Stock movement date is the invoice date
+KREAPRODUCTS_SUPPLIER_MOVE_TIME = Time for supplier invoice movements
+KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Time (HH:MM or HH:MM:SS) applied to stock movements from supplier invoices
+KREAPRODUCTS_DISMANTLE_BOMTYPE = Dismantle BOM type
+KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP = Value of bom_bom.bomtype that identifies the dismantle BOM (default 1)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION1 = Type 1 (Standard dismantling)
+KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0 = Type 0 (Assembly/production)
+KREAPRODUCTS_DISMANTLE_WAREHOUSE = Dismantle warehouse
+KREAPRODUCTS_DISMANTLE_WAREHOUSE_HELP = Warehouse ID used for dismantle movements (or MAIN_DEFAULT_WAREHOUSE if empty)
+Parameter = Parameter

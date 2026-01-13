@@ -99,9 +99,9 @@ QtyInStockWhenInventoryWasCreated = Quantidade em stock quando o inventário foi
 #
 # About page
 #
-About = About
-KreaProductsAbout = About KreaProducts
-KreaProductsAboutPage = KreaProducts about page
+About = Sobre
+KreaProductsAbout = Sobre o KreaProducts
+KreaProductsAboutPage = Página sobre o KreaProducts
 
 #
 # Products card
@@ -414,3 +414,13 @@ KreapInventoryDatetimeConverted = Coluna convertida para DATETIME
 KreapInventoryDatetimeConvertFailed = Falha ao alterar a coluna: %s
 KreapInventoryDatetimeDone = 3. Concluído
 KreapInventoryDatetimeDoneText = Novos inventários podem agora armazenar hora em date_inventory.
+
+KreapHeaderPosShort = Pos.
+KreapHeaderChildShort = Ref.
+KreapHeaderLabelShort = Nome
+KreapIngredientCostShort = Custo ingr.
+KreapHeaderQtyShort = Qtd.
+KreapComponentCostShort = Custo comp.
+KreapParentStockAdjustShort = Stock +/-
+
+Parameter = Parâmetro

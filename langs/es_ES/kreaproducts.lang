@@ -414,3 +414,13 @@ KreapInventoryDatetimeConverted = Columna convertida a DATETIME
 KreapInventoryDatetimeConvertFailed = Error al modificar la columna: %s
 KreapInventoryDatetimeDone = 3. Hecho
 KreapInventoryDatetimeDoneText = Los nuevos inventarios ahora pueden almacenar la hora en date_inventory.
+
+KreapHeaderPosShort = Pos.
+KreapHeaderChildShort = Ref.
+KreapHeaderLabelShort = Nombre
+KreapIngredientCostShort = Coste ingr.
+KreapHeaderQtyShort = Cant.
+KreapComponentCostShort = Coste/comp.
+KreapParentStockAdjustShort = Stock +/-
+
+Parameter = Parámetro
