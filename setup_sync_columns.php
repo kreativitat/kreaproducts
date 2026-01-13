@@ -148,6 +148,7 @@ if ($resql) {
 
     if ($obj->total > 0 && $obj->sync_enabled == 0) {
         echo "<form method='POST'>";
+        echo "<input type='hidden' name='token' value='" . newToken() . "'>";
         echo "<p style='color:orange;'><strong>" . $langs->trans('Warning') . ":</strong> " . $langs->trans('KreapSetupSyncWarning') . "</p>";
         echo "<button type='submit' name='enable_sync' onclick='return confirm(\"" . dol_escape_js($langs->trans('KreapSetupEnableSyncConfirm')) . "\")'>" . $langs->trans('KreapSetupEnableSyncButton') . "</button>";
         echo "</form>";

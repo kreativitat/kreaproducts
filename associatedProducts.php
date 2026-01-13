@@ -1943,6 +1943,7 @@ if ($id > 0 || !empty($ref)) {
 				print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
 				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
 				print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
 				print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
 
 				$nutritionalFields = array(
@@ -2055,6 +2056,7 @@ if ($id > 0 || !empty($ref)) {
 					print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
 					print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
 					print '<input type="hidden" name="action" value="saveAllergens">';
+					print '<input type="hidden" name="token" value="' . newToken() . '">';
 
 					// Multiselect for allergens
 					print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
@@ -2122,6 +2124,7 @@ if ($id > 0 || !empty($ref)) {
 						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
 						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
 						print '<input type="hidden" name="action" value="updateAllergens">';
+						print '<input type="hidden" name="token" value="' . newToken() . '">';
 						print '</form>';
 						print '</div>';
 					} else {
@@ -2129,6 +2132,7 @@ if ($id > 0 || !empty($ref)) {
 						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
 						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
 						print '<input type="hidden" name="action" value="updateAllergens">';
+						print '<input type="hidden" name="token" value="' . newToken() . '">';
 						print '</form>';
 						print '</div>';
 					}
