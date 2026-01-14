@@ -38,15 +38,20 @@
  *  \brief      Page of product file
  */
 
-// Load Dolibarr environment
-require '../../main.inc.php';
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
+$res = 0;
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutrientUpdater.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsAllergenUpdater.class.php';
+dol_include_once('/kreaproducts/class/KreaProductsNutrientUpdater.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsAllergenUpdater.class.php');
 
 // Load translation files required by the page
 $langs->loadLangs(array('bills', 'products', 'stocks', 'other', 'dolizsynch@dolizsynch', 'kreaproducts@kreaproducts'));
@@ -1800,7 +1805,7 @@ if ($id > 0 || !empty($ref)) {
 			if ($conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreap_calc_nut'] == 1) {
 
 
-				require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
+				dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
 				KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
 			}
 

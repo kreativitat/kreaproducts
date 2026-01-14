@@ -1089,7 +1089,7 @@ class KreaProductsNutritionalCalculator
         global $db;
 
         try {
-            require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/nutritional.class.php';
+            dol_include_once('/kreaproducts/class/nutritional.class.php');
 
             // Check if record exists
             $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional 

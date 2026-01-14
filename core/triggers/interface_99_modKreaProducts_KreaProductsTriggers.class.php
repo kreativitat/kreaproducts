@@ -7,10 +7,10 @@
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsNutritionalCalculator.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsInventoryService.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/KreaProductsStockMovementService.class.php';
+dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsInventoryService.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsStockMovementService.class.php');
 
 /**
  * Triggers for KreaProducts

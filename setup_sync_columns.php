@@ -6,20 +6,13 @@
  * This script safely adds the necessary columns for ProductUpdater
  */
 
-// Include Dolibarr configuration
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
 $res = 0;
-if (!$res && file_exists("../../../main.inc.php")) {
-    $res = include_once "../../../main.inc.php";
-}
-if (!$res && file_exists("../../../../main.inc.php")) {
-    $res = include_once "../../../../main.inc.php";
-}
-if (!$res && file_exists("../../../../../main.inc.php")) {
-    $res = include_once "../../../../../main.inc.php";
-}
-if (!$res) {
-    die("Include of main fails");
-}
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 
 $langs->loadLangs(array('kreaproducts@kreaproducts', 'other'));
 

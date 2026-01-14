@@ -44,8 +44,13 @@
  * \brief Page to show product prices
  */
 
-// Load Dolibarr environment
-require '../../main.inc.php'; // krea coloquei mais um "../"
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
+$res = 0;
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/price.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -1464,19 +1469,15 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 
 	if ($user->rights->degema->dgmargensvendas->read) {
 
-		// krea Preço IVA incluido
 		print '<tr class="field_selling_price"><td>' . $langs->trans("SellingPrice") . '</td><td>';
 		print price($object->price_ttc) . ' ' . "IVA incluido";
 
-		// krea Preço IVA excluido
 		print '<tr class="field_selling_price"><td></td><td>';
 		print price($object->price) . ' ' . "IVA excluido";
 
-		// krea Preço de compra IVA excluido
 		print '<tr class="field_selling_price"><td>Preço de compra<td>';
 		print price($object->cost_price) . ' ' . "IVA excluido";
 
-		// krea Margem IVA excluido
 		print '<tr class="field_selling_price"><td>Margem<td>';
 		print ($object->cost_price == 0) ? "0%" : round(($object->price / $object->cost_price - 1) * 100, 2) . "%";
 	} else {
@@ -1491,13 +1492,6 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			}
 		}
 	}
-
-	// krea esta parte coloca o preço IVA excluido a cinzento a traz do preço IVA incluido
-	/*
-	    if (!empty($conf->global->PRODUCT_DISPLAY_VAT_INCL_PRICES) && !empty($object->price_ttc)) {
-		print '<i class="opacitymedium"> - ' . price($object->price_ttc).' '.$langs->trans('TTC') . '</i>';
-	    }
-	*/
 
 	print '</td></tr>';
 
@@ -1931,12 +1925,9 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
 		$tva_tx_output = $object->tva_tx;
 		print '<script>
     document.addEventListener("DOMContentLoaded", () => {
-        console.log("DOM fully loaded and parsed");
-
         // Retrieve the cost price and TVA from PHP
         const costPrice = ' . json_encode($cost_price_output) . ';
         const tvaTx = ' . json_encode($tva_tx_output) . ';
-        console.log("Cost Price:", costPrice, "TVA:", tvaTx);
 
         // Function to calculate and update the price
         function calculatePrice(i) {
@@ -1947,7 +1938,6 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             if (percentageInput && priceOutput && htTtcSelect) {
                 const percentageValue = parseFloat(percentageInput.value) || 0;
                 const baseType = htTtcSelect.value;
-                console.log(`i=${i}, percentage=${percentageValue}, baseType=${baseType}`);
 
                 let priceValue;
                 if (baseType === "TTC") {
@@ -1955,11 +1945,7 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
                 } else {
                     priceValue = (costPrice * (1 + percentageValue / 100)).toFixed(2);
                 }
-
-                console.log(`Computed price_${i} value: ${priceValue}`);
                 priceOutput.value = priceValue;
-            } else {
-                console.warn(`Elements for percentage_${i}, price_${i}, or select_multiprices_base_type[${i}] not found.`);
             }
         }
 
@@ -1972,24 +1958,18 @@ if ($action == 'edit_price' && $object->getRights()->creer) {
             const htTtcSelect = document.getElementById("select_multiprices_base_type[" + i + "]");
 
             if (percentageInput && htTtcSelect) {
-                console.log(`Adding event listeners for percentage_${i} and select_multiprices_base_type[${i}]`);
-
                 // Event listener for percentage input
                 percentageInput.addEventListener("input", () => {
-                    console.log(`Input event triggered for percentage_${i}`);
                     calculatePrice(i);
                 });
 
                 // Event listener for HT/TTC select
                 htTtcSelect.addEventListener("change", () => {
-                    console.log(`Change event triggered for select_multiprices_base_type[${i}]`);
                     calculatePrice(i);
                 });
 
                 // Initial calculation on page load
                 //calculatePrice(i);
-            } else {
-                console.warn(`Elements for percentage_${i} or select_multiprices_base_type[${i}] not found.`);
             }
         });
 
@@ -2395,19 +2375,9 @@ if ($simIsMultiPrice) {
 	if(isNaN(cost)){ cost = 0; }
 	var lastValidMarkup = parseLocaleNumber(markupInput ? markupInput.value : "0");
 	if(isNaN(lastValidMarkup)){ lastValidMarkup = 0; }
-	console.log("[krea-metrics] init", {
-		costRaw: costRaw,
-		cost: cost,
-		priceMap: priceMap,
-		selectedLevel: sel ? sel.value : null,
-		markupInput: markupInput ? markupInput.value : null,
-		vatRate: vatRate,
-		baseType: baseType
-	});
 	function getPrice(){
 		var raw = sel ? priceMap[sel.value] : priceMap["default"];
 		var parsed = parseLocaleNumber(raw);
-		console.log("[krea-metrics] getPrice", { raw: raw, parsed: parsed });
 		return isNaN(parsed) ? 0 : parsed;
 	}
 	function recalc(markupOverride, testPriceVatOverride, skipSetVatInput, skipSetMarkupInput){
@@ -2420,15 +2390,6 @@ if ($simIsMultiPrice) {
 		} else {
 			lastValidMarkup = markup;
 		}
-		console.log("[krea-metrics] recalc", {
-			price: price,
-			cost: cost,
-			markup: markup,
-			markupOverride: markupOverride,
-			testPriceVatOverride: testPriceVatOverride,
-			skipSetVatInput: skipSetVatInput,
-			skipSetMarkupInput: skipSetMarkupInput
-		});
 		var profit = price - cost;
 		var priceVat = price * (1 + (vatRate/100));
 		var costMargin = price>0 ? cost/price : 0;

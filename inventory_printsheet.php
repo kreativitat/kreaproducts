@@ -9,10 +9,13 @@ Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * (at your option) any later version.
  */
 
-// Load Dolibarr environment
-if (!defined('DOL_DOCUMENT_ROOT')) {
-	require '../../main.inc.php';
-}
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
+$res = 0;
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/pdf.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';

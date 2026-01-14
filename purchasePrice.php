@@ -43,8 +43,13 @@
  *  \brief      Page of tab suppliers for products
  */
 
-// Load Dolibarr environment
-require '../../main.inc.php'; // krea adicionei um nivel de directorio "../"
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
+$res = 0;
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/company.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
@@ -52,8 +57,8 @@ require_once DOL_DOCUMENT_ROOT . '/comm/propal/class/propal.class.php';
 require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_expression.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/dynamic_price/class/price_parser.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productDismantle.class.php';
+dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
+dol_include_once('/kreaproducts/class/productDismantle.class.php');
 if (isModEnabled('barcode')) {
 	dol_include_once('/core/class/html.formbarcode.class.php');
 }
@@ -1163,7 +1168,6 @@ END;
 
 
 
-				// Suppliers list title - krea lista de fornec
 				print '<div class="div-table-responsive">';
 				print '<table class="liste centpercent">';
 
@@ -1522,7 +1526,6 @@ LIMIT 10";
 
 					print_barre_liste($langs->trans('KreapPriceChanges'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
 
-					// Suppliers list title - krea lista de fornec
 					print '<div class="div-table-responsive">';
 					print '<table class="liste centpercent">';
 
@@ -1596,7 +1599,6 @@ LIMIT 10";
 					print_barre_liste($langs->trans('KreapPurchases'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', '', '', 'title_accountancy.png', 0, '', '', $limit, 1);
 
 
-					// Suppliers list title - krea lista de fornec
 					print '<div class="div-table-responsive">';
 					print '<table class="liste centpercent">';
 

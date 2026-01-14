@@ -3,8 +3,8 @@
  * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  */
 
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/ProductUpdater.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/kreaproducts/class/productdismantlecontroller.class.php';
+dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
+dol_include_once('/kreaproducts/class/productdismantlecontroller.class.php');
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
 
 /**

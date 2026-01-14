@@ -23,10 +23,13 @@
  *		\brief      Tab to enter counting
  */
 
-// Load Dolibarr environment (skip if already loaded via hook include)
-if (!defined('DOL_DOCUMENT_ROOT')) {
-	require '../../main.inc.php';
-}
+// Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
+$res = 0;
+if (!$res && file_exists(__DIR__ . '/../main.inc.php'))    $res = @include __DIR__ . '/../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../main.inc.php')) $res = @include __DIR__ . '/../../main.inc.php';
+if (!$res && file_exists(__DIR__ . '/../master.inc.php'))  $res = @include __DIR__ . '/../master.inc.php';
+if (!$res && file_exists(__DIR__ . '/../../master.inc.php')) $res = @include __DIR__ . '/../../master.inc.php';
+if (!$res) die('Failed to include main.inc.php');
 include_once DOL_DOCUMENT_ROOT . '/core/class/html.formcompany.class.php';
 include_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 include_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -1012,7 +1015,6 @@ if (getDolGlobalString('INVENTORY_MANAGE_REAL_PMP')) {
 	print '<th class="right liste_titre">';
 	print $form->textwithpicto($langs->trans("RealQty"), $langs->trans("InventoryRealQtyHelp"));
 	print '</th>';
-	//krea titulo da diferença
 	print '<th class="liste_titre">&nbsp;</th>';
 	print '<th class="right liste_titre">';
 	print $showexpected ? $form->textwithpicto($langs->trans("KreapDifference"), "") : '&nbsp;';
@@ -1062,7 +1064,6 @@ if ($object->status == $object::STATUS_DRAFT || $object->status == $object::STAT
 	} else {
 		print '<td class="right">';
 		print '<input type="text" name="qtytoadd" class="maxwidth75" value="">';
-		//krea
 		print '</td>';
 		print '<td>';
 		print '</td>';
