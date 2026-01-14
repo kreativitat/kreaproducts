@@ -232,6 +232,7 @@ KreaNonFoodProduct = Produit non alimentaire
 #
 ProductTree = Arbre
 FichaTecnica = Fiche technique
+TotaisEstimadosDoProduto = Totaux estimés du produit
 PrecoCusto = Prix de revient
 Reference = Référence
 Designation = Désignation

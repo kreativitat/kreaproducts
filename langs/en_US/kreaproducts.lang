@@ -151,6 +151,12 @@ AverageValuesPer100g = Average values per 100 g
 KreaProductAllergensTableTitle = Allergens table
 TabelaAllergensCalculada = Calculated allergens table
 AllergensTraces = Allergen traces
+GLUT = Gluten
+LEIT = Milk
+MUST = Mustard
+EGGS = Eggs
+FISH = Fish
+SESA = Sesame seeds
 updateAllergens = Update allergens
 productRecipeTitle = Other characteristics
 productRecipeInline = Preparation
@@ -158,6 +164,9 @@ kreap_brand_Inline = Product brand
 kreap_video_Inline = Product video
 kreap_description_Inline = Product description
 KreaFoodProduct = Food product
+FichaTecnica = Technical sheet
+TotaisEstimadosDoProduto = Estimated totals for the product
+PrecoCusto = Cost price
 
 # Short list headers (components table)
 KreapHeaderPosShort = Pos.
