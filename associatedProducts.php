@@ -1781,9 +1781,13 @@ if ($id > 0 || !empty($ref)) {
 			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
 			$key = 'kreap_calc_nut';
 			$fieldName = 'options_' . $key;
-			$label = $extrafields->attributes['product']['label'][$key];
+			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
 			kreaproducts_debug_log('label: ' . $label);
-			$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
+			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
+			if (!is_array($rawOptions)) {
+				$rawOptions = array();
+			}
+			$options = array('' => '') + $rawOptions;
 			$editorType = 'select;' . implode(',', array_map(
 				function ($k, $v) {
 					global $langs;
@@ -1795,9 +1799,10 @@ if ($id > 0 || !empty($ref)) {
 			));
 
 			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			$currentValue = $object->array_options[$fieldName] ?? '';
+			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td><td>';
-			print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td></tr>';
 			print '</table>';
 			print '</div>';
@@ -1897,9 +1902,13 @@ if ($id > 0 || !empty($ref)) {
 			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
 			$key = 'kreap_calc_allergens';
 			$fieldName = 'options_' . $key;
-			$label = $extrafields->attributes['product']['label'][$key];
+			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
 			kreaproducts_debug_log('label: ' . $label);
-			$options = ['' => ''] + $extrafields->attributes['product']['param'][$key]['options'];
+			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
+			if (!is_array($rawOptions)) {
+				$rawOptions = array();
+			}
+			$options = array('' => '') + $rawOptions;
 			$editorType = 'select;' . implode(',', array_map(
 				function ($k, $v) {
 					global $langs;
@@ -1911,9 +1920,10 @@ if ($id > 0 || !empty($ref)) {
 			));
 
 			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			$currentValue = $object->array_options[$fieldName] ?? '';
+			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td><td>';
-			print $form->editfieldval($label, $fieldName, $object->array_options[$fieldName], $object, $usercancreate, $editorType);
+			print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td></tr>';
 			print '</table>';
 			print '</div>';

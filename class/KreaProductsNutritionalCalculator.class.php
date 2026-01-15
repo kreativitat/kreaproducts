@@ -289,9 +289,7 @@ class KreaProductsNutritionalCalculator
                                FROM " . MAIN_DB_PREFIX . "product_association pa
                                JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                                JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                               WHERE pa.fk_product_pere = %d
-                                 AND pf.entity IN (" . getEntity('product') . ")
-                                 AND pc.entity IN (" . getEntity('product') . ")";
+                               WHERE pa.fk_product_pere = %d";
 
             $sqlBom = "SELECT b.fk_product as father,
                               COALESCE(bl.fk_product, cb.fk_product) as child,
@@ -311,18 +309,7 @@ class KreaProductsNutritionalCalculator
                        LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
                        WHERE b.bomtype IN (0,1)
                            AND b.status = 1
-                           AND b.fk_product = %d
-                           AND b.entity IN (0," . getEntity('bom') . ")
-                           AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
-                               SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
-                               WHERE b2.fk_product = b.fk_product
-                                 AND b2.entity = " . ((int) $conf->entity) . "
-                                 AND b2.bomtype = b.bomtype AND b2.status = 1
-                           )))
-                           AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
-                           AND pf.entity IN (" . getEntity('product') . ")
-                           AND (pc.rowid IS NULL OR pc.entity IN (" . getEntity('product') . "))
-                           AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
+                           AND b.fk_product = %d";
 
             while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
                 $currentLevel = $queue;
@@ -476,18 +463,8 @@ class KreaProductsNutritionalCalculator
                         WHERE b.fk_product = " . (int)$parentId . " 
                             AND b.bomtype IN (0,1)
                             AND b.status = 1
-                            AND b.entity IN (0," . getEntity('bom') . ")
-                            AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
-                                SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
-                                WHERE b2.fk_product = b.fk_product
-                                  AND b2.entity = " . ((int) $conf->entity) . "
-                                  AND b2.bomtype = b.bomtype AND b2.status = 1
-                            )))
-                            AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
                             AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
-                            AND (p.rowid IS NOT NULL OR cprod.rowid IS NOT NULL)
-                            AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))
-                            AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
+                            AND (p.rowid IS NOT NULL OR cprod.rowid IS NOT NULL)";
 
                 $resql = $db->query($sql);
                 
@@ -527,7 +504,6 @@ class KreaProductsNutritionalCalculator
                     WHERE pa.fk_product_pere = " . (int)$parentId . " 
                         AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
                         AND p.rowid IS NOT NULL
-                        AND p.entity IN (" . getEntity('product') . ")
                     ORDER BY pa.rang ASC";
 
             $resql = $db->query($sql);

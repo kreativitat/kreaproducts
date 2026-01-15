@@ -366,17 +366,7 @@ class KreaProductsNutrientUpdater
                     WHERE b.bomtype IN (0,1)
                         AND b.status = 1
                         AND (b.fk_product = " . (int)$productId . " OR COALESCE(bl.fk_product, cb.fk_product) = " . (int)$productId . ")
-                        AND b.entity IN (0," . getEntity('bom') . ")
-                        AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (
-                            SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom b2
-                            WHERE b2.fk_product = b.fk_product
-                              AND b2.entity = " . ((int) $conf->entity) . "
-                              AND b2.bomtype = b.bomtype AND b2.status = 1
-                        )))
-                        AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
-                        AND pf.entity IN (" . getEntity('product') . ")
-                        AND (pc.rowid IS NULL OR pc.entity IN (" . getEntity('product') . "))
-                        AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
+                        ";
 
             $resql = $db->query($sql);
             
@@ -415,9 +405,7 @@ class KreaProductsNutrientUpdater
                 FROM " . MAIN_DB_PREFIX . "product_association pa
                 JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                 JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                WHERE (pa.fk_product_pere = " . (int)$productId . " OR pa.fk_product_fils = " . (int)$productId . ")
-                AND pf.entity IN (" . getEntity('product') . ")
-                AND pc.entity IN (" . getEntity('product') . ")";
+                WHERE (pa.fk_product_pere = " . (int)$productId . " OR pa.fk_product_fils = " . (int)$productId . ")";
         
         $resql = $db->query($sql);
         
