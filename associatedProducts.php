@@ -1222,10 +1222,20 @@ if ($id > 0 || !empty($ref)) {
 			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			$atleastonenotdefined = 0;
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
+			print '<style>
+				@media (max-width: 768px) {
+					.krea-tablelines-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+					#tablelines { table-layout: auto !important; }
+					#tablelines .krea-pos-col { width: 34px !important; min-width: 28px !important; max-width: 40px !important; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
+					#tablelines .krea-label-col { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
+					#tablelines .krea-label-col.tdoverflowmax150 { max-width: none !important; }
+				}
+			</style>';
 			print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
 			print '<input type="hidden" name="token" value="' . newToken() . '" />';
 			print '<input type="hidden" name="action" value="save_composed_product" />';
 			print '<input type="hidden" name="id" value="' . $id . '" />';
+			print '<div class="krea-tablelines-wrap">';
 			print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
 			$headerCellStyle = 'white-space: nowrap; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;';
 			$getShortLabel = function ($key, $fallback) use ($langs) {
@@ -1241,11 +1251,11 @@ if ($id > 0 || !empty($ref)) {
 			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
 			print '<tr class="liste_titre nodrag nodrop">';
 			// Rank
-			print '<td style="width:60px; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
+			print '<td class="krea-pos-col" style="width:60px; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
 			// Product ref
 			print '<td style="width:12%; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
 			// Product label
-			print '<td style="min-width:320px; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
+			print '<td class="krea-label-col" style="min-width:320px; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
 			// ZS Menu column removed in list view
 			// Ingredient cost (single column)
 			print '<td class="right" style="width:140px; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
@@ -1256,7 +1266,12 @@ if ($id > 0 || !empty($ref)) {
 			// Hook fields
 			$parameters = array();
 			$reshook = $hookmanager->executeHooks('printFieldListTitle', $parameters);
-			print $hookmanager->resPrint;
+			$hookTitle = $hookmanager->resPrint;
+			$hookColumnCount = 0;
+			if (!empty($hookTitle)) {
+				$hookColumnCount = substr_count($hookTitle, '<td') + substr_count($hookTitle, '<th');
+			}
+			print $hookTitle;
 			// Qty in kit
 			print '<td class="center" style="width:120px; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
 			// Valor por componente
@@ -1275,13 +1290,13 @@ if ($id > 0 || !empty($ref)) {
 					if ($value['level'] <= 1) {
 						print '<tr id="' . $object->sousprods[$parent_label][$value['id']][6] . '" class="drag drop oddeven level1">';
 						// Rank
-						print '<td>' . $object->sousprods[$parent_label][$value['id']][7] . '</td>';
+						print '<td class="krea-pos-col">' . $object->sousprods[$parent_label][$value['id']][7] . '</td>';
 						$notdefined = 0;
 						$nb_of_subproduct = $value['nb'];
 						// Product ref
 						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 						// Product label
-						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
+						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="krea-label-col tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
 						// For avoid a non-numeric value
 						$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
 						$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
@@ -1321,7 +1336,7 @@ if ($id > 0 || !empty($ref)) {
 						print '<tr class="oddeven' . $hide . '" id="sub-' . $value['id_parent'] . '" data-ignoreidfordnd=1>';
 						$productstatic->ref = $value['ref'];
 						// Rank
-						print '<td></td>';
+						print '<td class="krea-pos-col"></td>';
 						// Product ref
 						print '<td>';
 						for ($i = 0; $i < $value['level']; $i++) {
@@ -1330,7 +1345,7 @@ if ($id > 0 || !empty($ref)) {
 						print $productstatic->getNomUrl(1, 'auto');
 						print '</td>';
 						// Product label
-						print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
+						print '<td class="krea-label-col">' . dol_escape_htmltag($productstatic->label) . '</td>';
 						// Cost placeholder for nested rows
 						print '<td>&nbsp;</td>';
 						// Stock
@@ -1354,16 +1369,13 @@ if ($id > 0 || !empty($ref)) {
 				}
 				// Total
 				print '<tr class="liste_total">';
-				print '<td class="liste_total right">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>'; // Position col
-
-				print '<td class="liste_total"></td>'; // Ingredient col
-				print '<td class="liste_total"></td>'; // Label col
-				print '<td></td>'; // Custo do ingrediente col
+				$colspanBeforeAmount = 4; // Position, Ref, Label, Ingredient cost
 				if (isModEnabled('stock')) {
-					print '<td></td>'; // Stock col
+					$colspanBeforeAmount++;
 				}
-
-				print '<td></td>'; // Qty col
+				$colspanBeforeAmount += $hookColumnCount;
+				$colspanBeforeAmount += 1; // Qty col
+				print '<td class="liste_total right" colspan="' . $colspanBeforeAmount . '">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
 				print '<td class="liste_total right" style="white-space: nowrap;">';
 				if ($atleastonenotdefined) {
 					print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
@@ -1388,6 +1400,7 @@ if ($id > 0 || !empty($ref)) {
 				print '</tr>';
 			}
 			print '</table>';
+			print '</div>';
 			print '</form>';
 			print '</div>';
 			// Open product links in a new tab on the association list
@@ -1630,7 +1643,13 @@ if ($id > 0 || !empty($ref)) {
 		// Lista de kits com este produto como componente
 		if (count($prodsfather) > 0) {
 			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
-			print load_fiche_titre($langs->trans("ProductParentList"), '', '');
+			print '<style>
+				@media (max-width: 768px) {
+					#krea-parentlist-title .titre,
+					#krea-parentlist-title .titre > span { display: block; width: 100%; }
+				}
+			</style>';
+			print load_fiche_titre($langs->trans("ProductParentList"), '', '', 0, 'krea-parentlist-title');
 			print '<table class="liste">';
 			print '<tr class="liste_titre">';
 			print '<td>' . $langs->trans('ParentProducts') . '</td>';

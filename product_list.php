@@ -133,6 +133,9 @@ $arrayfields = array(
 	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 7),
 	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 8),
 );
+if ($show_hidden) {
+	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 9);
+}
 
 // SQL build
 $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_product_type, "
@@ -219,6 +222,24 @@ $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
 $toggleShortLabel = $show_hidden ? $langs->trans('KreapHideHiddenShort') : $langs->trans('KreapShowHiddenShort');
+$toggleHideBackParams = array(
+	'show_hidden' => $show_hidden,
+	'sortfield' => $sortfield,
+	'sortorder' => $sortorder,
+	'limit' => $limit,
+	'page' => $page,
+	'search_ref' => $search_ref,
+	'search_label' => $search_label,
+	'search_price_level' => $search_price_level,
+	'search_tobuy' => $search_tobuy,
+	'search_tosell' => $search_tosell,
+	'type' => $type,
+	'leftmenu' => $leftmenu,
+);
+if (!empty($searchCategoryProductList)) {
+	$toggleHideBackParams['search_category_product_list'] = $searchCategoryProductList;
+}
+$toggleHideBackUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleHideBackParams, '', '&', PHP_QUERY_RFC3986);
 
 // Filter on categories (header area before list)
 $moreforfilter = '';
@@ -302,6 +323,9 @@ $selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', 
 print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
 $selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
 print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+if ($show_hidden) {
+	print '<td class="liste_titre center parentonrightofpage"></td>';
+}
 print '</tr>';
 
 // Header row
@@ -314,7 +338,7 @@ foreach ($arrayfields as $key => $val) {
 			$align = 'right ';
 		} elseif ($key === 'p.entity') {
 			$align = 'center nowrap ';
-		} elseif ($key === 'p.tobuy' || $key === 'p.tosell') {
+		} elseif ($key === 'p.tobuy' || $key === 'p.tosell' || $key === 'kreap_hideproduct') {
 			$align = 'center ';
 		}
 		print_liste_field_titre($val['label'], $_SERVER["PHP_SELF"], $key, '', $param, '', $sortfield, $sortorder, $align);
@@ -404,6 +428,58 @@ while ($i < min($num, $limit)) {
 				$label = $langs->trans($isSellOn ? 'ProductStatusOnSell' : 'ProductStatusNotOnSell');
 				$badgeClass = $isSellOn ? 'badge badge-status4 badge-status' : 'badge badge-status1 badge-status';
 				print '<td class="center"><span class="' . $badgeClass . '" title="' . dol_escape_htmltag($label) . '">' . dol_escape_htmltag($label) . '</span></td>';
+			}
+			break;
+		case 'kreap_hideproduct':
+			$canEditHide = ($productstatic->type == Product::TYPE_SERVICE) ? !empty($user->rights->service->creer) : !empty($user->rights->produit->creer);
+			$isHidden = (int) $obj->kreap_hideproduct;
+			$titleOn = $langs->trans('kreap_hideproduct') . ' (ON)';
+			$titleOff = $langs->trans('kreap_hideproduct') . ' (OFF)';
+			$iconOn = img_picto($titleOn, 'switch_on', '', 0, 0, 0, '', 'font-status4');
+			$iconOff = img_picto($titleOff, 'switch_off');
+			if ($canEditHide) {
+				if (!empty($conf->use_javascript_ajax)) {
+					$ajaxUrl = DOL_URL_ROOT . '/custom/kreaproducts/ajax/toggle_hideproduct.php';
+					print '<td class="center">';
+					print '<script>
+						$(function() {
+							$("#set_kreap_hideproduct_' . ((int) $obj->rowid) . '").click(function() {
+								$.get("' . dol_escape_js($ajaxUrl) . '", {
+									action: "set",
+									id: "' . ((int) $obj->rowid) . '",
+									value: "1",
+									token: "' . dol_escape_js(currentToken()) . '"
+								}, function() {
+									$("#set_kreap_hideproduct_' . ((int) $obj->rowid) . '").hide();
+									$("#del_kreap_hideproduct_' . ((int) $obj->rowid) . '").show();
+								});
+							});
+							$("#del_kreap_hideproduct_' . ((int) $obj->rowid) . '").click(function() {
+								$.get("' . dol_escape_js($ajaxUrl) . '", {
+									action: "set",
+									id: "' . ((int) $obj->rowid) . '",
+									value: "0",
+									token: "' . dol_escape_js(currentToken()) . '"
+								}, function() {
+									$("#del_kreap_hideproduct_' . ((int) $obj->rowid) . '").hide();
+									$("#set_kreap_hideproduct_' . ((int) $obj->rowid) . '").show();
+								});
+							});
+						});
+					</script>';
+					print '<span id="set_kreap_hideproduct_' . ((int) $obj->rowid) . '" class="linkobject ' . ($isHidden ? 'hideobject' : '') . '">' . $iconOff . '</span>';
+					print '<span id="del_kreap_hideproduct_' . ((int) $obj->rowid) . '" class="linkobject ' . ($isHidden ? '' : 'hideobject') . '">' . $iconOn . '</span>';
+					print '</td>';
+				} else {
+					$setUrl = DOL_URL_ROOT . '/custom/kreaproducts/ajax/toggle_hideproduct.php?action=set&token=' . newToken() . '&id=' . ((int) $obj->rowid) . '&value=1&backtopage=' . urlencode($toggleHideBackUrl);
+					$delUrl = DOL_URL_ROOT . '/custom/kreaproducts/ajax/toggle_hideproduct.php?action=set&token=' . newToken() . '&id=' . ((int) $obj->rowid) . '&value=0&backtopage=' . urlencode($toggleHideBackUrl);
+					print '<td class="center">';
+					print '<a id="set_kreap_hideproduct_' . ((int) $obj->rowid) . '" class="linkobject ' . ($isHidden ? 'hideobject' : '') . '" href="' . dol_escape_htmltag($setUrl) . '">' . $iconOff . '</a>';
+					print '<a id="del_kreap_hideproduct_' . ((int) $obj->rowid) . '" class="linkobject ' . ($isHidden ? '' : 'hideobject') . '" href="' . dol_escape_htmltag($delUrl) . '">' . $iconOn . '</a>';
+					print '</td>';
+				}
+			} else {
+				print '<td class="center">' . ($isHidden ? $iconOn : $iconOff) . '</td>';
 			}
 			break;
 			default:
