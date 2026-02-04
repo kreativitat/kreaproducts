@@ -197,6 +197,80 @@ if (!function_exists('kreaproducts_has_bom_for_product')) {
 	}
 }
 
+if (!function_exists('kreaproducts_normalize_extrafield_options')) {
+	function kreaproducts_normalize_extrafield_options($rawOptions)
+	{
+		if (is_array($rawOptions)) {
+			return $rawOptions;
+		}
+		if (!is_string($rawOptions) || trim($rawOptions) === '') {
+			return array();
+		}
+		$options = array();
+		foreach (explode(',', $rawOptions) as $part) {
+			$part = trim($part);
+			if ($part === '') {
+				continue;
+			}
+			$kv = explode(':', $part, 2);
+			$key = $kv[0];
+			$label = isset($kv[1]) ? $kv[1] : $kv[0];
+			$options[$key] = $label;
+		}
+		return $options;
+	}
+}
+
+if (!function_exists('kreaproducts_get_product_extrafield_value')) {
+	function kreaproducts_get_product_extrafield_value($db, $productId, $field, $entity = null)
+	{
+		static $hasEntityColumn = null;
+		static $cache = array();
+
+		$productId = (int) $productId;
+		$field = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $field);
+		if ($productId <= 0 || $field === '') {
+			return null;
+		}
+
+		$cacheKey = $productId . ':' . $field . ':' . (int) $entity;
+		if (array_key_exists($cacheKey, $cache)) {
+			return $cache[$cacheKey];
+		}
+
+		if ($hasEntityColumn === null) {
+			$hasEntityColumn = false;
+			$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "entity");
+			if ($colRes) {
+				$hasEntityColumn = ($db->num_rows($colRes) > 0);
+				$db->free($colRes);
+			}
+		}
+
+		$sql = "SELECT " . $field;
+		if ($hasEntityColumn) {
+			$sql .= ", entity";
+		}
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product_extrafields WHERE fk_object = " . $productId;
+		if ($hasEntityColumn && $entity !== null) {
+			$sql .= " AND entity IN (0," . (int) $entity . ") ORDER BY entity DESC";
+		}
+		$sql .= " LIMIT 1";
+
+		$res = $db->query($sql);
+		$value = null;
+		if ($res && ($obj = $db->fetch_object($res))) {
+			if (property_exists($obj, $field)) {
+				$value = $obj->{$field};
+			}
+			$db->free($res);
+		}
+
+		$cache[$cacheKey] = $value;
+		return $value;
+	}
+}
+
 $id     = GETPOST('id', 'int');
 $ref    = GETPOST('ref', 'alpha');
 $action = GETPOST('action', 'aZ09');
@@ -229,6 +303,30 @@ if ($id > 0 || !empty($ref)) {
 	$objectid = $object->id;
 	$id = $object->id;
 }
+// Ensure calc extrafields are available even if fetch_optionals misses them.
+if (!empty($object->id)) {
+	if (!is_array($object->array_options)) {
+		$object->array_options = array();
+	}
+	$needsNut = !array_key_exists('options_kreap_calc_nut', $object->array_options)
+		|| $object->array_options['options_kreap_calc_nut'] === ''
+		|| $object->array_options['options_kreap_calc_nut'] === null;
+	$needsAllergens = !array_key_exists('options_kreap_calc_allergens', $object->array_options)
+		|| $object->array_options['options_kreap_calc_allergens'] === ''
+		|| $object->array_options['options_kreap_calc_allergens'] === null;
+	if ($needsNut) {
+		$valNut = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $conf->entity);
+		if ($valNut !== null) {
+			$object->array_options['options_kreap_calc_nut'] = $valNut;
+		}
+	}
+	if ($needsAllergens) {
+		$valAll = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $conf->entity);
+		if ($valAll !== null) {
+			$object->array_options['options_kreap_calc_allergens'] = $valAll;
+		}
+	}
+}
 
 $result = restrictedArea($user, 'produit|service', $fieldvalue, 'product&product', '', '', $fieldtype);
 
@@ -255,9 +353,65 @@ if ($cancel) {
 	$action = '';
 }
 
+$inlineOptionAction = '';
+$inlineOptionKey = '';
+if (preg_match('/^(editoptions|setoptions)_(.+)$/', $action, $inlineOptionMatch)) {
+	$inlineOptionAction = $inlineOptionMatch[1];
+	$inlineOptionKey = $inlineOptionMatch[2];
+} elseif ($action === 'editoptions' || $action === 'setoptions') {
+	$inlineOptionAction = $action;
+	if (!empty($key)) {
+		$inlineOptionKey = $key;
+	} else {
+		// Fallback: infer from the single options_* field present in the request.
+		$requestKeys = array_merge(array_keys($_GET ?? array()), array_keys($_POST ?? array()));
+		foreach ($requestKeys as $requestKey) {
+			if (strpos($requestKey, 'options_') === 0) {
+				$inlineOptionKey = substr($requestKey, strlen('options_'));
+				break;
+			}
+		}
+	}
+}
+
+// Handle inline extra-field updates locally to avoid wiping other extrafields.
+if ($inlineOptionAction === 'setoptions' && $usercancreate && !empty($object->id) && $inlineOptionKey !== '') {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+	$extrafields->fetch_name_optionals_label($object->table_element);
+	$object->fetch_optionals();
+	$originalOptions = $object->array_options;
+
+	$fieldName = 'options_' . $inlineOptionKey;
+	if (array_key_exists($fieldName, $_POST) || array_key_exists($fieldName, $_GET) || GETPOSTISSET('value')) {
+		$rawValue = GETPOSTISSET($fieldName) ? GETPOST($fieldName, 'alpha') : GETPOST('value', 'alpha');
+		$value = trim((string) $rawValue);
+		if ($value === '') {
+			$value = null;
+		}
+		$object->array_options[$fieldName] = $value;
+	}
+
+	foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
+		$fname = 'options_' . $key;
+		if (!array_key_exists($fname, $object->array_options) && array_key_exists($fname, $originalOptions)) {
+			$object->array_options[$fname] = $originalOptions[$fname];
+		}
+	}
+
+	$object->insertExtraFields();
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
 $reshook = $hookmanager->executeHooks('doActions', array(), $object, $action); // Note that $action and $object may have been modified by some hooks
 if ($reshook < 0) {
 	setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
+}
+
+if ($inlineOptionAction === 'editoptions') {
+	// Refresh extra–fields in case hooks touched array_options.
+	$object->fetch_optionals();
 }
 
 if (empty($reshook)) {
@@ -1767,25 +1921,37 @@ if ($id > 0 || !empty($ref)) {
 		$extrafields = new ExtraFields($db);
 		$extrafields->fetch_name_optionals_label($object->table_element);
 
-		// Preserve the original extra–fields values.
-		$originalOptions = $object->array_options;
-		// Merge POST values with the existing extra–fields values
-		foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
-			$fieldname = 'options_' . $key;
-			if (array_key_exists($fieldname, $_POST)) {
-				$extrafield_value = trim($_POST[$fieldname]);
-				if ($extrafield_value === '') {
-					$extrafield_value = null;
-				}
-				$object->array_options[$fieldname] = $extrafield_value;
-			} else {
-				if (isset($originalOptions[$fieldname])) {
-					$object->array_options[$fieldname] = $originalOptions[$fieldname];
+		// Only save extra–fields when at least one options_* field is posted.
+		$hasOptionsPost = false;
+		if (!empty($_POST)) {
+			foreach ($_POST as $postKey => $postValue) {
+				if (strpos($postKey, 'options_') === 0) {
+					$hasOptionsPost = true;
+					break;
 				}
 			}
 		}
-		// Save the changes to the database (one call for all extra–fields)
-		$object->insertExtraFields();
+
+		if ($hasOptionsPost) {
+			// Refresh current values to avoid overwriting with stale data.
+			$object->fetch_optionals();
+			$originalOptions = $object->array_options;
+			// Merge POST values with the existing extra–fields values.
+			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
+				$fieldname = 'options_' . $key;
+				if (array_key_exists($fieldname, $_POST)) {
+					$extrafield_value = trim((string) $_POST[$fieldname]);
+					if ($extrafield_value === '') {
+						$extrafield_value = null;
+					}
+					$object->array_options[$fieldname] = $extrafield_value;
+				} elseif (array_key_exists($fieldname, $originalOptions)) {
+					$object->array_options[$fieldname] = $originalOptions[$fieldname];
+				}
+			}
+			// Save the changes to the database (one call for all extra–fields).
+			$object->insertExtraFields();
+		}
 
 
 		if ($productIsFood) {
@@ -1803,9 +1969,7 @@ if ($id > 0 || !empty($ref)) {
 			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
 			kreaproducts_debug_log('label: ' . $label);
 			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
-			if (!is_array($rawOptions)) {
-				$rawOptions = array();
-			}
+			$rawOptions = kreaproducts_normalize_extrafield_options($rawOptions);
 			$options = array('' => '') + $rawOptions;
 			$editorType = 'select;' . implode(',', array_map(
 				function ($k, $v) {
@@ -1817,11 +1981,32 @@ if ($id > 0 || !empty($ref)) {
 				$options
 			));
 
+			$displayLabels = array();
+			foreach ($rawOptions as $optKey => $optLabel) {
+				$displayLabels[(string) $optKey] = $langs->trans($optLabel);
+			}
+			$currentValue = array_key_exists($fieldName, $object->array_options) ? $object->array_options[$fieldName] : '';
+			if ($currentValue === null || $currentValue === '') {
+				$dbValue = kreaproducts_get_product_extrafield_value($db, $object->id, $key, $conf->entity);
+				if ($dbValue !== null) {
+					$currentValue = $dbValue;
+					$object->array_options[$fieldName] = $dbValue;
+				}
+			}
+			$currentKey = ($currentValue === null) ? '' : (string) $currentValue;
+			$isEditingField = ($inlineOptionAction === 'editoptions' && $inlineOptionKey === $key);
 			print '<tr><td class="titlefield">';
-			$currentValue = $object->array_options[$fieldName] ?? '';
 			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td><td>';
-			print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
+			if ($isEditingField) {
+				print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
+			} else {
+				if ($currentKey !== '' && array_key_exists($currentKey, $displayLabels)) {
+					print dol_escape_htmltag($displayLabels[$currentKey]);
+				} elseif ($currentKey !== '') {
+					print dol_escape_htmltag($currentKey);
+				}
+			}
 			print '</td></tr>';
 			print '</table>';
 			print '</div>';
@@ -1924,9 +2109,7 @@ if ($id > 0 || !empty($ref)) {
 			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
 			kreaproducts_debug_log('label: ' . $label);
 			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
-			if (!is_array($rawOptions)) {
-				$rawOptions = array();
-			}
+			$rawOptions = kreaproducts_normalize_extrafield_options($rawOptions);
 			$options = array('' => '') + $rawOptions;
 			$editorType = 'select;' . implode(',', array_map(
 				function ($k, $v) {
@@ -1938,11 +2121,32 @@ if ($id > 0 || !empty($ref)) {
 				$options
 			));
 
+			$displayLabels = array();
+			foreach ($rawOptions as $optKey => $optLabel) {
+				$displayLabels[(string) $optKey] = $langs->trans($optLabel);
+			}
+			$currentValue = array_key_exists($fieldName, $object->array_options) ? $object->array_options[$fieldName] : '';
+			if ($currentValue === null || $currentValue === '') {
+				$dbValue = kreaproducts_get_product_extrafield_value($db, $object->id, $key, $conf->entity);
+				if ($dbValue !== null) {
+					$currentValue = $dbValue;
+					$object->array_options[$fieldName] = $dbValue;
+				}
+			}
+			$currentKey = ($currentValue === null) ? '' : (string) $currentValue;
+			$isEditingField = ($inlineOptionAction === 'editoptions' && $inlineOptionKey === $key);
 			print '<tr><td class="titlefield">';
-			$currentValue = $object->array_options[$fieldName] ?? '';
 			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
 			print '</td><td>';
-			print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
+			if ($isEditingField) {
+				print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
+			} else {
+				if ($currentKey !== '' && array_key_exists($currentKey, $displayLabels)) {
+					print dol_escape_htmltag($displayLabels[$currentKey]);
+				} elseif ($currentKey !== '') {
+					print dol_escape_htmltag($currentKey);
+				}
+			}
 			print '</td></tr>';
 			print '</table>';
 			print '</div>';
