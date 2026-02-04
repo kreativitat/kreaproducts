@@ -761,7 +761,8 @@ class ProductAllergens extends CommonObject
 			$label = implode($this->getTooltipContentArray($params));
 		}
 
-		$url = dol_buildpath('/kreaproducts/productallergens_card.php', 1) . '?id=' . $this->id;
+		// UI pages removed; avoid linking to missing card page.
+		$url = '';
 
 		if ($option !== 'nolink') {
 			// Add param to save lastsearch_values or not

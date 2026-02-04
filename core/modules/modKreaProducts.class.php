@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.0.123';
+        $this->version = '2.0.124';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -390,52 +390,7 @@ class modKreaProducts extends DolibarrModules
         /* END MODULEBUILDER TOPMENU */
 
         /* BEGIN MODULEBUILDER LEFTMENU PRODUCTALLERGENS */
-        $this->menu[$r++] = array(
-            'fk_menu' => 'fk_mainmenu=kreaproducts',
-            'type' => 'left',
-            'titre' => 'ProductAllergens',
-            'prefix' => img_picto('', $this->picto, 'class="paddingright pictofixedwidth valignmiddle"'),
-            'mainmenu' => 'kreaproducts',
-            'leftmenu' => 'productallergens',
-            'url' => '/kreaproducts/productallergens_list.php',
-            'langs' => 'kreaproducts@kreaproducts',
-            'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
-            'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
-            'target' => '',
-            'user' => 2,
-            'object' => 'ProductAllergens'
-        );
-        $this->menu[$r++] = array(
-            'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
-            'type' => 'left',
-            'titre' => 'List ProductAllergens',
-            'mainmenu' => 'kreaproducts',
-            'leftmenu' => 'kreaproducts_productallergens_list',
-            'url' => '/kreaproducts/productallergens_list.php',
-            'langs' => 'kreaproducts@kreaproducts',
-            'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
-            'perms' => '$user->hasRight("kreaproducts", "productallergens", "read")',
-            'target' => '',
-            'user' => 2,
-            'object' => 'ProductAllergens'
-        );
-        $this->menu[$r++] = array(
-            'fk_menu' => 'fk_mainmenu=kreaproducts,fk_leftmenu=productallergens',
-            'type' => 'left',
-            'titre' => 'New ProductAllergens',
-            'mainmenu' => 'kreaproducts',
-            'leftmenu' => 'kreaproducts_productallergens_new',
-            'url' => '/kreaproducts/productallergens_card.php?action=create',
-            'langs' => 'kreaproducts@kreaproducts',
-            'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("dolizsynch")',
-            'perms' => '$user->hasRight("kreaproducts", "productallergens", "write")',
-            'target' => '',
-            'user' => 2,
-            'object' => 'ProductAllergens'
-        );
+        // ProductAllergens UI pages removed; no left menu entries.
         $this->menu[$r++] = array(
             'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=stock',
             'type' => 'left',
