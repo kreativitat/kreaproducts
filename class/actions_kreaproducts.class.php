@@ -102,58 +102,92 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 
 		$langs->load('kreaproducts@kreaproducts');
-		$permission = ($user->hasRight('stock', 'lire') || $user->hasRight('stock', 'inventory_advance', 'read'));
+		$useAdvancedPerms = (bool) getDolGlobalInt('MAIN_USE_ADVANCED_PERMS');
+		$canReadInventory = $useAdvancedPerms
+			? $user->hasRight('stock', 'inventory_advance', 'read')
+			: $user->hasRight('stock', 'lire');
+		$canCreateInventory = $useAdvancedPerms
+			? $user->hasRight('stock', 'inventory_advance', 'write')
+			: $user->hasRight('stock', 'creer');
 
 		$newmenu = array();
-		$inserted = false;
+		$inventorySubmenusInserted = false;
 
 		foreach ($menuitems as $item) {
-			if (!empty($item['url']) && strpos($item['url'], '/kreaproducts/inventory_printsheet.php') !== false) {
+			$url = empty($item['url']) ? '' : (string) $item['url'];
+			$level = isset($item['level']) ? (int) $item['level'] : -1;
+
+			$isPrintsheet = ($url !== '' && strpos($url, '/kreaproducts/inventory_printsheet.php') !== false);
+			$isInventoryCreateSubmenu = ($url !== ''
+				&& strpos($url, '/product/inventory/card.php') !== false
+				&& strpos($url, 'action=create') !== false
+				&& strpos($url, 'leftmenu=stock_inventories') !== false
+				&& $level === 1);
+			$isInventoryListSubmenu = ($url !== ''
+				&& strpos($url, '/product/inventory/list.php') !== false
+				&& strpos($url, 'leftmenu=stock_inventories') !== false
+				&& $level === 1);
+
+			if ($isPrintsheet) {
+				continue;
+			}
+			if ($inventorySubmenusInserted && ($isInventoryCreateSubmenu || $isInventoryListSubmenu)) {
 				continue;
 			}
 
 			$newmenu[] = $item;
 
-			$isInventoryList = (!empty($item['url'])
-				&& strpos($item['url'], '/product/inventory/list.php') !== false
-				&& strpos($item['url'], 'leftmenu=stock_inventories') !== false
-				&& isset($item['level'])
-				&& (int) $item['level'] === 1);
+			$isInventoryRoot = ($url !== ''
+				&& strpos($url, '/product/inventory/list.php') !== false
+				&& strpos($url, 'leftmenu=stock_inventories') !== false
+				&& $level === 0);
 
-			if (!$inserted && $isInventoryList) {
+			if (!$inventorySubmenusInserted && $isInventoryRoot) {
+				$submenuPosition = isset($item['position']) ? (int) $item['position'] : 0;
 				$newmenu[] = array(
-					'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
-					'titre' => $langs->trans('KREAPRODUCTS_INVENTORY_PRINT_SHEET'),
+					'url' => '/product/inventory/card.php?action=create&leftmenu=stock_inventories',
+					'titre' => $langs->trans('NewInventory'),
 					'level' => 1,
-					'enabled' => (int) $permission,
-					'target' => '_blank',
+					'enabled' => (int) $canCreateInventory,
+					'target' => '',
 					'mainmenu' => 'products',
 					'leftmenu' => 'stock_inventories',
-					'position' => isset($item['position']) ? (int) $item['position'] : 0,
+					'position' => $submenuPosition,
 					'id' => '',
 					'idsel' => '',
 					'classname' => '',
 					'prefix' => '',
 				);
-				$inserted = true;
+				$newmenu[] = array(
+					'url' => '/product/inventory/list.php?leftmenu=stock_inventories',
+					'titre' => $langs->trans('List'),
+					'level' => 1,
+					'enabled' => (int) $canReadInventory,
+					'target' => '',
+					'mainmenu' => 'products',
+					'leftmenu' => 'stock_inventories',
+					'position' => $submenuPosition,
+					'id' => '',
+					'idsel' => '',
+					'classname' => '',
+					'prefix' => '',
+				);
+				$newmenu[] = array(
+					'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
+					'titre' => $langs->trans('KREAPRODUCTS_INVENTORY_PRINT_SHEET'),
+					'level' => 1,
+					'enabled' => (int) $canReadInventory,
+					'target' => '_blank',
+					'mainmenu' => 'products',
+					'leftmenu' => 'stock_inventories',
+					'position' => $submenuPosition,
+					'id' => '',
+					'idsel' => '',
+					'classname' => '',
+					'prefix' => '',
+				);
+				$inventorySubmenusInserted = true;
 			}
-		}
-
-		if (!$inserted) {
-			$newmenu[] = array(
-				'url' => '/kreaproducts/inventory_printsheet.php?leftmenu=stock_inventories',
-				'titre' => $langs->trans('KREAPRODUCTS_INVENTORY_PRINT_SHEET'),
-				'level' => 1,
-				'enabled' => (int) $permission,
-				'target' => '_blank',
-				'mainmenu' => 'products',
-				'leftmenu' => 'stock_inventories',
-				'position' => 0,
-				'id' => '',
-				'idsel' => '',
-				'classname' => '',
-				'prefix' => '',
-			);
 		}
 
 		$this->results = $newmenu;
