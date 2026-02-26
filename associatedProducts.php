@@ -1228,7 +1228,9 @@ if ($id > 0 || !empty($ref)) {
 		// Helper to render ZoneSoft menu chips for a product
 		$zsMenuCache = array();
 		$zsProdDataCache = array(); // Cache by ZS code: ['desc' => ..., 'fk_product' => ...]
-		$renderZsMenu = function ($productId) use (&$zsMenuCache, &$zsProdDataCache, $db, $langs, $conf) {
+		$zsFamilyDataCache = array(); // Cache by family key: ['label' => ...]
+		$zsFamilyProductsCache = array(); // Cache by family key: [['codigo' => ..., 'desc' => ..., 'fk_product' => ...], ...]
+		$renderZsMenu = function ($productId) use (&$zsMenuCache, &$zsProdDataCache, &$zsFamilyDataCache, &$zsFamilyProductsCache, $db, $langs, $conf) {
 			if (empty($conf->dolizsynch->enabled)) {
 				return '';
 			}
@@ -1238,12 +1240,43 @@ if ($id > 0 || !empty($ref)) {
 
 			$html = '';
 
-			$sql = "SELECT niveismenu FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . ((int) $productId) . " LIMIT 1";
-			$resql = $db->query($sql);
-			if ($resql) {
-				$obj = $db->fetch_object($resql);
-				if ($obj && !empty($obj->niveismenu)) {
-					$data = json_decode($obj->niveismenu, true);
+			$menuJsonRaw = '';
+
+			// Prefer loading menu by ZS code (product ref) because fk_product may have stale rows.
+			$sqlRef = "SELECT ref FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . ((int) $productId) . " " . $db->plimit(1);
+			$resRef = $db->query($sqlRef);
+			$zsCodeRef = '';
+			if ($resRef && ($objRef = $db->fetch_object($resRef))) {
+				$zsCodeRef = trim((string) $objRef->ref);
+			}
+			if ($zsCodeRef !== '' && ctype_digit($zsCodeRef)) {
+				$sqlMenuByCode = "SELECT niveismenu";
+				$sqlMenuByCode .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct";
+				$sqlMenuByCode .= " WHERE codigo = " . ((int) $zsCodeRef);
+				$sqlMenuByCode .= " AND niveismenu IS NOT NULL";
+				$sqlMenuByCode .= " ORDER BY rowid DESC " . $db->plimit(1);
+				$resMenuByCode = $db->query($sqlMenuByCode);
+				if ($resMenuByCode && ($objMenuByCode = $db->fetch_object($resMenuByCode)) && !empty($objMenuByCode->niveismenu)) {
+					$menuJsonRaw = (string) $objMenuByCode->niveismenu;
+					kreaproducts_debug_log("DoliZSynch Menu: loaded by codigo {$zsCodeRef} for product {$productId}");
+				}
+			}
+
+			// Fallback to fk_product if menu not found by code.
+			if ($menuJsonRaw === '') {
+				$sql = "SELECT niveismenu FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE fk_product = " . ((int) $productId) . " ORDER BY rowid DESC " . $db->plimit(1);
+				$resql = $db->query($sql);
+				if ($resql) {
+					$obj = $db->fetch_object($resql);
+					if ($obj && !empty($obj->niveismenu)) {
+						$menuJsonRaw = (string) $obj->niveismenu;
+						kreaproducts_debug_log("DoliZSynch Menu: loaded by fk_product {$productId}");
+					}
+				}
+			}
+
+			if ($menuJsonRaw !== '') {
+				$data = json_decode($menuJsonRaw, true);
 					if (json_last_error() === JSON_ERROR_NONE && is_array($data) && !empty($data)) {
 						kreaproducts_debug_log("DoliZSynch Menu: found " . count($data) . " menu levels for product {$productId}");
 						$chips = array();
@@ -1253,42 +1286,146 @@ if ($id > 0 || !empty($ref)) {
 							$label = dol_escape_htmltag(dol_trunc($labelRaw, 40));
 							$isRequired = !empty($menu['obrigatorio']);
 							$badgeTitle = '#' . $level . ' ' . $label;
-							$badgeSub = '';
 							$productsHtml = '';
 							if (!empty($menu['niveismenuext']) && is_array($menu['niveismenuext'])) {
 								$productLines = array();
 								foreach ($menu['niveismenuext'] as $prod) {
-									$code = isset($prod['codigo']) ? dol_escape_htmltag((string) $prod['codigo']) : '';
+									$fixo = isset($prod['fixo']) ? (int) $prod['fixo'] : 1;
+									$codeRaw = isset($prod['codigo']) ? trim((string) $prod['codigo']) : '';
+									$code = dol_escape_htmltag($codeRaw);
+
+									// "fixo=2" means family menu item: expand and show all active products in that family.
+									if ($fixo === 2 && $codeRaw !== '') {
+										$familyId = 0;
+										$subfamilyId = null;
+										$familyParts = explode('_', $codeRaw);
+										if (isset($familyParts[0]) && is_numeric($familyParts[0])) {
+											$familyId = (int) $familyParts[0];
+										}
+										if (isset($familyParts[1]) && is_numeric($familyParts[1])) {
+											$tmpSubFamily = (int) $familyParts[1];
+											if ($tmpSubFamily > 0) {
+												$subfamilyId = $tmpSubFamily;
+											}
+										}
+
+										if ($familyId > 0) {
+											$familyCacheKey = $familyId . '|' . ((null !== $subfamilyId) ? $subfamilyId : '*');
+
+											if (!isset($zsFamilyDataCache[$familyCacheKey])) {
+												$familyLabelRaw = '';
+												$sqlFamily = "SELECT family_name, subfamily_name";
+												$sqlFamily .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsfamily";
+												$sqlFamily .= " WHERE family_id = " . ((int) $familyId);
+												if (null !== $subfamilyId) {
+													$sqlFamily .= " AND subfamily_id = " . ((int) $subfamilyId);
+												}
+												if (null === $subfamilyId) {
+													$sqlFamily .= " ORDER BY (subfamily_id = 0) DESC, rowid ASC";
+												} else {
+													$sqlFamily .= " ORDER BY rowid ASC";
+												}
+												$sqlFamily .= " " . $db->plimit(1);
+												$resFamily = $db->query($sqlFamily);
+												if ($resFamily && ($objFamily = $db->fetch_object($resFamily))) {
+													$familyName = trim((string) $objFamily->family_name);
+													$subFamilyName = trim((string) $objFamily->subfamily_name);
+													$familyLabelRaw = $familyName;
+													if ($subFamilyName !== '' && $subFamilyName !== '-') {
+														$familyLabelRaw .= ' >> ' . $subFamilyName;
+													}
+												}
+												if ($familyLabelRaw === '') {
+													$familyLabelRaw = isset($prod['descricao']) && $prod['descricao'] !== '' ? (string) $prod['descricao'] : ('Family ' . $familyId);
+												}
+												$zsFamilyDataCache[$familyCacheKey] = array(
+													'label' => $familyLabelRaw
+												);
+											}
+
+												if (!isset($zsFamilyProductsCache[$familyCacheKey])) {
+													$familyProducts = array();
+													$seenFamilyProducts = array();
+													$sqlFamilyProductsBase = "SELECT z.codigo, z.descricao, z.fk_product";
+													$sqlFamilyProductsBase .= " FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct AS z";
+													$sqlFamilyProductsBase .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = z.fk_product";
+													$sqlFamilyProductsBase .= " AND p.entity IN (" . getEntity('product') . ")";
+													$sqlFamilyProductsBase .= " WHERE z.familia = " . ((int) $familyId);
+													if (null !== $subfamilyId) {
+														$sqlFamilyProductsBase .= " AND z.subfam = " . ((int) $subfamilyId);
+													}
+													$sqlFamilyProductsBase .= " AND (z.restricted IS NULL OR z.restricted = 0)";
+													$sqlFamilyProductsBase .= " AND (p.rowid IS NULL OR p.tosell = 1)";
+
+													$sqlFamilyProducts = $sqlFamilyProductsBase . " ORDER BY z.codigo ASC";
+													$resFamilyProducts = $db->query($sqlFamilyProducts);
+
+													if ($resFamilyProducts) {
+														while ($objFamilyProduct = $db->fetch_object($resFamilyProducts)) {
+															$familyCode = trim((string) $objFamilyProduct->codigo);
+														if ($familyCode === '' || isset($seenFamilyProducts[$familyCode])) {
+															continue;
+														}
+														$seenFamilyProducts[$familyCode] = 1;
+														$familyProducts[] = array(
+															'codigo' => $familyCode,
+															'desc' => isset($objFamilyProduct->descricao) ? (string) $objFamilyProduct->descricao : '',
+															'fk_product' => !empty($objFamilyProduct->fk_product) ? (int) $objFamilyProduct->fk_product : null
+														);
+													}
+												}
+												$zsFamilyProductsCache[$familyCacheKey] = $familyProducts;
+											}
+
+											$familyLabelRaw = $zsFamilyDataCache[$familyCacheKey]['label'];
+											if ($familyLabelRaw !== '') {
+												$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-desc"><strong>' . dol_escape_htmltag(dol_trunc($familyLabelRaw, 80)) . '</strong></span></div>';
+											}
+
+											foreach ($zsFamilyProductsCache[$familyCacheKey] as $familyProduct) {
+												$familyCodeEscaped = dol_escape_htmltag((string) $familyProduct['codigo']);
+												$familyDescEscaped = dol_escape_htmltag(dol_trunc((string) $familyProduct['desc'], 80));
+												$familyProdLink = !empty($familyProduct['fk_product']) ? (int) $familyProduct['fk_product'] : 0;
+												$familyLinkWrappedCode = '#' . $familyCodeEscaped;
+												if ($familyProdLink > 0) {
+													$familyLinkWrappedCode = '<a class="zs-prod-link" target="_blank" href="' . DOL_URL_ROOT . '/product/card.php?id=' . $familyProdLink . '">#' . $familyCodeEscaped . '</a>';
+												}
+												$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">' . $familyLinkWrappedCode . '</span><span class="zs-prod-desc">' . $familyDescEscaped . '</span><span class="zs-prod-price"></span></div>';
+											}
+										}
+										continue;
+									}
+
 									$descRaw = '';
 									if (isset($prod['descricao']) && $prod['descricao'] !== '') {
 										$descRaw = $prod['descricao'];
-									} elseif ($code !== '') {
+									} elseif ($codeRaw !== '' && is_numeric($codeRaw)) {
 										// Fallback: fetch description from synced products by codigo
-										if (!isset($zsProdDataCache[$code])) {
-											$sqlDesc = "SELECT descricao, fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
+										if (!isset($zsProdDataCache[$codeRaw])) {
+											$sqlDesc = "SELECT descricao, fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $codeRaw) . " LIMIT 1";
 											$resDesc = $db->query($sqlDesc);
 											if ($resDesc && ($rowDesc = $db->fetch_object($resDesc))) {
-												$zsProdDataCache[$code] = array(
+												$zsProdDataCache[$codeRaw] = array(
 													'desc' => $rowDesc->descricao,
 													'fk_product' => !empty($rowDesc->fk_product) ? (int) $rowDesc->fk_product : null,
 												);
 											} else {
-												$zsProdDataCache[$code] = array('desc' => '', 'fk_product' => null);
+												$zsProdDataCache[$codeRaw] = array('desc' => '', 'fk_product' => null);
 											}
 										}
-										$descRaw = $zsProdDataCache[$code]['desc'];
+										$descRaw = $zsProdDataCache[$codeRaw]['desc'];
 									}
 									$desc = dol_escape_htmltag(dol_trunc($descRaw, 80));
 									// Get product link if available in cache or via lookup
 									$fkProdLink = null;
-									if (isset($zsProdDataCache[$code]) && !empty($zsProdDataCache[$code]['fk_product'])) {
-										$fkProdLink = $zsProdDataCache[$code]['fk_product'];
-									} elseif (!isset($zsProdDataCache[$code]) && $code !== '') {
-										$sqlDesc = "SELECT fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $code) . " LIMIT 1";
+									if (isset($zsProdDataCache[$codeRaw]) && !empty($zsProdDataCache[$codeRaw]['fk_product'])) {
+										$fkProdLink = $zsProdDataCache[$codeRaw]['fk_product'];
+									} elseif (!isset($zsProdDataCache[$codeRaw]) && $codeRaw !== '' && is_numeric($codeRaw)) {
+										$sqlDesc = "SELECT fk_product FROM " . MAIN_DB_PREFIX . "dolizsynch_zsproduct WHERE codigo = " . ((int) $codeRaw) . " LIMIT 1";
 										$resDesc = $db->query($sqlDesc);
 										if ($resDesc && ($rowDesc = $db->fetch_object($resDesc))) {
 											$fkProdLink = !empty($rowDesc->fk_product) ? (int) $rowDesc->fk_product : null;
-											$zsProdDataCache[$code] = array(
+											$zsProdDataCache[$codeRaw] = array(
 												'desc' => $descRaw,
 												'fk_product' => $fkProdLink,
 											);
@@ -1300,10 +1437,10 @@ if ($id > 0 || !empty($ref)) {
 									if (!empty($fkProdLink)) {
 										$linkWrappedCode = '<a class="zs-prod-link" target="_blank" href="' . DOL_URL_ROOT . '/product/card.php?id=' . (int) $fkProdLink . '">#' . $code . '</a>';
 									}
-									$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">' . $linkWrappedCode . '</span><span class="zs-prod-desc">' . $desc . '</span><span class="zs-prod-price">' . $priceStr . '</span></div>';
+										$productLines[] = '<div class="zs-menu-product"><span class="zs-prod-code">' . $linkWrappedCode . '</span><span class="zs-prod-desc">' . $desc . '</span><span class="zs-prod-price">' . $priceStr . '</span></div>';
+									}
+									$productsHtml = '<div class="zs-menu-products">' . implode('', $productLines) . '</div>';
 								}
-								$productsHtml = '<div class="zs-menu-products">' . implode('', $productLines) . '</div>';
-							}
 							$chips[] = '<div class="zs-menu-card">'
 								. '<div class="zs-menu-meta">'
 								. '<div class="zs-level-badge">'
@@ -1315,12 +1452,11 @@ if ($id > 0 || !empty($ref)) {
 								. '</div>';
 						}
 						$html = implode('', $chips);
-					} else {
-						kreaproducts_debug_log("DoliZSynch Menu: niveismenu JSON empty or invalid for product {$productId}");
-					}
 				} else {
-					kreaproducts_debug_log("DoliZSynch Menu: no niveismenu for product {$productId}");
+					kreaproducts_debug_log("DoliZSynch Menu: niveismenu JSON empty or invalid for product {$productId}");
 				}
+			} else {
+				kreaproducts_debug_log("DoliZSynch Menu: no niveismenu for product {$productId}");
 			}
 
 			$zsMenuCache[$productId] = $html;
