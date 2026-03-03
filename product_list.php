@@ -129,17 +129,19 @@ $arrayfields = array(
 	'cost_price' => array('label' => $langs->trans('KreapCostWithoutVat'), 'checked' => 1, 'position' => 3),
 	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 4),
 	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 5),
-	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 6),
-	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 7),
-	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 8),
+	'vat_rate' => array('label' => $langs->trans('VAT'), 'checked' => 1, 'position' => 6),
+	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 7),
+	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 8),
+	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 9),
 );
 if ($show_hidden) {
-	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 9);
+	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 10);
 }
 
 // SQL build
 $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_product_type, "
 	. "COALESCE(p.cost_price, p.pmp, 0) as cost_price, "
+	. "COALESCE(p.tva_tx, 0) as vat_rate, "
 	. "COALESCE(pe.kreap_hideproduct, 0) as kreap_hideproduct";
 $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
 $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields as pe ON p.rowid = pe.fk_object";
@@ -244,9 +246,25 @@ $toggleHideBackUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleHideBa
 // Filter on categories (header area before list)
 $moreforfilter = '';
 if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
-	$moreforfilter .= $formcategory->getFilterBox(Categorie::TYPE_PRODUCT, $searchCategoryProductList, 'minwidth300', 1);
-	// Remove OR/AND operator checkbox from filter box output
-	$moreforfilter = preg_replace('#<input[^>]*search_category_product_operator[^>]*>(?:\\s*<label[^>]*>.*?</label>)?#', '', $moreforfilter);
+	$tmptitle = $langs->transnoentitiesnoconv('Category');
+	$categoryArray = array();
+	$categoryTree = $formcategory->select_all_categories(Categorie::TYPE_PRODUCT, '', '', 512, 0, 2);
+	if (is_array($categoryTree)) {
+		foreach ($categoryTree as $categoryNode) {
+			if (!isset($categoryNode['id'])) {
+				continue;
+			}
+			$fullLabel = !empty($categoryNode['fulllabel']) ? $categoryNode['fulllabel'] : $categoryNode['label'];
+			$categoryArray[(int) $categoryNode['id']] = $fullLabel;
+		}
+	}
+	$langs->load('categories');
+	$categoryArray[-2] = '- ' . $langs->trans('NotCategorized') . ' -';
+
+	$moreforfilter .= '<div class="divsearchfield">';
+	$moreforfilter .= img_picto($tmptitle, 'category', 'class="pictofixedwidth"');
+	$moreforfilter .= Form::multiselectarray('search_category_product_list', $categoryArray, $searchCategoryProductList, 0, 0, 'minwidth300', 0, 0, '', '', $tmptitle);
+	$moreforfilter .= '</div>';
 }
 
 llxHeader('', $title);
@@ -318,6 +336,7 @@ print '<td class="liste_titre left"><input class="flat width100" type="text" nam
 print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre right"></td>';
+print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre maxwidthonsmartphone" align="center">&nbsp;</td>';
 $selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
 print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
@@ -334,7 +353,7 @@ print '<th class="wrapcolumntitle center maxwidthsearch liste_titre"></th>';
 foreach ($arrayfields as $key => $val) {
 	if (!empty($val['checked'])) {
 		$align = '';
-		if ($key === 'cost_price' || $key === 'sell_price' || $key === 'sell_price_ttc') {
+		if ($key === 'cost_price' || $key === 'sell_price' || $key === 'sell_price_ttc' || $key === 'vat_rate') {
 			$align = 'right ';
 		} elseif ($key === 'p.entity') {
 			$align = 'center nowrap ';
@@ -378,6 +397,10 @@ while ($i < min($num, $limit)) {
 			$priceInclVat = (float) $productstatic->multiprices_ttc[$priceLevel];
 		}
 	}
+	$vatRate = isset($productstatic->tva_tx) ? (float) $productstatic->tva_tx : (float) $obj->vat_rate;
+	if ($useMultiprices && isset($productstatic->multiprices_tva_tx[$priceLevel]) && $productstatic->multiprices_tva_tx[$priceLevel] !== '') {
+		$vatRate = (float) $productstatic->multiprices_tva_tx[$priceLevel];
+	}
 	$costPriceDisplay = isset($productstatic->cost_price) ? $productstatic->cost_price : $obj->cost_price;
 
 	print '<tr class="oddeven">';
@@ -400,6 +423,9 @@ while ($i < min($num, $limit)) {
 				break;
 			case 'sell_price_ttc':
 				print '<td class="right">' . price($priceInclVat) . '</td>';
+				break;
+			case 'vat_rate':
+				print '<td class="right">' . vatrate($vatRate, true) . '</td>';
 				break;
 			case 'cost_price':
 				print '<td class="right">' . price($costPriceDisplay) . '</td>';

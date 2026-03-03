@@ -1,5 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 CHANGELOG KREAPRODUCTS FOR DOLIBARR ERP CRM
+
+## [2.0.127] - 2026-03-03
+
+### Changed
+- Added VAT column display in `custom/kreaproducts/product_list.php`.
+- Category filter now shows full family path in Select2 (for example `FABRICA >> (RV) REVENDA >> (RV) REFATURACAO`).
+
 2.91
 Stock recalculation now anchors on counted inventory quantity (qty_stock), falling back to qty_view when needed to prevent drift on backdated movements.
 
