@@ -188,7 +188,21 @@ if ($resqlcount) {
 	$db->free($resqlcount);
 }
 
-$sql .= $db->order($sortfield, $sortorder);
+$sortorder = strtoupper($sortorder) === 'DESC' ? 'DESC' : 'ASC';
+if ($sortfield === 'p.ref') {
+	// Natural sort for refs: numeric refs are ordered numerically (1,2,11) before alphanumeric refs.
+	if ($db->type === 'pgsql') {
+		$sql .= " ORDER BY CASE WHEN p.ref ~ '^[0-9]+$' THEN 0 ELSE 1 END " . $sortorder;
+		$sql .= ", CASE WHEN p.ref ~ '^[0-9]+$' THEN CAST(p.ref AS BIGINT) ELSE NULL END " . $sortorder;
+		$sql .= ", p.ref " . $sortorder;
+	} else {
+		$sql .= " ORDER BY CASE WHEN p.ref REGEXP '^[0-9]+$' THEN 0 ELSE 1 END " . $sortorder;
+		$sql .= ", CASE WHEN p.ref REGEXP '^[0-9]+$' THEN CAST(p.ref AS UNSIGNED) ELSE NULL END " . $sortorder;
+		$sql .= ", p.ref " . $sortorder;
+	}
+} else {
+	$sql .= $db->order($sortfield, $sortorder);
+}
 $sql .= $db->plimit($limit + 1, $offset);
 
 $resql = $db->query($sql);
