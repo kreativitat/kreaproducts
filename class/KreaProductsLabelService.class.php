@@ -1,0 +1,3656 @@
+<?php
+/* Copyright (C) 2026       Kreativitat             <mail@kreativitat.com>
+ *
+ * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
+ *
+ * GPL-3.0 License:
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Proprietary License:
+ * For commercial use, support, or if you prefer not to disclose your source code modifications,
+ * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ *
+ * For more information, visit <https://www.kreativitat.com>.
+ */
+
+/**
+ * Service helpers for product label generation.
+ */
+class KreaProductsLabelService
+{
+	/**
+	 * Return selectable label fields.
+	 *
+	 * @param Translate $langs Output language
+	 * @return array
+	 */
+	public static function getAvailableFields($langs)
+	{
+		return array(
+			'ref' => $langs->trans('Ref'),
+			'label' => $langs->trans('Label'),
+			'barcode' => $langs->trans('BarCode'),
+			'price_ht' => $langs->trans('KREAPRODUCTS_LABELS_PRICE_HT'),
+			'price_ttc' => $langs->trans('KREAPRODUCTS_LABELS_PRICE_TTC'),
+		);
+	}
+
+	/**
+	 * Sanitize selected field codes.
+	 *
+	 * @param array $selected Raw selected field codes
+	 * @return array
+	 */
+	public static function sanitizeSelectedFields($selected)
+	{
+		$allowed = array('ref', 'label', 'barcode', 'price_ht', 'price_ttc');
+		if (!is_array($selected)) {
+			return array();
+		}
+
+		$selected = array_values(array_unique(array_map('strval', $selected)));
+		return array_values(array_intersect($selected, $allowed));
+	}
+
+	/**
+	 * Return active Dolibarr label formats.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @return array
+	 */
+	public static function getFormatOptions($db)
+	{
+		$options = array();
+
+		$sql = "SELECT code, name, paper_size, metric, nx, ny, width, height, custom_x, custom_y";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "c_format_cards";
+		$sql .= " WHERE active = 1";
+		$sql .= " ORDER BY code ASC";
+
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$pageLabel = ($obj->paper_size === 'custom' ? price2num($obj->custom_x) . 'x' . price2num($obj->custom_y) . ' ' . $obj->metric : $obj->paper_size);
+				$options[$obj->code] = $obj->name . ' (' . $pageLabel . ' - ' . ((int) $obj->nx) . 'x' . ((int) $obj->ny) . ')';
+			}
+			$db->free($resql);
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Return active format details indexed by code.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @return array
+	 */
+	public static function getFormatDetails($db)
+	{
+		$details = array();
+
+		$sql = "SELECT code, name, paper_size, metric, nx, ny, width, height, leftmargin, topmargin, spacex, spacey, custom_x, custom_y";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "c_format_cards";
+		$sql .= " WHERE active = 1";
+		$sql .= " ORDER BY code ASC";
+
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$details[$obj->code] = array(
+					'code' => $obj->code,
+					'name' => $obj->name,
+					'paper_size' => $obj->paper_size,
+					'metric' => $obj->metric,
+					'nx' => (int) $obj->nx,
+					'ny' => (int) $obj->ny,
+					'width' => (float) $obj->width,
+					'height' => (float) $obj->height,
+					'leftmargin' => (float) $obj->leftmargin,
+					'topmargin' => (float) $obj->topmargin,
+					'spacex' => (float) $obj->spacex,
+					'spacey' => (float) $obj->spacey,
+					'custom_x' => (float) $obj->custom_x,
+					'custom_y' => (float) $obj->custom_y,
+				);
+			}
+			$db->free($resql);
+		}
+
+		return $details;
+	}
+
+	/**
+	 * Get default format code.
+	 *
+	 * @param array $formatOptions Format options
+	 * @return string
+	 */
+	public static function getDefaultFormatCode($formatOptions)
+	{
+		if (empty($formatOptions)) {
+			return '';
+		}
+
+		foreach ($formatOptions as $code => $label) {
+			return (string) $code;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Build relative documents path for an entity and product.
+	 *
+	 * @param int $entityId  Current entity id
+	 * @param int $productId Product id
+	 * @return string
+	 */
+	public static function getDocumentModuleSubdir($entityId, $productId)
+	{
+		return (int) $entityId . '/labels/product/' . (int) $productId;
+	}
+
+	/**
+	 * Build absolute documents directory.
+	 *
+	 * @param int $entityId  Current entity id
+	 * @param int $productId Product id
+	 * @return string
+	 */
+	public static function getDocumentDir($entityId, $productId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . self::getDocumentModuleSubdir($entityId, $productId);
+	}
+
+	/**
+	 * Return the directory containing bundled label templates shipped with the module.
+	 *
+	 * @return string
+	 */
+	public static function getBundledLabelTemplateDir()
+	{
+		return dirname(__DIR__) . '/labels';
+	}
+
+	/**
+	 * Return the legacy bundled template directory used before 2.6.4.
+	 *
+	 * @return string
+	 */
+	private static function getLegacyBundledLabelTemplateDir()
+	{
+		return dirname(__DIR__) . '/templates/labels';
+	}
+
+	/**
+	 * Return the directory intended for entity-scoped custom label templates.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	public static function getCustomLabelTemplateDir($entityId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . ((int) $entityId) . '/labels/templates';
+	}
+
+	/**
+	 * Return the legacy custom template directory used before 2.6.4.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	private static function getLegacyCustomLabelTemplateDir($entityId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . ((int) $entityId) . '/templates/labels';
+	}
+
+	/**
+	 * Return the previous custom template directory used before 2.11.2.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	private static function getPreviousCustomLabelTemplateDir($entityId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . ((int) $entityId) . '/labels';
+	}
+
+	/**
+	 * Return the modulepart subdir used to store custom template JSON files.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	public static function getTemplateModuleSubdir($entityId)
+	{
+		return (int) $entityId . '/labels/templates';
+	}
+
+	/**
+	 * Return absolute directory for custom template JSON files.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	public static function getTemplateDir($entityId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . self::getTemplateModuleSubdir($entityId);
+	}
+
+	/**
+	 * Return modulepart subdir for uploaded template asset images.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	public static function getTemplateAssetModuleSubdir($entityId)
+	{
+		return self::getTemplateModuleSubdir($entityId) . '/assets';
+	}
+
+	/**
+	 * Return absolute directory for uploaded template asset images.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return string
+	 */
+	public static function getTemplateAssetDir($entityId)
+	{
+		return DOL_DATA_ROOT . '/kreaproducts/' . self::getTemplateAssetModuleSubdir($entityId);
+	}
+
+	/**
+	 * List available template asset references stored in module documents.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return array<string,string> Map asset reference => display label
+	 */
+	public static function listTemplateAssetReferences($entityId)
+	{
+		$references = array();
+		$assetDir = self::getTemplateAssetDir($entityId);
+		if (!is_dir($assetDir)) {
+			return $references;
+		}
+
+		$entries = scandir($assetDir);
+		if ($entries === false) {
+			return $references;
+		}
+
+		$allowedExtensions = array('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg');
+		foreach ($entries as $entry) {
+			if ($entry === '.' || $entry === '..') {
+				continue;
+			}
+
+			$fullPath = $assetDir . '/' . $entry;
+			if (!is_file($fullPath) || !is_readable($fullPath)) {
+				continue;
+			}
+
+			$extension = strtolower(pathinfo($entry, PATHINFO_EXTENSION));
+			if ($extension === '' || !in_array($extension, $allowedExtensions, true)) {
+				continue;
+			}
+
+			$safeName = dol_sanitizeFileName($entry);
+			if ($safeName === '' || $safeName !== $entry) {
+				continue;
+			}
+
+			$assetReference = 'templates/assets/' . $safeName;
+			$references[$assetReference] = $safeName;
+		}
+
+		asort($references, SORT_NATURAL | SORT_FLAG_CASE);
+		return $references;
+	}
+
+	/**
+	 * Build a web URL to a bundled label template asset.
+	 *
+	 * @param string $relativePath Relative path from labels/
+	 * @return string
+	 */
+	public static function getBundledLabelTemplateAssetUrl($relativePath)
+	{
+		$relativePath = ltrim(str_replace('\\', '/', (string) $relativePath), '/');
+		if ($relativePath === '' || strpos($relativePath, '..') !== false) {
+			return '';
+		}
+
+		return dol_buildpath('/kreaproducts/labels/' . $relativePath, 1);
+	}
+
+	/**
+	 * Build a public preview URL for one template asset reference.
+	 *
+	 * @param string $value Asset reference
+	 * @return string
+	 */
+	public static function getTemplateAssetPreviewUrl($value)
+	{
+		return self::buildTemplateAssetPreviewUrl($value);
+	}
+
+	/**
+	 * Sanitize a label template code.
+	 *
+	 * @param string $templateCode Template code
+	 * @return string
+	 */
+	private static function sanitizeTemplateCode($templateCode)
+	{
+		return preg_replace('/[^A-Za-z0-9_.-]/', '', (string) $templateCode);
+	}
+
+	/**
+	 * Load and decode a label template from disk.
+	 *
+	 * @param string $fullPath Absolute JSON file path
+	 * @return array
+	 */
+	private static function loadLabelTemplateFile($fullPath)
+	{
+		if ($fullPath === '' || !is_readable($fullPath)) {
+			return array();
+		}
+
+		$raw = file_get_contents($fullPath);
+		if ($raw === false || trim($raw) === '') {
+			return array();
+		}
+
+		$decoded = json_decode($raw, true);
+		if (!is_array($decoded)) {
+			dol_syslog(__METHOD__ . ' invalid template JSON: ' . $fullPath, LOG_WARNING);
+			return array();
+		}
+
+		return $decoded;
+	}
+
+	/**
+	 * Build a normalized template index entry.
+	 *
+	 * @param array  $template Template definition
+	 * @param string $path     Absolute JSON file path
+	 * @param string $source   Template source
+	 * @return array
+	 */
+	private static function buildTemplateIndexEntry($template, $path, $source)
+	{
+		$isReadOnly = ($source === 'bundled');
+		$filename = basename((string) $path);
+		if ($filename === '') {
+			$filename = (!empty($template['template_code']) ? ((string) $template['template_code']) . '.json' : 'template.json');
+		}
+
+		return array(
+			'code' => (string) $template['template_code'],
+			'label' => $filename,
+			'description' => (!empty($template['description']) ? (string) $template['description'] : ''),
+			'format_code' => (!empty($template['format_code']) ? (string) $template['format_code'] : ''),
+			'label_size_mm' => (!empty($template['label_size_mm']) && is_array($template['label_size_mm']) ? $template['label_size_mm'] : array()),
+			'preview' => array(
+				'front_url' => (!empty($template['preview']['front']) && $source === 'bundled' ? self::getBundledLabelTemplateAssetUrl($template['preview']['front']) : ''),
+				'back_url' => (!empty($template['preview']['back']) && $source === 'bundled' ? self::getBundledLabelTemplateAssetUrl($template['preview']['back']) : ''),
+			),
+			'path' => $path,
+			'filename' => $filename,
+			'source' => $source,
+			'is_readonly' => $isReadOnly,
+		);
+	}
+
+	/**
+	 * List bundled JSON templates available in the module.
+	 *
+	 * @return array
+	 */
+	public static function listBundledLabelTemplates()
+	{
+		$templates = array();
+		$templateDirs = array(
+			self::getLegacyBundledLabelTemplateDir(),
+			self::getBundledLabelTemplateDir(),
+		);
+
+		foreach ($templateDirs as $templateDir) {
+			if (!is_dir($templateDir)) {
+				continue;
+			}
+
+			$entries = scandir($templateDir);
+			if ($entries === false) {
+				continue;
+			}
+
+			foreach ($entries as $entry) {
+				if ($entry === '.' || $entry === '..' || substr($entry, -5) !== '.json') {
+					continue;
+				}
+
+				$template = self::loadLabelTemplateFile($templateDir . '/' . $entry);
+				if (empty($template['template_code'])) {
+					continue;
+				}
+
+				$templates[$template['template_code']] = self::buildTemplateIndexEntry($template, $templateDir . '/' . $entry, 'bundled');
+			}
+		}
+
+		ksort($templates);
+		return $templates;
+	}
+
+	/**
+	 * List entity-scoped JSON templates available in documents storage.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return array
+	 */
+	public static function listCustomLabelTemplates($entityId)
+	{
+		$templates = array();
+		$templateDirs = array(
+			self::getCustomLabelTemplateDir($entityId),
+			self::getPreviousCustomLabelTemplateDir($entityId),
+			self::getLegacyCustomLabelTemplateDir($entityId),
+		);
+
+		foreach ($templateDirs as $templateDir) {
+			if (!is_dir($templateDir)) {
+				continue;
+			}
+
+			$entries = scandir($templateDir);
+			if ($entries === false) {
+				continue;
+			}
+
+			foreach ($entries as $entry) {
+				if ($entry === '.' || $entry === '..' || substr($entry, -5) !== '.json') {
+					continue;
+				}
+
+				$template = self::loadLabelTemplateFile($templateDir . '/' . $entry);
+				if (empty($template['template_code'])) {
+					continue;
+				}
+
+				$templates[$template['template_code']] = self::buildTemplateIndexEntry($template, $templateDir . '/' . $entry, 'custom');
+			}
+		}
+
+		ksort($templates);
+		return $templates;
+	}
+
+	/**
+	 * List all available JSON templates for the current entity.
+	 *
+	 * Entity-scoped templates override bundled templates with the same code.
+	 *
+	 * @param int $entityId Current entity id
+	 * @return array
+	 */
+	public static function listLabelTemplates($entityId)
+	{
+		$templates = self::listBundledLabelTemplates();
+		foreach (self::listCustomLabelTemplates($entityId) as $templateCode => $templateMeta) {
+			$templates[$templateCode] = $templateMeta;
+		}
+
+		ksort($templates);
+		return $templates;
+	}
+
+	/**
+	 * Return template metadata from merged list.
+	 *
+	 * @param string $templateCode Template code
+	 * @param int    $entityId     Current entity id
+	 * @return array
+	 */
+	public static function getTemplateMeta($templateCode, $entityId)
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return array();
+		}
+
+		$templates = self::listLabelTemplates($entityId);
+		if (empty($templates[$templateCode]) || !is_array($templates[$templateCode])) {
+			return array();
+		}
+
+		return $templates[$templateCode];
+	}
+
+	/**
+	 * Check whether one template is editable (custom template only).
+	 *
+	 * @param string $templateCode Template code
+	 * @param int    $entityId     Current entity id
+	 * @return bool
+	 */
+	public static function isTemplateEditable($templateCode, $entityId)
+	{
+		$templateMeta = self::getTemplateMeta($templateCode, $entityId);
+		if (empty($templateMeta)) {
+			return false;
+		}
+
+		return (empty($templateMeta['is_readonly']) && !empty($templateMeta['source']) && (string) $templateMeta['source'] === 'custom');
+	}
+
+	/**
+	 * Load a bundled label template by code.
+	 *
+	 * @param string $templateCode Template code without extension
+	 * @return array
+	 */
+	public static function loadBundledLabelTemplate($templateCode)
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return array();
+		}
+
+		$candidates = array(
+			self::getBundledLabelTemplateDir() . '/' . $templateCode . '.json',
+			self::getLegacyBundledLabelTemplateDir() . '/' . $templateCode . '.json',
+		);
+
+		foreach ($candidates as $fullPath) {
+			$template = self::loadLabelTemplateFile($fullPath);
+			if (!empty($template)) {
+				return $template;
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Load an entity-scoped label template by code.
+	 *
+	 * @param string $templateCode Template code without extension
+	 * @param int    $entityId     Current entity id
+	 * @return array
+	 */
+	public static function loadCustomLabelTemplate($templateCode, $entityId)
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return array();
+		}
+
+		$candidates = array(
+			self::getCustomLabelTemplateDir($entityId) . '/' . $templateCode . '.json',
+			self::getPreviousCustomLabelTemplateDir($entityId) . '/' . $templateCode . '.json',
+			self::getLegacyCustomLabelTemplateDir($entityId) . '/' . $templateCode . '.json',
+		);
+
+		foreach ($candidates as $fullPath) {
+			$template = self::loadLabelTemplateFile($fullPath);
+			if (!empty($template)) {
+				return $template;
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Load a label template, preferring the entity-scoped version when present.
+	 *
+	 * @param string $templateCode Template code without extension
+	 * @param int    $entityId     Current entity id
+	 * @return array
+	 */
+	public static function loadLabelTemplate($templateCode, $entityId)
+	{
+		$template = self::loadCustomLabelTemplate($templateCode, $entityId);
+		if (!empty($template)) {
+			return $template;
+		}
+
+		return self::loadBundledLabelTemplate($templateCode);
+	}
+
+	/**
+	 * Save editable template input values as JSON defaults for the current entity.
+	 *
+	 * This writes into the entity-scoped custom template folder so updates are
+	 * multicompany-safe and never overwrite bundled module files.
+	 *
+	 * @param string    $templateCode  Template code
+	 * @param int       $entityId      Current entity id
+	 * @param array     $inputValues   Raw input values
+	 * @param Translate $outputlangs   Output language
+	 * @param string    $templateDescription Optional template description
+	 * @return array
+	 */
+	public static function saveTemplateInputDefaults($templateCode, $entityId, $inputValues, $outputlangs, $templateDescription = '')
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_UNAVAILABLE'));
+		}
+		if (!self::isTemplateEditable($templateCode, $entityId)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY'));
+		}
+
+		$template = self::loadCustomLabelTemplate($templateCode, $entityId);
+		if (empty($template) || !is_array($template)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_UNAVAILABLE'));
+		}
+		$sanitizedTemplateDescription = self::sanitizeTemplateDescription($templateDescription);
+
+		$sourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+
+		$sanitizedValues = self::sanitizeTemplateInputValues($inputValues, array_keys($sourceMeta), $sourceMeta);
+		if (!isset($template['inputs']) || !is_array($template['inputs'])) {
+			$template['inputs'] = array();
+		}
+
+		$existingInputBySource = array();
+		foreach ($template['inputs'] as $index => $input) {
+			if (!is_array($input)) {
+				continue;
+			}
+
+			$source = self::sanitizeTemplateSource(!empty($input['source']) ? $input['source'] : '');
+			if ($source === '' || !self::isTemplateSourceEditable($source)) {
+				continue;
+			}
+			if (array_key_exists('editable', $input) && !(bool) $input['editable']) {
+				continue;
+			}
+
+			$existingInputBySource[$source] = true;
+			if (!array_key_exists($source, $sanitizedValues)) {
+				continue;
+			}
+
+			if ((string) $sanitizedValues[$source] !== '') {
+				$template['inputs'][$index]['default_value'] = (string) $sanitizedValues[$source];
+			} else {
+				unset($template['inputs'][$index]['default_value']);
+			}
+		}
+
+		foreach ($sourceMeta as $source => $meta) {
+			if (!empty($existingInputBySource[$source])) {
+				continue;
+			}
+
+			$newInput = array(
+				'source' => $source,
+				'label' => (!empty($meta['label']) ? (string) $meta['label'] : self::humanizeTemplateSource($source)),
+				'type' => (!empty($meta['type']) ? (string) $meta['type'] : 'text'),
+			);
+
+			if (!empty($meta['placeholder'])) {
+				$newInput['placeholder'] = (string) $meta['placeholder'];
+			}
+			if (!empty($meta['output_format']) && in_array($newInput['type'], array('date', 'datetime'), true)) {
+				$newInput['output_format'] = (string) $meta['output_format'];
+			}
+			if ($newInput['type'] === 'textarea' && !empty($meta['rows'])) {
+				$newInput['rows'] = max(2, (int) $meta['rows']);
+			}
+			if ($newInput['type'] === 'number') {
+				if (isset($meta['min']) && (string) $meta['min'] !== '') {
+					$newInput['min'] = (string) $meta['min'];
+				}
+				if (isset($meta['max']) && (string) $meta['max'] !== '') {
+					$newInput['max'] = (string) $meta['max'];
+				}
+				if (!empty($meta['step'])) {
+					$newInput['step'] = (string) $meta['step'];
+				}
+			}
+
+			if (array_key_exists($source, $sanitizedValues) && (string) $sanitizedValues[$source] !== '') {
+				$newInput['default_value'] = (string) $sanitizedValues[$source];
+			} elseif (isset($meta['default_value']) && (string) $meta['default_value'] !== '') {
+				$newInput['default_value'] = (string) $meta['default_value'];
+			}
+
+			$template['inputs'][] = $newInput;
+			}
+		unset($template['label']);
+		if ($sanitizedTemplateDescription !== '') {
+			$template['description'] = $sanitizedTemplateDescription;
+		} else {
+			unset($template['description']);
+		}
+
+		$customDir = self::getCustomLabelTemplateDir($entityId);
+		if (!is_dir($customDir) && !@mkdir($customDir, 0775, true) && !is_dir($customDir)) {
+			dol_syslog(__METHOD__ . ' failed to create dir: ' . $customDir, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_FAILED'));
+		}
+
+		$targetPath = $customDir . '/' . $templateCode . '.json';
+		$encoded = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		if ($encoded === false) {
+			dol_syslog(__METHOD__ . ' json_encode failed for template: ' . $templateCode, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_FAILED'));
+		}
+
+		$writeResult = @file_put_contents($targetPath, $encoded . "\n", LOCK_EX);
+		if ($writeResult === false) {
+			dol_syslog(__METHOD__ . ' failed to write template: ' . $targetPath, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_FAILED'));
+		}
+
+		return array(
+			'success' => true,
+			'path' => $targetPath,
+		);
+	}
+
+	/**
+	 * Create an editable custom copy from a bundled read-only template.
+	 *
+	 * The copy is written into entity documents and then updated with provided
+	 * field defaults so generation from read-only templates can persist user edits.
+	 *
+	 * @param string    $templateCode  Template code
+	 * @param int       $entityId      Current entity id
+	 * @param array     $inputValues   Editable field values
+	 * @param Translate $outputlangs   Output language
+	 * @param string    $templateDescription Optional template description
+	 * @return array
+	 */
+	public static function createEditableTemplateCopyFromBundled($templateCode, $entityId, $inputValues, $outputlangs, $templateDescription = '')
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_SAVE_UNAVAILABLE'));
+		}
+
+		if (self::isTemplateEditable($templateCode, $entityId)) {
+			return array(
+				'success' => true,
+				'template_code' => $templateCode,
+				'created' => false,
+			);
+		}
+
+		$templateMeta = self::getTemplateMeta($templateCode, $entityId);
+		if (empty($templateMeta) || empty($templateMeta['source']) || (string) $templateMeta['source'] !== 'bundled') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
+		}
+
+		$bundledTemplate = self::loadBundledLabelTemplate($templateCode);
+		if (empty($bundledTemplate) || !is_array($bundledTemplate)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
+		}
+		if (empty($bundledTemplate['template_code'])) {
+			$bundledTemplate['template_code'] = $templateCode;
+		}
+		if (empty($bundledTemplate['source']) || !is_array($bundledTemplate['source'])) {
+			$bundledTemplate['source'] = array();
+		}
+		$bundledTemplate['source']['type'] = 'bundled_copy';
+		$bundledTemplate['source']['copied_from'] = $templateCode;
+		$bundledTemplate['source']['copied_on'] = dol_print_date(dol_now(), '%Y-%m-%d', 'gmt');
+		unset($bundledTemplate['label']);
+		$sanitizedTemplateDescription = self::sanitizeTemplateDescription($templateDescription);
+		if ($sanitizedTemplateDescription !== '') {
+			$bundledTemplate['description'] = $sanitizedTemplateDescription;
+		}
+
+		$customDir = self::getCustomLabelTemplateDir($entityId);
+		if (!is_dir($customDir) && !@mkdir($customDir, 0775, true) && !is_dir($customDir)) {
+			dol_syslog(__METHOD__ . ' failed to create dir: ' . $customDir, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
+		}
+
+		$targetPath = $customDir . '/' . $templateCode . '.json';
+		$encoded = json_encode($bundledTemplate, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		if ($encoded === false) {
+			dol_syslog(__METHOD__ . ' json_encode failed for bundled copy: ' . $templateCode, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
+		}
+		$writeResult = @file_put_contents($targetPath, $encoded . "\n", LOCK_EX);
+		if ($writeResult === false) {
+			dol_syslog(__METHOD__ . ' failed to write bundled copy: ' . $targetPath, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
+		}
+
+		$saveResult = self::saveTemplateInputDefaults($templateCode, $entityId, $inputValues, $outputlangs, $sanitizedTemplateDescription);
+		if (!empty($saveResult['error'])) {
+			return $saveResult;
+		}
+
+		return array(
+			'success' => true,
+			'template_code' => $templateCode,
+			'created' => true,
+			'path' => $targetPath,
+		);
+	}
+
+	/**
+	 * Build a copy label by appending "(Copy)" when missing.
+	 *
+	 * @param string $label    Base label
+	 * @param string $fallback Fallback label when base is empty
+	 * @return string
+	 */
+	public static function buildTemplateCopyLabel($label, $fallback = 'Template')
+	{
+		$base = self::sanitizeTemplateDisplayLabel($label, $fallback);
+		if ($base === '') {
+			$base = 'Template';
+		}
+		if (preg_match('/\(\s*copy\s*\)$/i', $base)) {
+			return $base;
+		}
+
+		return $base . ' (Copy)';
+	}
+
+	/**
+	 * Sanitize one template display label.
+	 *
+	 * @param string $label    Raw label
+	 * @param string $fallback Fallback label when raw is empty
+	 * @return string
+	 */
+	private static function sanitizeTemplateDisplayLabel($label, $fallback = '')
+	{
+		$clean = self::cleanText((string) $label);
+		if ($clean === '' && $fallback !== '') {
+			$clean = self::cleanText((string) $fallback);
+		}
+		if ($clean === '') {
+			return '';
+		}
+
+		if (function_exists('mb_substr')) {
+			return (string) mb_substr($clean, 0, 190, 'UTF-8');
+		}
+
+		return (string) substr($clean, 0, 190);
+	}
+
+	/**
+	 * Sanitize template description text.
+	 *
+	 * @param string $description Raw description
+	 * @return string
+	 */
+	private static function sanitizeTemplateDescription($description)
+	{
+		$clean = self::cleanText((string) $description);
+		if ($clean === '') {
+			return '';
+		}
+
+		if (function_exists('mb_substr')) {
+			return (string) mb_substr($clean, 0, 1200, 'UTF-8');
+		}
+
+		return (string) substr($clean, 0, 1200);
+	}
+
+	/**
+	 * Import one uploaded template JSON file into entity documents storage.
+	 *
+	 * @param int       $entityId   Current entity id
+	 * @param array     $uploadFile One $_FILES item
+	 * @param Translate $outputlangs Output language
+	 * @return array
+	 */
+	public static function importTemplateUploadedJsonFile($entityId, $uploadFile, $outputlangs)
+	{
+		if (!is_array($uploadFile) || empty($uploadFile['tmp_name']) || !isset($uploadFile['error'])) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD'));
+		}
+
+		$errorCode = (int) $uploadFile['error'];
+		if ($errorCode !== UPLOAD_ERR_OK) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD'));
+		}
+
+		$tmpName = (string) $uploadFile['tmp_name'];
+		$isValidUploadedTmp = ($tmpName !== '' && is_uploaded_file($tmpName));
+		if (!$isValidUploadedTmp && ($tmpName === '' || !is_file($tmpName) || !is_readable($tmpName))) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD'));
+		}
+
+		$originalName = (!empty($uploadFile['name']) ? (string) $uploadFile['name'] : '');
+		$sanitizedOriginalName = dol_sanitizeFileName($originalName);
+		if ($sanitizedOriginalName === '') {
+			$sanitizedOriginalName = 'template.json';
+		}
+		$extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+		if ($extension !== 'json') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD_TYPE'));
+		}
+
+		$raw = @file_get_contents($tmpName);
+		if ($raw === false || trim($raw) === '') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD_INVALID'));
+		}
+
+		$template = json_decode($raw, true);
+		if (!is_array($template)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD_INVALID'));
+		}
+
+		$templateCode = self::sanitizeTemplateCode(pathinfo($sanitizedOriginalName, PATHINFO_FILENAME));
+		if ($templateCode === '') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD_CODE'));
+		}
+
+		$template['template_code'] = $templateCode;
+		unset($template['label']);
+		if (empty($template['source']) || !is_array($template['source'])) {
+			$template['source'] = array();
+		}
+		$template['source']['type'] = 'uploaded';
+		$template['source']['uploaded_name'] = $sanitizedOriginalName;
+		$template['source']['uploaded_on'] = dol_print_date(dol_now(), '%Y-%m-%d', 'gmt');
+
+		$targetDir = self::getTemplateDir($entityId);
+		if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+			dol_syslog(__METHOD__ . ' failed to create dir: ' . $targetDir, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD'));
+		}
+
+		$targetPath = $targetDir . '/' . $templateCode . '.json';
+		$encoded = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		if ($encoded === false) {
+			dol_syslog(__METHOD__ . ' json_encode failed for uploaded template: ' . $templateCode, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD_INVALID'));
+		}
+
+		$writeResult = @file_put_contents($targetPath, $encoded . "\n", LOCK_EX);
+		if ($writeResult === false) {
+			dol_syslog(__METHOD__ . ' failed to write uploaded template: ' . $targetPath, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_UPLOAD'));
+		}
+
+		return array(
+			'success' => true,
+			'template_code' => $templateCode,
+			'filename' => basename($targetPath),
+			'path' => $targetPath,
+		);
+	}
+
+	/**
+	 * Import one uploaded template asset image into entity documents storage.
+	 *
+	 * @param int       $entityId    Current entity id
+	 * @param array     $uploadFile  One $_FILES item
+	 * @param Translate $outputlangs Output language
+	 * @return array
+	 */
+	public static function importTemplateUploadedAssetFile($entityId, $uploadFile, $outputlangs)
+	{
+		if (!is_array($uploadFile) || empty($uploadFile['tmp_name']) || !isset($uploadFile['error'])) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD', 'asset'));
+		}
+
+		$errorCode = (int) $uploadFile['error'];
+		if ($errorCode !== UPLOAD_ERR_OK) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD', 'asset'));
+		}
+
+		$tmpName = (string) $uploadFile['tmp_name'];
+		if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD', 'asset'));
+		}
+
+		$originalName = (!empty($uploadFile['name']) ? (string) $uploadFile['name'] : '');
+		$extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+		$allowedExtensions = array('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg');
+		if (!in_array($extension, $allowedExtensions, true)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD_TYPE', 'asset'));
+		}
+
+		$targetDir = self::getTemplateAssetDir($entityId);
+		if (!is_dir($targetDir) && !@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+			dol_syslog(__METHOD__ . ' failed to create dir: ' . $targetDir, LOG_ERR);
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD', 'asset'));
+		}
+
+		$baseName = dol_sanitizeFileName(pathinfo($originalName, PATHINFO_FILENAME));
+		if ($baseName === '') {
+			$baseName = 'asset';
+		}
+		$timestamp = dol_print_date(dol_now(), '%Y%m%d%H%M%S', 'gmt');
+		$targetName = $baseName . '_' . $timestamp . '_' . mt_rand(1000, 9999) . '.' . $extension;
+		$targetPath = $targetDir . '/' . $targetName;
+		if (!@move_uploaded_file($tmpName, $targetPath)) {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_ASSET_UPLOAD', 'asset'));
+		}
+
+		return array(
+			'success' => true,
+			'filename' => $targetName,
+			'path' => $targetPath,
+			'asset_reference' => 'templates/assets/' . $targetName,
+		);
+	}
+
+	/**
+	 * Delete a template JSON or template asset file by modulepart-relative path.
+	 *
+	 * @param int    $entityId     Current entity id
+	 * @param string $relativeFile Relative file path under modulepart
+	 * @return bool
+	 */
+	public static function deleteTemplateLibraryFile($entityId, $relativeFile)
+	{
+		$relativeFile = str_replace('\\', '/', trim((string) $relativeFile));
+		if ($relativeFile === '' || strpos($relativeFile, '..') !== false) {
+			return false;
+		}
+
+		$allowedPrefixes = array(
+			self::getTemplateModuleSubdir($entityId) . '/',
+			self::getTemplateAssetModuleSubdir($entityId) . '/',
+		);
+		$allowedByPrefix = false;
+		foreach ($allowedPrefixes as $prefix) {
+			if (strpos($relativeFile, $prefix) === 0) {
+				$allowedByPrefix = true;
+				break;
+			}
+		}
+		if (!$allowedByPrefix) {
+			return false;
+		}
+
+		$fullPath = DOL_DATA_ROOT . '/kreaproducts/' . $relativeFile;
+		$realFile = realpath($fullPath);
+		if ($realFile === false || !is_file($realFile)) {
+			return false;
+		}
+
+		$allowedRoots = array();
+		foreach (array(self::getTemplateDir($entityId), self::getTemplateAssetDir($entityId)) as $rootDir) {
+			$realRoot = realpath($rootDir);
+			if ($realRoot !== false) {
+				$allowedRoots[] = rtrim($realRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+			}
+		}
+		if (empty($allowedRoots)) {
+			return false;
+		}
+
+		$insideAllowedRoot = false;
+		foreach ($allowedRoots as $realRootPrefix) {
+			if (strpos($realFile, $realRootPrefix) === 0) {
+				$insideAllowedRoot = true;
+				break;
+			}
+		}
+		if (!$insideAllowedRoot) {
+			return false;
+		}
+
+		return (bool) dol_delete_file($realFile, 0, 0, 0);
+	}
+
+	/**
+	 * Build SVG viewer data for available label templates.
+	 *
+	 * @param Product   $product                  Product object
+	 * @param Translate $outputlangs              Output language
+	 * @param int       $entityId                 Current entity id
+	 * @param array     $templateInputValuesByCode Optional input values indexed by template code
+	 * @return array
+	 */
+	public static function buildLabelTemplateViewerMap($product, $outputlangs, $entityId, $templateInputValuesByCode = array())
+	{
+		$viewerMap = array();
+		$templateIndex = self::listLabelTemplates($entityId);
+
+		foreach ($templateIndex as $templateCode => $templateMeta) {
+			$template = self::loadLabelTemplate($templateCode, $entityId);
+			if (empty($template)) {
+				continue;
+			}
+			$contextOverrides = array();
+			if (!empty($templateInputValuesByCode[$templateCode]) && is_array($templateInputValuesByCode[$templateCode])) {
+				$templateSourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+				$contextOverrides = self::sanitizeTemplateInputValues($templateInputValuesByCode[$templateCode], array_keys($templateSourceMeta), $templateSourceMeta);
+			}
+
+			$formatDetails = self::getTemplateOutputFormatDetails($template);
+			$pages = array();
+			if (!empty($template['pages']) && is_array($template['pages'])) {
+				foreach ($template['pages'] as $page) {
+					if (!is_array($page)) {
+						continue;
+					}
+
+					$pageSize = self::getTemplatePageSize($template, $page);
+					if (empty($pageSize['width']) || empty($pageSize['height'])) {
+						continue;
+					}
+
+					$pages[] = array(
+						'code' => (!empty($page['code']) ? (string) $page['code'] : 'page_' . (count($pages) + 1)),
+						'label' => (!empty($page['label']) ? (string) $page['label'] : $outputlangs->trans('Page')),
+						'size_text' => $outputlangs->trans(
+							'KREAPRODUCTS_LABELS_TEMPLATE_SIZE',
+							price2num($pageSize['width']),
+							price2num($pageSize['height'])
+						),
+						'svg' => self::renderTemplatePageSvg($template, $page, $product, $outputlangs, $contextOverrides),
+					);
+				}
+			}
+
+			$sizeText = '';
+			if (!empty($templateMeta['label_size_mm']['width']) && !empty($templateMeta['label_size_mm']['height'])) {
+				$sizeText = $outputlangs->trans(
+					'KREAPRODUCTS_LABELS_TEMPLATE_SIZE',
+					price2num($templateMeta['label_size_mm']['width']),
+					price2num($templateMeta['label_size_mm']['height'])
+				);
+			}
+
+				$viewerMap[$templateCode] = array(
+					'label' => (!empty($templateMeta['label']) ? (string) $templateMeta['label'] : (string) $templateCode),
+					'description' => (!empty($templateMeta['description']) ? (string) $templateMeta['description'] : ''),
+					'size_text' => $sizeText,
+					'can_use_template_format' => (!empty($formatDetails)),
+					'template_format_summary' => (!empty($formatDetails) ? self::buildFormatSummaryText($formatDetails, $outputlangs) : ''),
+					'source' => (!empty($templateMeta['source']) ? (string) $templateMeta['source'] : ''),
+					'read_only' => !empty($templateMeta['is_readonly']),
+					'pages' => $pages,
+				);
+			}
+
+		return $viewerMap;
+	}
+
+	/**
+	 * Build editable input metadata for each available template.
+	 *
+	 * @param Product   $product                  Product object
+	 * @param Translate $outputlangs              Output language
+	 * @param int       $entityId                 Current entity id
+	 * @param array     $templateInputValuesByCode Optional input values indexed by template code
+	 * @return array
+	 */
+	public static function buildTemplateEditableFieldMap($product, $outputlangs, $entityId, $templateInputValuesByCode = array())
+	{
+		$fieldMap = array();
+		$templateIndex = self::listLabelTemplates($entityId);
+		foreach ($templateIndex as $templateCode => $templateMeta) {
+			$template = self::loadLabelTemplate($templateCode, $entityId);
+			if (empty($template)) {
+				continue;
+			}
+
+			$inputValues = array();
+			if (!empty($templateInputValuesByCode[$templateCode]) && is_array($templateInputValuesByCode[$templateCode])) {
+				$inputValues = $templateInputValuesByCode[$templateCode];
+			}
+			$fieldMap[$templateCode] = self::getTemplateEditableFields($template, $product, $outputlangs, $inputValues);
+		}
+
+		return $fieldMap;
+	}
+
+	/**
+	 * Build editable fields for one template.
+	 *
+	 * @param array     $template            Template definition
+	 * @param Product   $product             Product object
+	 * @param Translate $outputlangs         Output language
+	 * @param array     $templateInputValues User-provided values
+	 * @return array
+	 */
+	public static function getTemplateEditableFields($template, $product, $outputlangs, $templateInputValues = array())
+	{
+		$sourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+		if (empty($sourceMeta)) {
+			return array();
+		}
+		$orderedSources = self::orderEditableSourcesByTemplateFlow($template, $sourceMeta);
+
+		$sanitizedValues = self::sanitizeTemplateInputValues($templateInputValues, array_keys($sourceMeta), $sourceMeta);
+		$baseContext = self::buildTemplatePreviewContext($product, $outputlangs, array(), array());
+		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $sanitizedValues);
+		$fields = array();
+		foreach ($orderedSources as $source) {
+			if (!isset($sourceMeta[$source])) {
+				continue;
+			}
+			$meta = $sourceMeta[$source];
+			$resolvedValue = (isset($context[$source]) ? (string) $context[$source] : '');
+			if ($resolvedValue === '' && isset($meta['default_value'])) {
+				$resolvedValue = (string) $meta['default_value'];
+			}
+			if ($resolvedValue === '' && !empty($meta['placeholder'])) {
+				$resolvedValue = (string) $meta['placeholder'];
+			}
+
+			$hasResetValue = false;
+			$resetValue = '';
+			if (array_key_exists($source, $baseContext)) {
+				$hasResetValue = true;
+				$resetValue = (string) $baseContext[$source];
+			} elseif (array_key_exists('default_value', $meta)) {
+				$hasResetValue = true;
+				$resetValue = (string) $meta['default_value'];
+			}
+			$fieldType = (!empty($meta['type']) ? self::normalizeTemplateInputType((string) $meta['type']) : 'text');
+			$fields[] = array(
+				'source' => $source,
+				'label' => (!empty($meta['label']) ? (string) $meta['label'] : self::humanizeTemplateSource($source)),
+				'type' => (!empty($meta['type']) ? (string) $meta['type'] : 'text'),
+				'rows' => (!empty($meta['rows']) ? (int) $meta['rows'] : 3),
+				'min' => (isset($meta['min']) ? (string) $meta['min'] : ''),
+				'max' => (isset($meta['max']) ? (string) $meta['max'] : ''),
+				'step' => (!empty($meta['step']) ? (string) $meta['step'] : ''),
+				'placeholder' => (!empty($meta['placeholder']) ? (string) $meta['placeholder'] : ''),
+				'value' => $resolvedValue,
+				'input_value' => self::formatTemplateFieldValueForInput($resolvedValue, $meta),
+				'can_reset' => $hasResetValue,
+				'reset_value' => ($hasResetValue ? $resetValue : ''),
+				'reset_input_value' => ($hasResetValue ? self::formatTemplateFieldValueForInput($resetValue, $meta) : ''),
+				'asset_preview_url' => (
+					($fieldType === 'image')
+					? self::buildTemplateAssetPreviewUrl($resolvedValue)
+					: ''
+				),
+				'reset_asset_preview_url' => (
+					($fieldType === 'image' && $hasResetValue)
+					? self::buildTemplateAssetPreviewUrl($resetValue)
+					: ''
+				),
+			);
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * Order editable sources to follow visual template flow (front-to-back, top-to-bottom).
+	 *
+	 * @param array $template   Template definition
+	 * @param array $sourceMeta Editable source metadata indexed by source
+	 * @return array
+	 */
+	private static function orderEditableSourcesByTemplateFlow($template, $sourceMeta)
+	{
+		$sources = array_values(array_filter(array_keys((array) $sourceMeta), 'strlen'));
+		if (count($sources) <= 1) {
+			return $sources;
+		}
+
+		$originalIndexBySource = array();
+		foreach ($sources as $index => $source) {
+			$originalIndexBySource[$source] = (int) $index;
+		}
+
+		$blockSourcePosition = array();
+		if (!empty($template['pages']) && is_array($template['pages'])) {
+			foreach ($template['pages'] as $pageIndex => $page) {
+				if (empty($page['blocks']) || !is_array($page['blocks'])) {
+					continue;
+				}
+
+				foreach ($page['blocks'] as $blockIndex => $block) {
+					if (!is_array($block) || empty($block['content_mode'])) {
+						continue;
+					}
+
+					$source = '';
+					$contentMode = (string) $block['content_mode'];
+					if ($contentMode === 'dynamic') {
+						$source = self::sanitizeTemplateSource(!empty($block['source']) ? $block['source'] : '');
+					} elseif ($contentMode === 'asset') {
+						$source = self::sanitizeTemplateSource('asset.' . (!empty($block['asset_key']) ? $block['asset_key'] : ''));
+					}
+					if ($source === '') {
+						continue;
+					}
+
+					$x = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+					$y = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+					$position = (((int) $pageIndex) * 1000000000)
+						+ (((int) round(max(0, $y) * 1000)) * 100000)
+						+ (((int) round(max(0, $x) * 1000)) * 100)
+						+ ((int) $blockIndex);
+
+					if (!isset($blockSourcePosition[$source]) || $position < $blockSourcePosition[$source]) {
+						$blockSourcePosition[$source] = $position;
+					}
+				}
+			}
+		}
+
+		$scoreBySource = array();
+		foreach ($sources as $source) {
+			if (isset($blockSourcePosition[$source])) {
+				$scoreBySource[$source] = (int) $blockSourcePosition[$source];
+			}
+		}
+
+		if (!empty($template['computed_fields']) && is_array($template['computed_fields'])) {
+			foreach ($template['computed_fields'] as $rule) {
+				if (!is_array($rule)) {
+					continue;
+				}
+				$operation = strtolower(trim((string) (!empty($rule['operation']) ? $rule['operation'] : '')));
+				if ($operation !== 'add_days') {
+					continue;
+				}
+
+				$daysSource = self::sanitizeTemplateSource(!empty($rule['days_source']) ? $rule['days_source'] : '');
+				$targetSource = self::sanitizeTemplateSource(!empty($rule['target_source']) ? $rule['target_source'] : '');
+				if ($daysSource === '' || $targetSource === '' || !isset($sourceMeta[$daysSource])) {
+					continue;
+				}
+				if (isset($scoreBySource[$daysSource])) {
+					continue;
+				}
+				if (isset($blockSourcePosition[$targetSource])) {
+					$scoreBySource[$daysSource] = (int) $blockSourcePosition[$targetSource] + 1;
+				}
+			}
+		}
+
+		usort($sources, function ($a, $b) use ($scoreBySource, $originalIndexBySource) {
+			$aHasScore = array_key_exists($a, $scoreBySource);
+			$bHasScore = array_key_exists($b, $scoreBySource);
+			if ($aHasScore && $bHasScore) {
+				if ((int) $scoreBySource[$a] === (int) $scoreBySource[$b]) {
+					return ((int) $originalIndexBySource[$a] <=> (int) $originalIndexBySource[$b]);
+				}
+				return ((int) $scoreBySource[$a] <=> (int) $scoreBySource[$b]);
+			}
+			if ($aHasScore !== $bHasScore) {
+				return ($aHasScore ? -1 : 1);
+			}
+
+			return ((int) $originalIndexBySource[$a] <=> (int) $originalIndexBySource[$b]);
+		});
+
+		// Keep brand image right after company address for a clearer form flow.
+		$addressSource = 'company.address_singleline';
+		$brandSource = 'asset.brand_badge';
+		$addressIndex = array_search($addressSource, $sources, true);
+		$brandIndex = array_search($brandSource, $sources, true);
+		if ($addressIndex !== false && $brandIndex !== false) {
+			array_splice($sources, (int) $brandIndex, 1);
+			$addressIndex = array_search($addressSource, $sources, true);
+			if ($addressIndex === false) {
+				$sources[] = $brandSource;
+			} else {
+				array_splice($sources, ((int) $addressIndex) + 1, 0, array($brandSource));
+			}
+		}
+
+		return $sources;
+	}
+
+	/**
+	 * Sanitize template input values map.
+	 *
+	 * @param array $values         Raw values
+	 * @param array $allowedSources Optional allowed source keys
+	 * @return array
+	 */
+	public static function sanitizeTemplateInputValues($values, $allowedSources = array(), $sourceMetaBySource = array())
+	{
+		$clean = array();
+		if (!is_array($values)) {
+			return $clean;
+		}
+
+		$allowedMap = array();
+		$normalizedMetaMap = array();
+		if (!empty($allowedSources)) {
+			foreach ($allowedSources as $source) {
+				$sanitizedSource = '';
+				if (is_string($source)) {
+					$sanitizedSource = self::sanitizeTemplateSource($source);
+				} elseif (is_array($source) && !empty($source['source'])) {
+					$sanitizedSource = self::sanitizeTemplateSource($source['source']);
+				}
+				if ($sanitizedSource !== '') {
+					$allowedMap[$sanitizedSource] = true;
+				}
+			}
+		}
+		if (is_array($sourceMetaBySource)) {
+			foreach ($sourceMetaBySource as $metaSource => $meta) {
+				$sanitizedSource = self::sanitizeTemplateSource($metaSource);
+				if ($sanitizedSource === '' || !is_array($meta)) {
+					continue;
+				}
+				$normalizedMetaMap[$sanitizedSource] = self::normalizeTemplateInputMeta($sanitizedSource, $meta);
+			}
+		}
+
+		foreach ($values as $source => $value) {
+			$sanitizedSource = self::sanitizeTemplateSource($source);
+			if ($sanitizedSource === '') {
+				continue;
+			}
+			if (!empty($allowedMap) && empty($allowedMap[$sanitizedSource])) {
+				continue;
+			}
+			if (is_array($value) || is_object($value)) {
+				continue;
+			}
+
+			$meta = (!empty($normalizedMetaMap[$sanitizedSource]) ? $normalizedMetaMap[$sanitizedSource] : array());
+			$clean[$sanitizedSource] = self::sanitizeTemplateInputValue((string) $value, $meta);
+		}
+
+		return $clean;
+	}
+
+	/**
+	 * Normalize template input metadata for one source.
+	 *
+	 * @param string $source Source key
+	 * @param array  $meta   Raw metadata
+	 * @return array
+	 */
+	private static function normalizeTemplateInputMeta($source, $meta)
+	{
+		$type = self::normalizeTemplateInputType(!empty($meta['type']) ? (string) $meta['type'] : self::guessTemplateInputType($source));
+
+		return array(
+			'type' => $type,
+			'label' => (!empty($meta['label']) ? self::cleanText($meta['label']) : self::humanizeTemplateSource($source)),
+			'placeholder' => (!empty($meta['placeholder']) ? self::cleanText($meta['placeholder']) : ''),
+			'default_value' => (isset($meta['default_value']) ? self::cleanText((string) $meta['default_value']) : ''),
+			'rows' => (!empty($meta['rows']) ? max(2, (int) $meta['rows']) : 3),
+			'min' => (isset($meta['min']) && $meta['min'] !== '' ? self::sanitizeTemplateNumericValue((string) $meta['min']) : ''),
+			'max' => (isset($meta['max']) && $meta['max'] !== '' ? self::sanitizeTemplateNumericValue((string) $meta['max']) : ''),
+			'step' => (!empty($meta['step']) ? self::sanitizeTemplateNumericValue((string) $meta['step']) : ''),
+			'output_format' => self::resolveTemplateInputOutputFormat($type, (!empty($meta['output_format']) ? (string) $meta['output_format'] : '')),
+		);
+	}
+
+	/**
+	 * Normalize template input type.
+	 *
+	 * @param string $rawType Raw type name
+	 * @return string
+	 */
+	private static function normalizeTemplateInputType($rawType)
+	{
+		$type = strtolower(trim((string) $rawType));
+		if (in_array($type, array('text', 'textarea', 'date', 'datetime', 'number', 'image'), true)) {
+			return $type;
+		}
+		if ($type === 'datetime-local') {
+			return 'datetime';
+		}
+
+		return 'text';
+	}
+
+	/**
+	 * Guess a template input type from a source key.
+	 *
+	 * @param string $source Source key
+	 * @param array  $block  Optional block metadata
+	 * @return string
+	 */
+	private static function guessTemplateInputType($source, $block = array())
+	{
+		$source = self::sanitizeTemplateSource($source);
+		if ($source === '') {
+			return 'text';
+		}
+		if (strpos($source, 'asset.') === 0) {
+			return 'image';
+		}
+
+		if (!empty($block['style']['multiline']) || strpos($source, 'label.') === 0 || strpos($source, 'section') !== false) {
+			return 'textarea';
+		}
+		if (strpos($source, 'validity') !== false || substr($source, -5) === '_days' || strpos($source, '.qty') !== false) {
+			return 'number';
+		}
+		if (strpos($source, 'datetime') !== false || substr($source, -9) === '_datetime') {
+			return 'datetime';
+		}
+		if (strpos($source, 'date') !== false || substr($source, -3) === '_at' || preg_match('/_on$/', $source)) {
+			return 'date';
+		}
+
+		return 'text';
+	}
+
+	/**
+	 * Resolve default output format for one typed input.
+	 *
+	 * @param string $type         Input type
+	 * @param string $outputFormat Optional output format
+	 * @return string
+	 */
+	private static function resolveTemplateInputOutputFormat($type, $outputFormat = '')
+	{
+		$outputFormat = trim((string) $outputFormat);
+		if ($outputFormat !== '') {
+			return $outputFormat;
+		}
+		if ($type === 'datetime') {
+			return 'd/m/Y H:i';
+		}
+		if ($type === 'date') {
+			return 'd/m/Y';
+		}
+
+		return '';
+	}
+
+	/**
+	 * Sanitize one template input value according to field metadata.
+	 *
+	 * @param string $value Raw input value
+	 * @param array  $meta  Field metadata
+	 * @return string
+	 */
+	private static function sanitizeTemplateInputValue($value, $meta = array())
+	{
+		$type = (!empty($meta['type']) ? self::normalizeTemplateInputType($meta['type']) : 'text');
+		if ($type === 'image') {
+			return self::sanitizeTemplateAssetReference($value);
+		}
+		if ($type === 'number') {
+			return self::sanitizeTemplateNumericValue($value);
+		}
+		if ($type === 'date' || $type === 'datetime') {
+			$timestamp = self::parseTemplateDateTimeToTimestamp($value);
+			if ($timestamp === null) {
+				return '';
+			}
+
+			$format = self::resolveTemplateInputOutputFormat($type, (!empty($meta['output_format']) ? (string) $meta['output_format'] : ''));
+			if ($format === '') {
+				$format = ($type === 'datetime' ? 'd/m/Y H:i' : 'd/m/Y');
+			}
+
+			return self::formatTimestampWithPattern($timestamp, $format);
+		}
+
+		return self::sanitizeTemplateTextValue($value, ($type === 'textarea'));
+	}
+
+	/**
+	 * Sanitize one numeric template value.
+	 *
+	 * @param string $value Raw value
+	 * @return string
+	 */
+	private static function sanitizeTemplateNumericValue($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '') {
+			return '';
+		}
+		$value = str_replace(',', '.', $value);
+		if (!preg_match('/^-?\d+(?:\.\d+)?$/', $value)) {
+			return '';
+		}
+
+		$number = (float) $value;
+		$formatted = rtrim(rtrim(sprintf('%.6F', $number), '0'), '.');
+		if ($formatted === '-0') {
+			$formatted = '0';
+		}
+
+		return $formatted;
+	}
+
+	/**
+	 * Sanitize one text template value.
+	 *
+	 * @param string $value              Raw value
+	 * @param bool   $preserveLineBreaks Keep line breaks
+	 * @return string
+	 */
+	private static function sanitizeTemplateTextValue($value, $preserveLineBreaks = false)
+	{
+		$value = html_entity_decode((string) $value, ENT_QUOTES, 'UTF-8');
+		$value = dol_string_nohtmltag($value);
+		$value = str_replace(array("\r\n", "\r"), "\n", $value);
+		if (!$preserveLineBreaks) {
+			$value = preg_replace('/\s+/', ' ', $value);
+		} else {
+			$value = preg_replace('/[ \t]+/', ' ', $value);
+			$value = preg_replace('/\n{3,}/', "\n\n", $value);
+		}
+
+		return trim((string) $value);
+	}
+
+	/**
+	 * Sanitize one template asset reference (relative path or http(s) URL).
+	 *
+	 * @param string $value Raw value
+	 * @return string
+	 */
+	private static function sanitizeTemplateAssetReference($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '') {
+			return '';
+		}
+
+		$value = str_replace('\\', '/', $value);
+		$value = ltrim($value, '/');
+		if ($value === '' || strpos($value, '..') !== false) {
+			return '';
+		}
+		if (preg_match('/^[A-Za-z0-9_\\/.-]+$/', $value) !== 1) {
+			return '';
+		}
+		if (strpos($value, 'templates/assets/') !== 0) {
+			return '';
+		}
+
+		$filename = substr($value, strlen('templates/assets/'));
+		if ($filename === '' || strpos($filename, '/') !== false || strpos($filename, '\\') !== false) {
+			return '';
+		}
+		if ($filename !== dol_sanitizeFileName($filename)) {
+			return '';
+		}
+
+		$extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+		$allowedExtensions = array('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg');
+		if ($extension === '' || !in_array($extension, $allowedExtensions, true)) {
+			return '';
+		}
+
+		return 'templates/assets/' . $filename;
+	}
+
+	/**
+	 * Parse a date/datetime string into a timestamp.
+	 *
+	 * @param string $value Date value
+	 * @return int|null
+	 */
+	private static function parseTemplateDateTimeToTimestamp($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '') {
+			return null;
+		}
+
+		$formats = array(
+			'Y-m-d\TH:i:s',
+			'Y-m-d\TH:i',
+			'Y-m-d H:i:s',
+			'Y-m-d H:i',
+			'd/m/Y H:i:s',
+			'd/m/Y H:i',
+			'd-m-Y H:i:s',
+			'd-m-Y H:i',
+			'YmdHis',
+			'YmdHi',
+			'Y-m-d',
+			'd/m/Y',
+			'd-m-Y',
+			'Ymd',
+		);
+
+		foreach ($formats as $format) {
+			$date = DateTime::createFromFormat($format, $value);
+			if ($date instanceof DateTime) {
+				$errors = DateTime::getLastErrors();
+				if ($errors === false || (empty($errors['warning_count']) && empty($errors['error_count']))) {
+					return (int) $date->getTimestamp();
+				}
+			}
+		}
+
+		$fallback = strtotime($value);
+		if ($fallback !== false) {
+			return (int) $fallback;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Format a timestamp using a date pattern.
+	 *
+	 * @param int    $timestamp Unix timestamp
+	 * @param string $format    Date format
+	 * @return string
+	 */
+	private static function formatTimestampWithPattern($timestamp, $format)
+	{
+		$timestamp = (int) $timestamp;
+		$format = trim((string) $format);
+		if ($timestamp <= 0) {
+			return '';
+		}
+		if ($format === '') {
+			return date('d/m/Y', $timestamp);
+		}
+
+		return date($format, $timestamp);
+	}
+
+	/**
+	 * Convert a resolved context value into a control-friendly input value.
+	 *
+	 * @param string $value Resolved value
+	 * @param array  $meta  Field metadata
+	 * @return string
+	 */
+	private static function formatTemplateFieldValueForInput($value, $meta = array())
+	{
+		$type = (!empty($meta['type']) ? self::normalizeTemplateInputType($meta['type']) : 'text');
+		$value = (string) $value;
+		if ($value === '') {
+			return '';
+		}
+		if ($type === 'image') {
+			return self::sanitizeTemplateAssetReference($value);
+		}
+
+		if ($type === 'number') {
+			return self::sanitizeTemplateNumericValue($value);
+		}
+		if ($type === 'date') {
+			$timestamp = self::parseTemplateDateTimeToTimestamp($value);
+			return ($timestamp !== null ? date('Y-m-d', $timestamp) : '');
+		}
+		if ($type === 'datetime') {
+			$timestamp = self::parseTemplateDateTimeToTimestamp($value);
+			return ($timestamp !== null ? date('Y-m-d\TH:i', $timestamp) : '');
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Build a human-readable summary for a Dolibarr label format.
+	 *
+	 * @param array     $detail      Format details
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	public static function buildFormatSummaryText($detail, $outputlangs)
+	{
+		if (empty($detail) || !is_array($detail)) {
+			return '';
+		}
+
+		$pageLabel = (
+			isset($detail['paper_size']) && $detail['paper_size'] === 'custom'
+			? price2num($detail['custom_x']) . 'x' . price2num($detail['custom_y']) . ' ' . $detail['metric']
+			: $detail['paper_size']
+		);
+
+		return $outputlangs->trans(
+			'KREAPRODUCTS_LABELS_FORMAT_SUMMARY',
+			$pageLabel,
+			price2num($detail['width']) . 'x' . price2num($detail['height']) . ' ' . $detail['metric'],
+			((int) $detail['nx']) . 'x' . ((int) $detail['ny'])
+		);
+	}
+
+	/**
+	 * Build the standard preview dataset used by the page-side SVG renderer.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param Product   $product     Product object
+	 * @param Translate $outputlangs Output language
+	 * @return array
+	 */
+	public static function buildStandardPreviewData($db, $product, $outputlangs)
+	{
+		global $conf;
+
+		$currencyCode = (!empty($conf->currency) ? $conf->currency : '');
+		$barcode = self::resolveBarcode($db, $product);
+
+		return array(
+			'fields' => array(
+				'ref' => array(
+					'type' => 'ref',
+					'text' => self::cleanText($product->ref),
+				),
+				'label' => array(
+					'type' => 'label',
+					'text' => self::cleanText($product->label),
+				),
+				'price_ht' => array(
+					'type' => 'price',
+					'text' => $outputlangs->trans('KREAPRODUCTS_LABELS_PRICE_HT') . ': ' . price($product->price, 0, $outputlangs, 1, -1, -1, $currencyCode),
+				),
+				'price_ttc' => array(
+					'type' => 'price',
+					'text' => $outputlangs->trans('KREAPRODUCTS_LABELS_PRICE_TTC') . ': ' . price($product->price_ttc, 0, $outputlangs, 1, -1, -1, $currencyCode),
+				),
+			),
+			'barcode' => array(
+				'value' => (!empty($barcode['value']) ? $barcode['value'] : ''),
+				'encoding' => (!empty($barcode['encoding']) ? $barcode['encoding'] : ''),
+				'is2d' => !empty($barcode['is2d']),
+			),
+		);
+	}
+
+	/**
+	 * Generate and save product label PDF.
+	 *
+	 * @param DoliDB    $db                 Database handler
+	 * @param Product   $product            Product object
+	 * @param int       $entityId           Current entity id
+	 * @param string    $formatCode         Label format code
+	 * @param array     $selectedFields     Selected field codes
+	 * @param int       $quantity           Number of labels
+	 * @param Translate $outputlangs        Output language
+	 * @param string    $templateCode       Selected template code
+	 * @param bool      $useTemplateSize    Use template size as output format
+	 * @param array     $templateInputValues User-provided template field values
+	 * @return array
+	 */
+	public static function generateProductLabels($db, $product, $entityId, $formatCode, $selectedFields, $quantity, $outputlangs, $templateCode = '', $useTemplateSize = false, $templateInputValues = array())
+	{
+		global $langs;
+
+		try {
+			$quantity = max(1, (int) $quantity);
+			$useTemplateSize = (bool) $useTemplateSize;
+			$template = array();
+			if ($templateCode !== '') {
+				$template = self::loadLabelTemplate($templateCode, $entityId);
+			}
+			$useTemplateRenderer = (!empty($template['pages']) && is_array($template['pages']));
+
+			$effectiveFormatCode = self::resolveOutputFormatCode($db, $formatCode, $templateCode, $useTemplateSize, $langs, $entityId);
+			if ($effectiveFormatCode === '') {
+				return array(
+					'error' => (
+						$useTemplateSize
+						? $langs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_BAD_FORMAT')
+						: $langs->trans('KREAPRODUCTS_LABELS_ERROR_BAD_FORMAT')
+					),
+				);
+			}
+
+			if ($useTemplateRenderer) {
+				$templateSourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+				$templateInputValues = self::sanitizeTemplateInputValues($templateInputValues, array_keys($templateSourceMeta), $templateSourceMeta);
+				$records = self::buildTemplateRecords($product, $template, $quantity, $outputlangs, $templateInputValues);
+				if (empty($records)) {
+					return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_GENERATION_FAILED'));
+				}
+			} else {
+				$selectedFields = self::sanitizeSelectedFields($selectedFields);
+				if (empty($selectedFields)) {
+					return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_NO_FIELDS'));
+				}
+
+				$records = array();
+				$record = self::buildLabelRecord($db, $product, $selectedFields, $outputlangs);
+				for ($i = 0; $i < $quantity; $i++) {
+					$records[] = $record;
+				}
+			}
+
+			$outputDir = self::getDocumentDir($entityId, $product->id);
+			$filename = self::buildFilename($product, $effectiveFormatCode);
+
+			self::loadPdfGeneratorClass($db);
+			$generator = new KreaProductsProductLabelPdf($db);
+			$result = $generator->write_file($records, $outputlangs, $effectiveFormatCode, $outputDir, $filename);
+			if ($result <= 0) {
+				$error = (!empty($generator->error) ? $generator->error : $langs->trans('ErrorFailToGenerateFile', $filename));
+				return array('error' => $error);
+			}
+
+			return array(
+				'filename' => $filename,
+				'fullpath' => $generator->result['fullpath'],
+				'modulesubdir' => self::getDocumentModuleSubdir($entityId, $product->id),
+				'relativefile' => self::getDocumentModuleSubdir($entityId, $product->id) . '/' . $filename,
+			);
+		} catch (Throwable $e) {
+			dol_syslog(__METHOD__ . ' failed: ' . $e->getMessage(), LOG_ERR);
+			return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_GENERATION_FAILED'));
+		}
+	}
+
+	/**
+	 * Delete a generated label PDF after validating the path.
+	 *
+	 * @param int    $entityId      Current entity id
+	 * @param int    $productId     Product id
+	 * @param string $relativeFile  Relative file path under modulepart
+	 * @return bool
+	 */
+	public static function deleteGeneratedFile($entityId, $productId, $relativeFile)
+	{
+		$relativeFile = str_replace('\\', '/', trim((string) $relativeFile));
+		if ($relativeFile === '' || strpos($relativeFile, '..') !== false) {
+			return false;
+		}
+
+		$expectedPrefix = self::getDocumentModuleSubdir($entityId, $productId) . '/';
+		if (strpos($relativeFile, $expectedPrefix) !== 0) {
+			return false;
+		}
+
+		$baseDir = self::getDocumentDir($entityId, $productId);
+		$fullPath = DOL_DATA_ROOT . '/kreaproducts/' . $relativeFile;
+		$realBase = realpath($baseDir);
+		$realFile = realpath($fullPath);
+		if ($realBase === false || $realFile === false) {
+			return false;
+		}
+
+		if (strpos($realFile, rtrim($realBase, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR) !== 0) {
+			return false;
+		}
+
+		return (bool) dol_delete_file($realFile, 0, 0, 0);
+	}
+
+	/**
+	 * Load the PDF generator class only when needed.
+	 *
+	 * The Dolibarr sticker generator pulls `format_cards.lib.php` at include time and
+	 * expects a live database handler in the current include scope.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @return void
+	 */
+	private static function loadPdfGeneratorClass($db)
+	{
+		if (class_exists('KreaProductsProductLabelPdf', false)) {
+			return;
+		}
+
+		require_once __DIR__ . '/KreaProductsProductLabelPdf.class.php';
+	}
+
+	/**
+	 * Build one label record payload.
+	 *
+	 * @param DoliDB    $db             Database handler
+	 * @param Product   $product        Product object
+	 * @param array     $selectedFields Selected field codes
+	 * @param Translate $outputlangs    Output language
+	 * @return array
+	 */
+	private static function buildLabelRecord($db, $product, $selectedFields, $outputlangs)
+	{
+		$selectedMap = array_fill_keys($selectedFields, true);
+		$lines = array();
+
+		if (!empty($selectedMap['ref'])) {
+			$lines[] = array(
+				'type' => 'ref',
+				'text' => self::cleanText($product->ref),
+			);
+		}
+
+		if (!empty($selectedMap['label'])) {
+			$lines[] = array(
+				'type' => 'label',
+				'text' => self::cleanText($product->label),
+			);
+		}
+
+		if (!empty($selectedMap['price_ht'])) {
+			$lines[] = array(
+				'type' => 'price',
+				'text' => $outputlangs->trans('KREAPRODUCTS_LABELS_PRICE_HT') . ': ' . price($product->price, 0, $outputlangs, 1, -1, -1, !empty($GLOBALS['conf']->currency) ? $GLOBALS['conf']->currency : ''),
+			);
+		}
+
+		if (!empty($selectedMap['price_ttc'])) {
+			$lines[] = array(
+				'type' => 'price',
+				'text' => $outputlangs->trans('KREAPRODUCTS_LABELS_PRICE_TTC') . ': ' . price($product->price_ttc, 0, $outputlangs, 1, -1, -1, !empty($GLOBALS['conf']->currency) ? $GLOBALS['conf']->currency : ''),
+			);
+		}
+
+		$barcode = self::resolveBarcode($db, $product);
+		if (empty($selectedMap['barcode'])) {
+			$barcode = array('value' => '', 'encoding' => '', 'is2d' => false);
+		}
+
+		return array(
+			'lines' => $lines,
+			'barcode_value' => $barcode['value'],
+			'barcode_encoding' => $barcode['encoding'],
+			'barcode_is_2d' => $barcode['is2d'],
+		);
+	}
+
+	/**
+	 * Build template-driven label records for PDF generation.
+	 *
+	 * @param Product   $product             Product object
+	 * @param array     $template            Template definition
+	 * @param int       $quantity            Number of labels
+	 * @param Translate $outputlangs         Output language
+	 * @param array     $templateInputValues User-provided template field values
+	 * @return array
+	 */
+	private static function buildTemplateRecords($product, $template, $quantity, $outputlangs, $templateInputValues = array())
+	{
+		$records = array();
+		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $templateInputValues);
+		$pages = (!empty($template['pages']) && is_array($template['pages']) ? $template['pages'] : array());
+		if (empty($pages)) {
+			return $records;
+		}
+
+		for ($copy = 0; $copy < $quantity; $copy++) {
+			foreach ($pages as $page) {
+				if (!is_array($page)) {
+					continue;
+				}
+
+				$pageSize = self::getTemplatePageSize($template, $page);
+				if (empty($pageSize['width']) || empty($pageSize['height'])) {
+					continue;
+				}
+
+				$records[] = array(
+					'template_page_code' => (!empty($page['code']) ? (string) $page['code'] : ''),
+					'template_page_label' => (!empty($page['label']) ? (string) $page['label'] : ''),
+					'template_width_mm' => (float) $pageSize['width'],
+					'template_height_mm' => (float) $pageSize['height'],
+					'template_blocks' => self::normalizeTemplateBlocksForPdf($page, $context),
+				);
+			}
+		}
+
+		return $records;
+	}
+
+	/**
+	 * Normalize template blocks for PDF rendering.
+	 *
+	 * @param array $page    Template page
+	 * @param array $context Resolved source context
+	 * @return array
+	 */
+	private static function normalizeTemplateBlocksForPdf($page, $context)
+	{
+		$blocks = array();
+		if (empty($page['blocks']) || !is_array($page['blocks'])) {
+			return $blocks;
+		}
+
+		foreach ($page['blocks'] as $block) {
+			if (!is_array($block) || empty($block['type'])) {
+				continue;
+			}
+
+			$blocks[] = array(
+				'id' => (!empty($block['id']) ? (string) $block['id'] : ''),
+				'type' => (string) $block['type'],
+				'value' => self::resolveTemplateBlockValue($block, $context),
+				'x_mm' => (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0),
+				'y_mm' => (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0),
+				'w_mm' => (float) (!empty($block['w_mm']) ? $block['w_mm'] : 0),
+				'h_mm' => (float) (!empty($block['h_mm']) ? $block['h_mm'] : 0),
+				'style' => (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array()),
+				'show_human_readable' => !empty($block['show_human_readable']),
+				'symbology' => (!empty($block['symbology']) ? (string) $block['symbology'] : ''),
+			);
+		}
+
+		return $blocks;
+	}
+
+	/**
+	 * Resolve barcode value and encoding for a product.
+	 *
+	 * @param DoliDB  $db      Database handler
+	 * @param Product $product Product object
+	 * @return array
+	 */
+	private static function resolveBarcode($db, $product)
+	{
+		static $barcodeTypeCache = array();
+
+		$value = self::cleanText(!empty($product->barcode) ? $product->barcode : $product->ref);
+		if ($value === '') {
+			return array('value' => '', 'encoding' => '', 'is2d' => false);
+		}
+
+		$encoding = 'C128';
+		$is2d = false;
+		$typeId = (int) $product->barcode_type;
+		if ($typeId > 0) {
+			if (!array_key_exists($typeId, $barcodeTypeCache)) {
+				$sql = "SELECT code FROM " . MAIN_DB_PREFIX . "c_barcode_type WHERE rowid = " . $typeId;
+				$resql = $db->query($sql);
+				$barcodeTypeCache[$typeId] = '';
+				if ($resql && ($obj = $db->fetch_object($resql))) {
+					$barcodeTypeCache[$typeId] = (string) $obj->code;
+				}
+				if ($resql) {
+					$db->free($resql);
+				}
+			}
+
+			$code = strtoupper((string) $barcodeTypeCache[$typeId]);
+			$map = array(
+				'EAN13' => array('encoding' => 'EAN13', 'is2d' => false),
+				'EAN8' => array('encoding' => 'EAN8', 'is2d' => false),
+				'UPC' => array('encoding' => 'UPC-A', 'is2d' => false),
+				'UPC-A' => array('encoding' => 'UPC-A', 'is2d' => false),
+				'UPC-E' => array('encoding' => 'UPC-E', 'is2d' => false),
+				'C39' => array('encoding' => 'C39', 'is2d' => false),
+				'CODE39' => array('encoding' => 'C39', 'is2d' => false),
+				'C128' => array('encoding' => 'C128', 'is2d' => false),
+				'CODE128' => array('encoding' => 'C128', 'is2d' => false),
+				'ISBN' => array('encoding' => 'EAN13', 'is2d' => false),
+				'QRCODE' => array('encoding' => 'QRCODE,H', 'is2d' => true),
+				'DATAMATRIX' => array('encoding' => 'DATAMATRIX', 'is2d' => true),
+			);
+			if (isset($map[$code])) {
+				$encoding = $map[$code]['encoding'];
+				$is2d = $map[$code]['is2d'];
+			}
+		}
+
+		return array(
+			'value' => $value,
+			'encoding' => $encoding,
+			'is2d' => $is2d,
+		);
+	}
+
+	/**
+	 * Build output filename.
+	 *
+	 * @param Product $product    Product object
+	 * @param string  $formatCode Format code
+	 * @return string
+	 */
+	private static function buildFilename($product, $formatCode)
+	{
+		$timestamp = dol_print_date(dol_now(), '%Y%m%d%H%M%S', 'gmt');
+		return 'labels_' . dol_sanitizeFileName($product->ref) . '_' . dol_sanitizeFileName($formatCode) . '_' . $timestamp . '.pdf';
+	}
+
+	/**
+	 * Clean text before printing.
+	 *
+	 * @param string $text Source text
+	 * @return string
+	 */
+	private static function cleanText($text)
+	{
+		$text = html_entity_decode((string) $text, ENT_QUOTES, 'UTF-8');
+		$text = dol_string_nohtmltag($text);
+		$text = preg_replace('/\s+/', ' ', trim($text));
+		return (string) $text;
+	}
+
+	/**
+	 * Resolve effective output format code, including virtual template-sized formats.
+	 *
+	 * @param DoliDB    $db              Database handler
+	 * @param string    $formatCode      Selected format code
+	 * @param string    $templateCode    Selected template code
+	 * @param bool      $useTemplateSize Use template size
+	 * @param Translate $outputlangs     Output language
+	 * @param int       $entityId        Current entity id
+	 * @return string
+	 */
+	private static function resolveOutputFormatCode($db, $formatCode, $templateCode, $useTemplateSize, $outputlangs, $entityId)
+	{
+		if ($useTemplateSize) {
+			$template = self::loadLabelTemplate($templateCode, $entityId);
+			if (empty($template)) {
+				return '';
+			}
+
+			self::loadPdfGeneratorClass($db);
+			return self::registerTemplateOutputFormat($template);
+		}
+
+		$formatOptions = self::getFormatOptions($db);
+		if (empty($formatOptions[$formatCode])) {
+			return '';
+		}
+
+		return (string) $formatCode;
+	}
+
+	/**
+	 * Register a virtual Dolibarr label format from a bundled template hint.
+	 *
+	 * @param array $template Template definition
+	 * @return string
+	 */
+	private static function registerTemplateOutputFormat($template)
+	{
+		global $_Avery_Labels;
+
+		$details = self::getTemplateOutputFormatDetails($template);
+		if (empty($details)) {
+			return '';
+		}
+
+		$code = self::buildTemplateVirtualFormatCode($template);
+		$_Avery_Labels[$code] = array(
+			'name' => (!empty($details['name']) ? $details['name'] : $code),
+			'paper-size' => $details['paper_size'],
+			'orientation' => $details['orientation'],
+			'metric' => $details['metric'],
+			'marginLeft' => $details['leftmargin'],
+			'marginTop' => $details['topmargin'],
+			'NX' => $details['nx'],
+			'NY' => $details['ny'],
+			'SpaceX' => $details['spacex'],
+			'SpaceY' => $details['spacey'],
+			'width' => $details['width'],
+			'height' => $details['height'],
+			'font-size' => 8,
+			'custom_x' => $details['custom_x'],
+			'custom_y' => $details['custom_y'],
+		);
+
+		return $code;
+	}
+
+	/**
+	 * Extract Dolibarr output format details from a bundled template.
+	 *
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function getTemplateOutputFormatDetails($template)
+	{
+		if (empty($template['dolibarr_format_hint']) || !is_array($template['dolibarr_format_hint'])) {
+			return array();
+		}
+
+		$hint = $template['dolibarr_format_hint'];
+		$labelSize = self::getTemplatePageSize($template);
+		$width = (float) (!empty($labelSize['width']) ? $labelSize['width'] : 0);
+		$height = (float) (!empty($labelSize['height']) ? $labelSize['height'] : 0);
+		$customX = (float) (!empty($hint['custom_x_mm']) ? $hint['custom_x_mm'] : $width);
+		$customY = (float) (!empty($hint['custom_y_mm']) ? $hint['custom_y_mm'] : $height);
+
+		if ($width <= 0 || $height <= 0 || $customX <= 0 || $customY <= 0) {
+			return array();
+		}
+
+		$paperSize = (!empty($hint['paper_size']) ? (string) $hint['paper_size'] : 'custom');
+		if ($paperSize !== 'custom') {
+			$paperSize = 'custom';
+		}
+
+		$orientation = strtoupper(!empty($hint['orientation']) ? (string) $hint['orientation'] : 'P');
+		if (!in_array($orientation, array('P', 'L'), true)) {
+			$orientation = 'P';
+		}
+		if ($paperSize === 'custom') {
+			$orientation = ($customX > $customY ? 'L' : 'P');
+		}
+
+			return array(
+				'code' => self::buildTemplateVirtualFormatCode($template),
+				'name' => (!empty($template['template_code']) ? (string) $template['template_code'] : 'template'),
+				'paper_size' => $paperSize,
+				'metric' => 'mm',
+			'nx' => max(1, (int) (!empty($hint['nx']) ? $hint['nx'] : 1)),
+			'ny' => max(1, (int) (!empty($hint['ny']) ? $hint['ny'] : 1)),
+			'width' => $width,
+			'height' => $height,
+			'leftmargin' => max(0, (float) (!empty($hint['leftmargin_mm']) ? $hint['leftmargin_mm'] : 0)),
+			'topmargin' => max(0, (float) (!empty($hint['topmargin_mm']) ? $hint['topmargin_mm'] : 0)),
+			'spacex' => max(0, (float) (!empty($hint['spacex_mm']) ? $hint['spacex_mm'] : 0)),
+			'spacey' => max(0, (float) (!empty($hint['spacey_mm']) ? $hint['spacey_mm'] : 0)),
+			'custom_x' => $customX,
+			'custom_y' => $customY,
+			'orientation' => $orientation,
+		);
+	}
+
+	/**
+	 * Build a deterministic virtual code for a bundled template output format.
+	 *
+	 * @param array $template Template definition
+	 * @return string
+	 */
+	private static function buildTemplateVirtualFormatCode($template)
+	{
+		$templateCode = (!empty($template['template_code']) ? (string) $template['template_code'] : 'template');
+		$templateCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '_', $templateCode));
+		return 'KREATPL_' . substr($templateCode, 0, 42);
+	}
+
+	/**
+	 * Return the effective page size for a template or page.
+	 *
+	 * @param array $template Template definition
+	 * @param array $page     Optional page definition
+	 * @return array{width: float, height: float}
+	 */
+	private static function getTemplatePageSize($template, $page = array())
+	{
+		$pageSize = array('width' => 0.0, 'height' => 0.0);
+
+		if (!empty($page['size_mm']) && is_array($page['size_mm'])) {
+			$pageSize['width'] = (float) (!empty($page['size_mm']['width']) ? $page['size_mm']['width'] : 0);
+			$pageSize['height'] = (float) (!empty($page['size_mm']['height']) ? $page['size_mm']['height'] : 0);
+		}
+
+		if ($pageSize['width'] <= 0 && !empty($template['label_size_mm']['width'])) {
+			$pageSize['width'] = (float) $template['label_size_mm']['width'];
+		}
+		if ($pageSize['height'] <= 0 && !empty($template['label_size_mm']['height'])) {
+			$pageSize['height'] = (float) $template['label_size_mm']['height'];
+		}
+
+		if ($pageSize['width'] <= 0 && !empty($template['dolibarr_format_hint']['custom_x_mm'])) {
+			$pageSize['width'] = (float) $template['dolibarr_format_hint']['custom_x_mm'];
+		}
+		if ($pageSize['height'] <= 0 && !empty($template['dolibarr_format_hint']['custom_y_mm'])) {
+			$pageSize['height'] = (float) $template['dolibarr_format_hint']['custom_y_mm'];
+		}
+
+		return $pageSize;
+	}
+
+	/**
+	 * Render one template page as inline SVG.
+	 *
+	 * @param array     $template         Template definition
+	 * @param array     $page             Page definition
+	 * @param Product   $product          Product object
+	 * @param Translate $outputlangs      Output language
+	 * @param array     $contextOverrides Optional context overrides
+	 * @return string
+	 */
+	private static function renderTemplatePageSvg($template, $page, $product, $outputlangs, $contextOverrides = array())
+	{
+		$pageSize = self::getTemplatePageSize($template, $page);
+		$width = max(1.0, (float) $pageSize['width']);
+		$height = max(1.0, (float) $pageSize['height']);
+		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $contextOverrides);
+		$svg = array();
+		$svg[] = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ' . self::formatSvgNumber($width) . ' ' . self::formatSvgNumber($height) . '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' . self::escapeSvgText(!empty($page['label']) ? $page['label'] : $outputlangs->trans('KREAPRODUCTS_LABELS_TEMPLATE_PREVIEW')) . '">';
+		$svg[] = '<rect x="0" y="0" width="' . self::formatSvgNumber($width) . '" height="' . self::formatSvgNumber($height) . '" fill="#ffffff" stroke="#cfd6df" stroke-width="0.35" rx="1.1" ry="1.1"/>';
+
+		if (!empty($page['blocks']) && is_array($page['blocks'])) {
+			foreach ($page['blocks'] as $block) {
+				if (!is_array($block) || empty($block['type'])) {
+					continue;
+				}
+
+				if ($block['type'] === 'text') {
+					$svg[] = self::renderTemplateTextBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+				} elseif ($block['type'] === 'rect') {
+					$svg[] = self::renderTemplateRectBlockSvg($block);
+				} elseif ($block['type'] === 'barcode') {
+					$svg[] = self::renderTemplateBarcodeBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+				} elseif ($block['type'] === 'image') {
+					$svg[] = self::renderTemplateImageBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+				}
+			}
+		}
+
+		$svg[] = '</svg>';
+		return implode('', $svg);
+	}
+
+	/**
+	 * Build the data context used by the SVG preview renderer.
+	 *
+	 * @param Product   $product          Product object
+	 * @param Translate $outputlangs      Output language
+	 * @param array     $template         Template definition
+	 * @param array     $contextOverrides Optional context overrides
+	 * @return array
+	 */
+	private static function buildTemplatePreviewContext($product, $outputlangs, $template = array(), $contextOverrides = array())
+	{
+		global $mysoc, $conf, $db;
+
+		$currencyCode = (!empty($conf->currency) ? $conf->currency : '');
+		$companyVat = '';
+		foreach (array('tva_intra', 'idprof1', 'vat_number') as $property) {
+			if (!empty($mysoc->{$property})) {
+				$companyVat = self::cleanText($mysoc->{$property});
+				break;
+			}
+		}
+
+		$companyName = self::cleanText(!empty($mysoc->name) ? $mysoc->name : '');
+		$companyNameWithVat = $companyName;
+		if ($companyName !== '' && $companyVat !== '') {
+			$companyNameWithVat .= ' - VAT ' . $companyVat;
+		}
+
+		$context = array(
+			'product.ref' => self::cleanText($product->ref),
+			'product.label' => self::cleanText($product->label),
+			'product.barcode' => self::cleanText(!empty($product->barcode) ? $product->barcode : $product->ref),
+			'product.internal_code_barcode' => self::cleanText($product->ref),
+			'product.price_ht' => price($product->price, 0, $outputlangs, 1, -1, -1, $currencyCode),
+			'product.price_ttc' => price($product->price_ttc, 0, $outputlangs, 1, -1, -1, $currencyCode),
+			'company.name' => $companyName,
+			'company.name_with_vat' => $companyNameWithVat,
+			'company.address_singleline' => self::buildCompanyAddressSingleLine($mysoc),
+		);
+
+		if (is_object($product)) {
+			foreach (get_object_vars($product) as $property => $value) {
+				if (isset($context['product.' . $property]) || is_array($value) || is_object($value)) {
+					continue;
+				}
+				$context['product.' . $property] = self::cleanText((string) $value);
+			}
+		}
+		if (is_object($mysoc)) {
+			foreach (get_object_vars($mysoc) as $property => $value) {
+				if (isset($context['company.' . $property]) || is_array($value) || is_object($value)) {
+					continue;
+				}
+				$context['company.' . $property] = self::cleanText((string) $value);
+			}
+		}
+
+		foreach (self::buildTemplateDatabaseDefaultContext($db, $product, $outputlangs) as $source => $value) {
+			if ($source === '') {
+				continue;
+			}
+			$context[$source] = (string) $value;
+		}
+
+		$sourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+		foreach ($sourceMeta as $source => $meta) {
+			if (array_key_exists('default_value', $meta) && (string) $meta['default_value'] !== '') {
+				$context[$source] = (string) $meta['default_value'];
+			}
+		}
+		foreach (self::sanitizeTemplateInputValues($contextOverrides, array_keys($sourceMeta), $sourceMeta) as $source => $value) {
+			$context[$source] = $value;
+		}
+
+		$context = self::applyDerivedTemplateContextValues($context, $template);
+
+		return $context;
+	}
+
+	/**
+	 * Build a one-line company address.
+	 *
+	 * @param object $company Company object
+	 * @return string
+	 */
+	private static function buildCompanyAddressSingleLine($company)
+	{
+		$parts = array();
+		if (!empty($company->address)) {
+			$parts[] = self::cleanText($company->address);
+		}
+
+		$locality = trim(trim((string) (!empty($company->zip) ? $company->zip : '')) . ' ' . trim((string) (!empty($company->town) ? $company->town : '')));
+		if ($locality !== '') {
+			$parts[] = self::cleanText($locality);
+		}
+
+		return implode(' - ', array_filter($parts));
+	}
+
+	/**
+	 * Build default context values loaded from module database tables.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param Product   $product     Product object
+	 * @param Translate $outputlangs Output language
+	 * @return array
+	 */
+	private static function buildTemplateDatabaseDefaultContext($db, $product, $outputlangs)
+	{
+		$defaults = array();
+		if (!is_object($db) || !is_object($product) || empty($product->id)) {
+			return $defaults;
+		}
+
+		$productId = (int) $product->id;
+		if ($productId <= 0) {
+			return $defaults;
+		}
+
+		$defaults['label.ingredients_section'] = self::buildIngredientsSectionFromAssociations($db, $productId, $outputlangs);
+		$defaults['label.allergens_section'] = self::buildAllergensSectionFromDatabase($db, $productId, $outputlangs);
+		$defaults['label.nutrition_section'] = self::buildNutritionSectionFromDatabase($db, $productId, $outputlangs);
+
+		return $defaults;
+	}
+
+	/**
+	 * Build ingredients section text from llx_product_association.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param int       $productId   Product id
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function buildIngredientsSectionFromAssociations($db, $productId, $outputlangs)
+	{
+		$sql = "SELECT pa.qty, pc.label, pc.ref";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pp ON pp.rowid = pa.fk_product_pere";
+		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pc ON pc.rowid = pa.fk_product_fils";
+		$sql .= " WHERE pa.fk_product_pere = " . (int) $productId;
+		$sql .= " AND pp.entity IN (" . getEntity('product') . ")";
+		$sql .= " AND pc.entity IN (" . getEntity('product') . ")";
+		$sql .= " ORDER BY pa.rowid ASC";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			return '';
+		}
+
+		$ingredients = array();
+		$totalQty = 0.0;
+		while ($obj = $db->fetch_object($resql)) {
+			$ingredientName = self::cleanText(!empty($obj->label) ? $obj->label : $obj->ref);
+			if ($ingredientName === '') {
+				continue;
+			}
+
+			$qty = (float) $obj->qty;
+			if ($qty > 0) {
+				$totalQty += $qty;
+			}
+
+			$ingredients[] = array('name' => $ingredientName, 'qty' => max(0.0, $qty));
+		}
+		$db->free($resql);
+
+		if (empty($ingredients)) {
+			return '';
+		}
+
+		$items = array();
+		foreach ($ingredients as $ingredient) {
+			$label = $ingredient['name'];
+			if ($totalQty > 0 && $ingredient['qty'] > 0) {
+				$pct = ($ingredient['qty'] / $totalQty) * 100;
+				$pctText = rtrim(rtrim(sprintf('%.1F', $pct), '0'), '.');
+				$label .= ' (' . $pctText . '%)';
+			}
+
+			$items[] = $label;
+		}
+
+		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTES');
+		return $prefix . ': ' . implode(', ', $items) . '.';
+	}
+
+	/**
+	 * Build allergens section text from llx_kreaproducts_productallergens.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param int       $productId   Product id
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function buildAllergensSectionFromDatabase($db, $productId, $outputlangs)
+	{
+		$sql = "SELECT pa.traces, c.code, c.label";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens AS pa";
+		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = pa.fk_product";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "c_kreaproducts AS c ON c.rowid = pa.fk_allergen";
+		$sql .= " WHERE pa.fk_product = " . (int) $productId;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+		$sql .= " ORDER BY pa.rowid ASC";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			return '';
+		}
+
+		$contains = array();
+		$traces = array();
+		while ($obj = $db->fetch_object($resql)) {
+			$allergen = self::resolveAllergenLabelForCurrentLanguage(
+				$outputlangs,
+				(!empty($obj->code) ? (string) $obj->code : ''),
+				(!empty($obj->label) ? (string) $obj->label : '')
+			);
+			if ($allergen === '') {
+				continue;
+			}
+
+			if ((int) $obj->traces > 0) {
+				$traces[$allergen] = $allergen;
+			} else {
+				$contains[$allergen] = $allergen;
+			}
+		}
+		$db->free($resql);
+
+		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_ALLERGENS_PREFIX', 'ALERGENIOS');
+		$parts = array();
+		if (!empty($contains)) {
+			$parts[] = $outputlangs->trans('KREAPRODUCTS_LABELS_SECTION_ALLERGENS_CONTAINS', implode(', ', array_values($contains)));
+		}
+		if (!empty($traces)) {
+			$parts[] = $outputlangs->trans('KREAPRODUCTS_LABELS_SECTION_ALLERGENS_TRACES', implode(', ', array_values($traces)));
+		}
+		if (empty($parts)) {
+			$parts[] = $outputlangs->trans('KREAPRODUCTS_LABELS_SECTION_ALLERGENS_NONE');
+		}
+
+		return $prefix . ': ' . implode('. ', array_filter($parts, 'strlen')) . '.';
+	}
+
+	/**
+	 * Resolve one allergen label in the current system language.
+	 *
+	 * @param Translate $outputlangs   Output language
+	 * @param string    $allergenCode  Allergen dictionary code
+	 * @param string    $fallbackLabel Fallback label from database
+	 * @return string
+	 */
+	private static function resolveAllergenLabelForCurrentLanguage($outputlangs, $allergenCode, $fallbackLabel)
+	{
+		$fallback = self::cleanText((string) $fallbackLabel);
+		$code = strtoupper(trim((string) $allergenCode));
+		if ($code === '' || preg_match('/^[A-Z0-9_]+$/', $code) !== 1 || !is_object($outputlangs)) {
+			return $fallback;
+		}
+
+		$translated = self::cleanText($outputlangs->trans($code));
+		if ($translated !== '' && $translated !== $code) {
+			return $translated;
+		}
+
+		return $fallback;
+	}
+
+	/**
+	 * Build nutrition declaration section text from llx_kreaproducts_nutritional.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param int       $productId   Product id
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function buildNutritionSectionFromDatabase($db, $productId, $outputlangs)
+	{
+		$sql = "SELECT n.energy_kj, n.energy_kcal, n.fat, n.saturates, n.carbohydrates, n.sugars, n.protein, n.salt, n.fiber";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
+		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
+		$sql .= " WHERE n.fk_product = " . (int) $productId;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+		$sql .= " ORDER BY n.tms DESC, n.rowid DESC";
+		$sql .= " LIMIT 1";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			return '';
+		}
+
+		$obj = $db->fetch_object($resql);
+		$db->free($resql);
+		if (!$obj) {
+			return '';
+		}
+
+		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_NUTRITION_PREFIX', 'DECLARACAO NUTRICIONAL (por 100g)');
+		$energyKj = self::formatTemplateNutritionNumber($obj->energy_kj, 0);
+		$energyKcal = self::formatTemplateNutritionNumber($obj->energy_kcal, 0);
+		$fat = self::formatTemplateNutritionNumber($obj->fat, 2);
+		$saturates = self::formatTemplateNutritionNumber($obj->saturates, 2);
+		$carbohydrates = self::formatTemplateNutritionNumber($obj->carbohydrates, 2);
+		$sugars = self::formatTemplateNutritionNumber($obj->sugars, 2);
+		$protein = self::formatTemplateNutritionNumber($obj->protein, 2);
+		$salt = self::formatTemplateNutritionNumber($obj->salt, 2);
+		$fiber = self::formatTemplateNutritionNumber($obj->fiber, 2);
+
+		$line = $outputlangs->trans(
+			'KREAPRODUCTS_LABELS_SECTION_NUTRITION_LINE_A',
+			$energyKj,
+			$energyKcal,
+			$fat,
+			$saturates
+		);
+		$line .= ' | ' . $outputlangs->trans(
+			'KREAPRODUCTS_LABELS_SECTION_NUTRITION_LINE_B',
+			$carbohydrates,
+			$sugars,
+			$protein,
+			$salt
+		);
+		$line .= ' | ' . $outputlangs->trans(
+			'KREAPRODUCTS_LABELS_SECTION_NUTRITION_LINE_C',
+			$fiber
+		);
+
+		return $prefix . ': ' . $line;
+	}
+
+	/**
+	 * Format nutrition numbers for section text.
+	 *
+	 * @param mixed $value     Numeric value
+	 * @param int   $precision Precision
+	 * @return string
+	 */
+	private static function formatTemplateNutritionNumber($value, $precision = 2)
+	{
+		if ($value === null || $value === '') {
+			return '0';
+		}
+
+		$precision = max(0, (int) $precision);
+		if ($precision === 0) {
+			return (string) ((int) round((float) $value));
+		}
+		$formatted = number_format((float) $value, $precision, '.', '');
+		$formatted = rtrim(rtrim($formatted, '0'), '.');
+		return ($formatted !== '' ? $formatted : '0');
+	}
+
+	/**
+	 * Translate one template label key with fallback.
+	 *
+	 * @param Translate $outputlangs Output language
+	 * @param string    $key         Translation key
+	 * @param string    $fallback    Fallback value
+	 * @return string
+	 */
+	private static function translateTemplateLabelText($outputlangs, $key, $fallback = '')
+	{
+		if (is_object($outputlangs)) {
+			$translated = $outputlangs->trans($key);
+			if ($translated !== $key && $translated !== '') {
+				return (string) $translated;
+			}
+		}
+
+		return ($fallback !== '' ? $fallback : $key);
+	}
+
+	/**
+	 * Resolve the preview value for a template block.
+	 *
+	 * @param array $block   Block definition
+	 * @param array $context Resolved source context
+	 * @return string
+	 */
+	private static function resolveTemplateBlockValue($block, $context)
+	{
+		$contentMode = (!empty($block['content_mode']) ? (string) $block['content_mode'] : 'static');
+		if ($contentMode === 'static') {
+			return self::cleanText(!empty($block['text']) ? $block['text'] : '');
+		}
+
+		if ($contentMode === 'dynamic') {
+			$source = (!empty($block['source']) ? (string) $block['source'] : '');
+			if ($source !== '' && array_key_exists($source, $context) && (string) $context[$source] !== '') {
+				return self::sanitizeTemplateTextValue((string) $context[$source], true);
+			}
+
+			if (!empty($block['placeholder'])) {
+				return self::sanitizeTemplateTextValue($block['placeholder'], true);
+			}
+
+			return self::cleanText($source);
+		}
+
+		if ($contentMode === 'asset') {
+			$assetSource = self::sanitizeTemplateSource('asset.' . (!empty($block['asset_key']) ? $block['asset_key'] : ''));
+			if ($assetSource !== '' && !empty($context[$assetSource])) {
+				return self::sanitizeTemplateAssetReference((string) $context[$assetSource]);
+			}
+
+			return self::cleanText(!empty($block['asset_key']) ? $block['asset_key'] : 'asset');
+		}
+
+		return self::cleanText(!empty($block['placeholder']) ? $block['placeholder'] : '');
+	}
+
+	/**
+	 * Sanitize one template source key.
+	 *
+	 * @param string $source Source key
+	 * @return string
+	 */
+	private static function sanitizeTemplateSource($source)
+	{
+		$source = strtolower(trim((string) $source));
+		if ($source === '' || preg_match('/^[a-z0-9_.-]+$/', $source) !== 1) {
+			return '';
+		}
+
+		return $source;
+	}
+
+	/**
+	 * Check if one dynamic source should be editable by users.
+	 *
+	 * @param string $source Source key
+	 * @return bool
+	 */
+	private static function isTemplateSourceEditable($source)
+	{
+		$source = self::sanitizeTemplateSource($source);
+		if ($source === '') {
+			return false;
+		}
+		if (substr($source, -9) === '_yyyymmdd') {
+			return false;
+		}
+
+		$nonEditable = array(
+			'product.ref',
+			'product.label',
+			'product.barcode',
+			'product.internal_code',
+			'product.internal_code_barcode',
+			'product.price_ht',
+			'product.price_ttc',
+		);
+
+		return !in_array($source, $nonEditable, true);
+	}
+
+	/**
+	 * Get computed target sources that should not be manually edited.
+	 *
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function getTemplateComputedTargetSourceMap($template)
+	{
+		$targets = array();
+		if (empty($template['computed_fields']) || !is_array($template['computed_fields'])) {
+			return $targets;
+		}
+
+		foreach ($template['computed_fields'] as $rule) {
+			if (!is_array($rule)) {
+				continue;
+			}
+			foreach (array('target_source', 'output_source', 'result_source') as $targetKey) {
+				$source = self::sanitizeTemplateSource(!empty($rule[$targetKey]) ? $rule[$targetKey] : '');
+				if ($source !== '') {
+					$targets[$source] = true;
+				}
+			}
+		}
+
+		return $targets;
+	}
+
+	/**
+	 * Extract editable source keys from one template.
+	 *
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function getTemplateEditableSourceList($template)
+	{
+		$sources = array();
+		$computedTargetSources = self::getTemplateComputedTargetSourceMap($template);
+		if (!empty($template['inputs']) && is_array($template['inputs'])) {
+			foreach ($template['inputs'] as $input) {
+				if (!is_array($input)) {
+					continue;
+				}
+				$source = self::sanitizeTemplateSource(!empty($input['source']) ? $input['source'] : '');
+				if ($source === '' || !self::isTemplateSourceEditable($source)) {
+					continue;
+				}
+				if (isset($computedTargetSources[$source])) {
+					continue;
+				}
+				if (array_key_exists('editable', $input) && !(bool) $input['editable']) {
+					continue;
+				}
+				$sources[$source] = $source;
+			}
+
+		}
+
+		if (empty($template['pages']) || !is_array($template['pages'])) {
+			return $sources;
+		}
+
+		foreach ($template['pages'] as $page) {
+			if (empty($page['blocks']) || !is_array($page['blocks'])) {
+				continue;
+			}
+			foreach ($page['blocks'] as $block) {
+				if (!is_array($block) || (empty($block['content_mode']) || (string) $block['content_mode'] !== 'dynamic')) {
+					continue;
+				}
+
+					$source = self::sanitizeTemplateSource(!empty($block['source']) ? $block['source'] : '');
+					if ($source === '' || !self::isTemplateSourceEditable($source)) {
+						continue;
+					}
+					if (isset($computedTargetSources[$source])) {
+						continue;
+					}
+					$sources[$source] = $source;
+				}
+			}
+
+		return array_values($sources);
+	}
+
+	/**
+	 * Build editable source metadata for one template.
+	 *
+	 * @param array     $template    Template definition
+	 * @param Translate $outputlangs Output language
+	 * @return array
+	 */
+	private static function getTemplateEditableSourceMeta($template, $outputlangs)
+	{
+		$meta = array();
+		$computedTargetSources = self::getTemplateComputedTargetSourceMap($template);
+		if (!empty($template['inputs']) && is_array($template['inputs'])) {
+			foreach ($template['inputs'] as $input) {
+				if (!is_array($input)) {
+					continue;
+				}
+				$source = self::sanitizeTemplateSource(!empty($input['source']) ? $input['source'] : '');
+				if ($source === '' || !self::isTemplateSourceEditable($source)) {
+					continue;
+				}
+				if (isset($computedTargetSources[$source])) {
+					continue;
+				}
+				if (array_key_exists('editable', $input) && !(bool) $input['editable']) {
+					continue;
+				}
+
+				if (empty($input['label'])) {
+					$input['label'] = self::resolveTemplateEditableSourceLabel($source, array(), array(), $outputlangs);
+				}
+				$normalized = self::normalizeTemplateInputMeta($source, $input);
+				$meta[$source] = $normalized;
+			}
+
+		}
+
+		if (empty($template['pages']) || !is_array($template['pages'])) {
+			return $meta;
+		}
+
+		foreach ($template['pages'] as $page) {
+			if (empty($page['blocks']) || !is_array($page['blocks'])) {
+				continue;
+			}
+			foreach ($page['blocks'] as $block) {
+				if (!is_array($block) || (empty($block['content_mode']) || (string) $block['content_mode'] !== 'dynamic')) {
+					continue;
+				}
+
+					$source = self::sanitizeTemplateSource(!empty($block['source']) ? $block['source'] : '');
+					if ($source === '' || !self::isTemplateSourceEditable($source)) {
+						continue;
+					}
+					if (isset($computedTargetSources[$source])) {
+						continue;
+					}
+
+					if (!isset($meta[$source])) {
+						$meta[$source] = self::normalizeTemplateInputMeta($source, array(
+							'label' => self::resolveTemplateEditableSourceLabel($source, $page, $block, $outputlangs),
+						'placeholder' => self::cleanText(!empty($block['placeholder']) ? $block['placeholder'] : ''),
+						'type' => self::guessTemplateInputType($source, $block),
+					));
+				} elseif ($meta[$source]['placeholder'] === '' && !empty($block['placeholder'])) {
+					$meta[$source]['placeholder'] = self::cleanText($block['placeholder']);
+				}
+			}
+		}
+
+		return $meta;
+	}
+
+	/**
+	 * Resolve display label for one editable template source.
+	 *
+	 * @param string    $source      Source key
+	 * @param array     $page        Page definition
+	 * @param array     $block       Dynamic block
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function resolveTemplateEditableSourceLabel($source, $page, $block, $outputlangs)
+	{
+		$hint = self::findTemplateFieldStaticLabelHint($page, $block);
+		if ($hint !== '') {
+			return $hint;
+		}
+
+		$map = array(
+			'batch.packaged_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_PACKAGED_AT', 'Packed on'),
+			'batch.frozen_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_FROZEN_AT', 'Frozen on'),
+			'batch.expiry_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_EXPIRY_AT', 'Expiry date'),
+			'batch.validity_days' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_VALIDITY_DAYS', 'Validity (days)'),
+			'batch.lot_number' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_LOT_NUMBER', 'Lot number'),
+			'label.ingredients_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_INGREDIENTS_SECTION', 'Ingredients section'),
+			'label.allergens_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_ALLERGENS_SECTION', 'Allergens section'),
+			'label.nutrition_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_NUTRITION_SECTION', 'Nutrition section'),
+			'company.name_with_vat' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_COMPANY_IDENTITY', 'Company identity'),
+			'company.address_singleline' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_COMPANY_ADDRESS', 'Company address'),
+			'label.storage_text' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_STORAGE_TEXT', 'Storage note'),
+			'asset.brand_badge' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_BRAND_BADGE', 'Brand badge'),
+		);
+
+		if (!empty($map[$source])) {
+			return (string) $map[$source];
+		}
+
+		return self::humanizeTemplateSource($source);
+	}
+
+	/**
+	 * Find nearby static label text for one dynamic block.
+	 *
+	 * @param array $page  Page definition
+	 * @param array $block Dynamic block
+	 * @return string
+	 */
+	private static function findTemplateFieldStaticLabelHint($page, $block)
+	{
+		if (empty($page['blocks']) || !is_array($page['blocks'])) {
+			return '';
+		}
+
+		$targetX = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+		$targetY = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+		$bestLabel = '';
+		$bestScore = 999999.0;
+
+		foreach ($page['blocks'] as $candidate) {
+			if (!is_array($candidate) || (empty($candidate['type']) || (string) $candidate['type'] !== 'text')) {
+				continue;
+			}
+			if (empty($candidate['content_mode']) || (string) $candidate['content_mode'] !== 'static') {
+				continue;
+			}
+
+			$text = self::cleanText(!empty($candidate['text']) ? $candidate['text'] : '');
+			if ($text === '') {
+				continue;
+			}
+
+			$candidateX = (float) (!empty($candidate['x_mm']) ? $candidate['x_mm'] : 0);
+			$candidateY = (float) (!empty($candidate['y_mm']) ? $candidate['y_mm'] : 0);
+			$deltaY = abs($targetY - $candidateY);
+			if ($deltaY > 3.5) {
+				continue;
+			}
+
+			$deltaX = $targetX - $candidateX;
+			if ($deltaX < -2.0) {
+				continue;
+			}
+
+			$score = ($deltaY * 10.0) + max(0, $deltaX);
+			if ($score < $bestScore) {
+				$bestScore = $score;
+				$bestLabel = $text;
+			}
+		}
+
+		return $bestLabel;
+	}
+
+	/**
+	 * Build a readable label from a source key.
+	 *
+	 * @param string $source Source key
+	 * @return string
+	 */
+	private static function humanizeTemplateSource($source)
+	{
+		$source = self::sanitizeTemplateSource($source);
+		if ($source === '') {
+			return '';
+		}
+
+		$lastSegment = $source;
+		$lastDotPos = strrpos($source, '.');
+		if ($lastDotPos !== false) {
+			$lastSegment = substr($source, $lastDotPos + 1);
+		}
+
+		$label = str_replace(array('_', '-'), ' ', $lastSegment);
+		$label = preg_replace('/\s+/', ' ', trim((string) $label));
+		return ucfirst($label);
+	}
+
+	/**
+	 * Normalize date string into YYYYMMDD.
+	 *
+	 * @param string $value Source value
+	 * @return string
+	 */
+	private static function normalizeDateToYmd($value)
+	{
+		$timestamp = self::parseTemplateDateTimeToTimestamp($value);
+		if ($timestamp === null) {
+			return '';
+		}
+
+		return date('Ymd', $timestamp);
+	}
+
+	/**
+	 * Apply derived context values used by templates.
+	 *
+	 * @param array $context Source context
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function applyDerivedTemplateContextValues($context, $template = array())
+	{
+		$context = self::applyTemplateComputedFields($context, $template);
+
+		if (!empty($context['batch.validity_days']) && empty($context['batch.expiry_at'])) {
+			$daysValue = self::sanitizeTemplateNumericValue((string) $context['batch.validity_days']);
+			if ($daysValue !== '') {
+				$days = (int) round((float) $daysValue);
+				$baseDateValue = '';
+				if (!empty($context['batch.frozen_at'])) {
+					$baseDateValue = (string) $context['batch.frozen_at'];
+				} elseif (!empty($context['batch.packaged_at'])) {
+					$baseDateValue = (string) $context['batch.packaged_at'];
+				}
+
+				$baseTimestamp = self::parseTemplateDateTimeToTimestamp($baseDateValue);
+				if ($baseTimestamp !== null) {
+					$context['batch.expiry_at'] = self::formatTimestampWithPattern(strtotime(($days >= 0 ? '+' : '') . $days . ' days', $baseTimestamp), 'd/m/Y');
+				}
+			}
+		}
+
+		if (!empty($context['batch.packaged_at']) && empty($context['batch.packaged_at_yyyymmdd'])) {
+			$context['batch.packaged_at_yyyymmdd'] = self::normalizeDateToYmd($context['batch.packaged_at']);
+		}
+		if (!empty($context['batch.frozen_at']) && empty($context['batch.frozen_at_yyyymmdd'])) {
+			$context['batch.frozen_at_yyyymmdd'] = self::normalizeDateToYmd($context['batch.frozen_at']);
+		}
+		if (!empty($context['batch.expiry_at']) && empty($context['batch.expiry_at_yyyymmdd'])) {
+			$context['batch.expiry_at_yyyymmdd'] = self::normalizeDateToYmd($context['batch.expiry_at']);
+		}
+
+		return $context;
+	}
+
+	/**
+	 * Apply template-defined computed context rules.
+	 *
+	 * @param array $context  Source context
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function applyTemplateComputedFields($context, $template)
+	{
+		if (empty($template['computed_fields']) || !is_array($template['computed_fields'])) {
+			return $context;
+		}
+
+		foreach ($template['computed_fields'] as $rule) {
+			if (!is_array($rule)) {
+				continue;
+			}
+
+			$operation = strtolower(trim((string) (!empty($rule['operation']) ? $rule['operation'] : '')));
+			if ($operation !== 'add_days') {
+				continue;
+			}
+
+			$targetSource = self::sanitizeTemplateSource(!empty($rule['target_source']) ? $rule['target_source'] : '');
+			$daysSource = self::sanitizeTemplateSource(!empty($rule['days_source']) ? $rule['days_source'] : '');
+			if ($targetSource === '' || $daysSource === '' || !isset($context[$daysSource])) {
+				continue;
+			}
+
+			$daysValue = self::sanitizeTemplateNumericValue((string) $context[$daysSource]);
+			if ($daysValue === '') {
+				continue;
+			}
+			$days = (int) round((float) $daysValue);
+
+			$baseSources = array();
+			$primaryBase = self::sanitizeTemplateSource(!empty($rule['base_source']) ? $rule['base_source'] : '');
+			if ($primaryBase !== '') {
+				$baseSources[] = $primaryBase;
+			}
+			if (!empty($rule['base_fallback_sources']) && is_array($rule['base_fallback_sources'])) {
+				foreach ($rule['base_fallback_sources'] as $fallbackSource) {
+					$sanitizedFallback = self::sanitizeTemplateSource($fallbackSource);
+					if ($sanitizedFallback !== '' && !in_array($sanitizedFallback, $baseSources, true)) {
+						$baseSources[] = $sanitizedFallback;
+					}
+				}
+			}
+			if (empty($baseSources)) {
+				$baseSources = array('batch.frozen_at', 'batch.packaged_at');
+			}
+
+			$baseTimestamp = null;
+			foreach ($baseSources as $baseSource) {
+				if (empty($context[$baseSource])) {
+					continue;
+				}
+				$baseTimestamp = self::parseTemplateDateTimeToTimestamp((string) $context[$baseSource]);
+				if ($baseTimestamp !== null) {
+					break;
+				}
+			}
+			if ($baseTimestamp === null) {
+				continue;
+			}
+
+			$outputFormat = (!empty($rule['output_format']) ? (string) $rule['output_format'] : 'd/m/Y');
+			$computedTimestamp = strtotime(($days >= 0 ? '+' : '') . $days . ' days', $baseTimestamp);
+			if ($computedTimestamp === false) {
+				continue;
+			}
+
+			$context[$targetSource] = self::formatTimestampWithPattern($computedTimestamp, $outputFormat);
+		}
+
+		return $context;
+	}
+
+	/**
+	 * Render a template text block as SVG.
+	 *
+	 * @param array  $block Block definition
+	 * @param string $text  Resolved text
+	 * @return string
+	 */
+	private static function renderTemplateTextBlockSvg($block, $text)
+	{
+		$x = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+		$y = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+		$w = max(1.0, (float) (!empty($block['w_mm']) ? $block['w_mm'] : 1));
+		$h = max(1.0, (float) (!empty($block['h_mm']) ? $block['h_mm'] : 1));
+		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
+		$fontPt = (float) (!empty($style['font_size_pt']) ? $style['font_size_pt'] : 7.5);
+		$fontMm = max(1.1, $fontPt * 0.352778);
+		$lineHeight = $fontMm * 1.18;
+		$maxLines = max(1, (int) floor($h / max(1.0, $lineHeight)));
+		$lines = self::wrapTemplatePreviewText($text, $fontMm, $w, $maxLines);
+		$align = (!empty($style['align']) ? strtolower((string) $style['align']) : 'left');
+		$textAnchor = 'start';
+		$textX = $x;
+		if ($align === 'center') {
+			$textAnchor = 'middle';
+			$textX = $x + ($w / 2);
+		} elseif ($align === 'right') {
+			$textAnchor = 'end';
+			$textX = $x + $w;
+		}
+
+		$fontFamily = (!empty($style['font_family']) ? (string) $style['font_family'] : 'Helvetica');
+		$fontWeight = (!empty($style['font_weight']) && strtolower((string) $style['font_weight']) === 'bold' ? '700' : '400');
+		$svg = array();
+		$svg[] = '<text x="' . self::formatSvgNumber($textX) . '" y="' . self::formatSvgNumber($y) . '" fill="#101828" font-family="' . self::escapeSvgText($fontFamily) . '" font-size="' . self::formatSvgNumber($fontMm) . '" font-weight="' . $fontWeight . '" text-anchor="' . $textAnchor . '" dominant-baseline="text-before-edge">';
+
+		foreach ($lines as $index => $line) {
+			$svg[] = '<tspan x="' . self::formatSvgNumber($textX) . '" dy="' . ($index === 0 ? '0' : self::formatSvgNumber($lineHeight)) . '">' . self::escapeSvgText($line) . '</tspan>';
+		}
+
+		$svg[] = '</text>';
+		return implode('', $svg);
+	}
+
+	/**
+	 * Wrap preview text to fit approximately inside a block.
+	 *
+	 * @param string $text        Text to wrap
+	 * @param float  $fontSizeMm  Font size in mm
+	 * @param float  $maxWidthMm  Maximum width in mm
+	 * @param int    $maxLines    Maximum number of lines
+	 * @return array
+	 */
+	private static function wrapTemplatePreviewText($text, $fontSizeMm, $maxWidthMm, $maxLines)
+	{
+		$text = trim((string) $text);
+		if ($text === '') {
+			return array('');
+		}
+
+		$estimatedCharsPerLine = max(4, (int) floor($maxWidthMm / max(0.9, $fontSizeMm * 0.5)));
+		$wrapped = preg_split('/\r\n|\r|\n/', wordwrap($text, $estimatedCharsPerLine, "\n", true));
+		if (!is_array($wrapped) || empty($wrapped)) {
+			$wrapped = array($text);
+		}
+
+		$lines = array_slice(array_values(array_filter(array_map('trim', $wrapped), 'strlen')), 0, $maxLines);
+		if (empty($lines)) {
+			$lines = array($text);
+		}
+
+		if (count($wrapped) > $maxLines) {
+			$lastIndex = count($lines) - 1;
+			$lines[$lastIndex] = rtrim(substr($lines[$lastIndex], 0, max(0, $estimatedCharsPerLine - 1))) . '...';
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Render a rectangle block as SVG.
+	 *
+	 * @param array $block Block definition
+	 * @return string
+	 */
+	private static function renderTemplateRectBlockSvg($block)
+	{
+		$x = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+		$y = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+		$w = max(0.5, (float) (!empty($block['w_mm']) ? $block['w_mm'] : 0.5));
+		$h = max(0.5, (float) (!empty($block['h_mm']) ? $block['h_mm'] : 0.5));
+		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
+		$strokeWidth = max(0.1, (float) (!empty($style['stroke_width_mm']) ? $style['stroke_width_mm'] : 0.25));
+
+		return '<rect x="' . self::formatSvgNumber($x) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($w) . '" height="' . self::formatSvgNumber($h) . '" fill="none" stroke="#101828" stroke-width="' . self::formatSvgNumber($strokeWidth) . '"/>';
+	}
+
+	/**
+	 * Render an asset/image block as a vector placeholder.
+	 *
+	 * @param array  $block Block definition
+	 * @param string $value Resolved asset reference
+	 * @return string
+	 */
+	private static function renderTemplateImageBlockSvg($block, $value = '')
+	{
+		$x = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+		$y = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+		$w = max(1.0, (float) (!empty($block['w_mm']) ? $block['w_mm'] : 1));
+		$h = max(1.0, (float) (!empty($block['h_mm']) ? $block['h_mm'] : 1));
+		$assetHref = self::buildTemplateImageHrefForSvg($value);
+		if ($assetHref !== '') {
+			$escapedHref = self::escapeSvgText($assetHref);
+			return '<image x="' . self::formatSvgNumber($x) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($w) . '" height="' . self::formatSvgNumber($h) . '" href="' . $escapedHref . '" xlink:href="' . $escapedHref . '" preserveAspectRatio="xMidYMid meet"/>';
+		}
+
+		$label = (!empty($block['asset_key']) ? (string) $block['asset_key'] : 'asset');
+		$fontSize = max(1.0, min(2.2, $h * 0.18));
+
+		return '<g><rect x="' . self::formatSvgNumber($x) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($w) . '" height="' . self::formatSvgNumber($h) . '" fill="#f8fafc" stroke="#98a2b3" stroke-width="0.2" stroke-dasharray="0.9 0.6"/><line x1="' . self::formatSvgNumber($x) . '" y1="' . self::formatSvgNumber($y) . '" x2="' . self::formatSvgNumber($x + $w) . '" y2="' . self::formatSvgNumber($y + $h) . '" stroke="#cbd5e1" stroke-width="0.2"/><line x1="' . self::formatSvgNumber($x + $w) . '" y1="' . self::formatSvgNumber($y) . '" x2="' . self::formatSvgNumber($x) . '" y2="' . self::formatSvgNumber($y + $h) . '" stroke="#cbd5e1" stroke-width="0.2"/><text x="' . self::formatSvgNumber($x + ($w / 2)) . '" y="' . self::formatSvgNumber($y + ($h / 2) - ($fontSize / 2)) . '" fill="#667085" font-family="Helvetica" font-size="' . self::formatSvgNumber($fontSize) . '" text-anchor="middle" dominant-baseline="text-before-edge">' . self::escapeSvgText($label) . '</text></g>';
+	}
+
+	/**
+	 * Build a public preview URL for one template asset reference.
+	 *
+	 * @param string $value Asset reference
+	 * @return string
+	 */
+	private static function buildTemplateAssetPreviewUrl($value)
+	{
+		global $conf;
+
+		$value = self::sanitizeTemplateAssetReference($value);
+		if ($value === '') {
+			return '';
+		}
+
+		$localPath = self::resolveTemplateAssetLocalPath($value);
+		if ($localPath !== '') {
+			$dataUri = self::buildTemplateAssetDataUriFromLocalPath($localPath);
+			if ($dataUri !== '') {
+				return $dataUri;
+			}
+		}
+
+		$entityId = (int) (!empty($conf->entity) ? $conf->entity : 1);
+		$fileRelative = $entityId . '/labels/' . ltrim($value, '/');
+		return DOL_URL_ROOT . '/viewimage.php?modulepart=kreaproducts&entity=' . $entityId . '&file=' . urlencode($fileRelative);
+	}
+
+	/**
+	 * Build image href for inline SVG preview.
+	 *
+	 * Prefer data URIs for local module assets to avoid browser auth/CSP edge cases
+	 * when loading `/viewimage.php` inside nested SVG `<image>`.
+	 *
+	 * @param string $value Asset reference
+	 * @return string
+	 */
+	private static function buildTemplateImageHrefForSvg($value)
+	{
+		$value = self::sanitizeTemplateAssetReference($value);
+		if ($value === '') {
+			return '';
+		}
+
+		$localPath = self::resolveTemplateAssetLocalPath($value);
+		if ($localPath !== '') {
+			$dataUri = self::buildTemplateAssetDataUriFromLocalPath($localPath);
+			if ($dataUri !== '') {
+				return $dataUri;
+			}
+		}
+
+		return self::buildTemplateAssetPreviewUrl($value);
+	}
+
+	/**
+	 * Resolve one sanitized asset reference to a local path inside module documents.
+	 *
+	 * @param string $value Sanitized asset reference
+	 * @return string
+	 */
+	private static function resolveTemplateAssetLocalPath($value)
+	{
+		global $conf;
+
+		$assetReference = self::sanitizeTemplateAssetReference($value);
+		if ($assetReference === '') {
+			return '';
+		}
+
+		$fileName = substr($assetReference, strlen('templates/assets/'));
+		if ($fileName === '' || strpos($fileName, '/') !== false || strpos($fileName, '\\') !== false) {
+			return '';
+		}
+
+		$entityId = (int) (!empty($conf->entity) ? $conf->entity : 1);
+		$assetRoot = self::getTemplateAssetDir($entityId);
+		if (!is_dir($assetRoot)) {
+			return '';
+		}
+
+		$assetPath = $assetRoot . '/' . $fileName;
+		$realAssetPath = realpath($assetPath);
+		$realAssetRoot = realpath($assetRoot);
+		if ($realAssetPath === false || $realAssetRoot === false || !is_file($realAssetPath) || !is_readable($realAssetPath)) {
+			return '';
+		}
+
+		$rootPrefix = rtrim($realAssetRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+		if (strpos($realAssetPath, $rootPrefix) !== 0) {
+			return '';
+		}
+
+		return $realAssetPath;
+	}
+
+	/**
+	 * Build a data URI from one local image file.
+	 *
+	 * @param string $fullPath Absolute image path
+	 * @return string
+	 */
+	private static function buildTemplateAssetDataUriFromLocalPath($fullPath)
+	{
+		$fullPath = (string) $fullPath;
+		if ($fullPath === '' || !is_file($fullPath) || !is_readable($fullPath)) {
+			return '';
+		}
+
+		$maxBytes = 2 * 1024 * 1024;
+		$fileSize = @filesize($fullPath);
+		if ($fileSize === false || $fileSize <= 0 || $fileSize > $maxBytes) {
+			return '';
+		}
+
+		$extension = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+		$mimeMap = array(
+			'png' => 'image/png',
+			'jpg' => 'image/jpeg',
+			'jpeg' => 'image/jpeg',
+			'gif' => 'image/gif',
+			'webp' => 'image/webp',
+			'svg' => 'image/svg+xml',
+		);
+		if (empty($mimeMap[$extension])) {
+			return '';
+		}
+		$mime = $mimeMap[$extension];
+
+		$binary = @file_get_contents($fullPath);
+		if ($binary === false || $binary === '') {
+			return '';
+		}
+
+		return 'data:' . $mime . ';base64,' . base64_encode($binary);
+	}
+
+	/**
+	 * Render a barcode block as a lightweight vector barcode preview.
+	 *
+	 * @param array  $block Block definition
+	 * @param string $value Resolved barcode value
+	 * @return string
+	 */
+	private static function renderTemplateBarcodeBlockSvg($block, $value)
+	{
+		$x = (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0);
+		$y = (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0);
+		$w = max(2.0, (float) (!empty($block['w_mm']) ? $block['w_mm'] : 2));
+		$h = max(2.0, (float) (!empty($block['h_mm']) ? $block['h_mm'] : 2));
+		$value = trim((string) $value);
+		if ($value === '') {
+			$value = '000000';
+		}
+
+		$showHumanReadable = !empty($block['show_human_readable']);
+		$textHeight = ($showHumanReadable ? max(1.3, min(2.6, $h * 0.22)) : 0.0);
+		$barHeight = max(1.0, $h - $textHeight);
+		$pattern = self::buildPreviewBarcodePattern($value);
+		$patternLength = max(1, strlen($pattern));
+		$barWidth = $w / $patternLength;
+		$svg = array();
+		$svg[] = '<g>';
+		$svg[] = '<rect x="' . self::formatSvgNumber($x) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($w) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#ffffff"/>';
+
+		for ($i = 0; $i < $patternLength; $i++) {
+			if ($pattern[$i] !== '1') {
+				continue;
+			}
+
+			$currentX = $x + ($i * $barWidth);
+			$svg[] = '<rect x="' . self::formatSvgNumber($currentX) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($barWidth + 0.02) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#101828"/>';
+		}
+
+		if ($showHumanReadable) {
+			$svg[] = '<text x="' . self::formatSvgNumber($x + ($w / 2)) . '" y="' . self::formatSvgNumber($y + $barHeight + 0.2) . '" fill="#101828" font-family="Helvetica" font-size="' . self::formatSvgNumber($textHeight * 0.82) . '" text-anchor="middle" dominant-baseline="text-before-edge">' . self::escapeSvgText($value) . '</text>';
+		}
+
+		$svg[] = '</g>';
+		return implode('', $svg);
+	}
+
+	/**
+	 * Build a deterministic preview barcode pattern.
+	 *
+	 * @param string $value Source value
+	 * @return string
+	 */
+	private static function buildPreviewBarcodePattern($value)
+	{
+		$value = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $value));
+		if ($value === '') {
+			$value = '0';
+		}
+
+		$pattern = '101001';
+		$chars = str_split($value);
+		foreach ($chars as $index => $char) {
+			$seed = ord($char) + $index;
+			for ($bit = 0; $bit < 7; $bit++) {
+				$pattern .= ((($seed >> ($bit % 6)) & 1) ? '11' : '1') . '0';
+			}
+			$pattern .= '10';
+		}
+		$pattern .= '101011';
+
+		return $pattern;
+	}
+
+	/**
+	 * Escape SVG text content.
+	 *
+	 * @param string $text Source text
+	 * @return string
+	 */
+	private static function escapeSvgText($text)
+	{
+		return htmlspecialchars((string) $text, ENT_QUOTES | ENT_XML1, 'UTF-8');
+	}
+
+	/**
+	 * Format a numeric value for SVG output.
+	 *
+	 * @param float $value Numeric value
+	 * @return string
+	 */
+	private static function formatSvgNumber($value)
+	{
+		return rtrim(rtrim(sprintf('%.3F', (float) $value), '0'), '.');
+	}
+}

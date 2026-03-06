@@ -165,6 +165,10 @@ if (!isset($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DEBUG_LOG', '0', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_DEBUG_LOG = '0';
 }
+if (!isset($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_LABELS_TAB_ENABLED', '0', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED = '0';
+}
 if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 	$extrafields = new ExtraFields($db);
@@ -297,6 +301,13 @@ $item = $formSetup->newItem('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT');
 $item->defaultFieldValue = '0.1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT_HELP');
 $item->fieldAttr = array('type' => 'number', 'step' => '0.01', 'min' => '0');
+
+// Etiquetas
+$formSetup->newItem('KREAPRODUCTS_LABELS_SETTINGS_TITLE')->setAsTitle();
+$item = $formSetup->newItem('KREAPRODUCTS_LABELS_TAB_ENABLED');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LABELS_TAB_ENABLED_HELP');
 
 // Movimentos de stock
 $formSetup->newItem('KREAPRODUCTS_STOCK_SETTINGS_TITLE')->setAsTitle();

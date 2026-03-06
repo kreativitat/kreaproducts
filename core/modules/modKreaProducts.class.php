@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.0.128';
+        $this->version = '2.13.16';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -199,6 +199,7 @@ class modKreaProducts extends DolibarrModules
             10 => array('KREAPRODUCTS_DISMANTLE_BOMTYPE', 'chaine', '1', '', 0, 'allentities', 1),
             11 => array('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             12 => array('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
+            13 => array('KREAPRODUCTS_LABELS_TAB_ENABLED', 'chaine', '0', '', 0, 'allentities', 1),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 
@@ -250,6 +251,7 @@ class modKreaProducts extends DolibarrModules
         $this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/associatedProducts.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/productTree.php?id=__ID__');
+        $this->tabs[] = array('data' => 'product:+(7)krea_labels:KREAPRODUCTS_LABELS_TAB:kreaproducts@kreaproducts:$conf->kreaproducts->enabled && !empty($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED) && ($user->admin || $user->hasRight(\'kreaproducts\', \'labels\', \'read\')):/kreaproducts/product_labels.php?id=__ID__');
 
 
         // Dictionaries
@@ -364,6 +366,14 @@ class modKreaProducts extends DolibarrModules
         $this->rights[6][1] = 'View expected inventory values';
         $this->rights[6][4] = 'inventory';
         $this->rights[6][5] = 'expected';
+        $this->rights[7][0] = $this->numero . sprintf('%02d', 31);
+        $this->rights[7][1] = 'Read product labels';
+        $this->rights[7][4] = 'labels';
+        $this->rights[7][5] = 'read';
+        $this->rights[8][0] = $this->numero . sprintf('%02d', 32);
+        $this->rights[8][1] = 'Generate and delete product labels';
+        $this->rights[8][4] = 'labels';
+        $this->rights[8][5] = 'write';
 
         /* END MODULEBUILDER PERMISSIONS */
 
