@@ -1,6 +1,15 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.17.0] - 2026-03-07
+
+### Added
+- Added `POST production/products/{product_id}/labels/pdf` to generate one labels PDF from KreaProducts templates and return it as a base64 payload for touch apps.
+
+### Changed
+- Label-PDF API generation now supports template-mode and standard-mode payloads with `production_qty`, `units_per_label`, `labels_count`, `template_code`, `template_values`, and optional `langcode`.
+- API now removes temporary generated label files after payload extraction to avoid accumulating transient PDF files in module documents.
+
 ## [2.16.1] - 2026-03-07
 
 ### Fixed

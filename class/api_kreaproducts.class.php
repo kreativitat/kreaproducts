@@ -270,6 +270,140 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Generate one labels PDF and return file payload as base64.
+	 *
+	 * Request body example:
+	 * {
+	 *   "product_id": 345,
+	 *   "production_qty": 120,
+	 *   "units_per_label": 1,
+	 *   "labels_count": 120,
+	 *   "template_code": "degema_normal",
+	 *   "template_values": {},
+	 *   "langcode": "pt_PT"
+	 * }
+	 *
+	 * @param int   $product_id   Product id (path)
+	 * @param array $request_data Request body
+	 * @return array
+	 *
+	 * @url POST production/products/{product_id}/labels/pdf
+	 */
+	public function postProductionLabelPdf($product_id, $request_data = null)
+	{
+		global $langs, $conf;
+
+		$this->assertLabelReadRights();
+
+		if (!is_array($request_data)) {
+			$request_data = array();
+		}
+
+		$productIdFromPath = (int) $product_id;
+		$productIdFromBody = (int) (isset($request_data['product_id']) ? $request_data['product_id'] : 0);
+		if ($productIdFromPath <= 0) {
+			throw new RestException(400, 'Missing product_id');
+		}
+		if ($productIdFromBody > 0 && $productIdFromBody !== $productIdFromPath) {
+			throw new RestException(400, 'product_id in body does not match path');
+		}
+
+		$product = $this->fetchProduct($productIdFromPath);
+		$productionQty = price2num(isset($request_data['production_qty']) ? $request_data['production_qty'] : 1, 'MS');
+		if ($productionQty <= 0) {
+			$productionQty = 1;
+		}
+
+		$unitsPerLabel = price2num(isset($request_data['units_per_label']) ? $request_data['units_per_label'] : 1, 'MS');
+		if ($unitsPerLabel <= 0) {
+			$unitsPerLabel = 1;
+		}
+
+		$labelsCount = (int) (isset($request_data['labels_count']) ? $request_data['labels_count'] : 0);
+		$templateCode = trim((string) (isset($request_data['template_code']) ? $request_data['template_code'] : ''));
+		$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
+		$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
+
+		$selectedFields = array();
+		if (!empty($request_data['selected_fields']) && is_array($request_data['selected_fields'])) {
+			$selectedFields = KreaProductsLabelService::sanitizeSelectedFields($request_data['selected_fields']);
+		}
+		if (empty($selectedFields) && $templateCode === '') {
+			$selectedFields = array('ref', 'label', 'barcode');
+		}
+
+		$useTemplateSize = ($templateCode !== '' ? 1 : 0);
+		if (isset($request_data['use_template_size'])) {
+			$useTemplateSize = (!empty($request_data['use_template_size']) ? 1 : 0);
+		}
+
+		$recommendedCount = $this->computeLabelCount($productionQty, $unitsPerLabel, $labelsCount);
+
+		$outputlangs = clone $langs;
+		if ($langcode !== '') {
+			$outputlangs->setDefaultLang($langcode);
+		}
+		$outputlangs->load('main');
+		$outputlangs->load('products');
+		$outputlangs->load('mrp');
+		$outputlangs->load('kreaproducts@kreaproducts');
+
+		$formatCode = trim((string) (isset($request_data['format_code']) ? $request_data['format_code'] : ''));
+		if ($formatCode === '') {
+			$formatCode = KreaProductsLabelService::getDefaultFormatCode(KreaProductsLabelService::getFormatOptions($this->db));
+		}
+
+		$entityId = (int) $conf->entity;
+		$generated = KreaProductsLabelService::generateProductLabels(
+			$this->db,
+			$product,
+			$entityId,
+			$formatCode,
+			$selectedFields,
+			$recommendedCount,
+			$outputlangs,
+			$templateCode,
+			(bool) $useTemplateSize,
+			$templateValues
+		);
+
+		if (!empty($generated['error'])) {
+			throw new RestException(500, 'Error generating labels PDF: ' . $generated['error']);
+		}
+
+		$fullPath = (!empty($generated['fullpath']) ? (string) $generated['fullpath'] : '');
+		$relativeFile = (!empty($generated['relativefile']) ? (string) $generated['relativefile'] : '');
+
+		try {
+			if ($fullPath === '' || !is_readable($fullPath)) {
+				throw new RestException(500, 'Generated labels PDF file is not readable');
+			}
+
+			$pdfBinary = @file_get_contents($fullPath);
+			if ($pdfBinary === false || $pdfBinary === '') {
+				throw new RestException(500, 'Generated labels PDF file is empty');
+			}
+
+			return array(
+				'product_id' => (int) $product->id,
+				'product_ref' => (string) $product->ref,
+				'production_qty' => (float) $productionQty,
+				'units_per_label' => (float) $unitsPerLabel,
+				'labels_count' => (int) $recommendedCount,
+				'template_code' => (string) $templateCode,
+				'filename' => (!empty($generated['filename']) ? (string) $generated['filename'] : ('labels_' . ((int) $product->id) . '.pdf')),
+				'mime_type' => 'application/pdf',
+				'content_base64' => base64_encode($pdfBinary),
+				'generated_at_utc' => dol_print_date(dol_now(), '%Y-%m-%dT%H:%M:%SZ', 'gmt'),
+			);
+		} finally {
+			if ($relativeFile !== '') {
+				KreaProductsLabelService::deleteGeneratedFile($entityId, (int) $product->id, $relativeFile);
+			}
+		}
+	}
+
+	/**
 	 * Run one production operation and return label payload for the produced lot.
 	 *
 	 * Request body example:
