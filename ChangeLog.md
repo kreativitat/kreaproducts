@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.17.1] - 2026-03-07
+
+### Fixed
+- Fixed `POST production/products/{product_id}/labels/pdf` HTTP 500 on some API contexts by making generated-file cleanup compatible when `dol_delete_file()` is not preloaded.
+- Added safe fallback cleanup (`unlink`) so PDF payload generation no longer fails after successful file creation.
+
 ## [2.17.0] - 2026-03-07
 
 ### Added

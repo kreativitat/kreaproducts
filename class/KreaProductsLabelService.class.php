@@ -1297,7 +1297,7 @@ class KreaProductsLabelService
 			return false;
 		}
 
-		return (bool) dol_delete_file($realFile, 0, 0, 0);
+		return self::deleteFileCompat($realFile);
 	}
 
 	/**
@@ -2164,7 +2164,30 @@ class KreaProductsLabelService
 			return false;
 		}
 
-		return (bool) dol_delete_file($realFile, 0, 0, 0);
+		return self::deleteFileCompat($realFile);
+	}
+
+	/**
+	 * Delete one file using Dolibarr helper when available.
+	 *
+	 * Some API contexts do not preload files.lib.php. In that case, fallback
+	 * to unlink to keep cleanup non-fatal for endpoint execution.
+	 *
+	 * @param string $filePath Absolute file path
+	 * @return bool
+	 */
+	private static function deleteFileCompat($filePath)
+	{
+		$filePath = (string) $filePath;
+		if ($filePath === '') {
+			return false;
+		}
+
+		if (function_exists('dol_delete_file')) {
+			return (bool) dol_delete_file($filePath, 0, 0, 0);
+		}
+
+		return @unlink($filePath);
 	}
 
 	/**
