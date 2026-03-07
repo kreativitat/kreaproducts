@@ -2,7 +2,7 @@
   "schema_version": 1,
   "template_code": "degema_normal",
   "label": "DeGema Etiqueta Normal",
-  "description": "Two-sided 76x50 mm product label mapped from the supplied PDF. Front page includes dates, lot, internal code, and barcodes. Back page includes ingredients, allergens, and nutrition.",
+  "description": "Two-sided 76x50 mm product label optimized for readability. Front page highlights key batch data and internal code. Back page presents ingredients, allergens, nutrition, and mandatory package symbols.",
   "source": {
     "type": "pdf_extract",
     "file_name": "DeGema_Etiqueta_Normal.pdf",
@@ -31,7 +31,19 @@
       "asset_key": "brand_badge",
       "type": "image",
       "required": false,
-      "notes": "Optional top-right badge/logo artwork from the original PDF. Extracted separately and not bundled in this repository yet."
+      "notes": "Optional top-right badge/logo artwork."
+    },
+    {
+      "asset_key": "green_dot_symbol",
+      "type": "image",
+      "required": true,
+      "notes": "Mandatory Green Dot package symbol."
+    },
+    {
+      "asset_key": "eu_food_contact_material_symbol",
+      "type": "image",
+      "required": true,
+      "notes": "Mandatory EU food contact material symbol."
     }
   ],
   "inputs": [
@@ -73,7 +85,7 @@
       "label": "Ingredientes",
       "type": "textarea",
       "editable": true,
-      "rows": 4
+      "rows": 6
     },
     {
       "source": "label.allergens_section",
@@ -104,15 +116,31 @@
     {
       "source": "label.storage_text",
       "label": "Conservação",
-      "type": "text",
+      "type": "textarea",
       "editable": true,
-      "default_value": "PRODUTO CONGELADO - CONSERVAR A -18C"
+      "rows": 4,
+      "default_value": "No congelador: conservar a -18°C até à data de durabilidade mínima.\nDescongelar 1 dia no frigorífico (0°C a 4°C).\nApós descongelação, conservar entre 0°C e 4°C e consumir em até 3 dias.\nNão voltar a congelar após descongelação."
     },
     {
       "source": "asset.brand_badge",
       "label": "Imagem da marca",
       "type": "image",
-      "editable": true
+      "editable": true,
+      "default_value": "templates/assets/degema_bw.svg"
+    },
+    {
+      "source": "asset.green_dot_symbol",
+      "label": "Green Dot symbol",
+      "type": "image",
+      "editable": false,
+      "default_value": "templates/assets/green_dot_symbol.svg"
+    },
+    {
+      "source": "asset.eu_food_contact_material_symbol",
+      "label": "EU food contact symbol",
+      "type": "image",
+      "editable": false,
+      "default_value": "templates/assets/eu_food_contact_material_symbol.svg"
     }
   ],
   "computed_fields": [
@@ -120,9 +148,7 @@
       "operation": "add_days",
       "days_source": "batch.validity_days",
       "base_source": "batch.frozen_at",
-      "base_fallback_sources": [
-        "batch.packaged_at"
-      ],
+      "base_fallback_sources": ["batch.packaged_at"],
       "target_source": "batch.expiry_at",
       "output_format": "d/m/Y"
     }
@@ -141,14 +167,14 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "product.label",
-          "placeholder": "PAO CHAPATA AGUA E.6UN",
-          "x_mm": 1.61,
-          "y_mm": 1.82,
-          "w_mm": 42.12,
-          "h_mm": 2.94,
+          "placeholder": "Nome do produto",
+          "x_mm": 1.6,
+          "y_mm": 2.3,
+          "w_mm": 58.0,
+          "h_mm": 3.1,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 8.5,
+            "font_size_pt": 9.2,
             "font_weight": "bold",
             "align": "left"
           }
@@ -159,10 +185,10 @@
           "content_mode": "dynamic",
           "source": "company.name_with_vat",
           "placeholder": "DeGema Distribuicao, Lda - NIPC 514337184",
-          "x_mm": 1.61,
-          "y_mm": 5.11,
-          "w_mm": 50.14,
-          "h_mm": 2.5,
+          "x_mm": 1.6,
+          "y_mm": 6.1,
+          "w_mm": 58.0,
+          "h_mm": 2.8,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.7,
@@ -176,10 +202,10 @@
           "content_mode": "dynamic",
           "source": "company.address_singleline",
           "placeholder": "Pr. Conde Agrolongo 116 - 4700-312 Braga",
-          "x_mm": 1.61,
-          "y_mm": 7.95,
-          "w_mm": 50.14,
-          "h_mm": 2.68,
+          "x_mm": 1.6,
+          "y_mm": 9.2,
+          "w_mm": 58.0,
+          "h_mm": 2.8,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.7,
@@ -192,23 +218,43 @@
           "type": "image",
           "content_mode": "asset",
           "asset_key": "brand_badge",
-          "x_mm": 63.8,
+          "x_mm": 63.4,
           "y_mm": 1.4,
-          "w_mm": 10.0,
+          "w_mm": 10.5,
           "h_mm": 10.5
+        },
+        {
+          "id": "front_green_dot_symbol",
+          "type": "image",
+          "content_mode": "asset",
+          "asset_key": "green_dot_symbol",
+          "x_mm": 66.8,
+          "y_mm": 12.7,
+          "w_mm": 6.0,
+          "h_mm": 6.0
+        },
+        {
+          "id": "front_eu_food_contact_symbol",
+          "type": "image",
+          "content_mode": "asset",
+          "asset_key": "eu_food_contact_material_symbol",
+          "x_mm": 66.8,
+          "y_mm": 19.5,
+          "w_mm": 6.0,
+          "h_mm": 6.0
         },
         {
           "id": "front_packed_label",
           "type": "text",
           "content_mode": "static",
           "text": "Embalado em:",
-          "x_mm": 1.52,
-          "y_mm": 11.56,
-          "w_mm": 19.0,
-          "h_mm": 2.7,
+          "x_mm": 1.6,
+          "y_mm": 12.4,
+          "w_mm": 12.8,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -219,13 +265,13 @@
           "content_mode": "dynamic",
           "source": "batch.packaged_at",
           "placeholder": "30/09/2024",
-          "x_mm": 21.7,
-          "y_mm": 11.56,
-          "w_mm": 14.29,
-          "h_mm": 2.7,
+          "x_mm": 14.8,
+          "y_mm": 12.4,
+          "w_mm": 15.2,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -235,13 +281,13 @@
           "type": "text",
           "content_mode": "static",
           "text": "Congelado em:",
-          "x_mm": 1.52,
-          "y_mm": 15.34,
-          "w_mm": 20.2,
-          "h_mm": 2.88,
+          "x_mm": 31.6,
+          "y_mm": 12.4,
+          "w_mm": 14.8,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -252,13 +298,13 @@
           "content_mode": "dynamic",
           "source": "batch.frozen_at",
           "placeholder": "30/09/2024",
-          "x_mm": 21.7,
-          "y_mm": 15.34,
-          "w_mm": 14.29,
-          "h_mm": 2.88,
+          "x_mm": 46.8,
+          "y_mm": 12.4,
+          "w_mm": 14.8,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -268,13 +314,13 @@
           "type": "text",
           "content_mode": "static",
           "text": "Validade:",
-          "x_mm": 1.82,
-          "y_mm": 19.0,
-          "w_mm": 14.74,
-          "h_mm": 3.42,
+          "x_mm": 1.6,
+          "y_mm": 15.8,
+          "w_mm": 10.8,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 9.2,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -285,44 +331,31 @@
           "content_mode": "dynamic",
           "source": "batch.expiry_at",
           "placeholder": "29/03/2025",
-          "x_mm": 21.7,
-          "y_mm": 18.88,
-          "w_mm": 17.65,
-          "h_mm": 3.26,
+          "x_mm": 12.8,
+          "y_mm": 15.8,
+          "w_mm": 14.8,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 8.8,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
         },
         {
-          "id": "front_date_barcode",
-          "type": "barcode",
-          "content_mode": "dynamic",
-          "source": "batch.packaged_at_yyyymmdd",
-          "placeholder": "20240930",
-          "symbology": "C128",
-          "show_human_readable": false,
-          "x_mm": 14.88,
-          "y_mm": 20.89,
-          "w_mm": 45.86,
-          "h_mm": 7.84
-        },
-        {
           "id": "front_lot_label",
           "type": "text",
           "content_mode": "static",
-          "text": "LOTE",
-          "x_mm": 24.69,
-          "y_mm": 31.34,
-          "w_mm": 9.26,
-          "h_mm": 3.33,
+          "text": "Lote:",
+          "x_mm": 31.6,
+          "y_mm": 15.8,
+          "w_mm": 10.0,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 10.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
-            "align": "center"
+            "align": "left"
           }
         },
         {
@@ -331,13 +364,13 @@
           "content_mode": "dynamic",
           "source": "batch.lot_number",
           "placeholder": "20240930",
-          "x_mm": 39.05,
-          "y_mm": 31.19,
-          "w_mm": 15.69,
-          "h_mm": 3.26,
+          "x_mm": 41.6,
+          "y_mm": 15.8,
+          "w_mm": 14.0,
+          "h_mm": 2.9,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 8.8,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left"
           }
@@ -347,26 +380,30 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "label.storage_text",
-          "placeholder": "PRODUTO CONGELADO - CONSERVAR A -18C",
-          "x_mm": 9.95,
-          "y_mm": 35.67,
-          "w_mm": 55.9,
-          "h_mm": 2.65,
+          "placeholder": "No congelador: conservar a -18°C até à data de durabilidade mínima.\nDescongelar 1 dia no frigorífico (0°C a 4°C).\nApós descongelação, conservar entre 0°C e 4°C e consumir em até 3 dias.\nNão voltar a congelar após descongelação.",
+          "x_mm": 1.6,
+          "y_mm": 19.0,
+          "w_mm": 62.5,
+          "h_mm": 11.1,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.8,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
-            "align": "center"
+            "align": "left",
+            "multiline": true,
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 6.2
           }
         },
         {
           "id": "front_internal_code_border",
           "type": "rect",
           "content_mode": "static",
-          "x_mm": 1.35,
-          "y_mm": 38.8,
-          "w_mm": 73.0,
-          "h_mm": 4.5,
+          "x_mm": 1.6,
+          "y_mm": 31.8,
+          "w_mm": 16.0,
+          "h_mm": 6.2,
           "style": {
             "stroke_width_mm": 0.35
           }
@@ -377,14 +414,14 @@
           "content_mode": "dynamic",
           "source": "product.internal_code",
           "placeholder": "2085",
-          "x_mm": 34.05,
-          "y_mm": 39.16,
-          "w_mm": 7.85,
-          "h_mm": 3.26,
+          "x_mm": 1.6,
+          "y_mm": 32.4,
+          "w_mm": 16.0,
+          "h_mm": 5.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 8.8,
-            "font_weight": "normal",
+            "font_size_pt": 12.5,
+            "font_weight": "bold",
             "align": "center"
           }
         },
@@ -396,10 +433,10 @@
           "placeholder": "02085",
           "symbology": "C128",
           "show_human_readable": false,
-          "x_mm": 18.76,
-          "y_mm": 42.79,
-          "w_mm": 38.52,
-          "h_mm": 6.2
+          "x_mm": 20.0,
+          "y_mm": 31.8,
+          "w_mm": 42.5,
+          "h_mm": 14.2
         }
       ]
     },
@@ -416,75 +453,31 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "product.label",
-          "placeholder": "PAO CHAPATA AGUA E.6UN",
-          "x_mm": 2.19,
-          "y_mm": 2.43,
-          "w_mm": 42.12,
-          "h_mm": 2.94,
+          "placeholder": "Produto Name",
+          "x_mm": 2.2,
+          "y_mm": 3.0,
+          "w_mm": 60,
+          "h_mm": 3.8,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 8.5,
+            "font_size_pt": 9.2,
             "font_weight": "bold",
             "align": "left"
           }
-        },
-        {
-          "id": "back_company_identity",
-          "type": "text",
-          "content_mode": "dynamic",
-          "source": "company.name_with_vat",
-          "placeholder": "DeGema Distribuicao, Lda - NIPC 514337184",
-          "x_mm": 2.19,
-          "y_mm": 5.94,
-          "w_mm": 50.07,
-          "h_mm": 2.4,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.5,
-            "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "back_company_address",
-          "type": "text",
-          "content_mode": "dynamic",
-          "source": "company.address_singleline",
-          "placeholder": "Pr. Conde Agrolongo 116 - 4715-282 Braga",
-          "x_mm": 2.19,
-          "y_mm": 8.74,
-          "w_mm": 50.07,
-          "h_mm": 2.4,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.5,
-            "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "back_brand_badge",
-          "type": "image",
-          "content_mode": "asset",
-          "asset_key": "brand_badge",
-          "x_mm": 63.8,
-          "y_mm": 1.7,
-          "w_mm": 10.0,
-          "h_mm": 10.5
         },
         {
           "id": "back_ingredients_section",
           "type": "text",
           "content_mode": "dynamic",
           "source": "label.ingredients_section",
-          "placeholder": "INGREDIENTES - Farinha de trigo, agua, farinha de centeio, farinha de trigo, levedura, sal, dextrose.",
-          "x_mm": 2.24,
-          "y_mm": 12.58,
-          "w_mm": 65.33,
-          "h_mm": 5.87,
+          "placeholder": "INGREDIENTES",
+          "x_mm": 2.2,
+          "y_mm": 7.3,
+          "w_mm": 60,
+          "h_mm": 36,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left",
             "multiline": true
@@ -495,14 +488,14 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "label.allergens_section",
-          "placeholder": "ALERGENIOS: Contem gluten. Pode conter vestigios de frutos de casca rija, leite, ovo, soja e sementes de sesamo.",
-          "x_mm": 2.19,
-          "y_mm": 28.74,
-          "w_mm": 72.24,
-          "h_mm": 9.14,
+          "placeholder": "ALERGENIOS",
+          "x_mm": 2.2,
+          "y_mm": 27,
+          "w_mm": 60,
+          "h_mm": 7.1,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 7.0,
+            "font_size_pt": 6.4,
             "font_weight": "normal",
             "align": "left",
             "multiline": true
@@ -513,11 +506,11 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "label.nutrition_section",
-          "placeholder": "FRUTA DECLARACAO NUTRICIONAL (Por 100g) Energia: 1030 KJ / 243 Kcal ...",
-          "x_mm": 2.19,
-          "y_mm": 38.96,
-          "w_mm": 69.14,
-          "h_mm": 10.85,
+          "placeholder": "DECLARACAO NUTRICIONAL",
+          "x_mm": 2.2,
+          "y_mm": 34.5,
+          "w_mm": 60,
+          "h_mm": 9.8,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -530,8 +523,8 @@
     }
   ],
   "notes": [
-    "This template is a designer-ready mapping, not a finished renderer contract.",
-    "Top-right artwork/logo is intentionally referenced as an optional asset and should be supplied separately when the visual designer is implemented.",
-    "Dynamic source keys are logical placeholders that the future template renderer should map to Dolibarr product, lot, company, extrafield, or computed label values."
+    "Refactored for improved readability and spacing consistency between preview and generated PDF output.",
+    "Mandatory Green Dot and EU food-contact symbols are embedded as template assets and rendered on the first page.",
+    "Second page is now dedicated to product information readability (ingredients/allergens/nutrition), without company lines or logo."
   ]
 }

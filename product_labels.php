@@ -703,26 +703,34 @@ print '<div class="opacitymedium marginbottomonly">' . $langs->trans('KREAPRODUC
 
 print '<table class="border centpercent tableforfield kreaLabelConfigTable">';
 print '<tr><td class="titlefield">' . $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE') . '</td><td>';
+print '<div class="kreaTemplateFieldCard">';
+print '<div class="kreaTemplateFieldHeader"><label for="label_template">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE')) . '</label></div>';
+print '<br>';
 print '<div class="kreaLabelTemplateSelectorWrap">';
 print $form->selectarray('label_template', $templateOptions, $selectedTemplate, 0, 0, 0, '', 0, 0, 0, '', 'minwidth300');
 print '<button type="button" id="krea-label-refresh-data" class="kreaLabelRefreshButton classfortooltip" title="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA_HELP')) . '" aria-label="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA')) . '">';
 print img_picto($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA'), 'refresh');
 print '</button>';
 print '</div>';
-	if (!$hasLabelTemplates) {
-		print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_NONE')) . '</div>';
-	} elseif (!empty($selectedTemplateViewer['size_text'])) {
-		print '<div class="opacitymedium small">' . dol_escape_htmltag($selectedTemplateViewer['size_text']) . '</div>';
-	}
-	if (!$isStandardMode && $selectedTemplateReadOnly) {
-		print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_READONLY_HELP')) . '</div>';
-	}
-	print '</td></tr>';
+if (!$hasLabelTemplates) {
+	print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_NONE')) . '</div>';
+} elseif (!empty($selectedTemplateViewer['size_text'])) {
+	print '<div class="opacitymedium small">' . dol_escape_htmltag($selectedTemplateViewer['size_text']) . '</div>';
+}
+if (!$isStandardMode && $selectedTemplateReadOnly) {
+	print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_READONLY_HELP')) . '</div>';
+}
+print '</div>';
+print '</td></tr>';
 
-	print '<tr id="krea-label-template-description-row"' . ($isStandardMode ? ' style="display:none;"' : '') . '><td class="titlefield">' . $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION') . '</td><td>';
-	print '<textarea id="krea-label-template-description" class="minwidth300" name="label_template_description" rows="3" maxlength="1200" placeholder="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION_PLACEHOLDER')) . '">' . dol_escape_htmltag($selectedTemplateDescription) . '</textarea>';
-	print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION_HELP')) . '</div>';
-	print '</td></tr>';
+print '<tr id="krea-label-template-description-row"' . ($isStandardMode ? ' style="display:none;"' : '') . '><td class="titlefield">' . $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION') . '</td><td>';
+print '<div class="kreaTemplateFieldCard">';
+print '<div class="kreaTemplateFieldHeader"><label for="krea-label-template-description">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION')) . '</label></div>';
+print '<br>';
+print '<textarea id="krea-label-template-description" class="minwidth300" name="label_template_description" rows="3" maxlength="1200" placeholder="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION_PLACEHOLDER')) . '">' . dol_escape_htmltag($selectedTemplateDescription) . '</textarea>';
+print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_DESCRIPTION_HELP')) . '</div>';
+print '</div>';
+print '</td></tr>';
 
 print '<tr id="krea-label-template-fields-row"><td class="titlefield">' . $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_FIELDS') . '</td><td id="krea-label-template-fields-cell">';
 if (!empty($templateEditableHtmlMap[$selectedTemplate])) {
@@ -1088,7 +1096,7 @@ if (!empty($templateOptions) || !empty($formatDetails)) {
 	print 'function updateMode() {';
 	print '  var standardMode = !selector || !selector.value;';
 	print '  setVisible(templateDescriptionRow, !standardMode);';
-	print '  setVisible(templateFieldsRow, true);';
+	print '  setVisible(templateFieldsRow, !standardMode);';
 	print '  setVisible(formatRow, standardMode);';
 	print '  setVisible(quantityRow, standardMode);';
 	print '  setVisible(fieldsRow, standardMode);';
@@ -1124,6 +1132,7 @@ if (!empty($templateOptions) || !empty($formatDetails)) {
 	print '  (new MutationObserver(function () { syncSelectorFromRenderedLabel(); })).observe(selectorRenderedNode, { childList: true, subtree: true, characterData: true });';
 	print '}';
 	print 'if (formatSelector) { formatSelector.addEventListener("change", updateMode); }';
+	print 'if (formatSelector && window.jQuery) { window.jQuery(formatSelector).on("select2:select select2:clear select2:close", updateMode); }';
 	print 'if (quantityInput) { quantityInput.addEventListener("input", updateMode); }';
 	print 'fieldInputs.forEach(function (input) { input.addEventListener("change", updateMode); });';
 	print 'if (refreshButton) { refreshButton.addEventListener("click", function () {';

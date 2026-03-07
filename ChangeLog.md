@@ -1,6 +1,129 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.14.8] - 2026-03-07
+
+### Changed
+- Bundled-copy templates are now created with unique `_copy`-style template codes instead of reusing bundled codes.
+- Custom-template listing/loading now handles legacy bundled-copy code collisions through automatic migration to unique custom codes.
+
+### Fixed
+- Fixed bundled JSON edits being shadowed by legacy custom bundled-copy files with the same `template_code`.
+- Fixed template selection ambiguity where one code could point to different JSON sources.
+
+## [2.14.7] - 2026-03-07
+
+### Changed
+- Removed template-specific runtime layout mutations so block geometry/styles are now taken directly from each template JSON.
+- Removed template-specific page mutation/injection logic so pages/blocks are rendered exactly as defined in template files.
+
+### Fixed
+- Fixed non-deterministic preview/PDF composition caused by hardcoded `degema_normal` runtime overrides.
+- Fixed template JSON edits not being reflected when overridden by runtime normalization code.
+
+## [2.14.6] - 2026-03-07
+
+### Changed
+- Rebalanced DeGema front/back top text block Y coordinates to add safe top padding in generated output.
+- Kept back ingredients block as a single multiline area with non-truncating behavior in runtime normalization.
+
+### Fixed
+- Fixed top-line clipping in generated template PDFs by changing SVG text baseline strategy for TCPDF compatibility.
+- Fixed preview/PDF drift on legacy DeGema copies by applying the same updated front/back geometry at runtime.
+
+## [2.14.5] - 2026-03-07
+
+### Changed
+- Switched template PDF rendering to prioritize inline SVG output generated from the same preview engine for page-level parity.
+- Reused a prebuilt template context/SVG per page copy during PDF generation to keep preview/PDF content consistent.
+
+### Fixed
+- Added anti-clipping text fitting fallback for template text blocks to avoid forced ellipsis/cut when content still overflows at configured font limits.
+- Added automatic fallback to legacy block renderer when SVG rendering fails in TCPDF.
+
+## [2.14.4] - 2026-03-07
+
+### Changed
+- Tuned DeGema front/back text fitting with bounded auto-fit (`min 6.2pt`) to keep print readability while reducing clipping risk.
+- Enlarged back-page ingredients multiline area and adjusted allergens block position to improve full-text fitting on thermal output.
+- Increased ingredients editor input to a larger multiline textarea for easier full-content editing in template fields.
+
+### Fixed
+- Fixed legacy DeGema fallback storage instructions to preserve explicit line breaks in preview and PDF output.
+
+## [2.14.3] - 2026-03-07
+
+### Changed
+- Added detailed frozen-product handling instructions on the first page and refactored wording to fit the printable label area.
+- Repositioned `LOTE`, lot value, storage instructions, and internal-code box to a more central front-page layout.
+- Increased front internal-code barcode height to a near-double footprint while keeping it inside page bounds.
+
+### Fixed
+- Fixed DeGema default storage instructions fallback for legacy templates still using the old short one-line storage text.
+- Tightened back-page ingredients/allergens/nutrition geometry to prevent ingredient text box overflow beyond printable area.
+
+## [2.14.2] - 2026-03-07
+
+### Changed
+- Moved `LOTE`, lot value, storage line, and internal code area upward on the first page to a more central readable position.
+- Increased first-page internal-code barcode height to approximately double while keeping it inside label bounds.
+- Rebalanced back-page text zones again to keep ingredients inside printable area.
+
+### Fixed
+- Removed company identity/address/logo from back-page runtime rendering and template layout to free space for readable food information.
+- Aligned legacy DeGema runtime normalization with the new front/back geometry so old template copies render consistently.
+
+## [2.14.1] - 2026-03-07
+
+### Changed
+- Moved mandatory Green Dot and EU food-contact symbols to the first label page (`front`) and removed back-page placement.
+- Standardized `Embalado em`, `Congelado em`, and `Validade` label/value typography to the same font size in DeGema layout.
+- Rebalanced back-page text blocks and removed duplicated company/logo blocks to maximize readability for ingredients, allergens, and nutrition.
+
+### Fixed
+- Fixed template PDF text wrapping when non-truncated blocks requested unlimited lines (`maxLines=0`), restoring proper multiline rendering.
+- Added text auto-fit support for template blocks (`style.auto_fit` + `style.min_font_size_pt`) for future template tuning.
+- Added runtime migration for older DeGema copies so icon location and block geometry are aligned in both preview and PDF output.
+
+## [2.14.0] - 2026-03-07
+
+### Added
+- Added mandatory back-label symbols (`green_dot_symbol.svg` and `eu_food_contact_material_symbol.svg`) to the DeGema template layout.
+
+### Changed
+- Refactored `degema_normal` front and back block geometry to improve text flow and readability.
+- Updated DeGema default template metadata and notes for the new arrangement.
+
+### Fixed
+- Added bundled-asset fallback so `templates/assets/*` references can resolve from module `labels/` when not present in documents.
+- Applied runtime compatibility normalization for older `degema_normal` copies so preview/PDF keep the improved arrangement and required symbols.
+
+## [2.13.20] - 2026-03-07
+
+### Changed
+- Updated `degema_normal` front layout by removing the lot/date barcode block and enlarging the internal/ref code display for better readability.
+- Expanded the back ingredients block area and disabled clipping in template style to keep full ingredient text visible.
+
+### Fixed
+- Aligned template barcode preview rendering with TCPDF barcode geometry so preview and generated PDF barcode widths match.
+- Prevented stale percentage fragments in editable ingredients text by normalizing persisted `label.ingredients_section` values on render.
+
+## [2.13.19] - 2026-03-07
+
+### Changed
+- Removed ingredient percentage suffixes from label ingredients text to reduce truncation and keep only ingredient names.
+
+## [2.13.18] - 2026-03-06
+
+### Fixed
+- Fixed standard-layout preview refresh when changing "Formato da etiqueta" (including Select2-driven changes).
+- Hid "Campos do modelo" when "Layout padrão" is selected.
+
+## [2.13.17] - 2026-03-06
+
+### Changed
+- Wrapped "Modelo de etiqueta" and "Descrição do modelo" controls in the same card-style container used by "Campos do modelo".
+
 ## [2.13.16] - 2026-03-06
 
 ### Changed

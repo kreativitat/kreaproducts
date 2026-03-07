@@ -49,10 +49,22 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		$originX = $this->_Margin_Left + ($this->_COUNTX * ($this->_Width + $this->_X_Space));
 		$originY = $this->_Margin_Top + ($this->_COUNTY * ($this->_Height + $this->_Y_Space));
 
-		if (!empty($param['template_blocks']) && is_array($param['template_blocks']) && !empty($param['template_width_mm']) && !empty($param['template_height_mm'])) {
-			$this->renderTemplateSticker($pdf, $outputlangs, $param, $originX, $originY);
-			$this->moveCursorToNextPosition();
-			return;
+		if (!empty($param['template_width_mm']) && !empty($param['template_height_mm'])) {
+			$renderedFromSvg = false;
+			if (!empty($param['template_svg']) && is_string($param['template_svg'])) {
+				$renderedFromSvg = $this->renderTemplateStickerFromSvg($pdf, $param, $originX, $originY);
+			}
+
+			if (!$renderedFromSvg && !empty($param['template_blocks']) && is_array($param['template_blocks'])) {
+				$this->renderTemplateSticker($pdf, $outputlangs, $param, $originX, $originY);
+				$this->moveCursorToNextPosition();
+				return;
+			}
+
+			if ($renderedFromSvg) {
+				$this->moveCursorToNextPosition();
+				return;
+			}
 		}
 
 		$paddingX = min(2.2, max(1.0, $this->_Width * 0.05));
@@ -194,6 +206,39 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 	}
 
 	/**
+	 * Render template page from inline SVG so PDF output matches preview exactly.
+	 *
+	 * @param TCPDF $pdf     PDF reference
+	 * @param array $param   Template payload
+	 * @param float $originX Label origin X
+	 * @param float $originY Label origin Y
+	 * @return bool
+	 */
+	private function renderTemplateStickerFromSvg(&$pdf, $param, $originX, $originY)
+	{
+		$svg = trim((string) (!empty($param['template_svg']) ? $param['template_svg'] : ''));
+		if ($svg === '' || stripos($svg, '<svg') === false) {
+			return false;
+		}
+
+		$templateWidth = max(1.0, (float) $param['template_width_mm']);
+		$templateHeight = max(1.0, (float) $param['template_height_mm']);
+		$scale = min($this->_Width / $templateWidth, $this->_Height / $templateHeight);
+		$renderWidth = $templateWidth * $scale;
+		$renderHeight = $templateHeight * $scale;
+		$offsetX = $originX + max(0, ($this->_Width - $renderWidth) / 2);
+		$offsetY = $originY + max(0, ($this->_Height - $renderHeight) / 2);
+
+		try {
+			$pdf->ImageSVG('@' . $svg, $offsetX, $offsetY, $renderWidth, $renderHeight, '', '', '', 0, false);
+			return true;
+		} catch (Exception $e) {
+			dol_syslog(__METHOD__ . ' fallback to block renderer: ' . $e->getMessage(), LOG_WARNING);
+			return false;
+		}
+	}
+
+	/**
 	 * Render a text block from a template.
 	 *
 	 * @param TCPDF     $pdf         PDF reference
@@ -221,11 +266,6 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		if ($fontSizePt > $maxFontSizePtByHeight) {
 			$fontSizePt = $maxFontSizePtByHeight;
 		}
-		$lineHeightMm = max(0.8, ($fontSizePt * 0.352778) * 1.16);
-		if ($lineHeightMm > ($h * 0.95)) {
-			$lineHeightMm = ($h * 0.95);
-		}
-		$fontMm = max(1.1, $fontSizePt * 0.352778);
 		$align = 'L';
 		if (!empty($style['align'])) {
 			$alignValue = strtolower((string) $style['align']);
@@ -239,8 +279,54 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		if (trim($textValue) === '') {
 			return;
 		}
-		$maxLines = max(1, (int) floor($h / max(1.0, $lineHeightMm)));
-		$lines = $this->wrapTemplateTextLines($textValue, $fontMm, $w, $maxLines);
+		$autoFit = $this->parseTemplateBooleanFlag(!empty($style['auto_fit']) ? $style['auto_fit'] : false, false);
+		$minFontSizePt = max(2.8, ((float) (!empty($style['min_font_size_pt']) ? $style['min_font_size_pt'] : 3.8)) * $scale);
+		if ($autoFit) {
+			for ($guard = 0; $guard < 32; $guard++) {
+				$fontMmCandidate = max(1.0, $fontSizePt * 0.352778);
+				$lineHeightCandidate = max(0.8, ($fontSizePt * 0.352778) * 1.16);
+				if ($lineHeightCandidate > ($h * 0.95)) {
+					$lineHeightCandidate = ($h * 0.95);
+				}
+				$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeightCandidate)));
+				$candidateLines = $this->wrapTemplateTextLines($textValue, $fontMmCandidate, $w, 0, false);
+				if (count($candidateLines) <= $maxLinesByHeight || $fontSizePt <= ($minFontSizePt + 0.01)) {
+					break;
+				}
+				$fontSizePt = max($minFontSizePt, $fontSizePt - 0.25);
+			}
+		}
+		$lineHeightMm = max(0.8, ($fontSizePt * 0.352778) * 1.16);
+		if ($lineHeightMm > ($h * 0.95)) {
+			$lineHeightMm = ($h * 0.95);
+		}
+		$fontMm = max(1.0, $fontSizePt * 0.352778);
+		$shouldTruncate = $this->shouldTruncateTemplateTextBlock($block);
+		if ($shouldTruncate) {
+			$hardFloorMm = 0.85;
+			for ($guard = 0; $guard < 48; $guard++) {
+				$lineHeightCandidate = max(0.8, $fontMm * 1.16);
+				$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeightCandidate)));
+				$candidateLines = $this->wrapTemplateTextLines($textValue, $fontMm, $w, 0, false);
+				if (count($candidateLines) <= $maxLinesByHeight || $fontMm <= ($hardFloorMm + 0.001)) {
+					break;
+				}
+				$fontMm = max($hardFloorMm, $fontMm * 0.95);
+				$fontSizePt = max(2.2, $fontMm / 0.352778);
+			}
+
+			$lineHeightMm = max(0.8, $fontMm * 1.16);
+			if ($lineHeightMm > ($h * 0.95)) {
+				$lineHeightMm = ($h * 0.95);
+			}
+			$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeightMm)));
+			$candidateLines = $this->wrapTemplateTextLines($textValue, $fontMm, $w, 0, false);
+			if (count($candidateLines) > $maxLinesByHeight) {
+				$shouldTruncate = false;
+			}
+		}
+		$maxLines = ($shouldTruncate ? max(1, (int) floor($h / max(1.0, $lineHeightMm))) : 0);
+		$lines = $this->wrapTemplateTextLines($textValue, $fontMm, $w, $maxLines, $shouldTruncate);
 		$printText = $outputlangs->convToOutputCharset(implode("\n", $lines));
 
 		$pdf->SetFont($fontFamily, $fontStyle, $fontSizePt);
@@ -260,7 +346,7 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			0,
 			false,
 			false,
-			$h,
+			($shouldTruncate ? $h : 0),
 			'T',
 			true
 		);
@@ -272,17 +358,17 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 	 * @param string $text       Source text
 	 * @param float  $fontSizeMm Font size in mm
 	 * @param float  $maxWidthMm Block width in mm
-	 * @param int    $maxLines   Maximum lines
+	 * @param int    $maxLines   Maximum lines (0 = unlimited)
+	 * @param bool   $truncate   Add ellipsis when clipping
 	 * @return array
 	 */
-	private function wrapTemplateTextLines($text, $fontSizeMm, $maxWidthMm, $maxLines)
+	private function wrapTemplateTextLines($text, $fontSizeMm, $maxWidthMm, $maxLines, $truncate = true)
 	{
 		$text = trim((string) $text);
 		if ($text === '') {
 			return array('');
 		}
 
-		$maxLines = max(1, (int) $maxLines);
 		$estimatedCharsPerLine = max(4, (int) floor((float) $maxWidthMm / max(0.9, (float) $fontSizeMm * 0.5)));
 		$wrapped = preg_split('/\r\n|\r|\n/', wordwrap($text, $estimatedCharsPerLine, "\n", true));
 		if (!is_array($wrapped) || empty($wrapped)) {
@@ -294,15 +380,65 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			$lines = array($text);
 		}
 
-		if (count($lines) > $maxLines) {
+		$maxLines = (int) $maxLines;
+		if ($maxLines > 0 && count($lines) > $maxLines) {
 			$lines = array_slice($lines, 0, $maxLines);
-			$lastIndex = count($lines) - 1;
-			$lines[$lastIndex] = $this->truncateTextWithEllipsis($lines[$lastIndex], max(1, $estimatedCharsPerLine - 1));
-		} else {
-			$lines = array_slice($lines, 0, $maxLines);
+			if ($truncate) {
+				$lastIndex = count($lines) - 1;
+				$lines[$lastIndex] = $this->truncateTextWithEllipsis($lines[$lastIndex], max(1, $estimatedCharsPerLine - 1));
+			}
 		}
 
 		return $lines;
+	}
+
+	/**
+	 * Tell if one template text block should be clipped to its declared height.
+	 *
+	 * @param array $block Block definition
+	 * @return bool
+	 */
+	private function shouldTruncateTemplateTextBlock($block)
+	{
+		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
+		if (array_key_exists('truncate', $style)) {
+			return $this->parseTemplateBooleanFlag($style['truncate'], true);
+		}
+
+		$source = trim((string) (!empty($block['source']) ? $block['source'] : ''));
+		if ($source === 'label.ingredients_section') {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Parse a loose template boolean flag value.
+	 *
+	 * @param mixed $value   Raw value
+	 * @param bool  $default Default value
+	 * @return bool
+	 */
+	private function parseTemplateBooleanFlag($value, $default = false)
+	{
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_numeric($value)) {
+			return ((int) $value) !== 0;
+		}
+		if (is_string($value)) {
+			$normalized = strtolower(trim($value));
+			if (in_array($normalized, array('1', 'true', 'yes', 'on'), true)) {
+				return true;
+			}
+			if (in_array($normalized, array('0', 'false', 'no', 'off'), true)) {
+				return false;
+			}
+		}
+
+		return (bool) $default;
 	}
 
 	/**
@@ -425,7 +561,22 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		$relative = ltrim(str_replace('\\', '/', $value), '/');
 		$entityId = (int) (!empty($conf->entity) ? $conf->entity : 1);
 		$candidate = DOL_DATA_ROOT . '/kreaproducts/' . $entityId . '/labels/' . $relative;
-		return (is_readable($candidate) ? $candidate : '');
+		if (is_readable($candidate)) {
+			return $candidate;
+		}
+
+		if (strpos($relative, 'templates/assets/') === 0) {
+			$fileName = basename(substr($relative, strlen('templates/assets/')));
+			$safeName = dol_sanitizeFileName($fileName);
+			if ($safeName !== '' && $safeName === $fileName) {
+				$bundledCandidate = dirname(__DIR__) . '/labels/' . $safeName;
+				if (is_readable($bundledCandidate)) {
+					return $bundledCandidate;
+				}
+			}
+		}
+
+		return '';
 	}
 
 	/**

@@ -358,6 +358,150 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Tell whether one template originates from a bundled-copy workflow.
+	 *
+	 * @param array $template Template definition
+	 * @return bool
+	 */
+	private static function isBundledCopyTemplate($template)
+	{
+		if (empty($template['source']) || !is_array($template['source'])) {
+			return false;
+		}
+
+		$type = strtolower(trim((string) (!empty($template['source']['type']) ? $template['source']['type'] : '')));
+		return ($type === 'bundled_copy');
+	}
+
+	/**
+	 * Check if one custom template code already exists in entity custom dirs.
+	 *
+	 * @param string $templateCode Template code
+	 * @param int    $entityId     Current entity id
+	 * @return bool
+	 */
+	private static function customTemplateCodeExists($templateCode, $entityId)
+	{
+		$templateCode = self::sanitizeTemplateCode($templateCode);
+		if ($templateCode === '') {
+			return false;
+		}
+
+		$fileName = $templateCode . '.json';
+		$dirs = array(
+			self::getCustomLabelTemplateDir($entityId),
+			self::getPreviousCustomLabelTemplateDir($entityId),
+			self::getLegacyCustomLabelTemplateDir($entityId),
+		);
+		foreach ($dirs as $dir) {
+			if (!is_dir($dir)) {
+				continue;
+			}
+
+			if (is_file($dir . '/' . $fileName)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Build an available custom template code based on a preferred base code.
+	 *
+	 * @param string $baseCode Preferred base code
+	 * @param int    $entityId Current entity id
+	 * @return string
+	 */
+	private static function buildUniqueCustomTemplateCode($baseCode, $entityId)
+	{
+		$baseCode = self::sanitizeTemplateCode($baseCode);
+		if ($baseCode === '') {
+			$baseCode = 'template_copy';
+		}
+
+		$candidate = $baseCode;
+		$index = 2;
+		while (!empty(self::loadBundledLabelTemplate($candidate)) || self::customTemplateCodeExists($candidate, $entityId)) {
+			$candidate = $baseCode . '_' . $index;
+			$index++;
+			if ($index > 9999) {
+				return '';
+			}
+		}
+
+		return $candidate;
+	}
+
+	/**
+	 * Migrate a colliding bundled-copy custom template to a unique custom code.
+	 *
+	 * This prevents bundled templates from being shadowed by legacy bundled-copy
+	 * files that reused the same template_code.
+	 *
+	 * @param array  $template Loaded template data
+	 * @param string $fullPath Absolute path to current file
+	 * @param int    $entityId Current entity id
+	 * @return array{template: array, path: string}
+	 */
+	private static function migrateCollidingBundledCopyTemplate($template, $fullPath, $entityId)
+	{
+		$result = array(
+			'template' => (is_array($template) ? $template : array()),
+			'path' => (string) $fullPath,
+		);
+		if (!is_array($template) || $fullPath === '') {
+			return $result;
+		}
+		if (!self::isBundledCopyTemplate($template)) {
+			return $result;
+		}
+
+		$currentCode = self::sanitizeTemplateCode(!empty($template['template_code']) ? $template['template_code'] : '');
+		if ($currentCode === '') {
+			return $result;
+		}
+		if (empty(self::loadBundledLabelTemplate($currentCode))) {
+			return $result;
+		}
+
+		$targetCode = self::buildUniqueCustomTemplateCode($currentCode . '_copy', $entityId);
+		if ($targetCode === '' || $targetCode === $currentCode) {
+			return $result;
+		}
+
+		$template['template_code'] = $targetCode;
+		if (empty($template['source']) || !is_array($template['source'])) {
+			$template['source'] = array();
+		}
+		$template['source']['migrated_from_code'] = $currentCode;
+		$template['source']['migrated_on'] = dol_print_date(dol_now(), '%Y-%m-%d', 'gmt');
+
+		$targetPath = dirname($fullPath) . '/' . $targetCode . '.json';
+		$encoded = json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		if ($encoded === false) {
+			dol_syslog(__METHOD__ . ' json_encode failed for migration: ' . $fullPath, LOG_WARNING);
+			return $result;
+		}
+
+		$writeResult = @file_put_contents($targetPath, $encoded . "\n", LOCK_EX);
+		if ($writeResult === false) {
+			dol_syslog(__METHOD__ . ' failed to write migrated template: ' . $targetPath, LOG_WARNING);
+			return $result;
+		}
+
+		$realOld = realpath($fullPath);
+		$realNew = realpath($targetPath);
+		if ($realOld !== false && $realNew !== false && $realOld !== $realNew) {
+			@unlink($fullPath);
+		}
+
+		$result['template'] = $template;
+		$result['path'] = $targetPath;
+		return $result;
+	}
+
+	/**
 	 * Load and decode a label template from disk.
 	 *
 	 * @param string $fullPath Absolute JSON file path
@@ -487,12 +631,24 @@ class KreaProductsLabelService
 					continue;
 				}
 
-				$template = self::loadLabelTemplateFile($templateDir . '/' . $entry);
+				$fullPath = $templateDir . '/' . $entry;
+				$template = self::loadLabelTemplateFile($fullPath);
 				if (empty($template['template_code'])) {
 					continue;
 				}
 
-				$templates[$template['template_code']] = self::buildTemplateIndexEntry($template, $templateDir . '/' . $entry, 'custom');
+				$migrated = self::migrateCollidingBundledCopyTemplate($template, $fullPath, $entityId);
+				if (!empty($migrated['template']) && is_array($migrated['template'])) {
+					$template = $migrated['template'];
+				}
+				if (!empty($migrated['path']) && is_string($migrated['path'])) {
+					$fullPath = $migrated['path'];
+				}
+				if (empty($template['template_code'])) {
+					continue;
+				}
+
+				$templates[$template['template_code']] = self::buildTemplateIndexEntry($template, $fullPath, 'custom');
 			}
 		}
 
@@ -578,9 +734,20 @@ class KreaProductsLabelService
 
 		foreach ($candidates as $fullPath) {
 			$template = self::loadLabelTemplateFile($fullPath);
-			if (!empty($template)) {
-				return $template;
+			if (empty($template)) {
+				continue;
 			}
+
+			$migrated = self::migrateCollidingBundledCopyTemplate($template, $fullPath, $entityId);
+			if (!empty($migrated['template']) && is_array($migrated['template'])) {
+				$template = $migrated['template'];
+			}
+			$resolvedCode = self::sanitizeTemplateCode(!empty($template['template_code']) ? $template['template_code'] : '');
+			if ($resolvedCode !== '' && $resolvedCode !== $templateCode) {
+				continue;
+			}
+
+			return $template;
 		}
 
 		return array();
@@ -795,6 +962,21 @@ class KreaProductsLabelService
 			);
 		}
 
+		$preferredCopyCode = self::sanitizeTemplateCode($templateCode . '_copy');
+		if ($preferredCopyCode !== '' && self::isTemplateEditable($preferredCopyCode, $entityId)) {
+			$sanitizedTemplateDescription = self::sanitizeTemplateDescription($templateDescription);
+			$saveResult = self::saveTemplateInputDefaults($preferredCopyCode, $entityId, $inputValues, $outputlangs, $sanitizedTemplateDescription);
+			if (!empty($saveResult['error'])) {
+				return $saveResult;
+			}
+
+			return array(
+				'success' => true,
+				'template_code' => $preferredCopyCode,
+				'created' => false,
+			);
+		}
+
 		$templateMeta = self::getTemplateMeta($templateCode, $entityId);
 		if (empty($templateMeta) || empty($templateMeta['source']) || (string) $templateMeta['source'] !== 'bundled') {
 			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
@@ -804,9 +986,11 @@ class KreaProductsLabelService
 		if (empty($bundledTemplate) || !is_array($bundledTemplate)) {
 			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
 		}
-		if (empty($bundledTemplate['template_code'])) {
-			$bundledTemplate['template_code'] = $templateCode;
+		$copyTemplateCode = self::buildUniqueCustomTemplateCode($preferredCopyCode, $entityId);
+		if ($copyTemplateCode === '') {
+			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
 		}
+		$bundledTemplate['template_code'] = $copyTemplateCode;
 		if (empty($bundledTemplate['source']) || !is_array($bundledTemplate['source'])) {
 			$bundledTemplate['source'] = array();
 		}
@@ -825,10 +1009,10 @@ class KreaProductsLabelService
 			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
 		}
 
-		$targetPath = $customDir . '/' . $templateCode . '.json';
+		$targetPath = $customDir . '/' . $copyTemplateCode . '.json';
 		$encoded = json_encode($bundledTemplate, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 		if ($encoded === false) {
-			dol_syslog(__METHOD__ . ' json_encode failed for bundled copy: ' . $templateCode, LOG_ERR);
+			dol_syslog(__METHOD__ . ' json_encode failed for bundled copy: ' . $copyTemplateCode, LOG_ERR);
 			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
 		}
 		$writeResult = @file_put_contents($targetPath, $encoded . "\n", LOCK_EX);
@@ -837,14 +1021,14 @@ class KreaProductsLabelService
 			return array('error' => $outputlangs->trans('KREAPRODUCTS_LABELS_ERROR_TEMPLATE_READONLY_COPY'));
 		}
 
-		$saveResult = self::saveTemplateInputDefaults($templateCode, $entityId, $inputValues, $outputlangs, $sanitizedTemplateDescription);
+		$saveResult = self::saveTemplateInputDefaults($copyTemplateCode, $entityId, $inputValues, $outputlangs, $sanitizedTemplateDescription);
 		if (!empty($saveResult['error'])) {
 			return $saveResult;
 		}
 
 		return array(
 			'success' => true,
-			'template_code' => $templateCode,
+			'template_code' => $copyTemplateCode,
 			'created' => true,
 			'path' => $targetPath,
 		);
@@ -2075,24 +2259,33 @@ class KreaProductsLabelService
 			return $records;
 		}
 
+		$pageRecords = array();
+		foreach ($pages as $page) {
+			if (!is_array($page)) {
+				continue;
+			}
+
+			$pageSize = self::getTemplatePageSize($template, $page);
+			if (empty($pageSize['width']) || empty($pageSize['height'])) {
+				continue;
+			}
+
+			$pageRecords[] = array(
+				'template_page_code' => (!empty($page['code']) ? (string) $page['code'] : ''),
+				'template_page_label' => (!empty($page['label']) ? (string) $page['label'] : ''),
+				'template_width_mm' => (float) $pageSize['width'],
+				'template_height_mm' => (float) $pageSize['height'],
+				'template_blocks' => self::normalizeTemplateBlocksForPdf($page, $context),
+				'template_svg' => self::renderTemplatePageSvgFromContext($template, $page, $context, $outputlangs),
+			);
+		}
+		if (empty($pageRecords)) {
+			return $records;
+		}
+
 		for ($copy = 0; $copy < $quantity; $copy++) {
-			foreach ($pages as $page) {
-				if (!is_array($page)) {
-					continue;
-				}
-
-				$pageSize = self::getTemplatePageSize($template, $page);
-				if (empty($pageSize['width']) || empty($pageSize['height'])) {
-					continue;
-				}
-
-				$records[] = array(
-					'template_page_code' => (!empty($page['code']) ? (string) $page['code'] : ''),
-					'template_page_label' => (!empty($page['label']) ? (string) $page['label'] : ''),
-					'template_width_mm' => (float) $pageSize['width'],
-					'template_height_mm' => (float) $pageSize['height'],
-					'template_blocks' => self::normalizeTemplateBlocksForPdf($page, $context),
-				);
+			foreach ($pageRecords as $pageRecord) {
+				$records[] = $pageRecord;
 			}
 		}
 
@@ -2403,10 +2596,24 @@ class KreaProductsLabelService
 	 */
 	private static function renderTemplatePageSvg($template, $page, $product, $outputlangs, $contextOverrides = array())
 	{
+		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $contextOverrides);
+		return self::renderTemplatePageSvgFromContext($template, $page, $context, $outputlangs);
+	}
+
+	/**
+	 * Render one template page as inline SVG using a prebuilt data context.
+	 *
+	 * @param array     $template    Template definition
+	 * @param array     $page        Page definition
+	 * @param array     $context     Resolved context values
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function renderTemplatePageSvgFromContext($template, $page, $context, $outputlangs)
+	{
 		$pageSize = self::getTemplatePageSize($template, $page);
 		$width = max(1.0, (float) $pageSize['width']);
 		$height = max(1.0, (float) $pageSize['height']);
-		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $contextOverrides);
 		$svg = array();
 		$svg[] = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ' . self::formatSvgNumber($width) . ' ' . self::formatSvgNumber($height) . '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' . self::escapeSvgText(!empty($page['label']) ? $page['label'] : $outputlangs->trans('KREAPRODUCTS_LABELS_TEMPLATE_PREVIEW')) . '">';
 		$svg[] = '<rect x="0" y="0" width="' . self::formatSvgNumber($width) . '" height="' . self::formatSvgNumber($height) . '" fill="#ffffff" stroke="#cfd6df" stroke-width="0.35" rx="1.1" ry="1.1"/>';
@@ -2497,11 +2704,25 @@ class KreaProductsLabelService
 			$context[$source] = (string) $value;
 		}
 
+		// Apply input defaults from template JSON, including non-editable system assets.
+		foreach (self::buildTemplateInputDefaultContext($template) as $source => $value) {
+			if ($source === '') {
+				continue;
+			}
+			$context[$source] = (string) $value;
+		}
+
 		$sourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
 		foreach ($sourceMeta as $source => $meta) {
 			if (array_key_exists('default_value', $meta) && (string) $meta['default_value'] !== '') {
 				$context[$source] = (string) $meta['default_value'];
 			}
+		}
+		if (empty($context['asset.green_dot_symbol'])) {
+			$context['asset.green_dot_symbol'] = 'templates/assets/green_dot_symbol.svg';
+		}
+		if (empty($context['asset.eu_food_contact_material_symbol'])) {
+			$context['asset.eu_food_contact_material_symbol'] = 'templates/assets/eu_food_contact_material_symbol.svg';
 		}
 		foreach (self::sanitizeTemplateInputValues($contextOverrides, array_keys($sourceMeta), $sourceMeta) as $source => $value) {
 			$context[$source] = $value;
@@ -2561,6 +2782,44 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Build default context values declared in template inputs.
+	 *
+	 * This includes non-editable inputs so mandatory fixed assets can be
+	 * injected by the template without exposing extra UI fields.
+	 *
+	 * @param array $template Template definition
+	 * @return array
+	 */
+	private static function buildTemplateInputDefaultContext($template)
+	{
+		$defaults = array();
+		if (empty($template['inputs']) || !is_array($template['inputs'])) {
+			return $defaults;
+		}
+
+		foreach ($template['inputs'] as $input) {
+			if (!is_array($input) || !array_key_exists('default_value', $input)) {
+				continue;
+			}
+
+			$source = self::sanitizeTemplateSource(!empty($input['source']) ? $input['source'] : '');
+			if ($source === '') {
+				continue;
+			}
+
+			$meta = self::normalizeTemplateInputMeta($source, $input);
+			$defaultValue = self::sanitizeTemplateInputValue((string) $input['default_value'], $meta);
+			if ($defaultValue === '') {
+				continue;
+			}
+
+			$defaults[$source] = $defaultValue;
+		}
+
+		return $defaults;
+	}
+
+	/**
 	 * Build ingredients section text from llx_product_association.
 	 *
 	 * @param DoliDB    $db          Database handler
@@ -2570,7 +2829,7 @@ class KreaProductsLabelService
 	 */
 	private static function buildIngredientsSectionFromAssociations($db, $productId, $outputlangs)
 	{
-		$sql = "SELECT pa.qty, pc.label, pc.ref";
+		$sql = "SELECT pc.label, pc.ref";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pp ON pp.rowid = pa.fk_product_pere";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pc ON pc.rowid = pa.fk_product_fils";
@@ -2586,19 +2845,13 @@ class KreaProductsLabelService
 		}
 
 		$ingredients = array();
-		$totalQty = 0.0;
 		while ($obj = $db->fetch_object($resql)) {
 			$ingredientName = self::cleanText(!empty($obj->label) ? $obj->label : $obj->ref);
 			if ($ingredientName === '') {
 				continue;
 			}
 
-			$qty = (float) $obj->qty;
-			if ($qty > 0) {
-				$totalQty += $qty;
-			}
-
-			$ingredients[] = array('name' => $ingredientName, 'qty' => max(0.0, $qty));
+			$ingredients[] = $ingredientName;
 		}
 		$db->free($resql);
 
@@ -2606,17 +2859,7 @@ class KreaProductsLabelService
 			return '';
 		}
 
-		$items = array();
-		foreach ($ingredients as $ingredient) {
-			$label = $ingredient['name'];
-			if ($totalQty > 0 && $ingredient['qty'] > 0) {
-				$pct = ($ingredient['qty'] / $totalQty) * 100;
-				$pctText = rtrim(rtrim(sprintf('%.1F', $pct), '0'), '.');
-				$label .= ' (' . $pctText . '%)';
-			}
-
-			$items[] = $label;
-		}
+		$items = array_values($ingredients);
 
 		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTES');
 		return $prefix . ': ' . implode(', ', $items) . '.';
@@ -3220,8 +3463,83 @@ class KreaProductsLabelService
 		if (!empty($context['batch.expiry_at']) && empty($context['batch.expiry_at_yyyymmdd'])) {
 			$context['batch.expiry_at_yyyymmdd'] = self::normalizeDateToYmd($context['batch.expiry_at']);
 		}
+		if (!empty($context['label.ingredients_section'])) {
+			$context['label.ingredients_section'] = self::normalizeIngredientsSectionText($context['label.ingredients_section']);
+		}
 
 		return $context;
+	}
+
+	/**
+	 * Normalize ingredients text for labels.
+	 *
+	 * @param string $value Ingredients text
+	 * @return string
+	 */
+	private static function normalizeIngredientsSectionText($value)
+	{
+		$text = trim((string) $value);
+		if ($text === '') {
+			return '';
+		}
+
+		// Remove percentage fragments like "(47.8%)" from persisted editable values.
+		$text = (string) preg_replace('/\s*\(\s*\d+(?:[.,]\d+)?\s*%\s*\)/u', '', $text);
+		$text = (string) preg_replace('/\s+,/', ',', $text);
+		$text = (string) preg_replace('/\s+\./', '.', $text);
+		$text = (string) preg_replace('/\s{2,}/', ' ', $text);
+		$text = (string) preg_replace('/,\s*,+/', ', ', $text);
+
+		return trim($text);
+	}
+
+	/**
+	 * Tell if one template text block should be clipped to its height.
+	 *
+	 * @param array $block Block definition
+	 * @return bool
+	 */
+	private static function shouldTruncateTemplateTextBlock($block)
+	{
+		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
+		if (array_key_exists('truncate', $style)) {
+			return self::parseTemplateBooleanFlag($style['truncate'], true);
+		}
+
+		$source = self::sanitizeTemplateSource(!empty($block['source']) ? $block['source'] : '');
+		if ($source === 'label.ingredients_section') {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Parse a loose boolean flag from template JSON values.
+	 *
+	 * @param mixed $value   Raw value
+	 * @param bool  $default Fallback value
+	 * @return bool
+	 */
+	private static function parseTemplateBooleanFlag($value, $default = false)
+	{
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_numeric($value)) {
+			return ((int) $value) !== 0;
+		}
+		if (is_string($value)) {
+			$normalized = strtolower(trim($value));
+			if (in_array($normalized, array('1', 'true', 'yes', 'on'), true)) {
+				return true;
+			}
+			if (in_array($normalized, array('0', 'false', 'no', 'off'), true)) {
+				return false;
+			}
+		}
+
+		return (bool) $default;
 	}
 
 	/**
@@ -3317,10 +3635,46 @@ class KreaProductsLabelService
 		$h = max(1.0, (float) (!empty($block['h_mm']) ? $block['h_mm'] : 1));
 		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
 		$fontPt = (float) (!empty($style['font_size_pt']) ? $style['font_size_pt'] : 7.5);
-		$fontMm = max(1.1, $fontPt * 0.352778);
+		$minFontPt = (float) (!empty($style['min_font_size_pt']) ? $style['min_font_size_pt'] : 3.8);
+		$minFontMm = max(0.9, $minFontPt * 0.352778);
+		$fontMm = max($minFontMm, $fontPt * 0.352778);
+		$autoFit = self::parseTemplateBooleanFlag(!empty($style['auto_fit']) ? $style['auto_fit'] : false, false);
+		if ($autoFit) {
+			for ($guard = 0; $guard < 28; $guard++) {
+				$lineHeightCandidate = $fontMm * 1.18;
+				$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeightCandidate)));
+				$candidateLines = self::wrapTemplatePreviewText($text, $fontMm, $w, 0, false);
+				if (count($candidateLines) <= $maxLinesByHeight || $fontMm <= ($minFontMm + 0.001)) {
+					break;
+				}
+				$fontMm = max($minFontMm, $fontMm * 0.95);
+			}
+		}
 		$lineHeight = $fontMm * 1.18;
-		$maxLines = max(1, (int) floor($h / max(1.0, $lineHeight)));
-		$lines = self::wrapTemplatePreviewText($text, $fontMm, $w, $maxLines);
+		$shouldTruncate = self::shouldTruncateTemplateTextBlock($block);
+		if ($shouldTruncate) {
+			$hardFloorMm = 0.85;
+			for ($guard = 0; $guard < 48; $guard++) {
+				$lineHeight = max(0.8, $fontMm * 1.18);
+				$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeight)));
+				$candidateLines = self::wrapTemplatePreviewText($text, $fontMm, $w, 0, false);
+				if (count($candidateLines) <= $maxLinesByHeight || $fontMm <= ($hardFloorMm + 0.001)) {
+					break;
+				}
+				$fontMm = max($hardFloorMm, $fontMm * 0.95);
+			}
+
+			$lineHeight = max(0.8, $fontMm * 1.18);
+			$maxLinesByHeight = max(1, (int) floor($h / max(1.0, $lineHeight)));
+			$candidateLines = self::wrapTemplatePreviewText($text, $fontMm, $w, 0, false);
+			if (count($candidateLines) > $maxLinesByHeight) {
+				// Never cut text: allow overflow instead of clipping/ellipsis.
+				$shouldTruncate = false;
+			}
+		}
+
+		$maxLines = ($shouldTruncate ? max(1, (int) floor($h / max(1.0, $lineHeight))) : 0);
+		$lines = self::wrapTemplatePreviewText($text, $fontMm, $w, $maxLines, $shouldTruncate);
 		$align = (!empty($style['align']) ? strtolower((string) $style['align']) : 'left');
 		$textAnchor = 'start';
 		$textX = $x;
@@ -3334,8 +3688,9 @@ class KreaProductsLabelService
 
 		$fontFamily = (!empty($style['font_family']) ? (string) $style['font_family'] : 'Helvetica');
 		$fontWeight = (!empty($style['font_weight']) && strtolower((string) $style['font_weight']) === 'bold' ? '700' : '400');
+		$textStartY = $y + $fontMm;
 		$svg = array();
-		$svg[] = '<text x="' . self::formatSvgNumber($textX) . '" y="' . self::formatSvgNumber($y) . '" fill="#101828" font-family="' . self::escapeSvgText($fontFamily) . '" font-size="' . self::formatSvgNumber($fontMm) . '" font-weight="' . $fontWeight . '" text-anchor="' . $textAnchor . '" dominant-baseline="text-before-edge">';
+		$svg[] = '<text x="' . self::formatSvgNumber($textX) . '" y="' . self::formatSvgNumber($textStartY) . '" fill="#101828" font-family="' . self::escapeSvgText($fontFamily) . '" font-size="' . self::formatSvgNumber($fontMm) . '" font-weight="' . $fontWeight . '" text-anchor="' . $textAnchor . '">';
 
 		foreach ($lines as $index => $line) {
 			$svg[] = '<tspan x="' . self::formatSvgNumber($textX) . '" dy="' . ($index === 0 ? '0' : self::formatSvgNumber($lineHeight)) . '">' . self::escapeSvgText($line) . '</tspan>';
@@ -3351,10 +3706,11 @@ class KreaProductsLabelService
 	 * @param string $text        Text to wrap
 	 * @param float  $fontSizeMm  Font size in mm
 	 * @param float  $maxWidthMm  Maximum width in mm
-	 * @param int    $maxLines    Maximum number of lines
+	 * @param int    $maxLines    Maximum number of lines (0 = unlimited)
+	 * @param bool   $truncate    Add ellipsis when clipping
 	 * @return array
 	 */
-	private static function wrapTemplatePreviewText($text, $fontSizeMm, $maxWidthMm, $maxLines)
+	private static function wrapTemplatePreviewText($text, $fontSizeMm, $maxWidthMm, $maxLines, $truncate = true)
 	{
 		$text = trim((string) $text);
 		if ($text === '') {
@@ -3367,12 +3723,18 @@ class KreaProductsLabelService
 			$wrapped = array($text);
 		}
 
-		$lines = array_slice(array_values(array_filter(array_map('trim', $wrapped), 'strlen')), 0, $maxLines);
+		$wrappedLines = array_values(array_filter(array_map('trim', $wrapped), 'strlen'));
+		$lines = $wrappedLines;
 		if (empty($lines)) {
 			$lines = array($text);
 		}
 
-		if (count($wrapped) > $maxLines) {
+		$maxLines = (int) $maxLines;
+		if ($maxLines > 0 && count($lines) > $maxLines) {
+			$lines = array_slice($lines, 0, $maxLines);
+		}
+
+		if ($truncate && $maxLines > 0 && count($wrappedLines) > $maxLines) {
 			$lastIndex = count($lines) - 1;
 			$lines[$lastIndex] = rtrim(substr($lines[$lastIndex], 0, max(0, $estimatedCharsPerLine - 1))) . '...';
 		}
@@ -3479,7 +3841,11 @@ class KreaProductsLabelService
 	}
 
 	/**
-	 * Resolve one sanitized asset reference to a local path inside module documents.
+	 * Resolve one sanitized asset reference to a local path.
+	 *
+	 * Resolution order:
+	 * 1) Entity documents (`DOL_DATA_ROOT/.../labels/templates/assets`)
+	 * 2) Bundled module assets in `/custom/kreaproducts/labels/`
 	 *
 	 * @param string $value Sanitized asset reference
 	 * @return string
@@ -3500,23 +3866,24 @@ class KreaProductsLabelService
 
 		$entityId = (int) (!empty($conf->entity) ? $conf->entity : 1);
 		$assetRoot = self::getTemplateAssetDir($entityId);
-		if (!is_dir($assetRoot)) {
-			return '';
+		if (is_dir($assetRoot)) {
+			$assetPath = $assetRoot . '/' . $fileName;
+			$realAssetPath = realpath($assetPath);
+			$realAssetRoot = realpath($assetRoot);
+			if ($realAssetPath !== false && $realAssetRoot !== false && is_file($realAssetPath) && is_readable($realAssetPath)) {
+				$rootPrefix = rtrim($realAssetRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+				if (strpos($realAssetPath, $rootPrefix) === 0) {
+					return $realAssetPath;
+				}
+			}
 		}
 
-		$assetPath = $assetRoot . '/' . $fileName;
-		$realAssetPath = realpath($assetPath);
-		$realAssetRoot = realpath($assetRoot);
-		if ($realAssetPath === false || $realAssetRoot === false || !is_file($realAssetPath) || !is_readable($realAssetPath)) {
-			return '';
+		$bundledAssetPath = self::getBundledLabelTemplateDir() . '/' . $fileName;
+		if (is_file($bundledAssetPath) && is_readable($bundledAssetPath)) {
+			return $bundledAssetPath;
 		}
 
-		$rootPrefix = rtrim($realAssetRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-		if (strpos($realAssetPath, $rootPrefix) !== 0) {
-			return '';
-		}
-
-		return $realAssetPath;
+		return '';
 	}
 
 	/**
@@ -3581,20 +3948,36 @@ class KreaProductsLabelService
 		$showHumanReadable = !empty($block['show_human_readable']);
 		$textHeight = ($showHumanReadable ? max(1.3, min(2.6, $h * 0.22)) : 0.0);
 		$barHeight = max(1.0, $h - $textHeight);
-		$pattern = self::buildPreviewBarcodePattern($value);
-		$patternLength = max(1, strlen($pattern));
-		$barWidth = $w / $patternLength;
+		$barcodeEncoding = self::mapTemplateBarcodeSymbologyForPreview(!empty($block['symbology']) ? (string) $block['symbology'] : 'C128');
+		$barcodeArray = self::buildPreviewBarcodeArrayFromTcpdf($value, $barcodeEncoding);
 		$svg = array();
 		$svg[] = '<g>';
 		$svg[] = '<rect x="' . self::formatSvgNumber($x) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($w) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#ffffff"/>';
 
-		for ($i = 0; $i < $patternLength; $i++) {
-			if ($pattern[$i] !== '1') {
-				continue;
+		if (!empty($barcodeArray['bcode']) && !empty($barcodeArray['maxw'])) {
+			$maxw = max(1.0, (float) $barcodeArray['maxw']);
+			$unitWidth = $w / $maxw;
+			$currentX = $x;
+			foreach ($barcodeArray['bcode'] as $segment) {
+				$segmentWidth = max(0.01, ((float) (!empty($segment['w']) ? $segment['w'] : 0)) * $unitWidth);
+				if (!empty($segment['t'])) {
+					$svg[] = '<rect x="' . self::formatSvgNumber($currentX) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($segmentWidth) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#101828"/>';
+				}
+				$currentX += $segmentWidth;
 			}
+		} else {
+			$pattern = self::buildPreviewBarcodePattern($value);
+			$patternLength = max(1, strlen($pattern));
+			$barWidth = $w / $patternLength;
 
-			$currentX = $x + ($i * $barWidth);
-			$svg[] = '<rect x="' . self::formatSvgNumber($currentX) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($barWidth + 0.02) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#101828"/>';
+			for ($i = 0; $i < $patternLength; $i++) {
+				if ($pattern[$i] !== '1') {
+					continue;
+				}
+
+				$currentX = $x + ($i * $barWidth);
+				$svg[] = '<rect x="' . self::formatSvgNumber($currentX) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($barWidth + 0.02) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#101828"/>';
+			}
 		}
 
 		if ($showHumanReadable) {
@@ -3603,6 +3986,62 @@ class KreaProductsLabelService
 
 		$svg[] = '</g>';
 		return implode('', $svg);
+	}
+
+	/**
+	 * Map template symbology to the TCPDF 1D barcode encoder name used for preview.
+	 *
+	 * @param string $symbology Barcode symbology
+	 * @return string
+	 */
+	private static function mapTemplateBarcodeSymbologyForPreview($symbology)
+	{
+		$symbology = strtoupper(trim((string) $symbology));
+		$map = array(
+			'EAN13' => 'EAN13',
+			'EAN8' => 'EAN8',
+			'UPC' => 'UPCA',
+			'UPC-A' => 'UPCA',
+			'UPC-E' => 'UPCE',
+			'C39' => 'C39',
+			'CODE39' => 'C39',
+			'C128' => 'C128',
+			'CODE128' => 'C128',
+		);
+
+		return (!empty($map[$symbology]) ? $map[$symbology] : 'C128');
+	}
+
+	/**
+	 * Build a barcode array using TCPDF so preview dimensions match generated PDF barcodes.
+	 *
+	 * @param string $value    Barcode value
+	 * @param string $encoding TCPDF 1D barcode encoding
+	 * @return array
+	 */
+	private static function buildPreviewBarcodeArrayFromTcpdf($value, $encoding)
+	{
+		if (!class_exists('TCPDFBarcode')) {
+			$barcodeClassPath = DOL_DOCUMENT_ROOT . '/includes/tecnickcom/tcpdf/tcpdf_barcodes_1d.php';
+			if (is_readable($barcodeClassPath)) {
+				require_once $barcodeClassPath;
+			}
+		}
+		if (!class_exists('TCPDFBarcode')) {
+			return array();
+		}
+
+		try {
+			$barcode = new TCPDFBarcode((string) $value, (string) $encoding);
+			$barcodeArray = $barcode->getBarcodeArray();
+			if (is_array($barcodeArray) && !empty($barcodeArray['bcode']) && !empty($barcodeArray['maxw'])) {
+				return $barcodeArray;
+			}
+		} catch (Exception $e) {
+			dol_syslog(__METHOD__ . ' tcpdf preview barcode fallback: ' . $e->getMessage(), LOG_DEBUG);
+		}
+
+		return array();
 	}
 
 	/**
