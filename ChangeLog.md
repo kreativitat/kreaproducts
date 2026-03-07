@@ -1,6 +1,21 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.16.1] - 2026-03-07
+
+### Fixed
+- Fixed production category-tree/product SQL for broader Dolibarr compatibility by selecting `llx_product.tobatch` as `status_batch` instead of querying a non-existent `status_batch` column.
+
+## [2.16.0] - 2026-03-07
+
+### Added
+- Added `GET production/categories/{category_id}/tree` to return a full product-category subtree with associated products for each category node.
+- Added tree response totals (`categories_count`, `products_count`, `producible_products_count`) for touch-app rendering and pagination decisions.
+
+### Changed
+- Updated BOM entity filtering in production category/product APIs to include shared BOMs (`entity = 0`) in addition to current entity scope.
+- Updated BOM resolution for production run to accept shared BOMs when selecting default/requested BOMs.
+
 ## [2.15.0] - 2026-03-07
 
 ### Added

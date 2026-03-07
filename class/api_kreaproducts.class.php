@@ -30,7 +30,12 @@ require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
-require_once DOL_DOCUMENT_ROOT . '/mrp/class/api_mos.class.php';
+if (!class_exists('DolibarrApi')) {
+	require_once DOL_DOCUMENT_ROOT . '/api/class/api.class.php';
+}
+if (!class_exists('Mos')) {
+	require_once DOL_DOCUMENT_ROOT . '/mrp/class/api_mos.class.php';
+}
 dol_include_once('/kreaproducts/class/KreaProductsLabelService.class.php');
 
 /**
@@ -68,10 +73,11 @@ class KreaProductsApi extends DolibarrApi
 		$this->assertProductionReadRights();
 
 		$category = new Categorie($this->db);
-		$productTypeId = (int) (!empty($category->MAP_ID[Categorie::TYPE_PRODUCT]) ? $category->MAP_ID[Categorie::TYPE_PRODUCT] : 0);
-		if ($productTypeId <= 0) {
+		$productTypeId = (int) (array_key_exists(Categorie::TYPE_PRODUCT, $category->MAP_ID) ? $category->MAP_ID[Categorie::TYPE_PRODUCT] : -1);
+		if ($productTypeId < 0) {
 			throw new RestException(500, 'Unable to resolve product category type id');
 		}
+		$bomEntitySql = $this->entityListToSql($this->getEntityIdList('bom', true));
 
 		$sql = "SELECT c.rowid, c.label, c.fk_parent, c.color, COUNT(DISTINCT p.rowid) AS product_count";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "categorie AS c";
@@ -82,7 +88,7 @@ class KreaProductsApi extends DolibarrApi
 		$sql .= " AND c.entity IN (" . getEntity('category') . ")";
 		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
 		$sql .= " AND p.fk_product_type = 0";
-		$sql .= " AND b.entity IN (" . getEntity('bom') . ")";
+		$sql .= " AND b.entity IN (" . $bomEntitySql . ")";
 		$sql .= " AND b.status = " . ((int) BOM::STATUS_VALIDATED);
 		$sql .= " GROUP BY c.rowid, c.label, c.fk_parent, c.color";
 		$sql .= " ORDER BY c.label ASC";
@@ -136,8 +142,9 @@ class KreaProductsApi extends DolibarrApi
 		if (!DolibarrApi::_checkAccessToResource('categorie', $category->id)) {
 			throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
 		}
+		$bomEntitySql = $this->entityListToSql($this->getEntityIdList('bom', true));
 
-		$sql = "SELECT p.rowid, p.ref, p.label, p.barcode, p.status_batch, p.fk_default_warehouse, p.fk_default_bom,";
+		$sql = "SELECT p.rowid, p.ref, p.label, p.barcode, p.tobatch AS status_batch, p.fk_default_warehouse, p.fk_default_bom,";
 		$sql .= " MIN(b.rowid) AS fallback_bom_id, COUNT(DISTINCT b.rowid) AS bom_count";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "product AS p";
 		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "categorie_product AS cp ON cp.fk_product = p.rowid";
@@ -145,9 +152,9 @@ class KreaProductsApi extends DolibarrApi
 		$sql .= " WHERE cp.fk_categorie = " . ((int) $category_id);
 		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
 		$sql .= " AND p.fk_product_type = 0";
-		$sql .= " AND b.entity IN (" . getEntity('bom') . ")";
+		$sql .= " AND b.entity IN (" . $bomEntitySql . ")";
 		$sql .= " AND b.status = " . ((int) BOM::STATUS_VALIDATED);
-		$sql .= " GROUP BY p.rowid, p.ref, p.label, p.barcode, p.status_batch, p.fk_default_warehouse, p.fk_default_bom";
+		$sql .= " GROUP BY p.rowid, p.ref, p.label, p.barcode, p.tobatch, p.fk_default_warehouse, p.fk_default_bom";
 		$sql .= " ORDER BY p.label ASC, p.ref ASC";
 
 		$resql = $this->db->query($sql);
@@ -176,6 +183,69 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		return $products;
+	}
+
+	/**
+	 * Return one product-category subtree with products per category node.
+	 *
+	 * Use this endpoint when the app controls one root category (for example id 100)
+	 * and needs all descendants + associated products to render a touch catalog.
+	 *
+	 * @param int $category_id Root product category id
+	 * @param int $only_producible 1=only products with enabled BOM, 0=all linked products
+	 * @return array
+	 *
+	 * @url GET production/categories/{category_id}/tree
+	 */
+	public function getProductionCategoryTree($category_id, $only_producible = 0)
+	{
+		$this->assertProductionReadRights();
+		$onlyProducible = ((int) $only_producible > 0 ? 1 : 0);
+		$rootId = (int) $category_id;
+
+		$rootCategory = $this->fetchProductCategoryOrFail($rootId);
+		$categoriesById = $this->loadProductCategoriesIndexed();
+		if (empty($categoriesById[$rootId])) {
+			throw new RestException(404, 'Category not found in current entity scope');
+		}
+
+		$childrenMap = array();
+		foreach ($categoriesById as $id => $cat) {
+			$parentId = (int) $cat['fk_parent'];
+			if (!isset($childrenMap[$parentId])) {
+				$childrenMap[$parentId] = array();
+			}
+			$childrenMap[$parentId][] = (int) $id;
+		}
+
+		foreach ($childrenMap as $parentId => $childIds) {
+			usort($childIds, function ($a, $b) use ($categoriesById) {
+				$la = mb_strtolower((string) $categoriesById[$a]['label']);
+				$lb = mb_strtolower((string) $categoriesById[$b]['label']);
+				if ($la === $lb) {
+					return ($a <=> $b);
+				}
+				return strcmp($la, $lb);
+			});
+			$childrenMap[$parentId] = $childIds;
+		}
+
+		$productsByCategory = $this->loadProductsByCategory($onlyProducible);
+		$tree = $this->buildCategoryTreeNode($rootId, $categoriesById, $childrenMap, $productsByCategory);
+
+		$stats = array(
+			'categories_count' => 0,
+			'products_count' => 0,
+			'producible_products_count' => 0,
+		);
+		$this->accumulateCategoryTreeStats($tree, $stats);
+
+		return array(
+			'root_category' => $rootCategory,
+			'only_producible' => $onlyProducible,
+			'tree' => $tree,
+			'totals' => $stats,
+		);
 	}
 
 	/**
@@ -446,7 +516,7 @@ class KreaProductsApi extends DolibarrApi
 	 * Fetch product and enforce API access.
 	 *
 	 * @param int $productId Product id
-	 * @return Product
+	 * @return object
 	 */
 	protected function fetchProduct($productId)
 	{
@@ -465,13 +535,13 @@ class KreaProductsApi extends DolibarrApi
 	/**
 	 * Resolve usable BOM id for one product.
 	 *
-	 * @param Product $product Product object
+	 * @param object $product Product object
 	 * @param int     $requestedBomId Preferred BOM id
 	 * @return int
 	 */
 	protected function resolveBomForProduct($product, $requestedBomId = 0)
 	{
-		$allowedBomEntities = $this->getEntityIdList('bom');
+		$allowedBomEntities = $this->getEntityIdList('bom', true);
 
 		if ($requestedBomId > 0) {
 			$bom = new BOM($this->db);
@@ -507,7 +577,7 @@ class KreaProductsApi extends DolibarrApi
 		$sql .= " FROM " . MAIN_DB_PREFIX . "bom_bom";
 		$sql .= " WHERE fk_product = " . ((int) $product->id);
 		$sql .= " AND status = " . ((int) BOM::STATUS_VALIDATED);
-		$sql .= " AND entity IN (" . getEntity('bom') . ")";
+		$sql .= " AND entity IN (" . $this->entityListToSql($allowedBomEntities) . ")";
 		$sql .= " ORDER BY rowid ASC";
 		$sql .= $this->db->plimit(1);
 
@@ -573,7 +643,7 @@ class KreaProductsApi extends DolibarrApi
 	/**
 	 * Build label payload for product + production quantity.
 	 *
-	 * @param Product $product         Product object
+	 * @param object $product         Product object
 	 * @param float   $productionQty   Produced quantity
 	 * @param float   $unitsPerLabel   Units represented by one label
 	 * @param int     $labelsCount     Explicit labels count
@@ -708,22 +778,7 @@ class KreaProductsApi extends DolibarrApi
 	 */
 	protected function assertProductInCategory($productId, $categoryId)
 	{
-		$category = new Categorie($this->db);
-		$result = $category->fetch((int) $categoryId);
-		if ($result <= 0) {
-			throw new RestException(404, 'Category not found');
-		}
-		if (!DolibarrApi::_checkAccessToResource('categorie', $category->id)) {
-			throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
-		}
-		$productTypeId = (int) (!empty($category->MAP_ID[Categorie::TYPE_PRODUCT]) ? $category->MAP_ID[Categorie::TYPE_PRODUCT] : 0);
-		$isProductType = (
-			((string) $category->type === Categorie::TYPE_PRODUCT)
-			|| ((int) $category->type === $productTypeId)
-		);
-		if (!$isProductType) {
-			throw new RestException(400, 'Category is not a product category');
-		}
+		$this->fetchProductCategoryOrFail((int) $categoryId);
 
 		$sql = "SELECT 1";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "categorie_product AS cp";
@@ -748,9 +803,10 @@ class KreaProductsApi extends DolibarrApi
 	 * Return entity ids available for one element.
 	 *
 	 * @param string $element Element key used by getEntity()
+	 * @param bool   $includeShared Include shared entity 0 in scope
 	 * @return array<int>
 	 */
-	protected function getEntityIdList($element)
+	protected function getEntityIdList($element, $includeShared = false)
 	{
 		$list = array();
 		$raw = explode(',', (string) getEntity($element));
@@ -760,6 +816,9 @@ class KreaProductsApi extends DolibarrApi
 				continue;
 			}
 			$list[] = (int) $value;
+		}
+		if ($includeShared) {
+			$list[] = 0;
 		}
 
 		return array_values(array_unique($list));
@@ -775,5 +834,230 @@ class KreaProductsApi extends DolibarrApi
 	protected function isEntityInScope($entityId, $scope)
 	{
 		return in_array((int) $entityId, (array) $scope, true);
+	}
+
+	/**
+	 * Build SQL-safe comma-separated entity list.
+	 *
+	 * @param array<int> $entityIds
+	 * @return string
+	 */
+	protected function entityListToSql($entityIds)
+	{
+		$clean = array();
+		foreach ((array) $entityIds as $id) {
+			if (!is_numeric($id)) {
+				continue;
+			}
+			$clean[] = (int) $id;
+		}
+		$clean = array_values(array_unique($clean));
+		if (empty($clean)) {
+			$clean = array((int) $GLOBALS['conf']->entity);
+		}
+
+		return implode(',', $clean);
+	}
+
+	/**
+	 * Fetch one product category and validate access/scope/type.
+	 *
+	 * @param int $categoryId Category id
+	 * @return array
+	 */
+	protected function fetchProductCategoryOrFail($categoryId)
+	{
+		$category = new Categorie($this->db);
+		$result = $category->fetch((int) $categoryId);
+		if ($result <= 0) {
+			throw new RestException(404, 'Category not found');
+		}
+		if (!DolibarrApi::_checkAccessToResource('categorie', $category->id)) {
+			throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
+		}
+		$productTypeId = (int) (array_key_exists(Categorie::TYPE_PRODUCT, $category->MAP_ID) ? $category->MAP_ID[Categorie::TYPE_PRODUCT] : -1);
+		$isProductType = (
+			((string) $category->type === Categorie::TYPE_PRODUCT)
+			|| ((int) $category->type === $productTypeId)
+		);
+		if (!$isProductType) {
+			throw new RestException(400, 'Category is not a product category');
+		}
+
+		return array(
+			'id' => (int) $category->id,
+			'label' => (string) $category->label,
+			'fk_parent' => (int) $category->fk_parent,
+			'description' => (string) $category->description,
+			'color' => (string) $category->color,
+			'entity' => (int) $category->entity,
+		);
+	}
+
+	/**
+	 * Load all product categories in current entity scope.
+	 *
+	 * @return array<int,array>
+	 */
+	protected function loadProductCategoriesIndexed()
+	{
+		$category = new Categorie($this->db);
+		$productTypeId = (int) (array_key_exists(Categorie::TYPE_PRODUCT, $category->MAP_ID) ? $category->MAP_ID[Categorie::TYPE_PRODUCT] : -1);
+		if ($productTypeId < 0) {
+			throw new RestException(500, 'Unable to resolve product category type id');
+		}
+
+		$sql = "SELECT rowid, fk_parent, label, description, color, entity";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "categorie";
+		$sql .= " WHERE type = " . $productTypeId;
+		$sql .= " AND entity IN (" . getEntity('category') . ")";
+		$sql .= " ORDER BY label ASC";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading category tree: ' . $this->db->lasterror());
+		}
+
+		$list = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$list[(int) $obj->rowid] = array(
+				'id' => (int) $obj->rowid,
+				'fk_parent' => (int) $obj->fk_parent,
+				'label' => (string) $obj->label,
+				'description' => (string) $obj->description,
+				'color' => (string) $obj->color,
+				'entity' => (int) $obj->entity,
+			);
+		}
+		$this->db->free($resql);
+
+		return $list;
+	}
+
+	/**
+	 * Load linked products grouped by category.
+	 *
+	 * @param int $onlyProducible 1=only products with enabled BOM
+	 * @return array<int,array<int,array>>
+	 */
+	protected function loadProductsByCategory($onlyProducible = 0)
+	{
+		$bomEntitySql = $this->entityListToSql($this->getEntityIdList('bom', true));
+
+		$sql = "SELECT cp.fk_categorie AS category_id,";
+		$sql .= " p.rowid, p.ref, p.label, p.barcode, p.tobatch AS status_batch, p.fk_default_warehouse, p.fk_default_bom,";
+		$sql .= " COUNT(DISTINCT CASE WHEN b.status = " . ((int) BOM::STATUS_VALIDATED) . " AND b.entity IN (" . $bomEntitySql . ") THEN b.rowid END) AS enabled_bom_count,";
+		$sql .= " MIN(CASE WHEN b.status = " . ((int) BOM::STATUS_VALIDATED) . " AND b.entity IN (" . $bomEntitySql . ") THEN b.rowid END) AS fallback_bom_id";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "categorie_product AS cp";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = cp.fk_product";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.fk_product = p.rowid";
+		$sql .= " WHERE p.entity IN (" . getEntity('product') . ")";
+		$sql .= " AND p.fk_product_type = 0";
+		$sql .= " GROUP BY cp.fk_categorie, p.rowid, p.ref, p.label, p.barcode, p.tobatch, p.fk_default_warehouse, p.fk_default_bom";
+		if ((int) $onlyProducible > 0) {
+			$sql .= " HAVING enabled_bom_count > 0";
+		}
+		$sql .= " ORDER BY p.label ASC, p.ref ASC";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading category products: ' . $this->db->lasterror());
+		}
+
+		$productsByCategory = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$categoryId = (int) $obj->category_id;
+			$defaultBomId = (int) $obj->fk_default_bom;
+			if ($defaultBomId <= 0) {
+				$defaultBomId = (int) $obj->fallback_bom_id;
+			}
+
+			if (!isset($productsByCategory[$categoryId])) {
+				$productsByCategory[$categoryId] = array();
+			}
+			$productsByCategory[$categoryId][] = array(
+				'id' => (int) $obj->rowid,
+				'ref' => (string) $obj->ref,
+				'label' => (string) $obj->label,
+				'barcode' => (string) $obj->barcode,
+				'status_batch' => (int) $obj->status_batch,
+				'default_warehouse_id' => (int) $obj->fk_default_warehouse,
+				'default_bom_id' => (int) $defaultBomId,
+				'enabled_bom_count' => (int) $obj->enabled_bom_count,
+				'has_enabled_bom' => ((int) $obj->enabled_bom_count > 0 ? 1 : 0),
+			);
+		}
+		$this->db->free($resql);
+
+		return $productsByCategory;
+	}
+
+	/**
+	 * Build one category node recursively.
+	 *
+	 * @param int   $categoryId
+	 * @param array $categoriesById
+	 * @param array $childrenMap
+	 * @param array $productsByCategory
+	 * @return array
+	 */
+	protected function buildCategoryTreeNode($categoryId, $categoriesById, $childrenMap, $productsByCategory)
+	{
+		if (empty($categoriesById[$categoryId])) {
+			return array();
+		}
+
+		$cat = $categoriesById[$categoryId];
+		$node = array(
+			'id' => (int) $cat['id'],
+			'label' => (string) $cat['label'],
+			'fk_parent' => (int) $cat['fk_parent'],
+			'description' => (string) $cat['description'],
+			'color' => (string) $cat['color'],
+			'entity' => (int) $cat['entity'],
+			'products' => (!empty($productsByCategory[$categoryId]) ? $productsByCategory[$categoryId] : array()),
+			'children' => array(),
+		);
+
+		if (!empty($childrenMap[$categoryId])) {
+			foreach ($childrenMap[$categoryId] as $childId) {
+				$childNode = $this->buildCategoryTreeNode((int) $childId, $categoriesById, $childrenMap, $productsByCategory);
+				if (!empty($childNode)) {
+					$node['children'][] = $childNode;
+				}
+			}
+		}
+
+		return $node;
+	}
+
+	/**
+	 * Accumulate tree totals for API response.
+	 *
+	 * @param array $node
+	 * @param array $stats
+	 * @return void
+	 */
+	protected function accumulateCategoryTreeStats($node, &$stats)
+	{
+		if (empty($node) || !is_array($node)) {
+			return;
+		}
+
+		$stats['categories_count']++;
+		if (!empty($node['products']) && is_array($node['products'])) {
+			$stats['products_count'] += count($node['products']);
+			foreach ($node['products'] as $product) {
+				if (!empty($product['has_enabled_bom'])) {
+					$stats['producible_products_count']++;
+				}
+			}
+		}
+
+		if (!empty($node['children']) && is_array($node['children'])) {
+			foreach ($node['children'] as $childNode) {
+				$this->accumulateCategoryTreeStats($childNode, $stats);
+			}
+		}
 	}
 }
