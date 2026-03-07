@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.15.0] - 2026-03-07
+
+### Added
+- Added a new `KreaProductsApi` REST class with touch-flow endpoints for production categories, products by category, label payload, and one-step production run.
+- Added label payload responses with standard fields, available formats, available templates, selected template metadata, and computed recommended labels count.
+
+### Changed
+- Production run endpoint now complements core MRP API by orchestrating MO create/validate/produce with core `Mos::produceAndConsume`.
+- Enforced API-side guards for entity-scoped BOM resolution, category-product consistency, and permission checks for MRP and labels access.
+
+## [2.14.10] - 2026-03-07
+
+### Changed
+- Updated module About page with a latest-release summary block parsed from `ChangeLog.md` (version, date, and release bullets).
+- Added About-page translation keys for changelog labels in English and Portuguese (`pt_PT`, `pt_BR`).
+
 ## [2.14.9] - 2026-03-07
 
 ### Fixed

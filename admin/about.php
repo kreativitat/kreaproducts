@@ -80,6 +80,76 @@ if (!$user->admin) {
 $action = GETPOST('action', 'aZ09');
 $backtopage = GETPOST('backtopage', 'alpha');
 
+/**
+ * Parse latest module changelog release entry.
+ *
+ * @param string $fullPath Absolute path to ChangeLog.md
+ * @return array{version:string,date:string,sections:array}
+ */
+function kreaproductsGetLatestChangeLogEntry($fullPath)
+{
+	$result = array(
+		'version' => '',
+		'date' => '',
+		'sections' => array(),
+	);
+	if (empty($fullPath) || !is_readable($fullPath)) {
+		return $result;
+	}
+
+	$lines = @file($fullPath, FILE_IGNORE_NEW_LINES);
+	if (!is_array($lines) || empty($lines)) {
+		return $result;
+	}
+
+	$inEntry = false;
+	$currentSection = '';
+	foreach ($lines as $line) {
+		$line = trim((string) $line);
+		if ($line === '') {
+			continue;
+		}
+
+		if (preg_match('/^##\s+\[([^\]]+)\]\s*-\s*([0-9]{4}-[0-9]{2}-[0-9]{2})$/', $line, $matches)) {
+			if ($inEntry) {
+				break;
+			}
+
+			$result['version'] = (string) $matches[1];
+			$result['date'] = (string) $matches[2];
+			$inEntry = true;
+			continue;
+		}
+
+		if (!$inEntry) {
+			continue;
+		}
+
+		if (preg_match('/^###\s+(.+)$/', $line, $matches)) {
+			$currentSection = trim((string) $matches[1]);
+			if ($currentSection === '') {
+				$currentSection = 'Changes';
+			}
+			if (empty($result['sections'][$currentSection]) || !is_array($result['sections'][$currentSection])) {
+				$result['sections'][$currentSection] = array();
+			}
+			continue;
+		}
+
+		if (preg_match('/^-\s+(.+)$/', $line, $matches)) {
+			if ($currentSection === '') {
+				$currentSection = 'Changes';
+				if (empty($result['sections'][$currentSection]) || !is_array($result['sections'][$currentSection])) {
+					$result['sections'][$currentSection] = array();
+				}
+			}
+			$result['sections'][$currentSection][] = trim((string) $matches[1]);
+		}
+	}
+
+	return $result;
+}
+
 
 /*
  * Actions
@@ -119,6 +189,7 @@ $moduleVersion = $tmpmodule->getVersion();
 $editorName = $tmpmodule->editor_name;
 $editorUrl = $tmpmodule->editor_url;
 $supportEmail = 'mail@kreativitat.com';
+$latestRelease = kreaproductsGetLatestChangeLogEntry(dirname(__DIR__) . '/ChangeLog.md');
 
 print '<div class="fichecenter" style="margin-top: 18px; display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">';
 
@@ -135,6 +206,32 @@ print '<tr><td class="titlefield">' . $langs->trans('KreapAboutLicenseLabel') . 
 print '<tr><td class="titlefield">' . $langs->trans('KreapAboutSupportLabel') . '</td><td><a href="mailto:' . dol_escape_htmltag($supportEmail) . '">' . dol_escape_htmltag($supportEmail) . '</a></td></tr>';
 print '<tr><td class="titlefield">' . $langs->trans('KreapAboutWebsiteLabel') . '</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorUrl) . '</a></td></tr>';
 print '</table>';
+
+print '<div style="margin-top: 14px;">';
+print '<div class="bold" style="margin-bottom: 6px;">' . $langs->trans('KreapAboutChangeLogLabel') . '</div>';
+if (!empty($latestRelease['version'])) {
+	print '<table class="noborder centpercent">';
+	print '<tr><td class="titlefield" style="width: 180px;">' . $langs->trans('KreapAboutLatestReleaseLabel') . '</td><td>' . dol_escape_htmltag((string) $latestRelease['version']) . '</td></tr>';
+	print '<tr><td class="titlefield">' . $langs->trans('KreapAboutReleaseDateLabel') . '</td><td>' . dol_escape_htmltag((string) $latestRelease['date']) . '</td></tr>';
+	print '</table>';
+
+	if (!empty($latestRelease['sections']) && is_array($latestRelease['sections'])) {
+		foreach ($latestRelease['sections'] as $sectionTitle => $items) {
+			if (!is_array($items) || empty($items)) {
+				continue;
+			}
+			print '<div class="opacitymedium" style="margin-top: 8px; margin-bottom: 2px;">' . dol_escape_htmltag((string) $sectionTitle) . '</div>';
+			print '<ul style="margin-top: 0; margin-bottom: 0;">';
+			foreach ($items as $item) {
+				print '<li>' . dol_escape_htmltag((string) $item) . '</li>';
+			}
+			print '</ul>';
+		}
+	}
+} else {
+	print '<div class="opacitymedium">' . $langs->trans('KreapAboutNoReleaseNotes') . '</div>';
+}
+print '</div>';
 print '</div>';
 
 print '</div>';
