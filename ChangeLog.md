@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.14.9] - 2026-03-07
+
+### Fixed
+- Fixed missing template images in generated PDFs by overlaying all image blocks with native TCPDF image rendering after SVG page rendering.
+- Added shared template render geometry computation to keep SVG and native image overlays aligned in position/scale.
+
 ## [2.14.8] - 2026-03-07
 
 ### Changed

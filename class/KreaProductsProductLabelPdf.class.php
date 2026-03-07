@@ -62,6 +62,9 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			}
 
 			if ($renderedFromSvg) {
+				// TCPDF SVG parser may skip embedded <image> hrefs depending on format/source.
+				// Always re-render image blocks natively to guarantee output parity for assets.
+				$this->renderTemplateImageOverlay($pdf, $outputlangs, $param, $originX, $originY);
 				$this->moveCursorToNextPosition();
 				return;
 			}
@@ -172,13 +175,12 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 	 */
 	private function renderTemplateSticker(&$pdf, $outputlangs, $param, $originX, $originY)
 	{
-		$templateWidth = max(1.0, (float) $param['template_width_mm']);
-		$templateHeight = max(1.0, (float) $param['template_height_mm']);
-		$scale = min($this->_Width / $templateWidth, $this->_Height / $templateHeight);
-		$renderWidth = $templateWidth * $scale;
-		$renderHeight = $templateHeight * $scale;
-		$offsetX = $originX + max(0, ($this->_Width - $renderWidth) / 2);
-		$offsetY = $originY + max(0, ($this->_Height - $renderHeight) / 2);
+		$geometry = $this->computeTemplateRenderGeometry($param, $originX, $originY);
+		$scale = $geometry['scale'];
+		$renderWidth = $geometry['render_width'];
+		$renderHeight = $geometry['render_height'];
+		$offsetX = $geometry['offset_x'];
+		$offsetY = $geometry['offset_y'];
 
 		$pdf->SetFillColor(255, 255, 255);
 		$pdf->SetDrawColor(207, 214, 223);
@@ -221,13 +223,11 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			return false;
 		}
 
-		$templateWidth = max(1.0, (float) $param['template_width_mm']);
-		$templateHeight = max(1.0, (float) $param['template_height_mm']);
-		$scale = min($this->_Width / $templateWidth, $this->_Height / $templateHeight);
-		$renderWidth = $templateWidth * $scale;
-		$renderHeight = $templateHeight * $scale;
-		$offsetX = $originX + max(0, ($this->_Width - $renderWidth) / 2);
-		$offsetY = $originY + max(0, ($this->_Height - $renderHeight) / 2);
+		$geometry = $this->computeTemplateRenderGeometry($param, $originX, $originY);
+		$renderWidth = $geometry['render_width'];
+		$renderHeight = $geometry['render_height'];
+		$offsetX = $geometry['offset_x'];
+		$offsetY = $geometry['offset_y'];
 
 		try {
 			$pdf->ImageSVG('@' . $svg, $offsetX, $offsetY, $renderWidth, $renderHeight, '', '', '', 0, false);
@@ -235,6 +235,59 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		} catch (Exception $e) {
 			dol_syslog(__METHOD__ . ' fallback to block renderer: ' . $e->getMessage(), LOG_WARNING);
 			return false;
+		}
+	}
+
+	/**
+	 * Compute common template render geometry inside current label slot.
+	 *
+	 * @param array $param   Template payload
+	 * @param float $originX Label origin X
+	 * @param float $originY Label origin Y
+	 * @return array
+	 */
+	private function computeTemplateRenderGeometry($param, $originX, $originY)
+	{
+		$templateWidth = max(1.0, (float) (!empty($param['template_width_mm']) ? $param['template_width_mm'] : 1.0));
+		$templateHeight = max(1.0, (float) (!empty($param['template_height_mm']) ? $param['template_height_mm'] : 1.0));
+		$scale = min($this->_Width / $templateWidth, $this->_Height / $templateHeight);
+		$renderWidth = $templateWidth * $scale;
+		$renderHeight = $templateHeight * $scale;
+		$offsetX = $originX + max(0, ($this->_Width - $renderWidth) / 2);
+		$offsetY = $originY + max(0, ($this->_Height - $renderHeight) / 2);
+
+		return array(
+			'scale' => $scale,
+			'render_width' => $renderWidth,
+			'render_height' => $renderHeight,
+			'offset_x' => $offsetX,
+			'offset_y' => $offsetY,
+		);
+	}
+
+	/**
+	 * Overlay image blocks using native TCPDF image rendering.
+	 *
+	 * @param TCPDF     $pdf         PDF reference
+	 * @param Translate $outputlangs Output language
+	 * @param array     $param       Template payload
+	 * @param float     $originX     Label origin X
+	 * @param float     $originY     Label origin Y
+	 * @return void
+	 */
+	private function renderTemplateImageOverlay(&$pdf, $outputlangs, $param, $originX, $originY)
+	{
+		if (empty($param['template_blocks']) || !is_array($param['template_blocks'])) {
+			return;
+		}
+
+		$geometry = $this->computeTemplateRenderGeometry($param, $originX, $originY);
+		foreach ($param['template_blocks'] as $block) {
+			if (!is_array($block) || empty($block['type']) || (string) $block['type'] !== 'image') {
+				continue;
+			}
+
+			$this->renderTemplateImageBlock($pdf, $outputlangs, $block, $geometry['offset_x'], $geometry['offset_y'], $geometry['scale']);
 		}
 	}
 

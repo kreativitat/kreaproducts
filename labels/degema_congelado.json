@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "template_code": "degema_normal",
-  "label": "DeGema Etiqueta Normal",
+  "template_code": "degema_congelado",
+  "label": "DeGema Etiqueta Congelado",
   "description": "Two-sided 76x50 mm product label optimized for readability. Front page highlights key batch data and internal code. Back page presents ingredients, allergens, nutrition, and mandatory package symbols.",
   "source": {
     "type": "pdf_extract",
-    "file_name": "DeGema_Etiqueta_Normal.pdf",
+    "file_name": "DeGema_Etiqueta_Congelado.pdf",
     "mapped_on": "2026-03-06"
   },
   "unit": "mm",
@@ -119,7 +119,7 @@
       "type": "textarea",
       "editable": true,
       "rows": 4,
-      "default_value": "No frigorífico conservar entre 0°C e 4°C."
+      "default_value": "No congelador: conservar a -18°C até à data de durabilidade mínima.\nDescongelar 1 dia no frigorífico (0°C a 4°C).\nApós descongelação, conservar entre 0°C e 4°C e consumir em até 3 dias.\nNão voltar a congelar após descongelação."
     },
     {
       "source": "asset.brand_badge",
@@ -380,7 +380,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "source": "label.storage_text",
-          "placeholder": "No congelador: conservar a -18°C até à data de durabilidade mínima.\nDescongelar 1 dia no frigorífico (0°C a 4°C).\nApós descongelação, conservar entre 0°C e 4°C e consumir em até 3 dias.\nNão voltar a congelar após descongelação.",
+          "placeholder": "No frigorífico conservar entre 0°C e 4°C.",
           "x_mm": 1.6,
           "y_mm": 19.0,
           "w_mm": 62.5,
