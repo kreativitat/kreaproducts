@@ -1,6 +1,81 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.20.7] - 2026-03-08
+
+### Changed
+- Updated `admin/about.php` with a feature highlights block for Labels and Auto Dismantle.
+
+## [2.20.6] - 2026-03-08
+
+### Fixed
+- Auto dismantle now records execution lines (`consumed`/`produced`) in `llx_mrp_production` with linked `fk_stock_movement`, so `/mrp/mo_production.php` shows the movements.
+- Auto dismantle stock movements are now posted with `origintype='mo'` for the generated MO, so `/mrp/mo_movements.php` lists them.
+- Added backdated stock recalculation for auto-dismantle MO movements to keep stock history consistency.
+
+## [2.20.5] - 2026-03-08
+
+### Fixed
+- Auto BOM dismantle now registers an MRP disassembly order per source stock movement, so runs appear in `/mrp/mo_list.php`.
+- Added idempotent import-key tracking and origin linking to avoid duplicate auto-dismantle MOs on retriggered movements.
+
+## [2.20.4] - 2026-03-08
+
+### Changed
+- Replaced the Labels-tab refresh button icon with circular two arrows (`fa-sync-alt`).
+
+## [2.20.3] - 2026-03-08
+
+### Changed
+- Moved default-layout save action to the "Modelo de etiqueta" selector row, side-by-side with refresh.
+- Replaced the text save action with an icon-only button (`save`) using tooltip/aria label for "Guardar layout de etiqueta por defeito".
+
+## [2.20.2] - 2026-03-08
+
+### Changed
+- Unified "Modelo de etiqueta" and product default label layout into one selector in Labels tab.
+- Added a single "Save Layout de etiqueta por defeito" action that stores the currently selected template as `options_kreap_default_label_layout`.
+- Labels tab now preselects the saved default template on first load and keeps explicit "Layout padrão" selection stable during refreshes.
+
+## [2.20.1] - 2026-03-08
+
+### Changed
+- Added a save control for product default label layout (`kreap_default_label_layout`) directly in the Labels tab.
+- Labels tab now persists `options_kreap_default_label_layout` through the product extrafields save flow.
+
+## [2.20.0] - 2026-03-08
+
+### Added
+- Added product extrafield `kreap_default_label_layout` to persist the product default label template code for touch-app printing flows.
+- Added recipe line unit metadata (`component_unit`, `component_unit_code`, `component_unit_label`) in `GET production/products/{product_id}/recipe`.
+
+### Changed
+- Production product payloads now expose `default_label_layout` and `array_options.options_kreap_default_label_layout` in category listing endpoints used by KreaProduction.
+- Recipe line API now enriches BOM/association components with unit information resolved from product unit configuration when available.
+
+## [2.19.0] - 2026-03-08
+
+### Added
+- Added `recipe_text` and `product.kreap_recipe` fields to `GET production/products/{product_id}/recipe`, sourced from `llx_product_extrafields.kreap_recipe`.
+
+### Changed
+- Recipe API now delivers both structured component lines and free-text preparation instructions in one payload for touch-app split-layout rendering.
+
+## [2.18.1] - 2026-03-08
+
+### Changed
+- `GET production/products/{product_id}/recipe` now returns `source` metadata (`bom` or `association`) in the response payload.
+
+### Fixed
+- Added recipe fallback to `llx_product_association` when a product has no active BOM and no explicit `bom_id` is requested.
+- Prevented recipe endpoint hard-failure for touch app recipe view on non-BOM products by returning association-based component lines when available.
+
+## [2.18.0] - 2026-03-07
+
+### Added
+- Added `GET production/products/{product_id}/recipe` to return active BOM recipe lines (component ref/label, quantity, position, and stock-change flag) for touch-app recipe preview.
+- Added optional `bom_id` query parameter to force recipe payload from a specific active BOM in scope.
+
 ## [2.17.1] - 2026-03-07
 
 ### Fixed

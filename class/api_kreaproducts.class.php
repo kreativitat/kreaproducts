@@ -163,6 +163,7 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$products = array();
+		$productIds = array();
 		while ($obj = $this->db->fetch_object($resql)) {
 			$defaultBomId = (int) $obj->fk_default_bom;
 			if ($defaultBomId <= 0) {
@@ -179,8 +180,21 @@ class KreaProductsApi extends DolibarrApi
 				'default_bom_id' => $defaultBomId,
 				'bom_count' => (int) $obj->bom_count,
 			);
+			$productIds[] = (int) $obj->rowid;
 		}
 		$this->db->free($resql);
+
+		if (!empty($products)) {
+			$defaultLayouts = $this->loadProductExtrafieldTextMap($productIds, 'kreap_default_label_layout');
+			foreach ($products as &$row) {
+				$layout = (!empty($defaultLayouts[$row['id']]) ? (string) $defaultLayouts[$row['id']] : '');
+				$row['default_label_layout'] = $layout;
+				$row['array_options'] = array(
+					'options_kreap_default_label_layout' => $layout,
+				);
+			}
+			unset($row);
+		}
 
 		return $products;
 	}
@@ -245,6 +259,103 @@ class KreaProductsApi extends DolibarrApi
 			'only_producible' => $onlyProducible,
 			'tree' => $tree,
 			'totals' => $stats,
+		);
+	}
+
+	/**
+	 * Return production recipe for one product.
+	 *
+	 * Priority:
+	 * 1) Active BOM lines (default behavior)
+	 * 2) Product associations fallback when no active BOM exists
+	 *
+	 * @param int $product_id Product id
+	 * @param int $bom_id Optional BOM id override
+	 * @return array
+	 *
+	 * @url GET production/products/{product_id}/recipe
+	 */
+	public function getProductionProductRecipe($product_id, $bom_id = 0)
+	{
+		$this->assertMrpEnabled();
+		$this->assertProductionReadRights();
+
+		$product = $this->fetchProduct((int) $product_id);
+		$recipeText = $this->loadProductRecipeText((int) $product->id);
+		$requestedBomId = (int) $bom_id;
+		$source = 'bom';
+		$bomPayload = array();
+		$lines = array();
+
+		try {
+			$bomId = $this->resolveBomForProduct($product, $requestedBomId);
+
+			$bom = new BOM($this->db);
+			if ($bom->fetch($bomId) <= 0) {
+				throw new RestException(404, 'BOM not found');
+			}
+			if ((int) $bom->fk_product !== (int) $product->id) {
+				throw new RestException(409, 'Resolved BOM does not belong to selected product');
+			}
+			if ((int) $bom->status !== (int) BOM::STATUS_VALIDATED) {
+				throw new RestException(409, 'Resolved BOM is not enabled');
+			}
+			if (!$this->isEntityInScope((int) $bom->entity, $this->getEntityIdList('bom', true))) {
+				throw new RestException(403, 'Resolved BOM is out of current entity scope');
+			}
+
+			$lines = $this->loadRecipeLinesForBom((int) $bom->id);
+			$bomPayload = array(
+				'id' => (int) $bom->id,
+				'ref' => (string) $bom->ref,
+				'label' => (string) $bom->label,
+				'description' => (string) $bom->description,
+				'entity' => (int) $bom->entity,
+				'qty' => (float) price2num($bom->qty, 'MS'),
+			);
+		} catch (RestException $e) {
+			// When no active BOM exists and no explicit BOM was requested, fallback to product associations.
+			$canFallbackToAssociations = (
+				$requestedBomId <= 0
+				&& (int) $e->getCode() === 409
+				&& stripos((string) $e->getMessage(), 'No active BOM found') !== false
+			);
+			if (!$canFallbackToAssociations) {
+				throw $e;
+			}
+
+			$associationLines = $this->loadRecipeLinesFromProductAssociations((int) $product->id);
+			if (empty($associationLines)) {
+				throw new RestException(409, 'No active BOM found for selected product and no product associations are available');
+			}
+
+			$source = 'association';
+			$lines = $associationLines;
+			$bomPayload = array(
+				'id' => 0,
+				'ref' => '',
+				'label' => 'Product associations',
+				'description' => 'Fallback recipe built from product associations',
+				'entity' => (int) $product->entity,
+				'qty' => 1,
+			);
+		}
+
+		return array(
+			'product' => array(
+				'id' => (int) $product->id,
+				'ref' => (string) $product->ref,
+				'label' => (string) $product->label,
+				'kreap_recipe' => (string) $recipeText,
+			),
+			'recipe_text' => (string) $recipeText,
+			'bom' => $bomPayload,
+			'source' => $source,
+			'lines' => $lines,
+			'totals' => array(
+				'line_count' => count($lines),
+				'source' => $source,
+			),
 		);
 	}
 
@@ -1106,6 +1217,7 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$productsByCategory = array();
+		$productIds = array();
 		while ($obj = $this->db->fetch_object($resql)) {
 			$categoryId = (int) $obj->category_id;
 			$defaultBomId = (int) $obj->fk_default_bom;
@@ -1127,10 +1239,397 @@ class KreaProductsApi extends DolibarrApi
 				'enabled_bom_count' => (int) $obj->enabled_bom_count,
 				'has_enabled_bom' => ((int) $obj->enabled_bom_count > 0 ? 1 : 0),
 			);
+			$productIds[] = (int) $obj->rowid;
 		}
 		$this->db->free($resql);
 
+		if (!empty($productsByCategory)) {
+			$defaultLayouts = $this->loadProductExtrafieldTextMap($productIds, 'kreap_default_label_layout');
+			foreach ($productsByCategory as &$rows) {
+				if (!is_array($rows)) {
+					continue;
+				}
+				foreach ($rows as &$row) {
+					if (!is_array($row) || empty($row['id'])) {
+						continue;
+					}
+					$layout = (!empty($defaultLayouts[(int) $row['id']]) ? (string) $defaultLayouts[(int) $row['id']] : '');
+					$row['default_label_layout'] = $layout;
+					$row['array_options'] = array(
+						'options_kreap_default_label_layout' => $layout,
+					);
+				}
+				unset($row);
+			}
+			unset($rows);
+		}
+
 		return $productsByCategory;
+	}
+
+	/**
+	 * Load BOM recipe lines for one BOM id.
+	 *
+	 * @param int $bomId BOM id
+	 * @return array<int,array<string,mixed>>
+	 */
+	protected function loadRecipeLinesForBom($bomId)
+	{
+		$sql = "SELECT bl.rowid AS line_id, bl.position, bl.qty, bl.description AS line_description,";
+		$sql .= " bl.disable_stock_change, bl.fk_bom_child AS child_bom_id,";
+		$sql .= " p.rowid AS component_product_id, p.ref AS component_ref, p.label AS component_label";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "bom_bomline AS bl";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product";
+		$sql .= " WHERE bl.fk_bom = " . ((int) $bomId);
+		$sql .= " AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))";
+		$sql .= " ORDER BY bl.position ASC, bl.rowid ASC";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading BOM recipe lines: ' . $this->db->lasterror());
+		}
+
+		$lines = array();
+		$componentProductIds = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$lineDescription = trim((string) $obj->line_description);
+			$componentLabel = trim((string) $obj->component_label);
+			if ($componentLabel === '' && $lineDescription !== '') {
+				$componentLabel = $lineDescription;
+			}
+			$componentProductId = (int) $obj->component_product_id;
+
+			$lines[] = array(
+				'line_id' => (int) $obj->line_id,
+				'position' => (int) $obj->position,
+				'qty' => (float) price2num($obj->qty, 'MS'),
+				'component_product_id' => $componentProductId,
+				'component_ref' => (string) $obj->component_ref,
+				'component_label' => (string) $componentLabel,
+				'line_description' => (string) $lineDescription,
+				'disable_stock_change' => (!empty($obj->disable_stock_change) ? 1 : 0),
+				'child_bom_id' => (int) $obj->child_bom_id,
+				'component_unit' => '',
+				'component_unit_code' => '',
+				'component_unit_label' => '',
+			);
+			if ($componentProductId > 0) {
+				$componentProductIds[$componentProductId] = $componentProductId;
+			}
+		}
+		$this->db->free($resql);
+
+		$unitsByProductId = $this->loadProductUnitMap(array_values($componentProductIds));
+		if (!empty($unitsByProductId)) {
+			foreach ($lines as &$line) {
+				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
+				if ($productId <= 0 || empty($unitsByProductId[$productId])) {
+					continue;
+				}
+
+				$unit = $unitsByProductId[$productId];
+				$line['component_unit'] = (string) (!empty($unit['short']) ? $unit['short'] : '');
+				$line['component_unit_code'] = (string) (!empty($unit['code']) ? $unit['code'] : '');
+				$line['component_unit_label'] = (string) (!empty($unit['label']) ? $unit['label'] : '');
+			}
+			unset($line);
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Load recipe-like lines from product associations for one parent product id.
+	 *
+	 * @param int $productId Parent product id
+	 * @return array<int,array<string,mixed>>
+	 */
+	protected function loadRecipeLinesFromProductAssociations($productId)
+	{
+		$sql = "SELECT pa.rowid AS line_id, pa.rang AS position, pa.qty, pa.incdec,";
+		$sql .= " p.rowid AS component_product_id, p.ref AS component_ref, p.label AS component_label";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = pa.fk_product_fils";
+		$sql .= " WHERE pa.fk_product_pere = " . ((int) $productId);
+		$sql .= " AND pa.fk_product_fils <> " . ((int) $productId);
+		$sql .= " AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))";
+		$sql .= " ORDER BY pa.rang ASC, pa.rowid ASC";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading association recipe lines: ' . $this->db->lasterror());
+		}
+
+		$lines = array();
+		$componentProductIds = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$incdec = (int) $obj->incdec;
+			$componentLabel = trim((string) $obj->component_label);
+			$componentProductId = (int) $obj->component_product_id;
+
+			$lines[] = array(
+				'line_id' => (int) $obj->line_id,
+				'position' => (int) $obj->position,
+				'qty' => (float) price2num($obj->qty, 'MS'),
+				'component_product_id' => $componentProductId,
+				'component_ref' => (string) $obj->component_ref,
+				'component_label' => (string) $componentLabel,
+				'line_description' => '',
+				'disable_stock_change' => ($incdec === 1 ? 0 : 1),
+				'child_bom_id' => 0,
+				'source' => 'association',
+				'incdec' => $incdec,
+				'component_unit' => '',
+				'component_unit_code' => '',
+				'component_unit_label' => '',
+			);
+			if ($componentProductId > 0) {
+				$componentProductIds[$componentProductId] = $componentProductId;
+			}
+		}
+		$this->db->free($resql);
+
+		$unitsByProductId = $this->loadProductUnitMap(array_values($componentProductIds));
+		if (!empty($unitsByProductId)) {
+			foreach ($lines as &$line) {
+				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
+				if ($productId <= 0 || empty($unitsByProductId[$productId])) {
+					continue;
+				}
+
+				$unit = $unitsByProductId[$productId];
+				$line['component_unit'] = (string) (!empty($unit['short']) ? $unit['short'] : '');
+				$line['component_unit_code'] = (string) (!empty($unit['code']) ? $unit['code'] : '');
+				$line['component_unit_label'] = (string) (!empty($unit['label']) ? $unit['label'] : '');
+			}
+			unset($line);
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Load product unit metadata for a set of product ids.
+	 *
+	 * @param array<int> $productIds Product ids
+	 * @return array<int,array<string,string>>
+	 */
+	protected function loadProductUnitMap($productIds)
+	{
+		$cleanIds = array();
+		foreach ((array) $productIds as $id) {
+			if (!is_numeric($id)) {
+				continue;
+			}
+			$id = (int) $id;
+			if ($id > 0) {
+				$cleanIds[$id] = $id;
+			}
+		}
+		if (empty($cleanIds)) {
+			return array();
+		}
+
+		$productTable = MAIN_DB_PREFIX . 'product';
+		$unitsTable = MAIN_DB_PREFIX . 'c_units';
+		$productHasUnit = $this->tableColumnExists($productTable, 'fk_unit');
+		$unitsHasRowid = $this->tableColumnExists($unitsTable, 'rowid');
+		if (!$productHasUnit || !$unitsHasRowid) {
+			return array();
+		}
+
+		$unitsHasCode = $this->tableColumnExists($unitsTable, 'code');
+		$unitsHasShortLabel = $this->tableColumnExists($unitsTable, 'short_label');
+		$unitsHasLabel = $this->tableColumnExists($unitsTable, 'label');
+
+		$sql = "SELECT p.rowid AS product_id";
+		$sql .= ($unitsHasCode ? ", u.code AS unit_code" : ", '' AS unit_code");
+		$sql .= ($unitsHasShortLabel ? ", u.short_label AS unit_short" : ", '' AS unit_short");
+		$sql .= ($unitsHasLabel ? ", u.label AS unit_label" : ", '' AS unit_label");
+		$sql .= " FROM " . $productTable . " AS p";
+		$sql .= " LEFT JOIN " . $unitsTable . " AS u ON u.rowid = p.fk_unit";
+		$sql .= " WHERE p.rowid IN (" . implode(',', $cleanIds) . ")";
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog("KreaProductsApi::loadProductUnitMap SQL error: " . $this->db->lasterror(), LOG_WARNING);
+			return array();
+		}
+
+		$unitsByProduct = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$productId = (int) $obj->product_id;
+			if ($productId <= 0) {
+				continue;
+			}
+
+			$unitCode = trim((string) $obj->unit_code);
+			$unitShort = trim((string) $obj->unit_short);
+			$unitLabel = trim((string) $obj->unit_label);
+
+			if ($unitShort === '') {
+				$unitShort = ($unitCode !== '' ? $unitCode : $unitLabel);
+			}
+			if ($unitLabel === '') {
+				$unitLabel = ($unitShort !== '' ? $unitShort : $unitCode);
+			}
+			if ($unitCode === '' && $unitShort !== '') {
+				$unitCode = $unitShort;
+			}
+
+			$unitsByProduct[$productId] = array(
+				'code' => $unitCode,
+				'short' => $unitShort,
+				'label' => $unitLabel,
+			);
+		}
+		$this->db->free($resql);
+
+		return $unitsByProduct;
+	}
+
+	/**
+	 * Load one product extrafield text value map by product id.
+	 *
+	 * @param array<int> $productIds Product ids
+	 * @param string $fieldName Extra field column name
+	 * @return array<int,string>
+	 */
+	protected function loadProductExtrafieldTextMap($productIds, $fieldName)
+	{
+		$fieldName = trim((string) $fieldName);
+		if ($fieldName === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $fieldName)) {
+			return array();
+		}
+
+		$cleanIds = array();
+		foreach ((array) $productIds as $id) {
+			if (!is_numeric($id)) {
+				continue;
+			}
+			$id = (int) $id;
+			if ($id > 0) {
+				$cleanIds[$id] = $id;
+			}
+		}
+		if (empty($cleanIds)) {
+			return array();
+		}
+
+		$table = MAIN_DB_PREFIX . 'product_extrafields';
+		if (!$this->tableColumnExists($table, $fieldName)) {
+			return array();
+		}
+		$hasEntityColumn = $this->tableColumnExists($table, 'entity');
+
+		$sql = "SELECT fk_object, " . $fieldName;
+		if ($hasEntityColumn) {
+			$sql .= ", entity";
+		}
+		$sql .= " FROM " . $table;
+		$sql .= " WHERE fk_object IN (" . implode(',', $cleanIds) . ")";
+		if ($hasEntityColumn) {
+			$sql .= " AND entity IN (0," . getEntity('product') . ")";
+		}
+		$sql .= " ORDER BY fk_object ASC";
+		if ($hasEntityColumn) {
+			$sql .= ", entity DESC";
+		}
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog("KreaProductsApi::loadProductExtrafieldTextMap SQL error: " . $this->db->lasterror(), LOG_WARNING);
+			return array();
+		}
+
+		$values = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$productId = (int) $obj->fk_object;
+			if ($productId <= 0 || isset($values[$productId])) {
+				continue;
+			}
+
+			$raw = '';
+			if (isset($obj->{$fieldName})) {
+				$raw = trim((string) $obj->{$fieldName});
+			}
+			if ($raw === '') {
+				continue;
+			}
+
+			$values[$productId] = $raw;
+		}
+		$this->db->free($resql);
+
+		return $values;
+	}
+
+	/**
+	 * Load `kreap_recipe` from product extrafields.
+	 *
+	 * @param int $productId Product id
+	 * @return string
+	 */
+	protected function loadProductRecipeText($productId)
+	{
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return '';
+		}
+
+		$map = $this->loadProductExtrafieldTextMap(array($productId), 'kreap_recipe');
+		if (empty($map[$productId])) {
+			return '';
+		}
+
+		return trim((string) $map[$productId]);
+	}
+
+	/**
+	 * Check whether one table has a given column.
+	 *
+	 * @param string $tableName Full database table name
+	 * @param string $columnName Column name
+	 * @return bool
+	 */
+	protected function tableColumnExists($tableName, $columnName)
+	{
+		static $cache = array();
+
+		$tableName = trim((string) $tableName);
+		$columnName = trim((string) $columnName);
+		if ($tableName === '' || $columnName === '') {
+			return false;
+		}
+
+		$key = $tableName . '|' . $columnName;
+		if (array_key_exists($key, $cache)) {
+			return !empty($cache[$key]);
+		}
+
+		$exists = false;
+		$desc = $this->db->DDLDescTable($tableName);
+		if ($desc) {
+			while ($obj = $this->db->fetch_object($desc)) {
+				$field = '';
+				if (!empty($obj->Field)) {
+					$field = (string) $obj->Field;
+				} elseif (!empty($obj->field)) {
+					$field = (string) $obj->field;
+				} elseif (!empty($obj->name)) {
+					$field = (string) $obj->name;
+				}
+				if ($field === $columnName) {
+					$exists = true;
+					break;
+				}
+			}
+			$this->db->free($desc);
+		}
+
+		$cache[$key] = ($exists ? 1 : 0);
+		return $exists;
 	}
 
 	/**

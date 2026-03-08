@@ -333,6 +333,9 @@ function kreaProductsMergeTemplateUploadedFiles($entityId, $templateInputValues,
 $id = GETPOSTINT('id');
 $ref = GETPOST('ref', 'alpha');
 $action = GETPOST('action', 'aZ09');
+if (GETPOSTINT('save_default_label_layout') > 0) {
+	$action = 'save_default_label_layout';
+}
 $productListUrl = DOL_URL_ROOT . '/product/list.php?restore_lastsearch_values=1';
 
 if ($id <= 0 && $ref === '') {
@@ -371,6 +374,7 @@ $form = new Form($db);
 $formfile = new FormFile($db);
 $currentEntityId = (int) $conf->entity;
 $templateAssetOptions = KreaProductsLabelService::listTemplateAssetReferences($currentEntityId);
+$object->fetch_optionals();
 
 $formatOptions = KreaProductsLabelService::getFormatOptions($db);
 $formatDetails = KreaProductsLabelService::getFormatDetails($db);
@@ -387,8 +391,19 @@ foreach ($labelTemplates as $templateCode => $templateMeta) {
 	$optionLabel = (!empty($templateMeta['filename']) ? (string) $templateMeta['filename'] : ((string) $templateCode . '.json'));
 	$templateOptions[$templateCode] = $optionLabel;
 }
+$currentDefaultLabelLayout = '';
+if (!empty($object->array_options['options_kreap_default_label_layout'])) {
+	$currentDefaultLabelLayout = trim((string) $object->array_options['options_kreap_default_label_layout']);
+}
+$currentDefaultLabelLayoutIsAvailable = ($currentDefaultLabelLayout !== '' && !empty($labelTemplates[$currentDefaultLabelLayout]));
+if ($currentDefaultLabelLayout !== '' && empty($templateOptions[$currentDefaultLabelLayout])) {
+	$templateOptions[$currentDefaultLabelLayout] = $currentDefaultLabelLayout;
+}
 
 $selectedTemplate = GETPOST('label_template', 'alphanohtml');
+if ($selectedTemplate === '' && !GETPOSTISSET('label_template') && $currentDefaultLabelLayoutIsAvailable) {
+	$selectedTemplate = $currentDefaultLabelLayout;
+}
 if ($selectedTemplate !== '' && empty($templateOptions[$selectedTemplate])) {
 	$selectedTemplate = '';
 }
@@ -471,9 +486,43 @@ $templateDir = KreaProductsLabelService::getTemplateDir($currentEntityId);
 $templateAssetModuleSubdir = KreaProductsLabelService::getTemplateAssetModuleSubdir($currentEntityId);
 $templateAssetDir = KreaProductsLabelService::getTemplateAssetDir($currentEntityId);
 $urlSource = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
-$urlSourceWithTemplate = $urlSource . ($selectedTemplate !== '' ? '&label_template=' . urlencode($selectedTemplate) : '');
+$selectedTemplateUrlParam = '&label_template=' . urlencode((string) $selectedTemplate);
+$urlSourceWithTemplate = $urlSource . $selectedTemplateUrlParam;
 
-if ($action === 'generate_labels') {
+if ($action === 'save_default_label_layout') {
+	if (!$permissiontowrite) {
+		accessforbidden();
+	}
+
+	$defaultLabelLayoutToSave = GETPOST('label_template', 'alphanohtml');
+	if ($defaultLabelLayoutToSave !== '' && empty($templateOptions[$defaultLabelLayoutToSave])) {
+		setEventMessages('', array($langs->trans('ErrorBadValueForParameter', 'label_template')), 'errors');
+	} else {
+		require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+		$extrafields = new ExtraFields($db);
+		$extrafields->fetch_name_optionals_label($object->table_element);
+		$object->fetch_optionals($object->id, $extrafields);
+		$object->array_options['options_kreap_default_label_layout'] = ($defaultLabelLayoutToSave !== '' ? $defaultLabelLayoutToSave : null);
+		$saveResult = $object->insertExtraFields();
+		if ($saveResult < 0) {
+			$saveErrors = (!empty($object->errors) && is_array($object->errors) ? $object->errors : array());
+			if (empty($saveErrors) && !empty($object->error)) {
+				$saveErrors[] = $object->error;
+			}
+			if (empty($saveErrors)) {
+				$saveErrors[] = $langs->trans('Error');
+			}
+			setEventMessages('', $saveErrors, 'errors');
+		} else {
+			setEventMessages($langs->trans('RecordSaved'), null, 'mesgs');
+		}
+	}
+
+	$saveDefaultRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&label_template=' . urlencode((string) $defaultLabelLayoutToSave);
+	$saveDefaultRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
+	header('Location: ' . $saveDefaultRedirectUrl);
+	exit;
+} elseif ($action === 'generate_labels') {
 	if (!$permissiontowrite) {
 		accessforbidden();
 	}
@@ -520,19 +569,16 @@ if ($action === 'generate_labels') {
 		if (!empty($result['error'])) {
 			setEventMessages('', array($result['error']), 'errors');
 		} else {
-			if (!$isStandardMode && $selectedTemplateReadOnly) {
-				setEventMessages($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_COPY_CREATED', $selectedTemplate), null, 'mesgs');
+				if (!$isStandardMode && $selectedTemplateReadOnly) {
+					setEventMessages($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_COPY_CREATED', $selectedTemplate), null, 'mesgs');
+				}
+				setEventMessages($langs->trans('KREAPRODUCTS_LABELS_GENERATED', $result['filename']), null, 'mesgs');
+				$successRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . $selectedTemplateUrlParam;
+				$successRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
+				header('Location: ' . $successRedirectUrl);
+				exit;
 			}
-			setEventMessages($langs->trans('KREAPRODUCTS_LABELS_GENERATED', $result['filename']), null, 'mesgs');
-			$successRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
-			if (!$isStandardMode && $selectedTemplate !== '') {
-				$successRedirectUrl .= '&label_template=' . urlencode($selectedTemplate);
-			}
-			$successRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
-			header('Location: ' . $successRedirectUrl);
-			exit;
 		}
-	}
 } elseif ($action === 'save_template_values') {
 	if (!$permissiontowrite) {
 		accessforbidden();
@@ -564,10 +610,7 @@ if ($action === 'generate_labels') {
 		}
 	}
 
-	$refreshRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
-	if ($selectedTemplate !== '') {
-		$refreshRedirectUrl .= '&label_template=' . urlencode($selectedTemplate);
-	}
+	$refreshRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . $selectedTemplateUrlParam;
 	$refreshRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
 
 	header('Location: ' . $refreshRedirectUrl);
@@ -611,10 +654,7 @@ if ($action === 'generate_labels') {
 		setEventMessages($langs->trans('KREAPRODUCTS_LABELS_ASSET_UPLOAD_OK', $uploadResult['asset_reference']), null, 'mesgs');
 	}
 
-	$uploadAssetRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
-	if ($selectedTemplate !== '') {
-		$uploadAssetRedirectUrl .= '&label_template=' . urlencode($selectedTemplate);
-	}
+	$uploadAssetRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . $selectedTemplateUrlParam;
 	$uploadAssetRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
 	header('Location: ' . $uploadAssetRedirectUrl);
 	exit;
@@ -636,10 +676,7 @@ if ($action === 'generate_labels') {
 		setEventMessages('', array($langs->trans('ErrorFailToDeleteFile', $file)), 'errors');
 	}
 
-	$removeRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
-	if ($selectedTemplate !== '') {
-		$removeRedirectUrl .= '&label_template=' . urlencode($selectedTemplate);
-	}
+	$removeRedirectUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . $selectedTemplateUrlParam;
 	$removeRedirectUrl .= '&krea_refresh=' . urlencode((string) dol_now());
 	header('Location: ' . $removeRedirectUrl);
 	exit;
@@ -653,6 +690,11 @@ $previewName = (!$isStandardMode ? (!empty($selectedTemplateViewer['label']) ? $
 $previewDescription = (!$isStandardMode ? (!empty($selectedTemplateViewer['description']) ? $selectedTemplateViewer['description'] : '') : $langs->trans('KREAPRODUCTS_LABELS_STANDARD_PREVIEW_DESC'));
 $previewSizeText = (!$isStandardMode ? (!empty($selectedTemplateViewer['size_text']) ? $selectedTemplateViewer['size_text'] : '') : $selectedFormatSummary);
 $previewEmptyMessage = (!$isStandardMode ? $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_NONE') : $langs->trans('KREAPRODUCTS_LABELS_STANDARD_PREVIEW_UNAVAILABLE'));
+$saveDefaultLayoutTitle = $langs->trans('Save') . ' ' . $langs->trans('kreap_default_label_layout');
+$currentDefaultLabelLayoutLabel = $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_STANDARD');
+if ($currentDefaultLabelLayout !== '') {
+	$currentDefaultLabelLayoutLabel = (!empty($templateOptions[$currentDefaultLabelLayout]) ? (string) $templateOptions[$currentDefaultLabelLayout] : $currentDefaultLabelLayout);
+}
 
 llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-product-labels');
 
@@ -708,8 +750,13 @@ print '<div class="kreaTemplateFieldHeader"><label for="label_template">' . dol_
 print '<br>';
 print '<div class="kreaLabelTemplateSelectorWrap">';
 print $form->selectarray('label_template', $templateOptions, $selectedTemplate, 0, 0, 0, '', 0, 0, 0, '', 'minwidth300');
+if ($permissiontowrite) {
+	print '<button type="submit" id="krea-label-save-default-layout" name="save_default_label_layout" value="1" class="kreaLabelRefreshButton classfortooltip" title="' . dol_escape_htmltag($saveDefaultLayoutTitle) . '" aria-label="' . dol_escape_htmltag($saveDefaultLayoutTitle) . '">';
+	print '<span class="fas fa-save" aria-hidden="true"></span>';
+	print '</button>';
+}
 print '<button type="button" id="krea-label-refresh-data" class="kreaLabelRefreshButton classfortooltip" title="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA_HELP')) . '" aria-label="' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA')) . '">';
-print img_picto($langs->trans('KREAPRODUCTS_LABELS_REFRESH_DATA'), 'refresh');
+print '<span class="fas fa-sync-alt" aria-hidden="true"></span>';
 print '</button>';
 print '</div>';
 if (!$hasLabelTemplates) {
@@ -720,6 +767,7 @@ if (!$hasLabelTemplates) {
 if (!$isStandardMode && $selectedTemplateReadOnly) {
 	print '<div class="opacitymedium small">' . dol_escape_htmltag($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_READONLY_HELP')) . '</div>';
 }
+print '<div class="opacitymedium small" style="margin-top:6px;">' . dol_escape_htmltag($langs->trans('kreap_default_label_layout')) . ': ' . dol_escape_htmltag($currentDefaultLabelLayoutLabel) . '</div>';
 print '</div>';
 print '</td></tr>';
 
@@ -907,8 +955,8 @@ if (!empty($templateOptions) || !empty($formatDetails)) {
 	print '  if (!productId || productId < 1) { productId = 0; }';
 	print '  params.push("id=" + encodeURIComponent(String(productId)));';
 	print '  var selectedTemplateCode = selector ? String(selector.value || "") : "";';
+	print '  params.push("label_template=" + encodeURIComponent(selectedTemplateCode));';
 	print '  if (selectedTemplateCode !== "") {';
-	print '    params.push("label_template=" + encodeURIComponent(selectedTemplateCode));';
 	print '    if (templateDescriptionInput) { params.push("label_template_description=" + encodeURIComponent(String(templateDescriptionInput.value || ""))); }';
 	print '  } else {';
 	print '    if (formatSelector && formatSelector.value) { params.push("label_format=" + encodeURIComponent(String(formatSelector.value))); }';

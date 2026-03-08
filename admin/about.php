@@ -208,6 +208,14 @@ print '<tr><td class="titlefield">' . $langs->trans('KreapAboutWebsiteLabel') . 
 print '</table>';
 
 print '<div style="margin-top: 14px;">';
+print '<div class="bold" style="margin-bottom: 6px;">' . $langs->trans('KreapAboutHighlightsLabel') . '</div>';
+print '<table class="noborder centpercent">';
+print '<tr><td class="titlefield" style="width: 180px;">' . $langs->trans('KreapAboutFeatureLabelsTitle') . '</td><td>' . $langs->trans('KreapAboutFeatureLabelsText') . '</td></tr>';
+print '<tr><td class="titlefield">' . $langs->trans('KreapAboutFeatureDismantleTitle') . '</td><td>' . $langs->trans('KreapAboutFeatureDismantleText') . '</td></tr>';
+print '</table>';
+print '</div>';
+
+print '<div style="margin-top: 14px;">';
 print '<div class="bold" style="margin-bottom: 6px;">' . $langs->trans('KreapAboutChangeLogLabel') . '</div>';
 if (!empty($latestRelease['version'])) {
 	print '<table class="noborder centpercent">';

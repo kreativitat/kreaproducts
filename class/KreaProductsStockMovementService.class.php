@@ -61,6 +61,11 @@ class KreaProductsStockMovementService
 			}
 		}
 
+		// Auto-dismantle generated MO movements can be backdated too; keep reel recalculation consistent.
+		if ($move->origintype === 'mo' && $skipDismantle && $applyMovementDates) {
+			$this->recalculateAfterSupplierInvoice($move, $db);
+		}
+
 		return 1;
 	}
 
@@ -70,8 +75,8 @@ class KreaProductsStockMovementService
 			return false;
 		}
 
-		$label = (string) $move->label;
-		return (strpos($label, 'Consume for MO') !== false || strpos($label, 'Produce for MO') !== false);
+		$label = strtolower((string) $move->label);
+		return (strpos($label, 'consume for mo') !== false || strpos($label, 'produce for mo') !== false);
 	}
 
 	protected function shiftSupplierInvoiceMoveToConfiguredTime($move, $db, $conf)
@@ -232,7 +237,8 @@ class KreaProductsStockMovementService
 			$move->origin_id,
 			$move->origintype,
 			dol_stringtotime($move->datem),
-			$user
+			$user,
+			(int) $move->id
 		);
 	}
 

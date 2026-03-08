@@ -100,7 +100,7 @@ class ProductDismantleController extends CommonObject
         return false;
     }
 
-    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null, $userContext = null)
+    public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null, $userContext = null, $originMovementId = 0)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
 
@@ -179,6 +179,31 @@ class ProductDismantleController extends CommonObject
         }
         dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
 
+        // Create or reuse MO so generated stock movements are linked to MRP and visible on movement tabs.
+        $registeredMoId = $this->registerDismantleMo(
+            (int) $bomId,
+            $bomData,
+            (float) $qtyMovement,
+            (int) $warehouseId,
+            (string) $originRef,
+            (int) $originId,
+            (string) $originType,
+            $movementDate,
+            $user,
+            (int) $originMovementId
+        );
+        $plannedLineMap = [];
+        if ($registeredMoId > 0) {
+            if ($this->hasMoExecutionLines((int) $registeredMoId)) {
+                dol_syslog(__METHOD__ . " movement already processed for MO #" . (int) $registeredMoId, LOG_DEBUG);
+                return 0;
+            }
+            $plannedLineMap = $this->buildMoPlannedLineMap((int) $registeredMoId);
+        }
+
+        $movementRows = [];
+        $movementPosition = 0;
+
         // Initialize stock movement handler
         $stockmove = new MouvementStock($this->db);
 
@@ -226,8 +251,12 @@ class ProductDismantleController extends CommonObject
                     $this->persistCostPrice($product, $movementPrice, $user, $arrayname);
                 }
 
-                // Ensure origin is set before movement so fk_origin/origintype are saved.
-                $stockmove->setOrigin($originType, $originId);
+                // Link generated stock movements to MO so /mrp/mo_movements.php can load them.
+                if ((int) $registeredMoId > 0) {
+                    $stockmove->setOrigin('mo', (int) $registeredMoId);
+                } else {
+                    $stockmove->setOrigin($originType, $originId);
+                }
 
                 // Perform the correct stock movement:
                 if ($arrayname === 'arraytoconsume') {
@@ -292,13 +321,35 @@ class ProductDismantleController extends CommonObject
                     $error++;
                     break;
                 }
+
+                if ((int) $registeredMoId > 0) {
+                    $movementRows[] = [
+                        'planned_role' => ($arrayname === 'arraytoconsume' ? 'toconsume' : 'toproduce'),
+                        'execution_role' => ($arrayname === 'arraytoconsume' ? 'consumed' : 'produced'),
+                        'product_id' => (int) $item['objectid'],
+                        'qty' => (float) $rawQty,
+                        'fk_warehouse' => (int) $item['fk_warehouse'],
+                        'fk_stock_movement' => (int) $result,
+                        'position' => (int) $movementPosition,
+                    ];
+                    $movementPosition++;
+                }
             }
-            if ($error) break;
+            if ($error) {
+                break;
+            }
         }
 
         if ($error) {
             dol_syslog("Errors encountered, rolling back.", LOG_ERR);
             return -1;
+        }
+
+        if ((int) $registeredMoId > 0 && !empty($movementRows)) {
+            $lineResult = $this->recordMoExecutionLines((int) $registeredMoId, $movementRows, $plannedLineMap, $user);
+            if ($lineResult) {
+                $this->setMoProducedStatus((int) $registeredMoId);
+            }
         }
 
         if (is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
@@ -307,8 +358,243 @@ class ProductDismantleController extends CommonObject
             dol_syslog("Skipping produced cost price update (missing base cost price)", LOG_DEBUG);
         }
 
-        dol_syslog("MO processed successfully, transaction committed.", LOG_DEBUG);
+        dol_syslog("Dismantle processed successfully.", LOG_DEBUG);
         return 0;
+    }
+
+    private function registerDismantleMo($bomId, array $bomData, $qtyMovement, $warehouseId, $originRef, $originId, $originType, $movementDate, $user, $originMovementId = 0)
+    {
+        if (!isModEnabled('mrp')) {
+            return 0;
+        }
+        if (empty($bomData['fk_product'])) {
+            return 0;
+        }
+        if (!is_object($user) || empty($user->id)) {
+            dol_syslog(__METHOD__ . " unable to register MO (missing user context)", LOG_WARNING);
+            return 0;
+        }
+
+        $qtyToDismantle = abs((float) $qtyMovement);
+        if ($qtyToDismantle <= 0) {
+            return 0;
+        }
+
+        $importKey = $this->buildDismantleImportKey((int) $originMovementId, (string) $originType, (int) $originId, (int) $bomId, $movementDate);
+        $existingMoId = $this->findMoIdByImportKey($importKey);
+        if ($existingMoId > 0) {
+            $existingMo = new Mo($this->db);
+            if ($existingMo->fetch((int) $existingMoId) > 0 && (int) $existingMo->status === (int) Mo::STATUS_DRAFT) {
+                $validateResult = $existingMo->validate($user);
+                if ($validateResult <= 0) {
+                    dol_syslog(__METHOD__ . " failed to validate existing MO #" . (int) $existingMoId . " error=" . $existingMo->error, LOG_WARNING);
+                }
+            }
+            return $existingMoId;
+        }
+
+        $mo = new Mo($this->db);
+        $mo->ref = '(PROV)';
+        $mo->fk_product = (int) $bomData['fk_product'];
+        $mo->fk_bom = (int) $bomId;
+        $mo->qty = $qtyToDismantle;
+        $mo->fk_warehouse = ((int) $warehouseId > 0 ? (int) $warehouseId : 0);
+        if (!empty($movementDate)) {
+            $mo->date_start_planned = $movementDate;
+            $mo->date_end_planned = $movementDate;
+        }
+
+        $prefix = ((float) $qtyMovement >= 0 ? 'Auto dismantle' : 'Auto reverse dismantle');
+        $originRef = trim((string) preg_replace('/\s+/', ' ', (string) $originRef));
+        $mo->label = $this->truncateMoLabel($prefix . (!empty($originRef) ? ' - ' . $originRef : ''));
+        $mo->note_private = $prefix . ' from ' . (string) $originType . ' #' . ((int) $originId)
+            . ((int) $originMovementId > 0 ? ', movement #' . ((int) $originMovementId) : '');
+        $mo->import_key = $importKey;
+
+        $moId = $mo->create($user);
+        if ($moId <= 0) {
+            dol_syslog(__METHOD__ . " failed to create MO for bomId=" . (int) $bomId . " error=" . $mo->error, LOG_WARNING);
+            return 0;
+        }
+
+        if ((int) $originId > 0 && !empty($originType)) {
+            $mo->add_object_linked((string) $originType, (int) $originId, $user, 1);
+        }
+
+        if ($mo->fetch($moId) > 0 && (int) $mo->status === (int) Mo::STATUS_DRAFT) {
+            $validateResult = $mo->validate($user);
+            if ($validateResult <= 0) {
+                dol_syslog(__METHOD__ . " failed to validate MO #" . (int) $moId . " error=" . $mo->error, LOG_WARNING);
+                return (int) $moId;
+            }
+        }
+
+        return (int) $moId;
+    }
+
+    private function hasMoExecutionLines($moId)
+    {
+        $moId = (int) $moId;
+        if ($moId <= 0) {
+            return false;
+        }
+
+        $sql = "SELECT COUNT(rowid) AS nb"
+            . " FROM " . MAIN_DB_PREFIX . "mrp_production"
+            . " WHERE fk_mo = " . $moId
+            . " AND role IN ('consumed','produced')";
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog(__METHOD__ . " failed to count execution lines: " . $this->db->lasterror(), LOG_WARNING);
+            return false;
+        }
+
+        $obj = $this->db->fetch_object($resql);
+        return (is_object($obj) && ((int) $obj->nb > 0));
+    }
+
+    private function buildMoPlannedLineMap($moId)
+    {
+        $map = [];
+        $mo = new Mo($this->db);
+        if ($mo->fetch((int) $moId) <= 0) {
+            return $map;
+        }
+
+        foreach ((array) $mo->lines as $line) {
+            $plannedRole = (string) ($line->role ?? '');
+            $productId = (int) ($line->fk_product ?? 0);
+            if (($plannedRole !== 'toconsume' && $plannedRole !== 'toproduce') || $productId <= 0) {
+                continue;
+            }
+            if (!isset($map[$plannedRole])) {
+                $map[$plannedRole] = [];
+            }
+            if (!isset($map[$plannedRole][$productId])) {
+                $map[$plannedRole][$productId] = [];
+            }
+            $map[$plannedRole][$productId][] = (int) $line->id;
+        }
+
+        return $map;
+    }
+
+    private function popPlannedLineId(array &$plannedLineMap, $plannedRole, $productId)
+    {
+        $plannedRole = (string) $plannedRole;
+        $productId = (int) $productId;
+        if ($productId <= 0 || empty($plannedLineMap[$plannedRole][$productId])) {
+            return 0;
+        }
+
+        $lineId = array_shift($plannedLineMap[$plannedRole][$productId]);
+        return (int) $lineId;
+    }
+
+    private function recordMoExecutionLines($moId, array $movementRows, array $plannedLineMap, $user)
+    {
+        $moId = (int) $moId;
+        if ($moId <= 0 || empty($movementRows)) {
+            return false;
+        }
+        if (!is_object($user) || empty($user->id)) {
+            dol_syslog(__METHOD__ . " unable to save execution lines (missing user context)", LOG_WARNING);
+            return false;
+        }
+
+        foreach ($movementRows as $row) {
+            $executionLine = new MoLine($this->db);
+            $executionLine->fk_mo = $moId;
+            $executionLine->position = (int) ($row['position'] ?? 0);
+            $executionLine->fk_product = (int) ($row['product_id'] ?? 0);
+            $executionLine->fk_warehouse = ((int) ($row['fk_warehouse'] ?? 0) > 0 ? (int) $row['fk_warehouse'] : null);
+            $executionLine->qty = (float) ($row['qty'] ?? 0);
+            $executionLine->batch = '';
+            $executionLine->role = (string) ($row['execution_role'] ?? '');
+            $executionLine->fk_mrp_production = $this->popPlannedLineId($plannedLineMap, (string) ($row['planned_role'] ?? ''), (int) ($row['product_id'] ?? 0));
+            $executionLine->fk_stock_movement = ((int) ($row['fk_stock_movement'] ?? 0) > 0 ? (int) $row['fk_stock_movement'] : null);
+            $executionLine->fk_user_creat = (int) $user->id;
+
+            $createResult = $executionLine->create($user, 0);
+            if ($createResult <= 0) {
+                dol_syslog(__METHOD__ . " failed to create execution line for MO #" . $moId . " error=" . $executionLine->error, LOG_WARNING);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function setMoProducedStatus($moId)
+    {
+        $moId = (int) $moId;
+        if ($moId <= 0) {
+            return;
+        }
+
+        $mo = new Mo($this->db);
+        if ($mo->fetch($moId) <= 0) {
+            return;
+        }
+        if ((int) $mo->status === (int) Mo::STATUS_PRODUCED) {
+            return;
+        }
+
+        $statusResult = $mo->setStatut(Mo::STATUS_PRODUCED, 0, '', 'MRP_MO_PRODUCED');
+        if ($statusResult <= 0) {
+            dol_syslog(__METHOD__ . " failed to close MO #" . $moId . " as produced", LOG_WARNING);
+        }
+    }
+
+    private function findMoIdByImportKey($importKey)
+    {
+        $importKey = trim((string) $importKey);
+        if ($importKey === '') {
+            return 0;
+        }
+
+        $sql = "SELECT rowid"
+            . " FROM " . MAIN_DB_PREFIX . "mrp_mo"
+            . " WHERE import_key = '" . $this->db->escape($importKey) . "'"
+            . " AND entity IN (" . getEntity('mo') . ")"
+            . " ORDER BY rowid DESC"
+            . " LIMIT 1";
+        $resql = $this->db->query($sql);
+        if (!$resql) {
+            dol_syslog(__METHOD__ . " failed to query existing MO by import key: " . $this->db->lasterror(), LOG_WARNING);
+            return 0;
+        }
+
+        $obj = $this->db->fetch_object($resql);
+        if (is_object($obj) && !empty($obj->rowid)) {
+            return (int) $obj->rowid;
+        }
+
+        return 0;
+    }
+
+    private function buildDismantleImportKey($originMovementId, $originType, $originId, $bomId, $movementDate)
+    {
+        $originMovementId = (int) $originMovementId;
+        if ($originMovementId > 0) {
+            return sprintf('KPDM%010d', $originMovementId); // 14 chars max (mrp_mo.import_key)
+        }
+
+        $movementMarker = is_numeric($movementDate) ? (string) ((int) $movementDate) : (string) $movementDate;
+        $seed = (string) $originType . '|' . ((int) $originId) . '|' . ((int) $bomId) . '|' . $movementMarker;
+        return 'KPDM' . strtoupper(substr(sha1($seed), 0, 10));
+    }
+
+    private function truncateMoLabel($label)
+    {
+        $label = trim((string) $label);
+        if ($label === '') {
+            return 'Auto dismantle';
+        }
+        if (strlen($label) > 255) {
+            return substr($label, 0, 255);
+        }
+        return $label;
     }
 
     private function loadDismantleBom($bomId)
