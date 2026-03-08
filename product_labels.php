@@ -350,7 +350,7 @@ function kreaProductsMergeTemplateUploadedFiles($entityId, $templateInputValues,
 }
 
 $id = GETPOSTINT('id');
-$ref = GETPOST('ref', 'alpha');
+$ref = trim((string) GETPOST('ref', 'alphanohtml'));
 $action = GETPOST('action', 'aZ09');
 if (GETPOSTINT('save_default_label_layout') > 0) {
 	$action = 'save_default_label_layout';

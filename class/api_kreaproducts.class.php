@@ -529,7 +529,7 @@ class KreaProductsApi extends DolibarrApi
 	 *   "category_id": 12,
 	 *   "product_id": 345,
 	 *   "qty": 120,
-	 *   "warehouse_id": 1,
+	 *   "warehouse_id": 1, // optional when defaults are configured
 	 *   "bom_id": 0,
 	 *   "inventorylabel": "Touch production",
 	 *   "inventorycode": "TOUCH-20260307-001",
@@ -560,7 +560,7 @@ class KreaProductsApi extends DolibarrApi
 		$moId = (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0);
 		$hasQtyInput = (isset($request_data['qty']) || isset($request_data['production_qty']));
 		$qty = price2num(isset($request_data['qty']) ? $request_data['qty'] : (isset($request_data['production_qty']) ? $request_data['production_qty'] : 0), 'MS');
-		$warehouseId = (int) (isset($request_data['warehouse_id']) ? $request_data['warehouse_id'] : (isset($request_data['fk_warehouse']) ? $request_data['fk_warehouse'] : 0));
+		$requestedWarehouseId = (int) (isset($request_data['warehouse_id']) ? $request_data['warehouse_id'] : (isset($request_data['fk_warehouse']) ? $request_data['fk_warehouse'] : 0));
 		$requestedBomId = (int) (isset($request_data['bom_id']) ? $request_data['bom_id'] : (isset($request_data['fk_bom']) ? $request_data['fk_bom'] : 0));
 		$autoClose = (!empty($request_data['autoclose']) ? 1 : 0);
 		$unitsPerLabel = price2num(isset($request_data['units_per_label']) ? $request_data['units_per_label'] : 1, 'MS');
@@ -575,14 +575,12 @@ class KreaProductsApi extends DolibarrApi
 		if ($moId <= 0 && $qty <= 0) {
 			throw new RestException(400, 'Production qty must be greater than 0');
 		}
-		if ($warehouseId <= 0) {
-			throw new RestException(400, 'Missing warehouse_id');
-		}
 
 		$mo = new Mo($this->db);
 		$product = null;
 		$bomIdUsed = 0;
 		$moWasCreated = false;
+		$warehouseId = 0;
 
 		if ($moId > 0) {
 			if ($mo->fetch($moId) <= 0) {
@@ -619,6 +617,8 @@ class KreaProductsApi extends DolibarrApi
 			} elseif ($hasQtyInput && (int) $mo->status !== Mo::STATUS_DRAFT && (float) $mo->qty !== (float) $qty) {
 				throw new RestException(409, 'Provided qty does not match existing non-draft MO quantity');
 			}
+
+			$warehouseId = $this->resolveWarehouseIdForProduction($requestedWarehouseId, $product, $mo);
 		} else {
 			$product = $this->fetchProduct($productId);
 			if ($categoryId > 0) {
@@ -628,6 +628,7 @@ class KreaProductsApi extends DolibarrApi
 				throw new RestException(409, 'Batch-managed products are not supported by this API workflow yet');
 			}
 			$bomIdUsed = $this->resolveBomForProduct($product, $requestedBomId);
+			$warehouseId = $this->resolveWarehouseIdForProduction($requestedWarehouseId, $product, null);
 
 			$mo->ref = '(PROV)';
 			$mo->fk_product = $product->id;
@@ -644,6 +645,10 @@ class KreaProductsApi extends DolibarrApi
 			}
 			$moWasCreated = true;
 			$mo->fetch($newId);
+		}
+
+		if ($warehouseId <= 0) {
+			throw new RestException(400, 'Missing warehouse_id and no default warehouse is configured for current entity/product');
 		}
 
 		if ((int) $mo->status === Mo::STATUS_DRAFT) {
@@ -782,6 +787,51 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		return $product;
+	}
+
+	/**
+	 * Resolve warehouse id for production run.
+	 *
+	 * Resolution order:
+	 * 1) request warehouse_id / fk_warehouse
+	 * 2) existing MO warehouse
+	 * 3) product default warehouse
+	 * 4) entity default warehouse (MAIN_DEFAULT_WAREHOUSE)
+	 *
+	 * @param int $requestedWarehouseId Requested warehouse id from payload
+	 * @param object|null $product Product object
+	 * @param object|null $mo Manufacturing order object
+	 * @return int
+	 */
+	protected function resolveWarehouseIdForProduction($requestedWarehouseId, $product = null, $mo = null)
+	{
+		global $conf;
+
+		$warehouseId = (int) $requestedWarehouseId;
+		if ($warehouseId > 0) {
+			return $warehouseId;
+		}
+
+		if (is_object($mo) && !empty($mo->fk_warehouse)) {
+			$warehouseId = (int) $mo->fk_warehouse;
+			if ($warehouseId > 0) {
+				return $warehouseId;
+			}
+		}
+
+		if (is_object($product) && !empty($product->fk_default_warehouse)) {
+			$warehouseId = (int) $product->fk_default_warehouse;
+			if ($warehouseId > 0) {
+				return $warehouseId;
+			}
+		}
+
+		$entityDefaultWarehouseId = (int) ($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
+		if ($entityDefaultWarehouseId > 0) {
+			return $entityDefaultWarehouseId;
+		}
+
+		return 0;
 	}
 
 	/**

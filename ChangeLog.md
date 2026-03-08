@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.20.12] - 2026-03-08
+
+### Fixed
+- `POST production/run` now accepts missing `warehouse_id` when defaults are available, resolving warehouse by: payload -> MO warehouse -> product default warehouse -> entity `MAIN_DEFAULT_WAREHOUSE`.
+- Updated production run validation error to fail only when no warehouse can be resolved from any supported source.
+
+## [2.20.11] - 2026-03-08
+
+### Fixed
+- Updated bundled DeGema label templates to use `product.ref` (text and barcode blocks) so printed code matches the actual product reference.
+
+## [2.20.10] - 2026-03-08
+
+### Fixed
+- Corrected product reference input sanitization in `product_labels.php` to preserve full refs (numbers/symbols) when loading by `ref`.
+
 ## [2.20.9] - 2026-03-08
 
 ### Changed
