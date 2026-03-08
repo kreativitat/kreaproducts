@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.20.8] - 2026-03-08
+
+### Fixed
+- Decoded HTML-entity encoded Labels UI texts in `product_labels.php` so preview/layout metadata renders accented strings correctly.
+- Normalized template/format preview strings in both PHP and JS render paths to avoid visible entity codes (for example `&atilde;`, `&eacute;`).
+
 ## [2.20.7] - 2026-03-08
 
 ### Changed
