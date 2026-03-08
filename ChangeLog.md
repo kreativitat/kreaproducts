@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.20.9] - 2026-03-08
+
+### Changed
+- Translated bundled DeGema label template texts to Portuguese in `labels/degema_congelado.json` and `labels/degema_normal.json` (description, page labels, asset labels, and notes).
+
 ## [2.20.8] - 2026-03-08
 
 ### Fixed

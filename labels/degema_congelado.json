@@ -2,7 +2,7 @@
   "schema_version": 1,
   "template_code": "degema_congelado",
   "label": "DeGema Etiqueta Congelado",
-  "description": "Two-sided 76x50 mm product label optimized for readability. Front page highlights key batch data and internal code. Back page presents ingredients, allergens, nutrition, and mandatory package symbols.",
+  "description": "Etiqueta de produto frente e verso 76x50 mm otimizada para legibilidade. A frente destaca os principais dados do lote e o código interno. O verso apresenta ingredientes, alergénios, informação nutricional e símbolos obrigatórios da embalagem.",
   "source": {
     "type": "pdf_extract",
     "file_name": "DeGema_Etiqueta_Congelado.pdf",
@@ -31,19 +31,19 @@
       "asset_key": "brand_badge",
       "type": "image",
       "required": false,
-      "notes": "Optional top-right badge/logo artwork."
+      "notes": "Imagem opcional de selo/logótipo no canto superior direito."
     },
     {
       "asset_key": "green_dot_symbol",
       "type": "image",
       "required": true,
-      "notes": "Mandatory Green Dot package symbol."
+      "notes": "Símbolo Green Dot obrigatório da embalagem."
     },
     {
       "asset_key": "eu_food_contact_material_symbol",
       "type": "image",
       "required": true,
-      "notes": "Mandatory EU food contact material symbol."
+      "notes": "Símbolo obrigatório da UE para material em contacto com alimentos."
     }
   ],
   "inputs": [
@@ -130,14 +130,14 @@
     },
     {
       "source": "asset.green_dot_symbol",
-      "label": "Green Dot symbol",
+      "label": "Símbolo Green Dot",
       "type": "image",
       "editable": false,
       "default_value": "templates/assets/green_dot_symbol.svg"
     },
     {
       "source": "asset.eu_food_contact_material_symbol",
-      "label": "EU food contact symbol",
+      "label": "Símbolo UE de contacto alimentar",
       "type": "image",
       "editable": false,
       "default_value": "templates/assets/eu_food_contact_material_symbol.svg"
@@ -156,7 +156,7 @@
   "pages": [
     {
       "code": "front",
-      "label": "Front label",
+      "label": "Frente",
       "size_mm": {
         "width": 75.66,
         "height": 49.91
@@ -442,7 +442,7 @@
     },
     {
       "code": "back",
-      "label": "Back label",
+      "label": "Verso",
       "size_mm": {
         "width": 76.07,
         "height": 50.55
@@ -523,8 +523,8 @@
     }
   ],
   "notes": [
-    "Refactored for improved readability and spacing consistency between preview and generated PDF output.",
-    "Mandatory Green Dot and EU food-contact symbols are embedded as template assets and rendered on the first page.",
-    "Second page is now dedicated to product information readability (ingredients/allergens/nutrition), without company lines or logo."
+    "Refatorado para melhorar a legibilidade e a consistência de espaçamento entre a pré-visualização e o PDF gerado.",
+    "Os símbolos obrigatórios Green Dot e de contacto alimentar da UE estão incorporados como recursos do modelo e renderizados na primeira página.",
+    "A segunda página é dedicada à legibilidade da informação do produto (ingredientes/alergénios/nutrição), sem linhas da entidade nem logótipo."
   ]
 }
