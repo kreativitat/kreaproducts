@@ -30,6 +30,7 @@ require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
+require_once DOL_DOCUMENT_ROOT . '/mrp/class/moline.class.php';
 if (!class_exists('DolibarrApi')) {
 	require_once DOL_DOCUMENT_ROOT . '/api/class/api.class.php';
 }
@@ -532,8 +533,8 @@ class KreaProductsApi extends DolibarrApi
 	 *   "warehouse_id": 1, // optional when defaults are configured
 	 *   "bom_id": 0,
 	 *   "inventorylabel": "Touch production",
-	 *   "inventorycode": "TOUCH-20260307-001",
-	 *   "produced_batch": "LOT-20260307-001",
+	 *   "inventorycode": "202603071623",
+	 *   "produced_batch": "202603071623",
 	 *   "autoclose": 1,
 	 *   "units_per_label": 1,
 	 *   "labels_count": 120,
@@ -578,7 +579,7 @@ class KreaProductsApi extends DolibarrApi
 		$templateCode = trim((string) (isset($request_data['template_code']) ? $request_data['template_code'] : ''));
 		$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
 		$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
-		$producedBatch = trim((string) (isset($request_data['produced_batch']) ? $request_data['produced_batch'] : (isset($request_data['produced_lot']) ? $request_data['produced_lot'] : (isset($request_data['batch']) ? $request_data['batch'] : ''))));
+		$requestedProducedBatch = trim((string) (isset($request_data['produced_batch']) ? $request_data['produced_batch'] : (isset($request_data['produced_lot']) ? $request_data['produced_lot'] : (isset($request_data['batch']) ? $request_data['batch'] : ''))));
 		$componentLots = $this->normalizeComponentLotsRequest($request_data);
 
 		if ($moId <= 0 && $productId <= 0) {
@@ -676,6 +677,8 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$mo->fetchLines();
+		$this->disableStockChangeForNonStockConsumeLines($mo);
+		$mo->fetchLines();
 		$componentLotMaps = $this->indexComponentLotsByMoLine($componentLots);
 		$this->assertComponentLotsMatchMoLines($componentLots, $mo->lines);
 		$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
@@ -693,10 +696,11 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$inventoryLabel = trim((string) (!empty($request_data['inventorylabel']) ? $request_data['inventorylabel'] : 'Touch production ' . (!empty($product->ref) ? $product->ref : $product->id)));
-		$inventoryCode = trim((string) (!empty($request_data['inventorycode']) ? $request_data['inventorycode'] : 'KREAPROD-' . dol_print_date(dol_now(), '%Y%m%d%H%M%S')));
-		if ($producedBatch === '') {
-			$producedBatch = $inventoryCode;
+		$inventoryCode = $this->normalizeInventoryCode(isset($request_data['inventorycode']) ? $request_data['inventorycode'] : '', (int) $mo->id);
+		if ($requestedProducedBatch !== '' && $requestedProducedBatch !== $inventoryCode) {
+			dol_syslog(__METHOD__ . ' produced_batch payload overridden by inventorycode policy. Requested=' . $requestedProducedBatch . ', Applied=' . $inventoryCode, LOG_DEBUG);
 		}
+		$producedBatch = $inventoryCode;
 
 		$arrayToConsume = $this->buildMoProductionPayloadByRole($mo->lines, 'toconsume', $warehouseId, $componentLotMaps, '');
 		$arrayToProduce = $this->buildMoProductionPayloadByRole($mo->lines, 'toproduce', $warehouseId, array(), $producedBatch);
@@ -784,7 +788,7 @@ class KreaProductsApi extends DolibarrApi
 		$traceSaved = false;
 		$traceError = '';
 		try {
-			$this->saveProductionBatchTrace($mo, $product, (int) $bomIdUsed, (float) $qty, $inventoryCode, $inventoryLabel, $producedBatch, $componentLotMaps);
+			$this->saveProductionBatchTrace($mo, (float) $qty, $inventoryCode, $componentLotMaps);
 			$traceSaved = true;
 		} catch (Throwable $traceEx) {
 			$traceError = $traceEx->getMessage();
@@ -810,6 +814,63 @@ class KreaProductsApi extends DolibarrApi
 			'stock_updated' => true,
 			'label_payload' => $labelPayload,
 		);
+	}
+
+	/**
+	 * Normalize inventory code to AAAAMMDDHH + fk_mo format.
+	 *
+	 * @param string $rawCode
+	 * @param int    $moId
+	 * @return string
+	 */
+	protected function normalizeInventoryCode($rawCode, $moId = 0)
+	{
+		$hourCode = '';
+		$rawCode = trim((string) $rawCode);
+		if ($rawCode !== '') {
+			$digits = preg_replace('/[^0-9]/', '', $rawCode);
+			if (is_string($digits) && strlen($digits) >= 10) {
+				$candidate = substr($digits, 0, 10);
+				if ($this->isValidInventoryHourCode($candidate)) {
+					$hourCode = $candidate;
+				}
+			}
+		}
+
+		if ($hourCode === '') {
+			$hourCode = dol_print_date(dol_now(), '%Y%m%d%H');
+		}
+
+		$moId = (int) $moId;
+		if ($moId > 0) {
+			return $hourCode . $moId;
+		}
+
+		return $hourCode;
+	}
+
+	/**
+	 * Validate inventory code format AAAAMMDDHH.
+	 *
+	 * @param string $inventoryCode
+	 * @return bool
+	 */
+	protected function isValidInventoryHourCode($inventoryCode)
+	{
+		$inventoryCode = trim((string) $inventoryCode);
+		if (!preg_match('/^[0-9]{10}$/', $inventoryCode)) {
+			return false;
+		}
+
+		$year = (int) substr($inventoryCode, 0, 4);
+		$month = (int) substr($inventoryCode, 4, 2);
+		$day = (int) substr($inventoryCode, 6, 2);
+		$hour = (int) substr($inventoryCode, 8, 2);
+		if ($hour < 0 || $hour > 23) {
+			return false;
+		}
+
+		return checkdate($month, $day, $year);
 	}
 
 	/**
@@ -1094,8 +1155,6 @@ class KreaProductsApi extends DolibarrApi
 
 			$componentProductId = (int) (isset($entry['component_product_id']) ? $entry['component_product_id'] : 0);
 			$batch = trim((string) (isset($entry['batch']) ? $entry['batch'] : ''));
-			$componentRef = trim((string) (isset($entry['component_ref']) ? $entry['component_ref'] : ''));
-			$componentLabel = trim((string) (isset($entry['component_label']) ? $entry['component_label'] : ''));
 			$position = (int) (isset($entry['position']) ? $entry['position'] : 0);
 
 			if ($lineId <= 0 && $bomLineId <= 0 && $componentProductId <= 0) {
@@ -1107,8 +1166,6 @@ class KreaProductsApi extends DolibarrApi
 				'bom_line_id' => $bomLineId,
 				'position' => $position,
 				'component_product_id' => $componentProductId,
-				'component_ref' => substr($componentRef, 0, 128),
-				'component_label' => substr($componentLabel, 0, 255),
 				'qty' => $qty,
 				'batch' => substr($batch, 0, 128),
 			);
@@ -1231,6 +1288,77 @@ class KreaProductsApi extends DolibarrApi
 			$componentProductId = (int) (!empty($lot['component_product_id']) ? $lot['component_product_id'] : 0);
 			if ($componentProductId > 0 && !empty($matchedLine->fk_product) && (int) $matchedLine->fk_product !== $componentProductId) {
 				throw new RestException(409, 'Component lot product does not match MO consume line product');
+			}
+		}
+	}
+
+	/**
+	 * Mark MO consume lines as disable_stock_change when Dolibarr stock move will not return
+	 * a movement id (for example non-stockable product or subproduct-managed parent product).
+	 * This avoids core api_mos false failures on valid consume paths.
+	 *
+	 * @param object $mo Manufacturing order object
+	 * @return void
+	 */
+	protected function disableStockChangeForNonStockConsumeLines($mo)
+	{
+		if (!is_object($mo) || empty($mo->id) || empty($mo->lines) || !is_array($mo->lines)) {
+			return;
+		}
+
+		$useSubproducts = (getDolGlobalInt('PRODUIT_SOUSPRODUITS') > 0 && !getDolGlobalInt('INDEPENDANT_SUBPRODUCT_STOCK'));
+		$productDecisionCache = array();
+
+		foreach ((array) $mo->lines as $line) {
+			if (!is_object($line) || (string) $line->role !== 'toconsume') {
+				continue;
+			}
+			if (!empty($line->disable_stock_change)) {
+				continue;
+			}
+
+			$productId = (int) (!empty($line->fk_product) ? $line->fk_product : 0);
+			if ($productId <= 0) {
+				continue;
+			}
+
+			if (!array_key_exists($productId, $productDecisionCache)) {
+				$productDecisionCache[$productId] = false;
+
+				$product = new Product($this->db);
+				if ($product->fetch($productId) <= 0) {
+					throw new RestException(500, 'Unable to load component product for MO stock configuration update');
+				}
+
+				$disableStockChange = ((int) $product->stockable_product === Product::DISABLED_STOCK);
+				if (!$disableStockChange && $useSubproducts) {
+					$disableStockChange = (((int) $product->hasFatherOrChild(1)) > 0);
+				}
+
+				$productDecisionCache[$productId] = $disableStockChange;
+			}
+
+			if (empty($productDecisionCache[$productId])) {
+				continue;
+			}
+
+			$lineId = (int) (!empty($line->id) ? $line->id : 0);
+			if ($lineId <= 0) {
+				continue;
+			}
+
+			$moLine = new MoLine($this->db);
+			if ($moLine->fetch($lineId) <= 0 || (int) $moLine->fk_mo !== (int) $mo->id) {
+				throw new RestException(500, 'Unable to load MO consume line for stock configuration update');
+			}
+
+			$moLine->disable_stock_change = 1;
+			if ($moLine->update(DolibarrApiAccess::$user) <= 0) {
+				$error = trim((string) $moLine->error);
+				if ($error === '') {
+					$error = $this->db->lasterror();
+				}
+				throw new RestException(500, 'Error disabling stock change for non-stock component line: ' . $error);
 			}
 		}
 	}
@@ -1402,19 +1530,15 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
-	 * Save production/component batch trace linked to MO + BOM.
+	 * Save production/component batch trace linked to MO.
 	 *
 	 * @param object $mo
-	 * @param object $product
-	 * @param int    $bomId
 	 * @param float  $productionQty
 	 * @param string $inventoryCode
-	 * @param string $inventoryLabel
-	 * @param string $producedBatch
 	 * @param array  $componentLotMaps
 	 * @return void
 	 */
-	protected function saveProductionBatchTrace($mo, $product, $bomId, $productionQty, $inventoryCode, $inventoryLabel, $producedBatch, $componentLotMaps)
+	protected function saveProductionBatchTrace($mo, $productionQty, $inventoryCode, $componentLotMaps)
 	{
 		global $conf;
 
@@ -1427,25 +1551,17 @@ class KreaProductsApi extends DolibarrApi
 
 		$this->db->begin();
 
-		$sql = "INSERT INTO " . $traceTable . " (entity, fk_mo, fk_bom, fk_product, production_qty, produced_batch, inventorycode, inventorylabel, fk_user_creat, date_creation)";
+		$sql = "INSERT INTO " . $traceTable . " (entity, fk_mo, production_qty, inventorycode, fk_user_creat, date_creation)";
 		$sql .= " VALUES (";
 		$sql .= ((int) $entityId) . ", ";
 		$sql .= ((int) $mo->id) . ", ";
-		$sql .= ((int) $bomId) . ", ";
-		$sql .= ((int) $product->id) . ", ";
 		$sql .= ((float) $productionQty) . ", ";
-		$sql .= "'" . $this->db->escape((string) $producedBatch) . "', ";
 		$sql .= "'" . $this->db->escape((string) $inventoryCode) . "', ";
-		$sql .= "'" . $this->db->escape((string) $inventoryLabel) . "', ";
 		$sql .= ((int) $userId) . ", ";
 		$sql .= "'" . $this->db->idate(dol_now()) . "'";
 		$sql .= ")";
 		$sql .= " ON DUPLICATE KEY UPDATE";
 		$sql .= " production_qty = VALUES(production_qty),";
-		$sql .= " produced_batch = VALUES(produced_batch),";
-		$sql .= " inventorylabel = VALUES(inventorylabel),";
-		$sql .= " fk_bom = VALUES(fk_bom),";
-		$sql .= " fk_product = VALUES(fk_product),";
 		$sql .= " tms = CURRENT_TIMESTAMP";
 
 		if (!$this->db->query($sql)) {
@@ -1478,18 +1594,6 @@ class KreaProductsApi extends DolibarrApi
 			throw new Exception('Error clearing previous component batch trace lines: ' . $this->db->lasterror());
 		}
 
-		$productIds = array();
-		foreach ((array) $mo->lines as $line) {
-			if (!is_object($line) || (string) $line->role !== 'toconsume') {
-				continue;
-			}
-			$productId = (int) (isset($line->fk_product) ? $line->fk_product : 0);
-			if ($productId > 0) {
-				$productIds[$productId] = $productId;
-			}
-		}
-		$productMap = $this->loadProductRefLabelMap(array_values($productIds));
-
 		foreach ((array) $mo->lines as $line) {
 			if (!is_object($line) || (string) $line->role !== 'toconsume') {
 				continue;
@@ -1501,19 +1605,6 @@ class KreaProductsApi extends DolibarrApi
 				$componentProductId = (int) $lot['component_product_id'];
 			}
 
-			$componentRef = '';
-			$componentLabel = '';
-			if (!empty($productMap[$componentProductId])) {
-				$componentRef = (string) $productMap[$componentProductId]['ref'];
-				$componentLabel = (string) $productMap[$componentProductId]['label'];
-			}
-			if (!empty($lot['component_ref'])) {
-				$componentRef = (string) $lot['component_ref'];
-			}
-			if (!empty($lot['component_label'])) {
-				$componentLabel = (string) $lot['component_label'];
-			}
-
 			$componentQty = (!empty($lot['qty']) ? (float) $lot['qty'] : (float) $line->qty);
 			$componentBatch = (!empty($lot['batch']) ? (string) $lot['batch'] : '');
 			$bomLineId = ((string) (isset($line->origin_type) ? $line->origin_type : '') === 'bomline' ? (int) (isset($line->origin_id) ? $line->origin_id : 0) : 0);
@@ -1522,18 +1613,14 @@ class KreaProductsApi extends DolibarrApi
 			}
 
 			$sqlInsertLine = "INSERT INTO " . $componentTable . " (";
-			$sqlInsertLine .= "entity, fk_trace, fk_mo, fk_bom, fk_bomline, fk_mo_line, position, fk_component_product, component_ref, component_label, component_qty, component_batch, fk_user_creat, date_creation";
+			$sqlInsertLine .= "entity, fk_trace, fk_bomline, fk_mo_line, position, fk_component_product, component_qty, component_batch, fk_user_creat, date_creation";
 			$sqlInsertLine .= ") VALUES (";
 			$sqlInsertLine .= ((int) $entityId) . ", ";
 			$sqlInsertLine .= ((int) $traceId) . ", ";
-			$sqlInsertLine .= ((int) $mo->id) . ", ";
-			$sqlInsertLine .= ((int) $bomId) . ", ";
 			$sqlInsertLine .= ((int) $bomLineId) . ", ";
 			$sqlInsertLine .= ((int) $line->id) . ", ";
 			$sqlInsertLine .= ((int) (isset($line->position) ? $line->position : 0)) . ", ";
 			$sqlInsertLine .= ((int) $componentProductId) . ", ";
-			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentRef, 0, 128)) . "', ";
-			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentLabel, 0, 255)) . "', ";
 			$sqlInsertLine .= ((float) $componentQty) . ", ";
 			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentBatch, 0, 128)) . "', ";
 			$sqlInsertLine .= ((int) $userId) . ", ";
@@ -1542,8 +1629,6 @@ class KreaProductsApi extends DolibarrApi
 			$sqlInsertLine .= " ON DUPLICATE KEY UPDATE";
 			$sqlInsertLine .= " fk_bomline = VALUES(fk_bomline),";
 			$sqlInsertLine .= " fk_component_product = VALUES(fk_component_product),";
-			$sqlInsertLine .= " component_ref = VALUES(component_ref),";
-			$sqlInsertLine .= " component_label = VALUES(component_label),";
 			$sqlInsertLine .= " component_qty = VALUES(component_qty),";
 			$sqlInsertLine .= " component_batch = VALUES(component_batch),";
 			$sqlInsertLine .= " tms = CURRENT_TIMESTAMP";
@@ -1576,43 +1661,38 @@ class KreaProductsApi extends DolibarrApi
 		$sqlTrace .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
 		$sqlTrace .= " entity integer NOT NULL,";
 		$sqlTrace .= " fk_mo integer NOT NULL,";
-		$sqlTrace .= " fk_bom integer NOT NULL DEFAULT 0,";
-		$sqlTrace .= " fk_product integer NOT NULL DEFAULT 0,";
 		$sqlTrace .= " production_qty double(24,8) NOT NULL DEFAULT 0,";
-		$sqlTrace .= " produced_batch varchar(128) NOT NULL DEFAULT '',";
 		$sqlTrace .= " inventorycode varchar(128) NOT NULL,";
-		$sqlTrace .= " inventorylabel varchar(255) NOT NULL DEFAULT '',";
 		$sqlTrace .= " fk_user_creat integer NOT NULL,";
 		$sqlTrace .= " date_creation datetime NOT NULL,";
 		$sqlTrace .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
 		$sqlTrace .= " UNIQUE KEY uk_kreaproducts_mo_batch (entity, fk_mo, inventorycode),";
-		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_mo (entity, fk_mo),";
-		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_bom (entity, fk_bom)";
+		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_mo (entity, fk_mo)";
 		$sqlTrace .= " ) ENGINE=innodb";
 
 		if (!$this->db->query($sqlTrace)) {
 			throw new Exception('Error creating table ' . $traceTable . ': ' . $this->db->lasterror());
 		}
 
+		// Keep inventorycode wide enough for AAAAMMDDHH + fk_mo.
+		if (!$this->db->query("ALTER TABLE " . $traceTable . " MODIFY COLUMN inventorycode varchar(128) NOT NULL")) {
+			throw new Exception('Error widening inventorycode column on ' . $traceTable . ': ' . $this->db->lasterror());
+		}
+
 		$sqlComponent = "CREATE TABLE IF NOT EXISTS " . $componentTable . " (";
 		$sqlComponent .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
 		$sqlComponent .= " entity integer NOT NULL,";
 		$sqlComponent .= " fk_trace integer NOT NULL,";
-		$sqlComponent .= " fk_mo integer NOT NULL,";
-		$sqlComponent .= " fk_bom integer NOT NULL DEFAULT 0,";
 		$sqlComponent .= " fk_bomline integer NOT NULL DEFAULT 0,";
 		$sqlComponent .= " fk_mo_line integer NOT NULL DEFAULT 0,";
 		$sqlComponent .= " position integer NOT NULL DEFAULT 0,";
 		$sqlComponent .= " fk_component_product integer NOT NULL DEFAULT 0,";
-		$sqlComponent .= " component_ref varchar(128) NOT NULL DEFAULT '',";
-		$sqlComponent .= " component_label varchar(255) NOT NULL DEFAULT '',";
 		$sqlComponent .= " component_qty double(24,8) NOT NULL DEFAULT 0,";
 		$sqlComponent .= " component_batch varchar(128) NOT NULL DEFAULT '',";
 		$sqlComponent .= " fk_user_creat integer NOT NULL,";
 		$sqlComponent .= " date_creation datetime NOT NULL,";
 		$sqlComponent .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
 		$sqlComponent .= " UNIQUE KEY uk_kreaproducts_mo_component (entity, fk_trace, fk_mo_line),";
-		$sqlComponent .= " KEY idx_kreaproducts_mo_component_mo (entity, fk_mo),";
 		$sqlComponent .= " KEY idx_kreaproducts_mo_component_bomline (entity, fk_bomline),";
 		$sqlComponent .= " KEY idx_kreaproducts_mo_component_product (entity, fk_component_product)";
 		$sqlComponent .= " ) ENGINE=innodb";
@@ -1621,49 +1701,64 @@ class KreaProductsApi extends DolibarrApi
 			throw new Exception('Error creating table ' . $componentTable . ': ' . $this->db->lasterror());
 		}
 
-		$initialized = true;
-	}
-
-	/**
-	 * Load product ref/label by product id.
-	 *
-	 * @param array<int> $productIds
-	 * @return array<int,array<string,string>>
-	 */
-	protected function loadProductRefLabelMap($productIds)
-	{
-		$ids = array();
-		foreach ((array) $productIds as $id) {
-			$id = (int) $id;
-			if ($id > 0) {
-				$ids[$id] = $id;
+		// Data-minimization migration for early header trace schema versions.
+		// Keep only MO reference + transactional identifiers.
+		if (
+			$this->tableColumnExists($traceTable, 'fk_bom')
+			|| $this->tableColumnExists($traceTable, 'fk_product')
+			|| $this->tableColumnExists($traceTable, 'produced_batch')
+			|| $this->tableColumnExists($traceTable, 'inventorylabel')
+		) {
+			$this->db->query("ALTER TABLE " . $traceTable . " DROP INDEX IF EXISTS idx_kreaproducts_mo_batch_bom");
+		}
+		if ($this->tableColumnExists($traceTable, 'fk_bom')) {
+			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN fk_bom")) {
+				throw new Exception('Error dropping legacy column fk_bom from ' . $traceTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($traceTable, 'fk_product')) {
+			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN fk_product")) {
+				throw new Exception('Error dropping legacy column fk_product from ' . $traceTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($traceTable, 'produced_batch')) {
+			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN produced_batch")) {
+				throw new Exception('Error dropping legacy column produced_batch from ' . $traceTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($traceTable, 'inventorylabel')) {
+			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN inventorylabel")) {
+				throw new Exception('Error dropping legacy column inventorylabel from ' . $traceTable . ': ' . $this->db->lasterror());
 			}
 		}
 
-		if (empty($ids)) {
-			return array();
+		// Data-minimization migration for early trace schema versions.
+		// Keep only IDs/references that can be joined from core tables.
+		if ($this->tableColumnExists($componentTable, 'fk_mo') || $this->tableColumnExists($componentTable, 'fk_bom') || $this->tableColumnExists($componentTable, 'component_ref') || $this->tableColumnExists($componentTable, 'component_label')) {
+			$this->db->query("ALTER TABLE " . $componentTable . " DROP INDEX IF EXISTS idx_kreaproducts_mo_component_mo");
+		}
+		if ($this->tableColumnExists($componentTable, 'fk_mo')) {
+			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN fk_mo")) {
+				throw new Exception('Error dropping legacy column fk_mo from ' . $componentTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($componentTable, 'fk_bom')) {
+			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN fk_bom")) {
+				throw new Exception('Error dropping legacy column fk_bom from ' . $componentTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($componentTable, 'component_ref')) {
+			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN component_ref")) {
+				throw new Exception('Error dropping legacy column component_ref from ' . $componentTable . ': ' . $this->db->lasterror());
+			}
+		}
+		if ($this->tableColumnExists($componentTable, 'component_label')) {
+			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN component_label")) {
+				throw new Exception('Error dropping legacy column component_label from ' . $componentTable . ': ' . $this->db->lasterror());
+			}
 		}
 
-		$sql = "SELECT rowid, ref, label";
-		$sql .= " FROM " . MAIN_DB_PREFIX . "product";
-		$sql .= " WHERE rowid IN (" . implode(',', $ids) . ")";
-		$sql .= " AND entity IN (" . getEntity('product') . ")";
-
-		$resql = $this->db->query($sql);
-		if (!$resql) {
-			throw new Exception('Error loading component product labels: ' . $this->db->lasterror());
-		}
-
-		$map = array();
-		while ($obj = $this->db->fetch_object($resql)) {
-			$map[(int) $obj->rowid] = array(
-				'ref' => (string) $obj->ref,
-				'label' => (string) $obj->label,
-			);
-		}
-		$this->db->free($resql);
-
-		return $map;
+		$initialized = true;
 	}
 
 	/**

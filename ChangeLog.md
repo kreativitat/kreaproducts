@@ -1,6 +1,37 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.21.5] - 2026-03-11
+
+### Changed
+- `POST production/run` now enforces `inventorycode` in format `AAAAMMDDHH` + `fk_mo` (example: `202409301299` for MO `99`), keeping stock movement code and persisted trace code aligned with the production order id.
+- Production batch trace schema now keeps `inventorycode` as `varchar(128)` and applies runtime column widening for existing installations so appended MO ids always fit.
+
+## [2.21.4] - 2026-03-11
+
+### Changed
+- Minimized `llx_kreaproducts_mo_batch` storage by removing redundant `fk_bom`, `fk_product`, `produced_batch`, and `inventorylabel` columns (data is available through linked MO/product tables).
+- Added runtime schema minimization for legacy `llx_kreaproducts_mo_batch` installs, including removal of obsolete BOM index/columns during trace table initialization.
+- `POST production/run` now normalizes `inventorycode` to `AAAAMMDDHH` (`YYYYMMDDHH`) by extracting the first valid 10 digits from payload values or falling back to current server date/hour.
+
+### Fixed
+- Production run now enforces the produced stock batch code to the normalized `inventorycode`, so lot code and inventory movement code stay consistent for label printing workflows.
+
+## [2.21.3] - 2026-03-11
+
+### Changed
+- Reduced production trace storage in `llx_kreaproducts_mo_component_batch` by keeping only IDs and transactional values (removed persisted `component_ref`, `component_label`, `fk_mo`, and `fk_bom` fields from trace lines).
+- Added automatic schema minimization for legacy installs: deprecated component trace columns are dropped on runtime table initialization.
+
+### Fixed
+- `POST production/run` no longer stores duplicated component text payload values when saving component lot trace lines.
+
+## [2.21.2] - 2026-03-11
+
+### Fixed
+- `POST production/run` now auto-disables stock change on MO consume lines when components are non-stockable or handled through subproduct associations, preventing false `api_mos` failures (`stock move id = 0`).
+- Fixed kiosk production failures with rollback on BOM components that use subproduct stock rules (example flow that was failing with inventorycode `KP-20260311223104-6eb0209ccd614b2991f12a24d53ee28d`).
+
 ## [2.21.1] - 2026-03-11
 
 ### Fixed
