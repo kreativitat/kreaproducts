@@ -1,6 +1,23 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.21.1] - 2026-03-11
+
+### Fixed
+- `POST production/run` now forces a rollback when core `Mos::produceAndConsume` throws before rollback, avoiding transient partial state on the same request connection.
+- Auto-created MOs are now deleted when production fails before any `consumed`/`produced` lines are persisted.
+- Production execution failures now return an actionable `409 Conflict` message with `inventorycode` context, instead of an opaque generic `500` for this workflow.
+
+## [2.21.0] - 2026-03-11
+
+### Added
+- Added production trace tables for lot tracking: `llx_kreaproducts_mo_batch` and `llx_kreaproducts_mo_component_batch`.
+
+### Changed
+- `POST production/run` now accepts `produced_batch` and `component_lots` payload fields.
+- Production consume payload now supports component quantity overrides per MO/BOM line.
+- Production trace is persisted with links to `mrp_mo`, `bom_bom`, and `bom_bomline` when production succeeds.
+
 ## [2.20.12] - 2026-03-08
 
 ### Fixed

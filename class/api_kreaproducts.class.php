@@ -533,11 +533,21 @@ class KreaProductsApi extends DolibarrApi
 	 *   "bom_id": 0,
 	 *   "inventorylabel": "Touch production",
 	 *   "inventorycode": "TOUCH-20260307-001",
+	 *   "produced_batch": "LOT-20260307-001",
 	 *   "autoclose": 1,
 	 *   "units_per_label": 1,
 	 *   "labels_count": 120,
 	 *   "template_code": "degema_normal",
-	 *   "template_values": {}
+	 *   "template_values": {},
+	 *   "component_lots": [
+	 *      {
+	 *         "line_id": 101,
+	 *         "bom_line_id": 101,
+	 *         "component_product_id": 890,
+	 *         "qty": 42.5,
+	 *         "batch": "LOT-SUGAR-01"
+	 *      }
+	 *   ]
 	 * }
 	 *
 	 * @param array $request_data Request body
@@ -568,6 +578,8 @@ class KreaProductsApi extends DolibarrApi
 		$templateCode = trim((string) (isset($request_data['template_code']) ? $request_data['template_code'] : ''));
 		$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
 		$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
+		$producedBatch = trim((string) (isset($request_data['produced_batch']) ? $request_data['produced_batch'] : (isset($request_data['produced_lot']) ? $request_data['produced_lot'] : (isset($request_data['batch']) ? $request_data['batch'] : ''))));
+		$componentLots = $this->normalizeComponentLotsRequest($request_data);
 
 		if ($moId <= 0 && $productId <= 0) {
 			throw new RestException(400, 'Missing product_id or mo_id');
@@ -664,30 +676,120 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$mo->fetchLines();
-		$arrayToConsume = $this->buildMoProductionPayloadByRole($mo->lines, 'toconsume', $warehouseId);
-		$arrayToProduce = $this->buildMoProductionPayloadByRole($mo->lines, 'toproduce', $warehouseId);
-		if (empty($arrayToProduce)) {
-			throw new RestException(409, 'MO has no line to produce');
+		$componentLotMaps = $this->indexComponentLotsByMoLine($componentLots);
+		$this->assertComponentLotsMatchMoLines($componentLots, $mo->lines);
+		$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
+		if (!empty($batchManagedSubproducts)) {
+			$cleanupNote = '';
+			if ($moWasCreated) {
+				$cleanupNote = $this->cleanupAutoCreatedMoIfUnprocessed($mo);
+			}
+
+			$message = $this->buildAssociatedBatchConflictMessage($batchManagedSubproducts);
+			if ($cleanupNote !== '') {
+				$message .= ' ' . $cleanupNote;
+			}
+			throw new RestException(409, $message);
 		}
 
 		$inventoryLabel = trim((string) (!empty($request_data['inventorylabel']) ? $request_data['inventorylabel'] : 'Touch production ' . (!empty($product->ref) ? $product->ref : $product->id)));
 		$inventoryCode = trim((string) (!empty($request_data['inventorycode']) ? $request_data['inventorycode'] : 'KREAPROD-' . dol_print_date(dol_now(), '%Y%m%d%H%M%S')));
+		if ($producedBatch === '') {
+			$producedBatch = $inventoryCode;
+		}
+
+		$arrayToConsume = $this->buildMoProductionPayloadByRole($mo->lines, 'toconsume', $warehouseId, $componentLotMaps, '');
+		$arrayToProduce = $this->buildMoProductionPayloadByRole($mo->lines, 'toproduce', $warehouseId, array(), $producedBatch);
+		if (empty($arrayToProduce)) {
+			throw new RestException(409, 'MO has no line to produce');
+		}
 
 		$mosApi = new Mos();
-		$mosApi->produceAndConsume(
-			$mo->id,
-			array(
-				'inventorylabel' => $inventoryLabel,
-				'inventorycode' => $inventoryCode,
-				'autoclose' => $autoClose,
-				'arraytoconsume' => $arrayToConsume,
-				'arraytoproduce' => $arrayToProduce,
-				'caller' => 'kreaproducts',
-			)
-		);
+		try {
+			$mosApi->produceAndConsume(
+				$mo->id,
+				array(
+					'inventorylabel' => $inventoryLabel,
+					'inventorycode' => $inventoryCode,
+					'autoclose' => $autoClose,
+					'arraytoconsume' => $arrayToConsume,
+					'arraytoproduce' => $arrayToProduce,
+					'caller' => 'kreaproducts',
+				)
+			);
+		} catch (RestException $ex) {
+			// Core Mos::produceAndConsume may throw before rolling back its explicit transaction.
+			// Ensure we rollback current connection before any cleanup checks.
+			$this->db->rollback();
+
+			$httpCode = (int) $ex->getCode();
+			if ($httpCode < 400 || $httpCode > 599) {
+				$httpCode = 500;
+			}
+
+			$errorMessage = trim((string) $ex->getMessage());
+			if ($errorMessage === '') {
+				$errorMessage = 'Failed to post production stock movements for inventorycode ' . $inventoryCode . '. Check Dolibarr logs for details.';
+			}
+
+			if ($httpCode >= 500) {
+				$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
+				if (!empty($batchManagedSubproducts)) {
+					$httpCode = 409;
+					$errorMessage = $this->buildAssociatedBatchConflictMessage($batchManagedSubproducts);
+				}
+			}
+
+			$cleanupNote = '';
+			if ($moWasCreated) {
+				$cleanupNote = $this->cleanupAutoCreatedMoIfUnprocessed($mo);
+			}
+			if ($cleanupNote !== '') {
+				$errorMessage .= ' ' . $cleanupNote;
+				if ($httpCode >= 500) {
+					$httpCode = 409;
+				}
+			}
+
+			dol_syslog(__METHOD__ . ' produceAndConsume failed for MO ' . ((int) $mo->id) . ': ' . $errorMessage, LOG_ERR);
+			throw new RestException($httpCode, $errorMessage);
+		} catch (Throwable $ex) {
+			// Ensure pending DB transaction from produceAndConsume is rolled back.
+			$this->db->rollback();
+
+			$errorMessage = trim((string) $ex->getMessage());
+			if ($errorMessage === '') {
+				$errorMessage = 'Unexpected production execution error for inventorycode ' . $inventoryCode . '. Check Dolibarr logs for details.';
+			}
+
+			$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
+			if (!empty($batchManagedSubproducts)) {
+				$errorMessage = $this->buildAssociatedBatchConflictMessage($batchManagedSubproducts);
+			}
+
+			$cleanupNote = '';
+			if ($moWasCreated) {
+				$cleanupNote = $this->cleanupAutoCreatedMoIfUnprocessed($mo);
+			}
+			if ($cleanupNote !== '') {
+				$errorMessage .= ' ' . $cleanupNote;
+			}
+
+			dol_syslog(__METHOD__ . ' unexpected produceAndConsume error for MO ' . ((int) $mo->id) . ': ' . $errorMessage, LOG_ERR);
+			throw new RestException(($cleanupNote !== '' ? 409 : 500), $errorMessage);
+		}
 
 		$mo->fetch($mo->id);
 		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
+		$traceSaved = false;
+		$traceError = '';
+		try {
+			$this->saveProductionBatchTrace($mo, $product, (int) $bomIdUsed, (float) $qty, $inventoryCode, $inventoryLabel, $producedBatch, $componentLotMaps);
+			$traceSaved = true;
+		} catch (Throwable $traceEx) {
+			$traceError = $traceEx->getMessage();
+			dol_syslog(__METHOD__ . ' Failed to save production trace for MO ' . ((int) $mo->id) . ': ' . $traceError, LOG_WARNING);
+		}
 
 		return array(
 			'category_id' => $categoryId,
@@ -701,6 +803,10 @@ class KreaProductsApi extends DolibarrApi
 			'bom_id_used' => (int) $bomIdUsed,
 			'warehouse_id' => (int) $warehouseId,
 			'production_qty' => (float) $qty,
+			'inventorycode' => (string) $inventoryCode,
+			'produced_batch' => (string) $producedBatch,
+			'trace_saved' => $traceSaved,
+			'trace_error' => $traceError,
 			'stock_updated' => true,
 			'label_payload' => $labelPayload,
 		);
@@ -903,9 +1009,11 @@ class KreaProductsApi extends DolibarrApi
 	 * @param array  $lines               MO lines
 	 * @param string $role                Role to export (toconsume/toproduce)
 	 * @param int    $defaultWarehouseId  Warehouse fallback id
+	 * @param array  $componentLotMaps    Indexed component lot payload
+	 * @param string $producedBatch       Produced batch code
 	 * @return array
 	 */
-	protected function buildMoProductionPayloadByRole($lines, $role, $defaultWarehouseId)
+	protected function buildMoProductionPayloadByRole($lines, $role, $defaultWarehouseId, $componentLotMaps = array(), $producedBatch = '')
 	{
 		$payload = array();
 		if (!is_array($lines)) {
@@ -921,6 +1029,16 @@ class KreaProductsApi extends DolibarrApi
 				'objectid' => (int) $line->id,
 				'qty' => (float) $line->qty,
 			);
+			$batch = '';
+			if ((string) $role === 'toconsume') {
+				$lot = $this->resolveComponentLotForMoLine($line, $componentLotMaps);
+				if (!empty($lot)) {
+					$entry['qty'] = (float) $lot['qty'];
+					$batch = (string) $lot['batch'];
+				}
+			} elseif ((string) $role === 'toproduce') {
+				$batch = trim((string) $producedBatch);
+			}
 
 			$disableStockChange = !empty($line->disable_stock_change);
 			if ($disableStockChange) {
@@ -936,10 +1054,616 @@ class KreaProductsApi extends DolibarrApi
 				$entry['fk_warehouse'] = $warehouseId;
 			}
 
+			if ($batch !== '') {
+				$entry['batch'] = $batch;
+			}
+
 			$payload[] = $entry;
 		}
 
 		return $payload;
+	}
+
+	/**
+	 * Normalize component lots payload from production/run request body.
+	 *
+	 * @param array $requestData Raw request body
+	 * @return array<int,array<string,mixed>>
+	 */
+	protected function normalizeComponentLotsRequest($requestData)
+	{
+		$rawLots = array();
+		if (!empty($requestData['component_lots']) && is_array($requestData['component_lots'])) {
+			$rawLots = $requestData['component_lots'];
+		} elseif (!empty($requestData['component_batches']) && is_array($requestData['component_batches'])) {
+			$rawLots = $requestData['component_batches'];
+		}
+
+		$normalized = array();
+		foreach ($rawLots as $entry) {
+			if (!is_array($entry)) {
+				continue;
+			}
+
+			$lineId = (int) (isset($entry['mo_line_id']) ? $entry['mo_line_id'] : 0);
+			$bomLineId = (int) (isset($entry['bom_line_id']) ? $entry['bom_line_id'] : (isset($entry['line_id']) ? $entry['line_id'] : 0));
+			$qty = (float) price2num((isset($entry['qty']) ? $entry['qty'] : 0), 'MS');
+			if ($qty < 0) {
+				throw new RestException(400, 'Component lot qty must be >= 0');
+			}
+
+			$componentProductId = (int) (isset($entry['component_product_id']) ? $entry['component_product_id'] : 0);
+			$batch = trim((string) (isset($entry['batch']) ? $entry['batch'] : ''));
+			$componentRef = trim((string) (isset($entry['component_ref']) ? $entry['component_ref'] : ''));
+			$componentLabel = trim((string) (isset($entry['component_label']) ? $entry['component_label'] : ''));
+			$position = (int) (isset($entry['position']) ? $entry['position'] : 0);
+
+			if ($lineId <= 0 && $bomLineId <= 0 && $componentProductId <= 0) {
+				continue;
+			}
+
+			$normalized[] = array(
+				'line_id' => $lineId,
+				'bom_line_id' => $bomLineId,
+				'position' => $position,
+				'component_product_id' => $componentProductId,
+				'component_ref' => substr($componentRef, 0, 128),
+				'component_label' => substr($componentLabel, 0, 255),
+				'qty' => $qty,
+				'batch' => substr($batch, 0, 128),
+			);
+		}
+
+		if (!empty($rawLots) && empty($normalized)) {
+			throw new RestException(400, 'Invalid component_lots payload');
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Build index maps for component lots.
+	 *
+	 * @param array<int,array<string,mixed>> $componentLots
+	 * @return array<string,array<int,array<string,mixed>>>
+	 */
+	protected function indexComponentLotsByMoLine($componentLots)
+	{
+		$maps = array(
+			'by_mo_line' => array(),
+			'by_bom_line' => array(),
+		);
+
+		foreach ((array) $componentLots as $lot) {
+			if (!is_array($lot)) {
+				continue;
+			}
+
+			$lineId = (int) (!empty($lot['line_id']) ? $lot['line_id'] : 0);
+			$bomLineId = (int) (!empty($lot['bom_line_id']) ? $lot['bom_line_id'] : 0);
+			if ($lineId > 0) {
+				$maps['by_mo_line'][$lineId] = $lot;
+			}
+			if ($bomLineId > 0) {
+				$maps['by_bom_line'][$bomLineId] = $lot;
+			}
+		}
+
+		return $maps;
+	}
+
+	/**
+	 * Resolve one component lot payload line for one MO line.
+	 *
+	 * @param object $line MO line object
+	 * @param array  $componentLotMaps Index maps returned by indexComponentLotsByMoLine
+	 * @return array<string,mixed>
+	 */
+	protected function resolveComponentLotForMoLine($line, $componentLotMaps)
+	{
+		if (!is_object($line) || !is_array($componentLotMaps)) {
+			return array();
+		}
+
+		$lineId = (int) (isset($line->id) ? $line->id : 0);
+		if ($lineId > 0 && !empty($componentLotMaps['by_mo_line'][$lineId]) && is_array($componentLotMaps['by_mo_line'][$lineId])) {
+			return $componentLotMaps['by_mo_line'][$lineId];
+		}
+
+		$originType = (string) (isset($line->origin_type) ? $line->origin_type : '');
+		$originId = (int) (isset($line->origin_id) ? $line->origin_id : 0);
+		if ($originType === 'bomline' && $originId > 0 && !empty($componentLotMaps['by_bom_line'][$originId]) && is_array($componentLotMaps['by_bom_line'][$originId])) {
+			return $componentLotMaps['by_bom_line'][$originId];
+		}
+
+		return array();
+	}
+
+	/**
+	 * Validate that provided component lots match MO consume lines.
+	 *
+	 * @param array<int,array<string,mixed>> $componentLots
+	 * @param array                          $moLines
+	 * @return void
+	 */
+	protected function assertComponentLotsMatchMoLines($componentLots, $moLines)
+	{
+		if (empty($componentLots)) {
+			return;
+		}
+
+		$consumeByMoLineId = array();
+		$consumeByBomLineId = array();
+		foreach ((array) $moLines as $line) {
+			if (!is_object($line) || (string) $line->role !== 'toconsume') {
+				continue;
+			}
+
+			$moLineId = (int) (isset($line->id) ? $line->id : 0);
+			$bomLineId = ((string) (isset($line->origin_type) ? $line->origin_type : '') === 'bomline' ? (int) (isset($line->origin_id) ? $line->origin_id : 0) : 0);
+			if ($moLineId > 0) {
+				$consumeByMoLineId[$moLineId] = $line;
+			}
+			if ($bomLineId > 0) {
+				$consumeByBomLineId[$bomLineId] = $line;
+			}
+		}
+
+		foreach ((array) $componentLots as $lot) {
+			if (!is_array($lot)) {
+				continue;
+			}
+
+			$lineId = (int) (!empty($lot['line_id']) ? $lot['line_id'] : 0);
+			$bomLineId = (int) (!empty($lot['bom_line_id']) ? $lot['bom_line_id'] : 0);
+			$matchedLine = null;
+
+			if ($lineId > 0 && !empty($consumeByMoLineId[$lineId])) {
+				$matchedLine = $consumeByMoLineId[$lineId];
+			} elseif ($bomLineId > 0 && !empty($consumeByBomLineId[$bomLineId])) {
+				$matchedLine = $consumeByBomLineId[$bomLineId];
+			}
+
+			if (!is_object($matchedLine)) {
+				throw new RestException(409, 'Component lot line does not match MO consume lines');
+			}
+
+			$componentProductId = (int) (!empty($lot['component_product_id']) ? $lot['component_product_id'] : 0);
+			if ($componentProductId > 0 && !empty($matchedLine->fk_product) && (int) $matchedLine->fk_product !== $componentProductId) {
+				throw new RestException(409, 'Component lot product does not match MO consume line product');
+			}
+		}
+	}
+
+	/**
+	 * Find parent->subproduct associations that will fail stock posting because
+	 * the associated child product is managed by batch/serial.
+	 *
+	 * @param array $moLines MO lines from current order
+	 * @return array<int,array<string,mixed>>
+	 */
+	protected function findBatchManagedAssociatedSubproductsForMoLines($moLines)
+	{
+		if (empty($moLines) || !isModEnabled('productbatch')) {
+			return array();
+		}
+		if (!getDolGlobalString('PRODUIT_SOUSPRODUITS') || getDolGlobalString('INDEPENDANT_SUBPRODUCT_STOCK')) {
+			return array();
+		}
+
+		$parentProductIds = array();
+		foreach ((array) $moLines as $line) {
+			if (!is_object($line)) {
+				continue;
+			}
+
+			$role = (string) (isset($line->role) ? $line->role : '');
+			if ($role !== 'toconsume' && $role !== 'toproduce') {
+				continue;
+			}
+			if (!empty($line->disable_stock_change)) {
+				continue;
+			}
+
+			$productId = (int) (isset($line->fk_product) ? $line->fk_product : 0);
+			if ($productId > 0) {
+				$parentProductIds[$productId] = $productId;
+			}
+		}
+
+		if (empty($parentProductIds)) {
+			return array();
+		}
+
+		$allowedProductEntities = $this->getEntityIdList('product', true);
+		$sql = "SELECT pa.fk_product_pere AS parent_id, parent.ref AS parent_ref, parent.label AS parent_label,";
+		$sql .= " pa.fk_product_fils AS child_id, child.ref AS child_ref, child.label AS child_label";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = pa.fk_product_pere";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS child ON child.rowid = pa.fk_product_fils";
+		$sql .= " WHERE pa.incdec = 1";
+		$sql .= " AND pa.fk_product_pere IN (" . implode(',', array_map('intval', array_values($parentProductIds))) . ")";
+		$sql .= " AND parent.entity IN (" . $this->entityListToSql($allowedProductEntities) . ")";
+		$sql .= " AND child.entity IN (" . $this->entityListToSql($allowedProductEntities) . ")";
+		$sql .= " AND child.tobatch > 0";
+		$sql .= " ORDER BY parent.ref ASC, child.ref ASC";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error checking associated subproducts for batch compatibility: ' . $this->db->lasterror());
+		}
+
+		$found = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$key = ((int) $obj->parent_id) . '-' . ((int) $obj->child_id);
+			if (!empty($found[$key])) {
+				continue;
+			}
+
+			$found[$key] = array(
+				'parent_id' => (int) $obj->parent_id,
+				'parent_ref' => (string) $obj->parent_ref,
+				'parent_label' => (string) $obj->parent_label,
+				'child_id' => (int) $obj->child_id,
+				'child_ref' => (string) $obj->child_ref,
+				'child_label' => (string) $obj->child_label,
+			);
+		}
+		$this->db->free($resql);
+
+		return array_values($found);
+	}
+
+	/**
+	 * Build a deterministic business error for unsupported associated subproducts.
+	 *
+	 * @param array<int,array<string,mixed>> $batchManagedSubproducts
+	 * @return string
+	 */
+	protected function buildAssociatedBatchConflictMessage($batchManagedSubproducts)
+	{
+		if (empty($batchManagedSubproducts)) {
+			return 'Production blocked by associated batch-managed subproducts.';
+		}
+
+		$labels = array();
+		$maxItems = 3;
+		foreach ((array) $batchManagedSubproducts as $entry) {
+			if (!is_array($entry)) {
+				continue;
+			}
+
+			$parentRef = trim((string) (!empty($entry['parent_ref']) ? $entry['parent_ref'] : ('#' . ((int) $entry['parent_id']))));
+			$childRef = trim((string) (!empty($entry['child_ref']) ? $entry['child_ref'] : ('#' . ((int) $entry['child_id']))));
+			$labels[] = $parentRef . ' -> ' . $childRef;
+			if (count($labels) >= $maxItems) {
+				break;
+			}
+		}
+
+		$message = 'Production blocked: Dolibarr stock posting cannot process associated subproducts managed by batch/serial in this workflow';
+		if (!empty($labels)) {
+			$message .= ' (' . implode(', ', $labels);
+			if (count($batchManagedSubproducts) > $maxItems) {
+				$message .= ', +' . ((int) count($batchManagedSubproducts) - $maxItems) . ' more';
+			}
+			$message .= ')';
+		}
+		$message .= '. Remove/disable these associations or enable INDEPENDANT_SUBPRODUCT_STOCK.';
+
+		return $message;
+	}
+
+	/**
+	 * Delete a freshly-created MO when production fails before any consumed/produced line.
+	 *
+	 * @param object $mo Manufacturing order object
+	 * @return string Informational cleanup note
+	 */
+	protected function cleanupAutoCreatedMoIfUnprocessed($mo)
+	{
+		if (!is_object($mo) || empty($mo->id)) {
+			return '';
+		}
+
+		$moId = (int) $mo->id;
+		if ($moId <= 0) {
+			return '';
+		}
+
+		if ($mo->fetch($moId) <= 0) {
+			return '';
+		}
+
+		$moRef = (!empty($mo->ref) ? (string) $mo->ref : ('#' . $moId));
+		$sql = "SELECT COUNT(rowid) AS nb";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "mrp_production";
+		$sql .= " WHERE fk_mo = " . ((int) $moId);
+		$sql .= " AND role IN ('consumed','produced')";
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' Unable to check execution lines for MO ' . ((int) $moId) . ': ' . $this->db->lasterror(), LOG_WARNING);
+			return '';
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		$executedLines = (!empty($obj->nb) ? (int) $obj->nb : 0);
+		if ($executedLines > 0) {
+			return '';
+		}
+
+		$deleteResult = $mo->delete(DolibarrApiAccess::$user, 0, false);
+		if ($deleteResult > 0) {
+			return 'Auto-created MO ' . $moRef . ' was deleted after failure.';
+		}
+
+		dol_syslog(__METHOD__ . ' Unable to delete auto-created MO ' . ((int) $moId) . ': ' . (string) $mo->error, LOG_WARNING);
+		return '';
+	}
+
+	/**
+	 * Save production/component batch trace linked to MO + BOM.
+	 *
+	 * @param object $mo
+	 * @param object $product
+	 * @param int    $bomId
+	 * @param float  $productionQty
+	 * @param string $inventoryCode
+	 * @param string $inventoryLabel
+	 * @param string $producedBatch
+	 * @param array  $componentLotMaps
+	 * @return void
+	 */
+	protected function saveProductionBatchTrace($mo, $product, $bomId, $productionQty, $inventoryCode, $inventoryLabel, $producedBatch, $componentLotMaps)
+	{
+		global $conf;
+
+		$this->ensureProductionTraceTables();
+
+		$entityId = (int) $conf->entity;
+		$userId = (int) DolibarrApiAccess::$user->id;
+		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
+		$componentTable = MAIN_DB_PREFIX . 'kreaproducts_mo_component_batch';
+
+		$this->db->begin();
+
+		$sql = "INSERT INTO " . $traceTable . " (entity, fk_mo, fk_bom, fk_product, production_qty, produced_batch, inventorycode, inventorylabel, fk_user_creat, date_creation)";
+		$sql .= " VALUES (";
+		$sql .= ((int) $entityId) . ", ";
+		$sql .= ((int) $mo->id) . ", ";
+		$sql .= ((int) $bomId) . ", ";
+		$sql .= ((int) $product->id) . ", ";
+		$sql .= ((float) $productionQty) . ", ";
+		$sql .= "'" . $this->db->escape((string) $producedBatch) . "', ";
+		$sql .= "'" . $this->db->escape((string) $inventoryCode) . "', ";
+		$sql .= "'" . $this->db->escape((string) $inventoryLabel) . "', ";
+		$sql .= ((int) $userId) . ", ";
+		$sql .= "'" . $this->db->idate(dol_now()) . "'";
+		$sql .= ")";
+		$sql .= " ON DUPLICATE KEY UPDATE";
+		$sql .= " production_qty = VALUES(production_qty),";
+		$sql .= " produced_batch = VALUES(produced_batch),";
+		$sql .= " inventorylabel = VALUES(inventorylabel),";
+		$sql .= " fk_bom = VALUES(fk_bom),";
+		$sql .= " fk_product = VALUES(fk_product),";
+		$sql .= " tms = CURRENT_TIMESTAMP";
+
+		if (!$this->db->query($sql)) {
+			$this->db->rollback();
+			throw new Exception('Error saving production batch trace: ' . $this->db->lasterror());
+		}
+
+		$sqlTrace = "SELECT rowid";
+		$sqlTrace .= " FROM " . $traceTable;
+		$sqlTrace .= " WHERE entity = " . ((int) $entityId);
+		$sqlTrace .= " AND fk_mo = " . ((int) $mo->id);
+		$sqlTrace .= " AND inventorycode = '" . $this->db->escape((string) $inventoryCode) . "'";
+		$sqlTrace .= $this->db->plimit(1);
+		$resTrace = $this->db->query($sqlTrace);
+		if (!$resTrace) {
+			$this->db->rollback();
+			throw new Exception('Error loading production batch trace id: ' . $this->db->lasterror());
+		}
+		$objTrace = $this->db->fetch_object($resTrace);
+		$this->db->free($resTrace);
+		$traceId = (!empty($objTrace->rowid) ? (int) $objTrace->rowid : 0);
+		if ($traceId <= 0) {
+			$this->db->rollback();
+			throw new Exception('Unable to resolve production trace row id');
+		}
+
+		$sqlDelete = "DELETE FROM " . $componentTable . " WHERE entity = " . ((int) $entityId) . " AND fk_trace = " . ((int) $traceId);
+		if (!$this->db->query($sqlDelete)) {
+			$this->db->rollback();
+			throw new Exception('Error clearing previous component batch trace lines: ' . $this->db->lasterror());
+		}
+
+		$productIds = array();
+		foreach ((array) $mo->lines as $line) {
+			if (!is_object($line) || (string) $line->role !== 'toconsume') {
+				continue;
+			}
+			$productId = (int) (isset($line->fk_product) ? $line->fk_product : 0);
+			if ($productId > 0) {
+				$productIds[$productId] = $productId;
+			}
+		}
+		$productMap = $this->loadProductRefLabelMap(array_values($productIds));
+
+		foreach ((array) $mo->lines as $line) {
+			if (!is_object($line) || (string) $line->role !== 'toconsume') {
+				continue;
+			}
+
+			$lot = $this->resolveComponentLotForMoLine($line, $componentLotMaps);
+			$componentProductId = (int) (isset($line->fk_product) ? $line->fk_product : 0);
+			if (!empty($lot['component_product_id'])) {
+				$componentProductId = (int) $lot['component_product_id'];
+			}
+
+			$componentRef = '';
+			$componentLabel = '';
+			if (!empty($productMap[$componentProductId])) {
+				$componentRef = (string) $productMap[$componentProductId]['ref'];
+				$componentLabel = (string) $productMap[$componentProductId]['label'];
+			}
+			if (!empty($lot['component_ref'])) {
+				$componentRef = (string) $lot['component_ref'];
+			}
+			if (!empty($lot['component_label'])) {
+				$componentLabel = (string) $lot['component_label'];
+			}
+
+			$componentQty = (!empty($lot['qty']) ? (float) $lot['qty'] : (float) $line->qty);
+			$componentBatch = (!empty($lot['batch']) ? (string) $lot['batch'] : '');
+			$bomLineId = ((string) (isset($line->origin_type) ? $line->origin_type : '') === 'bomline' ? (int) (isset($line->origin_id) ? $line->origin_id : 0) : 0);
+			if (!empty($lot['bom_line_id'])) {
+				$bomLineId = (int) $lot['bom_line_id'];
+			}
+
+			$sqlInsertLine = "INSERT INTO " . $componentTable . " (";
+			$sqlInsertLine .= "entity, fk_trace, fk_mo, fk_bom, fk_bomline, fk_mo_line, position, fk_component_product, component_ref, component_label, component_qty, component_batch, fk_user_creat, date_creation";
+			$sqlInsertLine .= ") VALUES (";
+			$sqlInsertLine .= ((int) $entityId) . ", ";
+			$sqlInsertLine .= ((int) $traceId) . ", ";
+			$sqlInsertLine .= ((int) $mo->id) . ", ";
+			$sqlInsertLine .= ((int) $bomId) . ", ";
+			$sqlInsertLine .= ((int) $bomLineId) . ", ";
+			$sqlInsertLine .= ((int) $line->id) . ", ";
+			$sqlInsertLine .= ((int) (isset($line->position) ? $line->position : 0)) . ", ";
+			$sqlInsertLine .= ((int) $componentProductId) . ", ";
+			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentRef, 0, 128)) . "', ";
+			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentLabel, 0, 255)) . "', ";
+			$sqlInsertLine .= ((float) $componentQty) . ", ";
+			$sqlInsertLine .= "'" . $this->db->escape(substr((string) $componentBatch, 0, 128)) . "', ";
+			$sqlInsertLine .= ((int) $userId) . ", ";
+			$sqlInsertLine .= "'" . $this->db->idate(dol_now()) . "'";
+			$sqlInsertLine .= ")";
+			$sqlInsertLine .= " ON DUPLICATE KEY UPDATE";
+			$sqlInsertLine .= " fk_bomline = VALUES(fk_bomline),";
+			$sqlInsertLine .= " fk_component_product = VALUES(fk_component_product),";
+			$sqlInsertLine .= " component_ref = VALUES(component_ref),";
+			$sqlInsertLine .= " component_label = VALUES(component_label),";
+			$sqlInsertLine .= " component_qty = VALUES(component_qty),";
+			$sqlInsertLine .= " component_batch = VALUES(component_batch),";
+			$sqlInsertLine .= " tms = CURRENT_TIMESTAMP";
+
+			if (!$this->db->query($sqlInsertLine)) {
+				$this->db->rollback();
+				throw new Exception('Error saving component batch trace line: ' . $this->db->lasterror());
+			}
+		}
+
+		$this->db->commit();
+	}
+
+	/**
+	 * Ensure trace tables exist.
+	 *
+	 * @return void
+	 */
+	protected function ensureProductionTraceTables()
+	{
+		static $initialized = false;
+		if ($initialized) {
+			return;
+		}
+
+		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
+		$componentTable = MAIN_DB_PREFIX . 'kreaproducts_mo_component_batch';
+
+		$sqlTrace = "CREATE TABLE IF NOT EXISTS " . $traceTable . " (";
+		$sqlTrace .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
+		$sqlTrace .= " entity integer NOT NULL,";
+		$sqlTrace .= " fk_mo integer NOT NULL,";
+		$sqlTrace .= " fk_bom integer NOT NULL DEFAULT 0,";
+		$sqlTrace .= " fk_product integer NOT NULL DEFAULT 0,";
+		$sqlTrace .= " production_qty double(24,8) NOT NULL DEFAULT 0,";
+		$sqlTrace .= " produced_batch varchar(128) NOT NULL DEFAULT '',";
+		$sqlTrace .= " inventorycode varchar(128) NOT NULL,";
+		$sqlTrace .= " inventorylabel varchar(255) NOT NULL DEFAULT '',";
+		$sqlTrace .= " fk_user_creat integer NOT NULL,";
+		$sqlTrace .= " date_creation datetime NOT NULL,";
+		$sqlTrace .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
+		$sqlTrace .= " UNIQUE KEY uk_kreaproducts_mo_batch (entity, fk_mo, inventorycode),";
+		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_mo (entity, fk_mo),";
+		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_bom (entity, fk_bom)";
+		$sqlTrace .= " ) ENGINE=innodb";
+
+		if (!$this->db->query($sqlTrace)) {
+			throw new Exception('Error creating table ' . $traceTable . ': ' . $this->db->lasterror());
+		}
+
+		$sqlComponent = "CREATE TABLE IF NOT EXISTS " . $componentTable . " (";
+		$sqlComponent .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
+		$sqlComponent .= " entity integer NOT NULL,";
+		$sqlComponent .= " fk_trace integer NOT NULL,";
+		$sqlComponent .= " fk_mo integer NOT NULL,";
+		$sqlComponent .= " fk_bom integer NOT NULL DEFAULT 0,";
+		$sqlComponent .= " fk_bomline integer NOT NULL DEFAULT 0,";
+		$sqlComponent .= " fk_mo_line integer NOT NULL DEFAULT 0,";
+		$sqlComponent .= " position integer NOT NULL DEFAULT 0,";
+		$sqlComponent .= " fk_component_product integer NOT NULL DEFAULT 0,";
+		$sqlComponent .= " component_ref varchar(128) NOT NULL DEFAULT '',";
+		$sqlComponent .= " component_label varchar(255) NOT NULL DEFAULT '',";
+		$sqlComponent .= " component_qty double(24,8) NOT NULL DEFAULT 0,";
+		$sqlComponent .= " component_batch varchar(128) NOT NULL DEFAULT '',";
+		$sqlComponent .= " fk_user_creat integer NOT NULL,";
+		$sqlComponent .= " date_creation datetime NOT NULL,";
+		$sqlComponent .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
+		$sqlComponent .= " UNIQUE KEY uk_kreaproducts_mo_component (entity, fk_trace, fk_mo_line),";
+		$sqlComponent .= " KEY idx_kreaproducts_mo_component_mo (entity, fk_mo),";
+		$sqlComponent .= " KEY idx_kreaproducts_mo_component_bomline (entity, fk_bomline),";
+		$sqlComponent .= " KEY idx_kreaproducts_mo_component_product (entity, fk_component_product)";
+		$sqlComponent .= " ) ENGINE=innodb";
+
+		if (!$this->db->query($sqlComponent)) {
+			throw new Exception('Error creating table ' . $componentTable . ': ' . $this->db->lasterror());
+		}
+
+		$initialized = true;
+	}
+
+	/**
+	 * Load product ref/label by product id.
+	 *
+	 * @param array<int> $productIds
+	 * @return array<int,array<string,string>>
+	 */
+	protected function loadProductRefLabelMap($productIds)
+	{
+		$ids = array();
+		foreach ((array) $productIds as $id) {
+			$id = (int) $id;
+			if ($id > 0) {
+				$ids[$id] = $id;
+			}
+		}
+
+		if (empty($ids)) {
+			return array();
+		}
+
+		$sql = "SELECT rowid, ref, label";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product";
+		$sql .= " WHERE rowid IN (" . implode(',', $ids) . ")";
+		$sql .= " AND entity IN (" . getEntity('product') . ")";
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new Exception('Error loading component product labels: ' . $this->db->lasterror());
+		}
+
+		$map = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$map[(int) $obj->rowid] = array(
+				'ref' => (string) $obj->ref,
+				'label' => (string) $obj->label,
+			);
+		}
+		$this->db->free($resql);
+
+		return $map;
 	}
 
 	/**
