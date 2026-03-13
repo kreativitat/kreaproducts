@@ -1801,6 +1801,7 @@ class KreaProductsApi extends DolibarrApi
 			'code' => '',
 			'meta' => array(),
 			'editable_fields' => array(),
+			'viewer' => array(),
 		);
 
 		$templateCode = trim((string) $templateCode);
@@ -1811,6 +1812,15 @@ class KreaProductsApi extends DolibarrApi
 				$selectedTemplate['code'] = $templateCode;
 				$selectedTemplate['meta'] = $this->sanitizeTemplateMeta($templateCode, $templateMeta);
 				$selectedTemplate['editable_fields'] = KreaProductsLabelService::getTemplateEditableFields($template, $product, $outputlangs, (is_array($templateValues) ? $templateValues : array()));
+				$templateViewerMap = KreaProductsLabelService::buildLabelTemplateViewerMap(
+					$product,
+					$outputlangs,
+					$entityId,
+					array($templateCode => (is_array($templateValues) ? $templateValues : array()))
+				);
+				if (!empty($templateViewerMap[$templateCode]) && is_array($templateViewerMap[$templateCode])) {
+					$selectedTemplate['viewer'] = $templateViewerMap[$templateCode];
+				}
 			}
 		}
 

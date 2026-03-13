@@ -1,6 +1,56 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.22.7] - 2026-03-13
+
+### Changed
+- Updated associations-to-BOM success links to open BOM card in a new browser tab (`target="_blank"` with `rel="noopener noreferrer"`).
+
+## [2.22.6] - 2026-03-13
+
+### Changed
+- Updated standalone associations-to-BOM success flow to keep `setEventMessages($langs->trans("RecordSaved"), null, 'mesgs')` with BOM link and also drive a guaranteed sticky green inline alert from URL success flags.
+- Removed direct consumption of `$_SESSION['dol_events']['mesgs']` in the helper page to avoid hiding Dolibarr standard event rendering.
+
+## [2.22.5] - 2026-03-13
+
+### Changed
+- Updated standalone associations-to-BOM success message to use Dolibarr `RecordSaved` via `setEventMessages(..., 'mesgs')` and include a direct link to the BOM card in the same alert.
+
+## [2.22.4] - 2026-03-13
+
+### Changed
+- Reworked `associations_to_bom.php` success notification to follow Dolibarr event-message flow (`setEventMessages` / `dol_events`) and render it as a sticky green inline alert with BOM link.
+- Kept BOM label and produced quantity fallback defaults when inputs are left empty, and set a non-empty default label placeholder on initial load.
+
+## [2.22.3] - 2026-03-13
+
+### Changed
+- Updated `associations_to_bom.php` success flow to use a session flash payload so the sticky green success alert is reliably shown after redirect, with direct link to the BOM card.
+- Enforced fallback behavior for empty BOM label/produced quantity inputs, so save always uses current BOM defaults (or helper defaults) when fields are left blank.
+
+## [2.22.2] - 2026-03-13
+
+### Changed
+- Updated `associations_to_bom.php` with optional BOM label and produced quantity inputs; when empty, placeholders use current draft BOM values (or helper defaults).
+- Replaced the generic success flash with a sticky green success alert that includes a direct link to the created/updated BOM card.
+
+## [2.22.1] - 2026-03-13
+
+### Changed
+- Updated release notes after standalone helper rollback: `associations_to_bom.php` keeps the origin selector as the standard product list.
+
+## [2.22.0] - 2026-03-13
+
+### Added
+- Added a standalone helper page `associations_to_bom.php` (URL access) to choose source and target products and copy source `product_association` lines into a draft manufacturing BOM (`bomtype=0`) for the target product.
+- Added transactional BOM line upsert (update existing direct lines, create missing lines) so repeated helper runs do not duplicate components.
+
+## [2.21.6] - 2026-03-13
+
+### Fixed
+- Preserved `KREAPRODUCTS_LABELS_TAB_ENABLED` on module disable by keeping the constant in `llx_const` (`deleteonunactive=0`), so your configured value is no longer reset after deactivate/reactivate.
+
 ## [2.21.5] - 2026-03-11
 
 ### Changed
