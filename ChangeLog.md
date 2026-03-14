@@ -1,6 +1,15 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.24.2] - 2026-03-14
+
+### Changed
+- `POST production/products/{product_id}/labels/pdf` now resolves the produced lot from `produced_batch` (or normalized `inventorycode`) and injects it into `template_values.batch.lot_number` before rendering.
+- `POST production/run` now injects the canonical produced lot into label payload template values so returned label payloads stay aligned with printed labels.
+
+### Fixed
+- Fixed label lot output truncation in production label flows where lot text could fall back to date-only (`AAAAMMDD`) instead of the canonical `AAAAMMDDHH + fk_mo` value.
+
 ## [2.24.1] - 2026-03-14
 
 ### Added

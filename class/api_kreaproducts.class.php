@@ -689,6 +689,8 @@ class KreaProductsApi extends DolibarrApi
 	 *   "units_per_label": 1,
 	 *   "labels_count": 120,
 	 *   "template_code": "degema_normal",
+	 *   "produced_batch": "2026031422341",
+	 *   "mo_id": 341,
 	 *   "template_values": {},
 	 *   "langcode": "pt_PT"
 	 * }
@@ -734,6 +736,8 @@ class KreaProductsApi extends DolibarrApi
 			$templateCode = trim((string) (isset($request_data['template_code']) ? $request_data['template_code'] : ''));
 			$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
 			$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
+			$producedBatch = $this->resolveProducedBatchCodeFromRequest($request_data, (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0));
+			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 
 			$selectedFields = array();
 			if (!empty($request_data['selected_fields']) && is_array($request_data['selected_fields'])) {
@@ -802,6 +806,7 @@ class KreaProductsApi extends DolibarrApi
 					'units_per_label' => (float) $unitsPerLabel,
 					'labels_count' => (int) $recommendedCount,
 					'template_code' => (string) $templateCode,
+					'produced_batch' => (string) $producedBatch,
 					'filename' => (!empty($generated['filename']) ? (string) $generated['filename'] : ('labels_' . ((int) $product->id) . '.pdf')),
 					'mime_type' => 'application/pdf',
 					'content_base64' => base64_encode($pdfBinary),
@@ -1145,6 +1150,7 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$mo->fetch($mo->id);
+		$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
 		$traceSaved = false;
 		$traceError = '';
@@ -1260,6 +1266,80 @@ class KreaProductsApi extends DolibarrApi
 
 		$parsed = (int) dol_stringtotime($raw);
 		return ($parsed > 0 ? $parsed : 0);
+	}
+
+	/**
+	 * Resolve produced batch code from label request payload.
+	 *
+	 * Preferred sources:
+	 * 1) produced_batch / produced_lot / batch
+	 * 2) inventorycode (normalized to AAAAMMDDHH + fk_mo policy when possible)
+	 *
+	 * @param array $requestData Request payload
+	 * @param int   $moId        Optional MO id for normalization
+	 * @return string
+	 */
+	protected function resolveProducedBatchCodeFromRequest($requestData, $moId = 0)
+	{
+		if (!is_array($requestData)) {
+			return '';
+		}
+
+		$explicitProducedBatch = trim((string) (
+			isset($requestData['produced_batch']) ? $requestData['produced_batch']
+			: (isset($requestData['produced_lot']) ? $requestData['produced_lot']
+			: (isset($requestData['batch']) ? $requestData['batch'] : ''))
+		));
+		if ($explicitProducedBatch !== '') {
+			return substr($explicitProducedBatch, 0, 128);
+		}
+
+		$rawInventoryCode = trim((string) (
+			isset($requestData['inventorycode']) ? $requestData['inventorycode']
+			: (isset($requestData['inventory_code']) ? $requestData['inventory_code'] : '')
+		));
+		if ($rawInventoryCode === '') {
+			return '';
+		}
+
+		$moId = (int) $moId;
+		$digits = preg_replace('/[^0-9]/', '', $rawInventoryCode);
+		if (is_string($digits) && strlen($digits) > 10) {
+			$candidateHourCode = substr($digits, 0, 10);
+			if ($this->isValidInventoryHourCode($candidateHourCode)) {
+				if ($moId > 0) {
+					return substr($candidateHourCode . $moId, 0, 128);
+				}
+				// Keep explicit suffix only for numeric payloads already in AAAAMMDDHH + fk_mo format.
+				if (preg_match('/^[0-9]+$/', $rawInventoryCode) === 1) {
+					return substr($digits, 0, 128);
+				}
+				return $candidateHourCode;
+			}
+		}
+
+		$normalized = $this->normalizeInventoryCode($rawInventoryCode, $moId);
+		return substr($normalized, 0, 128);
+	}
+
+	/**
+	 * Inject produced batch into template values for label rendering.
+	 *
+	 * @param array  $templateValues Existing template values
+	 * @param string $producedBatch  Produced batch code
+	 * @return array
+	 */
+	protected function mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch)
+	{
+		$values = (is_array($templateValues) ? $templateValues : array());
+		$producedBatch = trim((string) $producedBatch);
+		if ($producedBatch === '') {
+			return $values;
+		}
+
+		// Force lot number to the canonical produced batch code.
+		$values['batch.lot_number'] = $producedBatch;
+		return $values;
 	}
 
 	/**
