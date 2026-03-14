@@ -264,6 +264,304 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * List MO production history created by production/run trace.
+	 *
+	 * Each item represents one produced batch linked to one MO.
+	 *
+	 * @param int $limit Max items per page
+	 * @param int $page  Page offset
+	 * @param int $days_back Restrict results to the last N days (0 = no limit)
+	 * @return array
+	 *
+	 * @url GET production/mos/created
+	 */
+	public function getProductionCreatedMos($limit = 200, $page = 0, $days_back = 30)
+	{
+		$this->assertMrpEnabled();
+		$this->assertProductionReadRights();
+
+		$this->ensureProductionTraceTables();
+
+		$limit = (int) $limit;
+		if ($limit <= 0) {
+			$limit = 200;
+		}
+		if ($limit > 1000) {
+			$limit = 1000;
+		}
+		$page = max(0, (int) $page);
+		$daysBack = (int) $days_back;
+		if ($daysBack < 0) {
+			$daysBack = 0;
+		}
+		if ($daysBack > 3650) {
+			$daysBack = 3650;
+		}
+		$offset = $limit * $page;
+
+		$mrpEntitySql = $this->entityListToSql($this->getEntityIdList('mrp', true));
+		$bomEntitySql = $this->entityListToSql($this->getEntityIdList('bom', true));
+		$productEntitySql = $this->entityListToSql($this->getEntityIdList('product', true));
+		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
+
+		$whereSql = " WHERE t.entity IN (" . $mrpEntitySql . ")";
+		$whereSql .= " AND mo.entity IN (" . $mrpEntitySql . ")";
+		$whereSql .= " AND mo.fk_bom > 0";
+		$whereSql .= " AND (b.rowid IS NULL OR b.entity IN (" . $bomEntitySql . "))";
+		$whereSql .= " AND (p.rowid IS NULL OR p.entity IN (" . $productEntitySql . "))";
+		if ($daysBack > 0) {
+			$thresholdTs = dol_now() - ($daysBack * 86400);
+			$whereSql .= " AND t.date_creation >= '" . $this->db->idate($thresholdTs) . "'";
+		}
+
+		$sqlCount = "SELECT COUNT(t.rowid) AS total_count";
+		$sqlCount .= " FROM " . $traceTable . " AS t";
+		$sqlCount .= " INNER JOIN " . MAIN_DB_PREFIX . "mrp_mo AS mo ON mo.rowid = t.fk_mo";
+		$sqlCount .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.rowid = mo.fk_bom";
+		$sqlCount .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = mo.fk_product";
+		$sqlCount .= $whereSql;
+		$resCount = $this->db->query($sqlCount);
+		if (!$resCount) {
+			throw new RestException(503, 'Error when counting created MO history: ' . $this->db->lasterror());
+		}
+		$objCount = $this->db->fetch_object($resCount);
+		$this->db->free($resCount);
+		$totalCount = (!empty($objCount->total_count) ? (int) $objCount->total_count : 0);
+
+		$sql = "SELECT t.rowid AS trace_id, t.date_creation, t.inventorycode, t.production_qty,";
+		$sql .= " mo.rowid AS mo_id, mo.ref AS mo_ref, mo.label AS mo_label, mo.fk_bom AS bom_id, mo.fk_product AS product_id,";
+		$sql .= " b.ref AS bom_ref, b.label AS bom_label,";
+		$sql .= " p.ref AS product_ref, p.label AS product_label";
+		$sql .= " FROM " . $traceTable . " AS t";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "mrp_mo AS mo ON mo.rowid = t.fk_mo";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.rowid = mo.fk_bom";
+		$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = mo.fk_product";
+		$sql .= $whereSql;
+		$sql .= " ORDER BY t.date_creation DESC, t.rowid DESC";
+		$sql .= $this->db->plimit($limit, $offset);
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading created MO history: ' . $this->db->lasterror());
+		}
+
+		$items = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$createdAt = '';
+			if (!empty($obj->date_creation)) {
+				$createdAtTs = $this->db->jdate($obj->date_creation);
+				if ($createdAtTs > 0) {
+					$createdAt = dol_print_date($createdAtTs, '%Y-%m-%dT%H:%M:%SZ', 'gmt');
+				}
+			}
+
+			$recordRef = trim((string) $obj->mo_ref);
+			if ($recordRef === '') {
+				$recordRef = trim((string) $obj->bom_ref);
+			}
+			$recordLabel = trim((string) $obj->product_label);
+			if ($recordLabel === '') {
+				$recordLabel = trim((string) $obj->mo_label);
+			}
+			if ($recordLabel === '') {
+				$recordLabel = trim((string) $obj->bom_label);
+			}
+
+			$items[] = array(
+				'id' => (int) $obj->trace_id,
+				'date' => (string) $createdAt,
+				'ref' => (string) $recordRef,
+				'label' => (string) $recordLabel,
+				'batch' => (string) $obj->inventorycode,
+				'quantity' => (float) price2num($obj->production_qty, 'MS'),
+				'bom_id' => (int) $obj->bom_id,
+				'bom_ref' => (string) $obj->bom_ref,
+				'bom_label' => (string) $obj->bom_label,
+				'product_id' => (int) $obj->product_id,
+				'product_ref' => (string) $obj->product_ref,
+				'product_label' => (string) $obj->product_label,
+				'mo_id' => (int) $obj->mo_id,
+				'mo_ref' => (string) $obj->mo_ref,
+				'mo_label' => (string) $obj->mo_label,
+			);
+		}
+		$this->db->free($resql);
+
+		$totalPages = ($totalCount > 0 ? (int) ceil($totalCount / $limit) : 0);
+
+		return array(
+			'page' => $page,
+			'limit' => $limit,
+			'days_back' => $daysBack,
+			'count' => count($items),
+			'total_count' => $totalCount,
+			'total_pages' => $totalPages,
+			'items' => $items,
+		);
+	}
+
+	/**
+	 * Return one immutable created MO trace payload.
+	 *
+	 * This endpoint exposes the produced snapshot (header + traced component lines)
+	 * and does not allow updates.
+	 *
+	 * @param int $id Trace row id
+	 * @return array
+	 *
+	 * @url GET production/mos/created/{id}
+	 */
+	public function getProductionCreatedMo($id)
+	{
+		$this->assertMrpEnabled();
+		$this->assertProductionReadRights();
+
+		$this->ensureProductionTraceTables();
+
+		$traceId = (int) $id;
+		if ($traceId <= 0) {
+			throw new RestException(400, 'Invalid created MO id');
+		}
+
+		$mrpEntitySql = $this->entityListToSql($this->getEntityIdList('mrp', true));
+		$bomEntitySql = $this->entityListToSql($this->getEntityIdList('bom', true));
+		$productEntitySql = $this->entityListToSql($this->getEntityIdList('product', true));
+		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
+		$componentTable = MAIN_DB_PREFIX . 'kreaproducts_mo_component_batch';
+
+		$sqlHeader = "SELECT t.rowid AS trace_id, t.date_creation, t.inventorycode, t.production_qty,";
+		$sqlHeader .= " mo.rowid AS mo_id, mo.ref AS mo_ref, mo.label AS mo_label, mo.fk_bom AS bom_id, mo.fk_product AS product_id,";
+		$sqlHeader .= " b.ref AS bom_ref, b.label AS bom_label,";
+		$sqlHeader .= " p.ref AS product_ref, p.label AS product_label";
+		$sqlHeader .= " FROM " . $traceTable . " AS t";
+		$sqlHeader .= " INNER JOIN " . MAIN_DB_PREFIX . "mrp_mo AS mo ON mo.rowid = t.fk_mo";
+		$sqlHeader .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.rowid = mo.fk_bom";
+		$sqlHeader .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = mo.fk_product";
+		$sqlHeader .= " WHERE t.rowid = " . $traceId;
+		$sqlHeader .= " AND t.entity IN (" . $mrpEntitySql . ")";
+		$sqlHeader .= " AND mo.entity IN (" . $mrpEntitySql . ")";
+		$sqlHeader .= " AND mo.fk_bom > 0";
+		$sqlHeader .= " AND (b.rowid IS NULL OR b.entity IN (" . $bomEntitySql . "))";
+		$sqlHeader .= " AND (p.rowid IS NULL OR p.entity IN (" . $productEntitySql . "))";
+		$sqlHeader .= $this->db->plimit(1);
+
+		$resHeader = $this->db->query($sqlHeader);
+		if (!$resHeader) {
+			throw new RestException(503, 'Error when loading created MO detail: ' . $this->db->lasterror());
+		}
+		$objHeader = $this->db->fetch_object($resHeader);
+		$this->db->free($resHeader);
+		if (!$objHeader) {
+			throw new RestException(404, 'Created MO not found');
+		}
+
+		$createdAt = '';
+		if (!empty($objHeader->date_creation)) {
+			$createdAtTs = $this->db->jdate($objHeader->date_creation);
+			if ($createdAtTs > 0) {
+				$createdAt = dol_print_date($createdAtTs, '%Y-%m-%dT%H:%M:%SZ', 'gmt');
+			}
+		}
+		$recordRef = trim((string) $objHeader->mo_ref);
+		if ($recordRef === '') {
+			$recordRef = trim((string) $objHeader->bom_ref);
+		}
+		$recordLabel = trim((string) $objHeader->product_label);
+		if ($recordLabel === '') {
+			$recordLabel = trim((string) $objHeader->mo_label);
+		}
+		if ($recordLabel === '') {
+			$recordLabel = trim((string) $objHeader->bom_label);
+		}
+
+		$sqlLines = "SELECT c.rowid AS line_id, c.position, c.fk_bomline, c.fk_mo_line, c.fk_component_product,";
+		$sqlLines .= " c.component_qty, c.component_batch,";
+		$sqlLines .= " bl.qty AS bom_line_qty, bl.description AS bom_line_description,";
+		$sqlLines .= " mp.qty AS mo_line_qty,";
+		$sqlLines .= " cp.ref AS component_ref, cp.label AS component_label";
+		$sqlLines .= " FROM " . $componentTable . " AS c";
+		$sqlLines .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON bl.rowid = c.fk_bomline";
+		$sqlLines .= " LEFT JOIN " . MAIN_DB_PREFIX . "mrp_production AS mp ON mp.rowid = c.fk_mo_line";
+		$sqlLines .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS cp ON cp.rowid = c.fk_component_product";
+		$sqlLines .= " WHERE c.entity IN (" . $mrpEntitySql . ")";
+		$sqlLines .= " AND c.fk_trace = " . $traceId;
+		$sqlLines .= " AND (cp.rowid IS NULL OR cp.entity IN (" . $productEntitySql . "))";
+		$sqlLines .= " ORDER BY c.position ASC, c.rowid ASC";
+
+		$resLines = $this->db->query($sqlLines);
+		if (!$resLines) {
+			throw new RestException(503, 'Error when loading created MO lines: ' . $this->db->lasterror());
+		}
+
+		$lines = array();
+		while ($objLine = $this->db->fetch_object($resLines)) {
+			$lines[] = array(
+				'line_id' => (int) $objLine->line_id,
+				'position' => (int) $objLine->position,
+				'component_product_id' => (int) $objLine->fk_component_product,
+				'component_ref' => (string) $objLine->component_ref,
+				'component_label' => (string) $objLine->component_label,
+				'quantity' => (float) price2num($objLine->component_qty, 'MS'),
+				'batch' => (string) $objLine->component_batch,
+				'bom_line_id' => (int) $objLine->fk_bomline,
+				'mo_line_id' => (int) $objLine->fk_mo_line,
+				'bom_line_qty' => ($objLine->bom_line_qty !== null ? (float) price2num($objLine->bom_line_qty, 'MS') : null),
+				'mo_line_qty' => ($objLine->mo_line_qty !== null ? (float) price2num($objLine->mo_line_qty, 'MS') : null),
+				'line_description' => (string) $objLine->bom_line_description,
+			);
+		}
+		$this->db->free($resLines);
+
+		return array(
+			'id' => (int) $objHeader->trace_id,
+			'date' => (string) $createdAt,
+			'ref' => (string) $recordRef,
+			'label' => (string) $recordLabel,
+			'batch' => (string) $objHeader->inventorycode,
+			'quantity' => (float) price2num($objHeader->production_qty, 'MS'),
+			'bom_id' => (int) $objHeader->bom_id,
+			'bom_ref' => (string) $objHeader->bom_ref,
+			'bom_label' => (string) $objHeader->bom_label,
+			'product_id' => (int) $objHeader->product_id,
+			'product_ref' => (string) $objHeader->product_ref,
+			'product_label' => (string) $objHeader->product_label,
+			'mo_id' => (int) $objHeader->mo_id,
+			'mo_ref' => (string) $objHeader->mo_ref,
+			'mo_label' => (string) $objHeader->mo_label,
+			'components_count' => count($lines),
+			'components' => $lines,
+		);
+	}
+
+	/**
+	 * Backward-compatible alias for older kiosk clients.
+	 *
+	 * @param int $limit Max items per page
+	 * @param int $page  Page offset
+	 * @param int $days_back Restrict results to the last N days (0 = no limit)
+	 * @return array
+	 *
+	 * @url GET production/boms/created
+	 */
+	public function getProductionCreatedBoms($limit = 200, $page = 0, $days_back = 30)
+	{
+		return $this->getProductionCreatedMos($limit, $page, $days_back);
+	}
+
+	/**
+	 * Backward-compatible alias for older kiosk clients.
+	 *
+	 * @param int $id Trace row id
+	 * @return array
+	 *
+	 * @url GET production/boms/created/{id}
+	 */
+	public function getProductionCreatedBom($id)
+	{
+		return $this->getProductionCreatedMo($id);
+	}
+
+	/**
 	 * Return production recipe for one product.
 	 *
 	 * Priority:
@@ -573,6 +871,15 @@ class KreaProductsApi extends DolibarrApi
 		$qty = price2num(isset($request_data['qty']) ? $request_data['qty'] : (isset($request_data['production_qty']) ? $request_data['production_qty'] : 0), 'MS');
 		$requestedWarehouseId = (int) (isset($request_data['warehouse_id']) ? $request_data['warehouse_id'] : (isset($request_data['fk_warehouse']) ? $request_data['fk_warehouse'] : 0));
 		$requestedBomId = (int) (isset($request_data['bom_id']) ? $request_data['bom_id'] : (isset($request_data['fk_bom']) ? $request_data['fk_bom'] : 0));
+		$requestedThirdpartyId = (int) (isset($request_data['fk_soc']) ? $request_data['fk_soc'] : (isset($request_data['thirdparty_id']) ? $request_data['thirdparty_id'] : 0));
+		$requestedProjectId = (int) (isset($request_data['fk_project']) ? $request_data['fk_project'] : (isset($request_data['project_id']) ? $request_data['project_id'] : 0));
+		$requestedLabel = trim((string) (isset($request_data['label']) ? $request_data['label'] : ''));
+		$requestedDateStartPlanned = $this->parseRequestDateTimeToTimestamp(
+			(isset($request_data['date_start_planned']) ? $request_data['date_start_planned'] : (isset($request_data['date_start']) ? $request_data['date_start'] : ''))
+		);
+		$requestedDateEndPlanned = $this->parseRequestDateTimeToTimestamp(
+			(isset($request_data['date_end_planned']) ? $request_data['date_end_planned'] : (isset($request_data['date_end']) ? $request_data['date_end'] : ''))
+		);
 		$autoClose = (!empty($request_data['autoclose']) ? 1 : 0);
 		$unitsPerLabel = price2num(isset($request_data['units_per_label']) ? $request_data['units_per_label'] : 1, 'MS');
 		$labelsCount = (int) (isset($request_data['labels_count']) ? $request_data['labels_count'] : 0);
@@ -620,15 +927,59 @@ class KreaProductsApi extends DolibarrApi
 				$qty = (float) $mo->qty;
 			}
 
+			$shouldUpdateDraftMo = false;
 			if ($hasQtyInput && (int) $mo->status === Mo::STATUS_DRAFT && (float) $mo->qty !== (float) $qty) {
 				$mo->oldQty = $mo->qty;
 				$mo->qty = (float) $qty;
-				if ($mo->update(DolibarrApiAccess::$user) <= 0) {
-					throw new RestException(500, 'Error updating MO quantity: ' . $mo->error);
-				}
-				$mo->fetch($mo->id);
+				$shouldUpdateDraftMo = true;
 			} elseif ($hasQtyInput && (int) $mo->status !== Mo::STATUS_DRAFT && (float) $mo->qty !== (float) $qty) {
 				throw new RestException(409, 'Provided qty does not match existing non-draft MO quantity');
+			}
+
+			if ((int) $mo->status === Mo::STATUS_DRAFT) {
+				$resolvedMoLabel = $this->buildMoLabelForProduction($requestedLabel, $request_data, $product);
+				if ($resolvedMoLabel !== '' && trim((string) $mo->label) !== $resolvedMoLabel) {
+					$mo->label = $resolvedMoLabel;
+					$shouldUpdateDraftMo = true;
+				}
+
+				$requestedStartForResolve = ($requestedDateStartPlanned > 0 ? $requestedDateStartPlanned : $requestedDateEndPlanned);
+				$requestedEndForResolve = ($requestedDateEndPlanned > 0 ? $requestedDateEndPlanned : $requestedStartForResolve);
+				$plannedStart = $this->resolveMoPlannedTimestamp(
+					$requestedStartForResolve,
+					(int) (!empty($mo->date_start_planned) ? $mo->date_start_planned : 0),
+					dol_now()
+				);
+				$plannedEnd = $this->resolveMoPlannedTimestamp(
+					$requestedEndForResolve,
+					(int) (!empty($mo->date_end_planned) ? $mo->date_end_planned : 0),
+					$plannedStart
+				);
+
+				if ((int) $mo->date_start_planned !== (int) $plannedStart) {
+					$mo->date_start_planned = $plannedStart;
+					$shouldUpdateDraftMo = true;
+				}
+				if ((int) $mo->date_end_planned !== (int) $plannedEnd) {
+					$mo->date_end_planned = $plannedEnd;
+					$shouldUpdateDraftMo = true;
+				}
+
+				if ($requestedThirdpartyId > 0 && (int) $mo->fk_soc !== $requestedThirdpartyId) {
+					$mo->fk_soc = $requestedThirdpartyId;
+					$shouldUpdateDraftMo = true;
+				}
+				if ($requestedProjectId > 0 && (int) $mo->fk_project !== $requestedProjectId) {
+					$mo->fk_project = $requestedProjectId;
+					$shouldUpdateDraftMo = true;
+				}
+
+				if ($shouldUpdateDraftMo && $mo->update(DolibarrApiAccess::$user) <= 0) {
+					throw new RestException(500, 'Error updating MO header: ' . $mo->error);
+				}
+				if ($shouldUpdateDraftMo) {
+					$mo->fetch($mo->id);
+				}
 			}
 
 			$warehouseId = $this->resolveWarehouseIdForProduction($requestedWarehouseId, $product, $mo);
@@ -648,8 +999,18 @@ class KreaProductsApi extends DolibarrApi
 			$mo->qty = (float) $qty;
 			$mo->fk_warehouse = $warehouseId;
 			$mo->fk_bom = $bomIdUsed;
-			if (!empty($request_data['label'])) {
-				$mo->label = trim((string) $request_data['label']);
+			$mo->label = $this->buildMoLabelForProduction($requestedLabel, $request_data, $product);
+			$requestedStartForResolve = ($requestedDateStartPlanned > 0 ? $requestedDateStartPlanned : $requestedDateEndPlanned);
+			$requestedEndForResolve = ($requestedDateEndPlanned > 0 ? $requestedDateEndPlanned : $requestedStartForResolve);
+			$plannedStart = $this->resolveMoPlannedTimestamp($requestedStartForResolve, 0, dol_now());
+			$plannedEnd = $this->resolveMoPlannedTimestamp($requestedEndForResolve, 0, $plannedStart);
+			$mo->date_start_planned = $plannedStart;
+			$mo->date_end_planned = $plannedEnd;
+			if ($requestedThirdpartyId > 0) {
+				$mo->fk_soc = $requestedThirdpartyId;
+			}
+			if ($requestedProjectId > 0) {
+				$mo->fk_project = $requestedProjectId;
 			}
 
 			$newId = $mo->create(DolibarrApiAccess::$user);
@@ -814,6 +1175,91 @@ class KreaProductsApi extends DolibarrApi
 			'stock_updated' => true,
 			'label_payload' => $labelPayload,
 		);
+	}
+
+	/**
+	 * Build MO label for production execution payload.
+	 *
+	 * @param string $requestedLabel
+	 * @param array  $requestData
+	 * @param object $product
+	 * @return string
+	 */
+	protected function buildMoLabelForProduction($requestedLabel, $requestData, $product)
+	{
+		$label = trim((string) $requestedLabel);
+		if ($label === '') {
+			$label = trim((string) (isset($requestData['inventorylabel']) ? $requestData['inventorylabel'] : ''));
+		}
+		if ($label === '') {
+			$productRef = (!empty($product->ref) ? (string) $product->ref : (string) $product->id);
+			$label = 'Touch production ' . $productRef;
+		}
+
+		$label = trim((string) preg_replace('/\s+/', ' ', $label));
+		if (function_exists('mb_substr')) {
+			return (string) mb_substr($label, 0, 255);
+		}
+
+		return (string) substr($label, 0, 255);
+	}
+
+	/**
+	 * Resolve planned date timestamp with fallback order.
+	 *
+	 * @param int $requestedTs
+	 * @param int $existingTs
+	 * @param int $fallbackTs
+	 * @return int
+	 */
+	protected function resolveMoPlannedTimestamp($requestedTs, $existingTs, $fallbackTs)
+	{
+		$requestedTs = (int) $requestedTs;
+		if ($requestedTs > 0) {
+			return $requestedTs;
+		}
+
+		$existingTs = (int) $existingTs;
+		if ($existingTs > 0) {
+			return $existingTs;
+		}
+
+		$fallbackTs = (int) $fallbackTs;
+		if ($fallbackTs > 0) {
+			return $fallbackTs;
+		}
+
+		return dol_now();
+	}
+
+	/**
+	 * Parse request date/datetime input into UNIX timestamp.
+	 *
+	 * @param mixed $rawDateTime
+	 * @return int
+	 */
+	protected function parseRequestDateTimeToTimestamp($rawDateTime)
+	{
+		if ($rawDateTime === null) {
+			return 0;
+		}
+
+		if (is_numeric($rawDateTime)) {
+			$value = (int) $rawDateTime;
+			// Accept milliseconds timestamps from external clients.
+			if ($value > 20000000000) {
+				$value = (int) floor($value / 1000);
+			}
+			return ($value > 0 ? $value : 0);
+		}
+
+		$raw = trim((string) $rawDateTime);
+		if ($raw === '') {
+			return 0;
+		}
+
+		$parsed = (int) dol_stringtotime($raw);
+		return ($parsed > 0 ? $parsed : 0);
 	}
 
 	/**

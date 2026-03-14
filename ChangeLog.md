@@ -1,6 +1,36 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.24.1] - 2026-03-14
+
+### Added
+- Added canonical MO history endpoints for kiosk consultation:
+  - `GET production/mos/created`
+  - `GET production/mos/created/{id}`
+
+### Changed
+- Kept existing `GET production/boms/created` and `GET production/boms/created/{id}` as backward-compatible aliases that now delegate to the canonical MO endpoints.
+- Updated API error/description wording for created-history consultation from BOM to MO semantics.
+
+## [2.24.0] - 2026-03-14
+
+### Added
+- Added pagination and history-range controls to `GET production/boms/created` via `page`, `limit`, and `days_back`, with response metadata (`total_count`, `total_pages`).
+- Added immutable created-BOM detail endpoint `GET production/boms/created/{id}` returning created header data plus traced component lines (qty/batch/line linkage).
+
+### Changed
+- `GET production/boms/created` now returns created record `ref` from MO reference (`mo_ref`) and keeps source BOM identity in dedicated `bom_ref` / `bom_label` fields.
+- Expanded created-BOM list payload with `mo_label` and page/range metadata for kiosk pagination and printing workflows.
+
+## [2.23.0] - 2026-03-14
+
+### Added
+- Added `GET production/boms/created` to expose produced BOM history from KreaProducts production trace, including date, BOM ref/label, batch (`inventorycode`), quantity, and linked product/MO ids for consultation flows.
+
+### Fixed
+- `POST production/run` now fills MO header fields consistently on auto-created draft MOs: label, planned start/end dates, and optional `fk_soc` / `fk_project` when provided.
+- Existing draft MOs passed to `POST production/run` now receive missing label/planned dates before validation when those fields are empty, preventing incomplete MO headers (for example missing label/planned dates in produced MOs).
+
 ## [2.22.7] - 2026-03-13
 
 ### Changed
