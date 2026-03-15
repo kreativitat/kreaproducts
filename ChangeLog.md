@@ -1,6 +1,19 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.24.4] - 2026-03-15
+
+### Added
+- Added setup toggle `KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED` (default ON) to control visibility of the Products menu shortcut to service categories.
+
+### Changed
+- Products menu shortcut `KREAPRODUCTS_SERVICE_CATEGORIES_LINK` is now shown only when `KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED=1`.
+
+## [2.24.3] - 2026-03-15
+
+### Added
+- Added a new Products left-menu shortcut (`KREAPRODUCTS_SERVICE_CATEGORIES_LINK`) pointing to `https://fin.degema.pt/categories/categorie_list.php?mode=hierarchy&type=service`.
+
 ## [2.24.2] - 2026-03-14
 
 ### Changed

@@ -169,6 +169,10 @@ if (!isset($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_LABELS_TAB_ENABLED', '0', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED = '0';
 }
+if (!isset($conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED = '1';
+}
 if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 	$extrafields = new ExtraFields($db);
@@ -308,6 +312,11 @@ $item = $formSetup->newItem('KREAPRODUCTS_LABELS_TAB_ENABLED');
 $item->setAsYesNo();
 $item->defaultFieldValue = '0';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_LABELS_TAB_ENABLED_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED_HELP');
 
 // Movimentos de stock
 $formSetup->newItem('KREAPRODUCTS_STOCK_SETTINGS_TITLE')->setAsTitle();

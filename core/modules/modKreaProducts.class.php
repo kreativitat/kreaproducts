@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.24.2';
+        $this->version = '2.24.4';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -200,6 +200,7 @@ class modKreaProducts extends DolibarrModules
             11 => array('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             12 => array('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             13 => array('KREAPRODUCTS_LABELS_TAB_ENABLED', 'chaine', '0', '', 0, 'allentities', 0),
+            14 => array('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', 'chaine', '1', '', 0, 'allentities', 1),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 
@@ -412,6 +413,20 @@ class modKreaProducts extends DolibarrModules
             'position' => 1000 + $r,
             'enabled' => 'isModEnabled("kreaproducts") && isModEnabled("stock") && isModEnabled("dolizsynch")',
             'perms' => '$user->hasRight("stock", "lire") || $user->hasRight("stock", "inventory_advance", "read")',
+            'target' => '_blank',
+            'user' => 2
+        );
+        $this->menu[$r++] = array(
+            'fk_menu' => 'fk_mainmenu=products,fk_leftmenu=product',
+            'type' => 'left',
+            'titre' => 'KREAPRODUCTS_SERVICE_CATEGORIES_LINK',
+            'mainmenu' => 'products',
+            'leftmenu' => 'kreaproducts_service_categories_link',
+            'url' => '/categories/categorie_list.php?mode=hierarchy&type=service',
+            'langs' => 'kreaproducts@kreaproducts',
+            'position' => 1000 + $r,
+            'enabled' => 'isModEnabled("kreaproducts") && !empty($conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED)',
+            'perms' => '$user->hasRight("produit", "lire")',
             'target' => '_blank',
             'user' => 2
         );
