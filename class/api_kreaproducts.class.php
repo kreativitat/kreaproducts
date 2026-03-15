@@ -187,11 +187,16 @@ class KreaProductsApi extends DolibarrApi
 
 		if (!empty($products)) {
 			$defaultLayouts = $this->loadProductExtrafieldTextMap($productIds, 'kreap_default_label_layout');
+			$aliases = $this->loadProductExtrafieldTextMap($productIds, 'kreap_alias');
 			foreach ($products as &$row) {
-				$layout = (!empty($defaultLayouts[$row['id']]) ? (string) $defaultLayouts[$row['id']] : '');
+				$productId = (int) $row['id'];
+				$layout = (!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+				$alias = (!empty($aliases[$productId]) ? (string) $aliases[$productId] : '');
+				$row['kreap_alias'] = $alias;
 				$row['default_label_layout'] = $layout;
 				$row['array_options'] = array(
 					'options_kreap_default_label_layout' => $layout,
+					'options_kreap_alias' => $alias,
 				);
 			}
 			unset($row);
@@ -676,6 +681,7 @@ class KreaProductsApi extends DolibarrApi
 		$this->assertLabelReadRights();
 
 		$product = $this->fetchProduct((int) $product_id);
+		$this->applyProductAliasToLabel($product);
 		return $this->buildLabelPayload($product, $production_qty, $units_per_label, $labels_count, $template_code, array(), $langcode);
 	}
 
@@ -722,6 +728,7 @@ class KreaProductsApi extends DolibarrApi
 			}
 
 			$product = $this->fetchProduct($productIdFromPath);
+			$this->applyProductAliasToLabel($product);
 			$productionQty = price2num(isset($request_data['production_qty']) ? $request_data['production_qty'] : 1, 'MS');
 			if ($productionQty <= 0) {
 				$productionQty = 1;
@@ -1150,6 +1157,7 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		$mo->fetch($mo->id);
+		$this->applyProductAliasToLabel($product);
 		$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
 		$traceSaved = false;
@@ -2650,6 +2658,7 @@ class KreaProductsApi extends DolibarrApi
 
 		if (!empty($productsByCategory)) {
 			$defaultLayouts = $this->loadProductExtrafieldTextMap($productIds, 'kreap_default_label_layout');
+			$aliases = $this->loadProductExtrafieldTextMap($productIds, 'kreap_alias');
 			foreach ($productsByCategory as &$rows) {
 				if (!is_array($rows)) {
 					continue;
@@ -2658,10 +2667,14 @@ class KreaProductsApi extends DolibarrApi
 					if (!is_array($row) || empty($row['id'])) {
 						continue;
 					}
-					$layout = (!empty($defaultLayouts[(int) $row['id']]) ? (string) $defaultLayouts[(int) $row['id']] : '');
+					$productId = (int) $row['id'];
+					$layout = (!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+					$alias = (!empty($aliases[$productId]) ? (string) $aliases[$productId] : '');
+					$row['kreap_alias'] = $alias;
 					$row['default_label_layout'] = $layout;
 					$row['array_options'] = array(
 						'options_kreap_default_label_layout' => $layout,
+						'options_kreap_alias' => $alias,
 					);
 				}
 				unset($row);
@@ -2968,6 +2981,34 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		return $values;
+	}
+
+	/**
+	 * Apply product alias (`kreap_alias`) as runtime product label when available.
+	 *
+	 * @param object $product Product object with id/label props
+	 * @return string Resolved alias (empty when not defined)
+	 */
+	protected function applyProductAliasToLabel($product)
+	{
+		if (!is_object($product) || empty($product->id)) {
+			return '';
+		}
+
+		$productId = (int) $product->id;
+		if ($productId <= 0) {
+			return '';
+		}
+
+		$aliases = $this->loadProductExtrafieldTextMap(array($productId), 'kreap_alias');
+		$alias = (!empty($aliases[$productId]) ? trim((string) $aliases[$productId]) : '');
+		if ($alias === '') {
+			return '';
+		}
+
+		$product->label = $alias;
+		$product->kreap_alias = $alias;
+		return $alias;
 	}
 
 	/**

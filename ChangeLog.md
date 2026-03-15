@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.1] - 2026-03-15
+
+### Changed
+- Added `kreap_alias` to production category product payloads (`GET production/categories/{id}/products` and `GET production/categories/{id}/tree`) with `array_options.options_kreap_alias`.
+- Label payload and PDF generation now prefer `kreap_alias` as product label when the extrafield is filled.
+
 ## [2.26.0] - 2026-03-15
 
 ### Changed
