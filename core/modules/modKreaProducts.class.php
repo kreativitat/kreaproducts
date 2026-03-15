@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.24.4';
+        $this->version = '2.26.0';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -582,6 +582,11 @@ class modKreaProducts extends DolibarrModules
 
         $field_label = $langs->trans("kreap_video");
         $result7 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+        $field_label = $langs->trans("kreap_alias");
+        $field_help = $langs->trans("kreap_alias_help");
+        $result7b = $extrafields->addExtraField('kreap_alias', $field_label, 'varchar', 305, 255, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField('kreap_alias', $field_label, 'varchar', 305, 255, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_name = "kreap_calc_nut";
         $field_label = $langs->trans("kreap_calc_nut");

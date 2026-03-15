@@ -1,6 +1,20 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.0] - 2026-03-15
+
+### Changed
+- Renamed product extrafield mirror from `kreap_zs_descricaocurta` to `kreap_alias`.
+- Setup migration now ensures `kreap_alias` exists and copies legacy `kreap_zs_descricaocurta` values when the new field is empty.
+
+## [2.25.0] - 2026-03-15
+
+### Added
+- Added product extrafield `kreap_zs_descricaocurta` (varchar 255) to mirror ZoneSoft short description independently from DoliZSynch module state.
+
+### Changed
+- KreaProducts setup now enforces creation/update of `kreap_zs_descricaocurta` on existing installations.
+
 ## [2.24.4] - 2026-03-15
 
 ### Added

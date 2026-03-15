@@ -230,6 +230,49 @@ if (empty($conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED)) {
 	$conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED = '1';
 }
 
+if (empty($conf->global->KREAPRODUCTS_ALIAS_FIELD_READY)) {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+
+	$field_name = "kreap_alias";
+	$field_label = $langs->trans("kreap_alias");
+	$field_help = $langs->trans("kreap_alias_help");
+	$extrafields->addExtraField($field_name, $field_label, 'varchar', 305, 255, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$extrafields->updateExtraField($field_name, $field_label, 'varchar', 305, 255, 'product', 0, 0, '', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');
+	$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_alias) ";
+	$sql .= "SELECT p.rowid, NULL FROM " . MAIN_DB_PREFIX . "product p ";
+	$sql .= "LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe ON pe.fk_object = p.rowid ";
+	$sql .= "WHERE pe.fk_object IS NULL";
+	if (empty($sharedProducts)) {
+		$sql .= " AND p.entity = " . ((int) $conf->entity);
+	}
+	$db->query($sql);
+
+	$legacyColumnExists = false;
+	$legacyColRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "kreap_zs_descricaocurta");
+	if ($legacyColRes) {
+		$legacyColumnExists = ($db->num_rows($legacyColRes) > 0);
+		$db->free($legacyColRes);
+	}
+
+	if ($legacyColumnExists) {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields pe ";
+		$sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = pe.fk_object ";
+		$sql .= "SET pe.kreap_alias = pe.kreap_zs_descricaocurta ";
+		$sql .= "WHERE (pe.kreap_alias IS NULL OR pe.kreap_alias = '') ";
+		$sql .= "AND pe.kreap_zs_descricaocurta IS NOT NULL AND pe.kreap_zs_descricaocurta <> ''";
+		if (empty($sharedProducts)) {
+			$sql .= " AND p.entity = " . ((int) $conf->entity);
+		}
+		$db->query($sql);
+	}
+
+	dolibarr_set_const($db, 'KREAPRODUCTS_ALIAS_FIELD_READY', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_ALIAS_FIELD_READY = '1';
+}
+
 // Setup weight unit with unique labels only
 $sql = "SELECT DISTINCT unit_type FROM " . MAIN_DB_PREFIX . "c_units ORDER BY unit_type DESC";
 $resql = $db->query($sql);
