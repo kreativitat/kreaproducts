@@ -1,6 +1,17 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.5] - 2026-03-16
+
+### Fixed
+- Added `GET production/products/{product_id}/labels/pdf` compatibility route delegating to the same PDF generator used by POST, so label generation still works when upstream rewrites POST calls to GET.
+
+## [2.26.4] - 2026-03-16
+
+### Fixed
+- Added API door compatibility class alias `Kreaproducts` so `/api/index.php/kreaproducts/...` resolves the same KreaProducts API class as `kreaproductsapi`.
+- Added `POST production/products/{product_id}/labels` as a backward-compatible alias to the `labels/pdf` generator endpoint.
+
 ## [2.26.3] - 2026-03-16
 
 ### Fixed

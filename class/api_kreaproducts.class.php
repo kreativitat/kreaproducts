@@ -833,6 +833,57 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Compatibility endpoint for clients posting labels generation without the trailing /pdf path segment.
+	 *
+	 * @param int   $product_id   Product id (path)
+	 * @param array $request_data Request body
+	 * @return array
+	 *
+	 * @url POST production/products/{product_id}/labels
+	 */
+	public function postProductionLabelData($product_id = 0, $request_data = null)
+	{
+		return $this->postProductionLabelPdf($product_id, $request_data);
+	}
+
+	/**
+	 * Compatibility endpoint for clients calling labels PDF generation with GET.
+	 * This keeps backward compatibility when proxies/clients rewrite POST to GET.
+	 *
+	 * @param int    $product_id       Product id (path)
+	 * @param float  $production_qty   Production quantity
+	 * @param float  $units_per_label  Units represented by one label
+	 * @param int    $labels_count     Explicit labels count
+	 * @param string $template_code    Optional template code
+	 * @param string $produced_batch   Optional produced batch code
+	 * @param string $langcode         Optional output language
+	 * @return array
+	 *
+	 * @url GET production/products/{product_id}/labels/pdf
+	 */
+	public function getProductionLabelPdf(
+		$product_id,
+		$production_qty = 1,
+		$units_per_label = 1,
+		$labels_count = 0,
+		$template_code = '',
+		$produced_batch = '',
+		$langcode = ''
+	) {
+		$requestData = array(
+			'product_id' => (int) $product_id,
+			'production_qty' => $production_qty,
+			'units_per_label' => $units_per_label,
+			'labels_count' => $labels_count,
+			'template_code' => $template_code,
+			'produced_batch' => $produced_batch,
+			'langcode' => $langcode,
+		);
+
+		return $this->postProductionLabelPdf((int) $product_id, $requestData);
+	}
+
+	/**
 	 * Run one production operation and return label payload for the produced lot.
 	 *
 	 * Request body example:
@@ -3146,4 +3197,15 @@ class KreaProductsApi extends DolibarrApi
 			}
 		}
 	}
+}
+
+/**
+ * Backward-compatible API class alias for /api/index.php/kreaproducts/... door path.
+ * Dolibarr resolves this door with classname "Kreaproducts".
+ *
+ * @access protected
+ * @class DolibarrApiAccess {@requires user,external}
+ */
+class Kreaproducts extends KreaProductsApi
+{
 }
