@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.3] - 2026-03-16
+
+### Fixed
+- Synced `product_extrafields.kreap_alias` updates to `dolizsynch_zsproduct.descricaocurta` on `PRODUCT_MODIFY` when the DoliZSynch table/column exists.
+
 ## [2.26.2] - 2026-03-16
 
 ### Changed
