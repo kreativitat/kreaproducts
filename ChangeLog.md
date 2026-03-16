@@ -1,6 +1,25 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.8] - 2026-03-16
+
+### Fixed
+- Aligned `degema_normal` and `degema_congelado` template physical size defaults to `75.6 x 49.9 mm` (matching legacy production PDFs used in Epson TM-L90 flows).
+- Normalized front/back page size usage in template PDF generation so near-identical extracted page sizes no longer drift between pages and trigger unstable thermal-printer scaling.
+
+## [2.26.7] - 2026-03-16
+
+### Fixed
+- Removed outer label boundary frames from generated product-label PDFs so silent and regular printing no longer draw limit borders around each label.
+
+## [2.26.6] - 2026-03-16
+
+### Changed
+- Label PDF and production payload endpoints now resolve a missing `template_code` from product extrafield `kreap_default_label_layout`, with optional global fallback `KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE`.
+
+### Fixed
+- Removed bundled-template loader reference to undefined `$entityId` to keep template resolution stable in strict PHP error-handling environments.
+
 ## [2.26.5] - 2026-03-16
 
 ### Fixed

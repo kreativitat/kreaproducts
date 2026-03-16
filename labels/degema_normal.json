@@ -2,7 +2,7 @@
   "schema_version": 1,
   "template_code": "degema_normal",
   "label": "DeGema Etiqueta Normal",
-  "description": "Etiqueta de produto frente e verso 76x50 mm otimizada para legibilidade. A frente destaca os principais dados do lote e o código interno. O verso apresenta ingredientes, alergénios, informação nutricional e símbolos obrigatórios da embalagem.",
+  "description": "Etiqueta de produto frente e verso 75.6x49.9 mm otimizada para legibilidade. A frente destaca os principais dados do lote e o código interno. O verso apresenta ingredientes, alergénios, informação nutricional e símbolos obrigatórios da embalagem.",
   "source": {
     "type": "pdf_extract",
     "file_name": "DeGema_Etiqueta_Normal.pdf",
@@ -11,13 +11,13 @@
   "unit": "mm",
   "format_code": "CUSTOM_76X50",
   "label_size_mm": {
-    "width": 76.0,
-    "height": 50.0
+    "width": 75.6,
+    "height": 49.9
   },
   "dolibarr_format_hint": {
     "paper_size": "custom",
-    "custom_x_mm": 76.0,
-    "custom_y_mm": 50.0,
+    "custom_x_mm": 75.6,
+    "custom_y_mm": 49.9,
     "orientation": "P",
     "nx": 1,
     "ny": 1,
@@ -158,8 +158,8 @@
       "code": "front",
       "label": "Frente",
       "size_mm": {
-        "width": 75.66,
-        "height": 49.91
+        "width": 75.6,
+        "height": 49.9
       },
       "blocks": [
         {
@@ -444,8 +444,8 @@
       "code": "back",
       "label": "Verso",
       "size_mm": {
-        "width": 76.07,
-        "height": 50.55
+        "width": 75.6,
+        "height": 49.9
       },
       "blocks": [
         {

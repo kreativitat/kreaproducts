@@ -744,6 +744,7 @@ class KreaProductsApi extends DolibarrApi
 			$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
 			$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
 			$producedBatch = $this->resolveProducedBatchCodeFromRequest($request_data, (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0));
+			$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
 			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 
 			$selectedFields = array();
@@ -1209,6 +1210,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$mo->fetch($mo->id);
 		$this->applyProductAliasToLabel($product);
+		$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
 		$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
 		$traceSaved = false;
@@ -2389,7 +2391,7 @@ class KreaProductsApi extends DolibarrApi
 			'viewer' => array(),
 		);
 
-		$templateCode = trim((string) $templateCode);
+		$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
 		if ($templateCode !== '') {
 			$template = KreaProductsLabelService::loadLabelTemplate($templateCode, $entityId);
 			if (!empty($template)) {
@@ -3060,6 +3062,47 @@ class KreaProductsApi extends DolibarrApi
 		$product->label = $alias;
 		$product->kreap_alias = $alias;
 		return $alias;
+	}
+
+	/**
+	 * Resolve effective label template code for one product.
+	 *
+	 * Priority:
+	 * 1) Explicit API request template code
+	 * 2) Product extrafield `kreap_default_label_layout`
+	 * 3) Global fallback `KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE`
+	 *
+	 * @param object $product Product object with id
+	 * @param string $requestedTemplateCode Raw requested template code
+	 * @return string
+	 */
+	protected function resolveLabelTemplateCode($product, $requestedTemplateCode)
+	{
+		global $conf;
+
+		$templateCode = preg_replace('/[^A-Za-z0-9_.-]/', '', trim((string) $requestedTemplateCode));
+		if ($templateCode !== '') {
+			return $templateCode;
+		}
+
+		$productId = (is_object($product) && !empty($product->id) ? (int) $product->id : 0);
+		if ($productId > 0) {
+			$layouts = $this->loadProductExtrafieldTextMap(array($productId), 'kreap_default_label_layout');
+			if (!empty($layouts[$productId])) {
+				$templateCode = preg_replace('/[^A-Za-z0-9_.-]/', '', trim((string) $layouts[$productId]));
+				if ($templateCode !== '') {
+					return $templateCode;
+				}
+			}
+		}
+
+		$globalDefault = trim((string) (!empty($conf->global->KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE) ? $conf->global->KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE : ''));
+		$globalDefault = preg_replace('/[^A-Za-z0-9_.-]/', '', $globalDefault);
+		if ($globalDefault !== '') {
+			return $globalDefault;
+		}
+
+		return '';
 	}
 
 	/**

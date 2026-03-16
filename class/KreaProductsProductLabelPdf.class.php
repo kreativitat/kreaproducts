@@ -81,10 +81,6 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		$hasBarcode = !empty($param['barcode_value']) && !empty($param['barcode_encoding']);
 		$barcodeIs2d = !empty($param['barcode_is_2d']);
 
-		$pdf->SetDrawColor(210, 210, 210);
-		$pdf->Rect($originX, $originY, $this->_Width, $this->_Height);
-		$pdf->SetDrawColor(0, 0, 0);
-
 		$styleMap = array(
 			'ref' => array('style' => 'B', 'size' => ($isCompact ? 8 : 10), 'lineheight' => ($isCompact ? 3.6 : 4.5)),
 			'label' => array('style' => '', 'size' => ($isCompact ? 7 : 8.5), 'lineheight' => ($isCompact ? 3.1 : 3.8)),
@@ -183,9 +179,7 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		$offsetY = $geometry['offset_y'];
 
 		$pdf->SetFillColor(255, 255, 255);
-		$pdf->SetDrawColor(207, 214, 223);
-		$pdf->Rect($offsetX, $offsetY, $renderWidth, $renderHeight, 'DF');
-		$pdf->SetDrawColor(0, 0, 0);
+		$pdf->Rect($offsetX, $offsetY, $renderWidth, $renderHeight, 'F');
 		$pdf->SetTextColor(16, 24, 40);
 
 		foreach ($param['template_blocks'] as $block) {

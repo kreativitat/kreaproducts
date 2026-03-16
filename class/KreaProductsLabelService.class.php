@@ -738,10 +738,6 @@ class KreaProductsLabelService
 				continue;
 			}
 
-			$migrated = self::migrateCollidingBundledCopyTemplate($template, $fullPath, $entityId);
-			if (!empty($migrated['template']) && is_array($migrated['template'])) {
-				$template = $migrated['template'];
-			}
 			$resolvedCode = self::sanitizeTemplateCode(!empty($template['template_code']) ? $template['template_code'] : '');
 			if ($resolvedCode !== '' && $resolvedCode !== $templateCode) {
 				continue;
@@ -1333,7 +1329,7 @@ class KreaProductsLabelService
 						continue;
 					}
 
-					$pageSize = self::getTemplatePageSize($template, $page);
+					$pageSize = self::getTemplatePageSizeForPdfOutput($template, $page);
 					if (empty($pageSize['width']) || empty($pageSize['height'])) {
 						continue;
 					}
@@ -2288,7 +2284,7 @@ class KreaProductsLabelService
 				continue;
 			}
 
-			$pageSize = self::getTemplatePageSize($template, $page);
+			$pageSize = self::getTemplatePageSizeForPdfOutput($template, $page);
 			if (empty($pageSize['width']) || empty($pageSize['height'])) {
 				continue;
 			}
@@ -2608,6 +2604,72 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Return the effective page size used for generated/previewed template pages.
+	 *
+	 * Extracted source PDFs can produce minor drift between page-level sizes.
+	 * Normalize near-identical pages to the template base size to keep thermal
+	 * printer scaling stable across front/back pages.
+	 *
+	 * @param array $template Template definition
+	 * @param array $page     Optional page definition
+	 * @return array{width: float, height: float}
+	 */
+	private static function getTemplatePageSizeForPdfOutput($template, $page = array())
+	{
+		$pageSize = self::getTemplatePageSize($template, $page);
+		$baseSize = self::getTemplatePageSize($template);
+		$baseSize = self::normalizePreferredTemplatePageSize($template, $baseSize);
+
+		if ($pageSize['width'] <= 0 || $pageSize['height'] <= 0 || $baseSize['width'] <= 0 || $baseSize['height'] <= 0) {
+			return $pageSize;
+		}
+
+		$deltaWidth = abs((float) $pageSize['width'] - (float) $baseSize['width']);
+		$deltaHeight = abs((float) $pageSize['height'] - (float) $baseSize['height']);
+		if ($deltaWidth <= 2.0 && $deltaHeight <= 2.0) {
+			return array(
+				'width' => (float) $baseSize['width'],
+				'height' => (float) $baseSize['height'],
+			);
+		}
+
+		return $pageSize;
+	}
+
+	/**
+	 * Normalize template base size for known legacy DeGema labels.
+	 *
+	 * Historical production PDFs used by EPSON TM-L90 are 75.6 x 49.9 mm.
+	 * Keep this exact physical size for DeGema templates whenever the declared
+	 * size is already in the same neighborhood (for backward compatibility).
+	 *
+	 * @param array $template Template definition
+	 * @param array $baseSize Base size from template metadata
+	 * @return array{width: float, height: float}
+	 */
+	private static function normalizePreferredTemplatePageSize($template, $baseSize)
+	{
+		$templateCode = self::sanitizeTemplateCode(!empty($template['template_code']) ? (string) $template['template_code'] : '');
+		if (!in_array($templateCode, array('degema_normal', 'degema_congelado'), true)) {
+			return $baseSize;
+		}
+
+		$targetWidth = 75.6;
+		$targetHeight = 49.9;
+		if (empty($baseSize['width']) || empty($baseSize['height'])) {
+			return array('width' => $targetWidth, 'height' => $targetHeight);
+		}
+
+		$deltaWidth = abs((float) $baseSize['width'] - $targetWidth);
+		$deltaHeight = abs((float) $baseSize['height'] - $targetHeight);
+		if ($deltaWidth <= 1.0 && $deltaHeight <= 1.0) {
+			return array('width' => $targetWidth, 'height' => $targetHeight);
+		}
+
+		return $baseSize;
+	}
+
+	/**
 	 * Render one template page as inline SVG.
 	 *
 	 * @param array     $template         Template definition
@@ -2634,7 +2696,7 @@ class KreaProductsLabelService
 	 */
 	private static function renderTemplatePageSvgFromContext($template, $page, $context, $outputlangs)
 	{
-		$pageSize = self::getTemplatePageSize($template, $page);
+		$pageSize = self::getTemplatePageSizeForPdfOutput($template, $page);
 		$width = max(1.0, (float) $pageSize['width']);
 		$height = max(1.0, (float) $pageSize['height']);
 		$svg = array();
