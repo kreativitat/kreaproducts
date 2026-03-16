@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.2] - 2026-03-16
+
+### Changed
+- Added native product-card module separator injection (`KreaProducts`) before `kreap_*` fields, using transparent background (no gray fill).
+
 ## [2.26.1] - 2026-03-15
 
 ### Changed

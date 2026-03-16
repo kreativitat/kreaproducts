@@ -408,6 +408,11 @@ class ActionsKreaProducts extends CommonHookActions
 
 		static $sharedEntitySelectorPrinted = false;
 
+		if ($this->isNativeProductCardContext($parameters, $object)) {
+			$this->resprints = $this->buildProductCardSeparatorScriptRow('KreaProducts', array('kreap_'), 2, 'kreaproducts');
+			return 0;
+		}
+
 		if (!is_object($object) || $object->element !== 'bom') {
 			return 0;
 		}
@@ -574,6 +579,90 @@ class ActionsKreaProducts extends CommonHookActions
 		}
 		$sharedEntitySelectorPrinted = true;
 		return 0;
+	}
+
+	/**
+	 * Check if current hook call is native product card context.
+	 *
+	 * @param array<string,mixed> $parameters Hook parameters
+	 * @param mixed $object Current object
+	 * @return bool
+	 */
+	private function isNativeProductCardContext($parameters, $object)
+	{
+		if (!is_object($object) || (empty($object->element) || $object->element !== 'product')) {
+			return false;
+		}
+
+		$context = '';
+		if (!empty($parameters['context'])) {
+			$context = (string) $parameters['context'];
+		} elseif (!empty($parameters['currentcontext'])) {
+			$context = (string) $parameters['currentcontext'];
+		}
+		if (strpos($context, 'productcard') === false) {
+			return false;
+		}
+
+		$scriptPath = isset($_SERVER['PHP_SELF']) ? (string) $_SERVER['PHP_SELF'] : '';
+		if ($scriptPath === '' && isset($_SERVER['SCRIPT_NAME'])) {
+			$scriptPath = (string) $_SERVER['SCRIPT_NAME'];
+		}
+
+		return (strpos($scriptPath, '/product/card.php') !== false);
+	}
+
+	/**
+	 * Build a hidden hook row that injects a non-gray section separator on product card.
+	 *
+	 * @param string $title Section title
+	 * @param array<int,string> $prefixes Exrafield key prefixes
+	 * @param int $colspan Table colspan
+	 * @param string $marker Marker key
+	 * @return string
+	 */
+	private function buildProductCardSeparatorScriptRow($title, $prefixes, $colspan, $marker)
+	{
+		$nonce = function_exists('getNonce') ? getNonce() : '';
+		$nonceAttr = $nonce !== '' ? ' nonce="' . dol_escape_htmltag($nonce) . '"' : '';
+		$titleJson = json_encode((string) $title);
+		$prefixesJson = json_encode(array_values($prefixes));
+		$markerJson = json_encode((string) $marker);
+		$colspanInt = (int) $colspan;
+
+		$script = '(function(){'
+			. 'var title=' . $titleJson . ';'
+			. 'var prefixes=' . $prefixesJson . ';'
+			. 'var marker=' . $markerJson . ';'
+			. 'var colspan=' . $colspanInt . ';'
+			. 'function insertSeparator(){'
+			. 'if(!Array.isArray(prefixes)||!prefixes.length){return;}'
+			. 'var firstRow=null;'
+			. 'for(var i=0;i<prefixes.length&&!firstRow;i++){'
+			. 'var selector=\'[name^="options_\'+prefixes[i]+\'"],[id^="options_\'+prefixes[i]+\'"]\';'
+			. 'var nodes=document.querySelectorAll(selector);'
+			. 'for(var n=0;n<nodes.length;n++){'
+			. 'var row=nodes[n].closest?nodes[n].closest("tr"):null;'
+			. 'if(row){firstRow=row;break;}'
+			. '}'
+			. '}'
+			. 'if(!firstRow||!firstRow.parentNode){return;}'
+			. 'if(firstRow.parentNode.querySelector(\'tr.krea-module-separator-\'+marker)){return;}'
+			. 'var tr=document.createElement("tr");'
+			. 'tr.className=\'liste_titre krea-module-separator-\'+marker;'
+			. 'tr.style.setProperty("background","transparent","important");'
+			. 'var td=document.createElement("td");'
+			. 'td.setAttribute("colspan",String(colspan));'
+			. 'td.textContent=title;'
+			. 'td.style.setProperty("background","transparent","important");'
+			. 'tr.appendChild(td);'
+			. 'firstRow.parentNode.insertBefore(tr,firstRow);'
+			. '}'
+			. 'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",insertSeparator);}else{insertSeparator();}'
+			. 'setTimeout(insertSeparator,250);'
+			. '})();';
+
+		return '<tr class="krea-module-separator-hook-' . dol_escape_htmltag((string) $marker) . '" style="display:none;"><td colspan="' . $colspanInt . '"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
 	}
 
 	/**
