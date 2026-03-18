@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.26.21';
+        $this->version = '2.26.23';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -201,6 +201,7 @@ class modKreaProducts extends DolibarrModules
             12 => array('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             13 => array('KREAPRODUCTS_LABELS_TAB_ENABLED', 'chaine', '0', '', 0, 'allentities', 0),
             14 => array('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', 'chaine', '1', '', 0, 'allentities', 1),
+            15 => array('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', 'chaine', '1', '', 0, 'allentities', 1),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 

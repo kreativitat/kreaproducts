@@ -173,6 +173,10 @@ if (!isset($conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED = '1';
 }
+if (!isset($conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE = '1';
+}
 if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 	$extrafields = new ExtraFields($db);
@@ -364,6 +368,10 @@ $item->helpText = $langs->transnoentities('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_
 // Movimentos de stock
 $formSetup->newItem('KREAPRODUCTS_STOCK_SETTINGS_TITLE')->setAsTitle();
 $formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+$item = $formSetup->newItem('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
 $item->defaultFieldValue = '10:00';

@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.23] - 2026-03-18
+
+### Changed
+- Added setup ON/OFF option `KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE` to control supplier-price auto-sync from validated supplier invoices.
+
+## [2.26.22] - 2026-03-18
+
+### Changed
+- Added supplier-invoice trigger sync to update `product_fournisseur_price.unitprice` and `price` from validated purchase lines, matched by current entity, supplier, product, and supplier code (`ref_fourn`).
+
 ## [2.26.21] - 2026-03-18
 
 ### Changed

@@ -11,6 +11,7 @@ dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsInventoryService.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsStockMovementService.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsSupplierPriceSyncService.class.php');
 
 /**
  * Triggers for KreaProducts
@@ -74,6 +75,14 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			case 'INVENTORY_CREATE':
 				$inventoryService = new KreaProductsInventoryService();
 				return $inventoryService->prefillInventoryLinesAtCreate($object, $db, $user);
+
+			case 'BILL_SUPPLIER_VALIDATE':
+				if (empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE)) {
+					return 1;
+				}
+				$supplierPriceSync = new KreaProductsSupplierPriceSyncService();
+				$supplierPriceSync->syncFromValidatedSupplierInvoice($object, $db, $user, $conf);
+				return 1;
 
 			default:
 				return 0;
