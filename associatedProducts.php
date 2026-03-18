@@ -169,6 +169,46 @@ if (!function_exists('kreaproducts_select_produits_with_entities')) {
 	}
 }
 
+if (!function_exists('kreaproducts_weight_to_kg')) {
+	function kreaproducts_weight_to_kg($weight, $weightUnit)
+	{
+		$weight = (float) price2num($weight, 'MS');
+		if ($weight <= 0) {
+			return 0.0;
+		}
+
+		if (is_numeric($weightUnit)) {
+			$unitScale = (int) $weightUnit;
+			switch ($unitScale) {
+				case 98: // ounce
+					return $weight / 35.274;
+				case 99: // pound
+					return $weight / 2.20462;
+				default:
+					// Dolibarr stores mass scale powers around kilogram base (-3 g, 0 kg, 3 t).
+					return $weight * pow(10, $unitScale);
+			}
+		}
+
+		$weightUnit = strtolower(trim((string) $weightUnit));
+		switch ($weightUnit) {
+			case 'kg':
+				return $weight;
+			case 'g':
+				return $weight / 1000;
+			case 'mg':
+				return $weight / 1000000;
+			case 'lb':
+			case 'lbs':
+				return $weight / 2.20462;
+			case 'oz':
+				return $weight / 35.274;
+			default:
+				return $weight;
+		}
+	}
+}
+
 if (!function_exists('kreaproducts_has_bom_for_product')) {
 	function kreaproducts_has_bom_for_product($db, $productId)
 	{
@@ -1134,7 +1174,9 @@ if ($id > 0 || !empty($ref)) {
 			$productRefEscaped = ($productRef !== '') ? $db->escape($productRef) : '';
 
 			// Fetch all BOMs and the origin product for the current product
-			$sql_bom = "SELECT b.rowid, b.bomtype, b.fk_product AS fk_product_origin, p.ref, p.label, bl.qty as line_qty
+				$sql_bom = "SELECT b.rowid, b.ref AS bom_ref, b.bomtype, b.fk_product AS fk_product_origin,
+	                               p.ref, p.label, p.stock AS stock_reel, p.cost_price, p.pmp, p.weight, p.weight_units,
+	                               bl.qty as line_qty
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
@@ -1159,16 +1201,22 @@ if ($id > 0 || !empty($ref)) {
 			// Check if the query returns results
 			if ($resql_bom) {
 				while ($obj_bom = $db->fetch_object($resql_bom)) {
-					// Store each BOM's origin product and BOM row ID
-					$boms[] = array(
-						'bom_id' => $obj_bom->rowid,        // The BOM ID
-						'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
-						'ref' => $obj_bom->ref,             // The origin product reference
-						'label' => $obj_bom->label,          // The origin product label
-						'qty' => $obj_bom->line_qty          // Quantity of current product in BOM
-					);
+						// Store each BOM's origin product and BOM row ID
+						$boms[] = array(
+							'bom_id' => $obj_bom->rowid,        // The BOM ID
+							'bom_ref' => $obj_bom->bom_ref,     // The BOM ref
+							'product_id' => $obj_bom->fk_product_origin,  // The origin product ID
+							'ref' => $obj_bom->ref,             // The origin product reference
+							'label' => $obj_bom->label,          // The origin product label
+							'qty' => $obj_bom->line_qty,         // Quantity of current product in BOM
+							'stock_reel' => price2num($obj_bom->stock_reel, 'MS'),
+							'cost_price' => price2num($obj_bom->cost_price, 'MU'),
+							'pmp' => price2num($obj_bom->pmp, 'MU'),
+							'weight' => price2num($obj_bom->weight, 'MS'),
+							'weight_units' => $obj_bom->weight_units
+						);
+					}
 				}
-			}
 			if (count($boms) > 0) {
 
 				// Only display the table if there is at least one BOM
@@ -1181,28 +1229,43 @@ if ($id > 0 || !empty($ref)) {
 				print '<table class="liste">';
 				print '<tr class="liste_titre">';
 
-				// Column headers
-				print '<td>' . $langs->trans('BOMExists') . '</td>';
-				print '<td>' . $langs->trans('OriginProductId') . '</td>';
-				print '<td>' . $langs->trans('OriginProduct') . '</td>';
-				print '<td class="right">' . $langs->trans('Qty') . '</td>';
-				print '</tr>';
+					// Column headers
+					print '<td>' . $langs->trans('BOMExists') . '</td>';
+					print '<td>' . $langs->trans('OriginProductId') . '</td>';
+					print '<td>' . $langs->trans('OriginProduct') . '</td>';
+					print '<td class="right">' . $langs->trans('Stock') . '</td>';
+					print '<td class="right">' . $langs->trans('Qty') . '</td>';
+					print '<td class="right">Peso (kg)</td>';
+					print '<td class="right">Custo comp.</td>';
+					print '</tr>';
 
 
 				// If BOMs exist, display each one
-				foreach ($boms as $bom) {
-					print '<tr class="oddeven">';
-					// Link to the BOM (assuming there is a page that shows BOM details)
-					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '" target="_blank" rel="noopener noreferrer">' .  $langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id'] . '</a></td>';
+					foreach ($boms as $bom) {
+						print '<tr class="oddeven">';
+						// Link to the BOM (assuming there is a page that shows BOM details)
+						$bomRefLabel = trim((string) $bom['bom_ref']) !== '' ? $bom['bom_ref'] : ($langs->trans('kreaproducts_BOM') . ' #' . $bom['bom_id']);
+						print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $bom['bom_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($bomRefLabel) . '</a></td>';
 
-					// Display the origin product with a link to the product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['ref'] . '</a></td>';
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['label'] . '</a></td>';
-					// Show fraction of BOM that corresponds to 1 unit of this component (1 / qty)
-					$fraction = ($bom['qty'] > 0) ? (1 / $bom['qty']) : 0;
-					print '<td class="right">' . price2num($fraction, 'MS') . '</td>';
-					print '</tr>';
-				}
+						// Display the origin product with a link to the product card
+						print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['ref'] . '</a></td>';
+						print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['label'] . '</a></td>';
+
+						// Show fraction of BOM that corresponds to 1 unit of this component (1 / qty)
+						$qtyBeforeDismantle = ((float) $bom['qty'] > 0) ? (1 / (float) $bom['qty']) : 0.0;
+						$unitWeightKg = kreaproducts_weight_to_kg($bom['weight'], $bom['weight_units']);
+						$lineWeightKg = $unitWeightKg * $qtyBeforeDismantle;
+						$unitCost = (float) $bom['cost_price'];
+						if ($unitCost <= 0 && !empty($bom['pmp'])) {
+							$unitCost = (float) $bom['pmp'];
+						}
+						$lineCost = (float) price2num($unitCost * $qtyBeforeDismantle, 'MT');
+						print '<td class="right">' . number_format((float) $bom['stock_reel'], 4, '.', '') . '</td>';
+						print '<td class="right">' . number_format((float) $qtyBeforeDismantle, 3, '.', '') . '</td>';
+						print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
+						print '<td class="right" style="white-space: nowrap;">' . ($unitCost > 0 ? price($lineCost, '', '', 0, 0, 4, $conf->currency) : '&mdash;') . '</td>';
+						print '</tr>';
+					}
 
 
 				print '</table>';
@@ -1537,6 +1600,7 @@ if ($id > 0 || !empty($ref)) {
 			$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
 			$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
 			$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
+			$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
 			$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
 			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
 			print '<tr class="liste_titre nodrag nodrop">';
@@ -1564,6 +1628,8 @@ if ($id > 0 || !empty($ref)) {
 			print $hookTitle;
 			// Qty in kit
 			print '<td class="center" style="width:120px; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
+			// Weight in kg
+			print '<td class="right" style="width:110px; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
 			// Valor por componente
 			print '<td class="right" style="width:200px; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
 			// Stoc inc/dev
@@ -1574,6 +1640,7 @@ if ($id > 0 || !empty($ref)) {
 
 			$totalsell = 0;
 			$total = 0;
+			$totalWeightKg = 0.0;
 			if (count($prods_arbo)) {
 				foreach ($prods_arbo as $value) {
 					$productstatic->fetch($value['id']);
@@ -1593,7 +1660,10 @@ if ($id > 0 || !empty($ref)) {
 						$fourn_remise = (!empty($product_fourn->fourn_remise) ? $product_fourn->fourn_remise : 0);
 						$unitline = price2num(($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MU');
 						$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
+						$unitWeightKg = kreaproducts_weight_to_kg($productstatic->weight, $productstatic->weight_units);
+						$lineWeightKg = $unitWeightKg * (float) $nb_of_subproduct;
 						$total +=  $totalline;
+						$totalWeightKg += $lineWeightKg;
 						print '<td class="right nowraponall" style="width:140px;">';
 						print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
 						print '</td>';
@@ -1606,13 +1676,16 @@ if ($id > 0 || !empty($ref)) {
 						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
 						print $hookmanager->resPrint;
 						// Qty + IncDec
+						$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
 						if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-							print '<td class="center"><input type="text" value="' . $nb_of_subproduct . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width90" /></td>';
-							$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
+							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width90" /></td>';
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
 							print '<td class="right" style="width: 190px;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
 							print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
 						} else {
-							print '<td>' . $nb_of_subproduct . '</td>';
+							print '<td class="right">' . number_format((float) $nb_of_subproduct, 3, '.', '') . '</td>';
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
 							print '<td>' . ($value['incdec'] == 1 ? 'x' : '') . '</td>';
 						}
 						// Move action
@@ -1647,7 +1720,9 @@ if ($id > 0 || !empty($ref)) {
 						$reshook = $hookmanager->executeHooks('printFieldListValue', $parameters, $productstatic);
 						print $hookmanager->resPrint;
 						// Qty in kit
-						print '<td class="right">' . dol_escape_htmltag($value['nb']) . '</td>';
+						print '<td class="right">' . number_format((float) $value['nb'], 3, '.', '') . '</td>';
+						// Weight in kg placeholder
+						print '<td>&nbsp;</td>';
 						// Cost per component placeholder
 						print '<td>&nbsp;</td>';
 						// Inc/dec
@@ -1666,6 +1741,7 @@ if ($id > 0 || !empty($ref)) {
 				$colspanBeforeAmount += $hookColumnCount;
 				$colspanBeforeAmount += 1; // Qty col
 				print '<td class="liste_total right" colspan="' . $colspanBeforeAmount . '">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
+				print '<td class="liste_total right" style="white-space: nowrap;">' . number_format((float) $totalWeightKg, 3, '.', '') . ' kg</td>';
 				print '<td class="liste_total right" style="white-space: nowrap;">';
 				if ($atleastonenotdefined) {
 					print $langs->trans("Unknown") . ' (' . $langs->trans("SomeSubProductHaveNoPrices") . ')';
@@ -1681,10 +1757,11 @@ if ($id > 0 || !empty($ref)) {
 				print '</tr>' . "\n";
 			} else {
 				// Show an empty state row when no components exist but the table is displayed.
-				$colspan = 8; // Position, Ingredient, Label, Cost, Stock?, Qty, Cost per component, Inc/Dec
+				$colspan = 9; // Position, Ingredient, Label, Cost, Stock?, Qty, Weight, Cost per component, Inc/Dec
 				if (isModEnabled('stock')) {
 					$colspan++; // account for stock column
 				}
+				$colspan += $hookColumnCount;
 				print '<tr class="oddeven">';
 				print '<td colspan="' . $colspan . '" class="opacitymedium">' . $langs->trans("None") . '</td>';
 				print '</tr>';
@@ -1799,7 +1876,8 @@ if ($id > 0 || !empty($ref)) {
 							$qty = 0;
 							$incdec = 0;
 						}
-						print '<td class="right"><input type="hidden" name="prod_id_' . $i . '" value="' . $objp->rowid . '"><input type="text" size="2" name="prod_qty_' . $i . '" value="' . ($qty ? $qty : '') . '"></td>';
+						$qtyInputValue = ($qty === '' || $qty === null) ? '' : number_format((float) $qty, 3, '.', '');
+						print '<td class="right"><input type="hidden" name="prod_id_' . $i . '" value="' . $objp->rowid . '"><input type="text" size="2" name="prod_qty_' . $i . '" value="' . $qtyInputValue . '"></td>';
 						print '<td class="center">';
 						if ($qty) {
 							print '<input type="checkbox" name="prod_incdec_' . $i . '" value="1" ' . ($incdec ? 'checked' : '') . '>';
@@ -1842,16 +1920,21 @@ if ($id > 0 || !empty($ref)) {
 		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
 		 */
 		if (!empty($conf->bom->enabled)) {
-			$bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
 			$productRef = trim((string) $object->ref);
 			$productRefEscaped = ($productRef !== '') ? $db->escape($productRef) : '';
 
 			// Fetch all BOMs and the components for the current product
-			$sql_bom = "SELECT b.rowid AS bom_id, b.bomtype,
-                               COALESCE(bl.fk_product, cb.fk_product) AS fk_product_component,
-                               bl.qty as line_qty,
-                               COALESCE(p.ref, cprod.ref) AS ref,
-                               COALESCE(p.label, cprod.label) AS label
+			$sql_bom = "SELECT b.rowid AS bom_id, b.ref AS bom_ref, b.bomtype,
+	                               COALESCE(bl.fk_product, cb.fk_product) AS fk_product_component,
+	                               bl.qty as line_qty,
+	                               bl.position AS line_position,
+	                               COALESCE(p.ref, cprod.ref) AS ref,
+	                               COALESCE(p.label, cprod.label) AS label,
+	                               COALESCE(p.cost_price, cprod.cost_price) AS cost_price,
+	                               COALESCE(p.pmp, cprod.pmp) AS pmp,
+	                               COALESCE(p.stock, cprod.stock) AS stock_reel,
+	                               COALESCE(p.weight, cprod.weight) AS weight,
+	                               COALESCE(p.weight_units, cprod.weight_units) AS weight_units
                 FROM " . MAIN_DB_PREFIX . "bom_bom AS b
                 JOIN " . MAIN_DB_PREFIX . "bom_bomline AS bl ON b.rowid = bl.fk_bom
                 LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child
@@ -1870,63 +1953,182 @@ if ($id > 0 || !empty($ref)) {
                 AND (p.rowid IS NULL OR p.entity IN (0," . getEntity('product') . "))
                 AND (cprod.rowid IS NULL OR cprod.entity IN (0," . getEntity('product') . "))
                 AND (bp.rowid IS NULL OR bp.entity IN (0," . getEntity('product') . "))
-                AND COALESCE(bl.fk_product, cb.fk_product) IS NOT NULL"; // . " AND b.bomtype = 1";
+                AND COALESCE(bl.fk_product, cb.fk_product) IS NOT NULL
+                ORDER BY b.rowid ASC, bl.position ASC, bl.rowid ASC"; // . " AND b.bomtype = 1";
 
 			$resql_bom = $db->query($sql_bom);
-			$components = [];
+			$componentsByBom = array();
 
 			// Check if the query returns results
 			if ($resql_bom) {
 				while ($obj_bom = $db->fetch_object($resql_bom)) {
-					// Store each component's product details and BOM ID
-					if (!empty($obj_bom->fk_product_component)) {
-						$components[] = array(
-							'bom_id' => $obj_bom->bom_id,                  // The BOM ID
-							'product_id' => $obj_bom->fk_product_component, // The component product ID
-							'ref' => $obj_bom->ref,                        // The component product reference
-							'label' => $obj_bom->label,                    // The component product label
-							'qty' => $obj_bom->line_qty                    // Component quantity
+					$productComponentId = (int) $obj_bom->fk_product_component;
+					if ($productComponentId <= 0) {
+						continue;
+					}
+
+					$bomId = (int) $obj_bom->bom_id;
+					if (!isset($componentsByBom[$bomId])) {
+						$componentsByBom[$bomId] = array(
+							'bom_id' => $bomId,
+							'bom_ref' => (string) $obj_bom->bom_ref,
+							'bomtype' => (int) $obj_bom->bomtype,
+							'lines' => array(),
 						);
 					}
+
+					$componentsByBom[$bomId]['lines'][] = array(
+						'product_id' => $productComponentId,
+						'ref' => (string) $obj_bom->ref,
+						'label' => (string) $obj_bom->label,
+						'qty' => (float) price2num($obj_bom->line_qty, 'MS'),
+						'line_position' => (int) $obj_bom->line_position,
+						'cost_price' => (float) price2num($obj_bom->cost_price, 'MU'),
+						'pmp' => (float) price2num($obj_bom->pmp, 'MU'),
+						'stock_reel' => (float) price2num($obj_bom->stock_reel, 'MS'),
+						'weight' => (float) price2num($obj_bom->weight, 'MS'),
+						'weight_units' => $obj_bom->weight_units,
+					);
 				}
+				$db->free($resql_bom);
 			}
-			if (count($components) > 0) {
-
-				//print '<br>';
-
-				// Only display the table if there is at least one component
-				print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
-
-				// Print the title of the section
-				print load_fiche_titre($langs->trans("ComponentsOfProduct"), '', '');
-
-				// Begin table structure
-				print '<table class="liste">';
-				print '<tr class="liste_titre">';
-
-				// Column headers
-				print '<td>' . $langs->trans('BOMReference') . '</td>';
-				print '<td>' . $langs->trans('ComponentProductId') . '</td>';
-				print '<td>' . $langs->trans('ComponentProduct') . '</td>';
-				print '<td class="right">' . $langs->trans('Qty') . '</td>';
-
-				print '</tr>';
-
-				// Display each component
-				foreach ($components as $component) {
-					print '<tr class="oddeven">';
-					// Link to the BOM (assuming there is a page that shows BOM details)
-					print '<td><a href="' . dol_buildpath('/bom/bom_card.php?id=' . $component['bom_id'], 1) . '" target="_blank" rel="noopener noreferrer">' .  $langs->trans('kreaproducts_BOM') . ' #' . $component['bom_id'] . '</a></td>';
-					// Display the component product reference with a link to its product card
-					print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $component['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $component['ref'] . '</a></td>';
-					// Display the component product label
-					print '<td>' . $component['label'] . '</td>';
-					print '<td class="right">' . price2num($component['qty'], 'MS') . '</td>';
-					print '</tr>';
+			if (count($componentsByBom) > 0) {
+				if (empty($GLOBALS['KREAPRODUCTS_MRP_COMPONENTS_TABLE_STYLE_PRINTED'])) {
+					print '<style>
+							@media (max-width: 768px) {
+								.krea-mrp-components-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+								.krea-mrp-components-table { table-layout: auto !important; }
+								.krea-mrp-components-table .krea-pos-col { width: 34px !important; min-width: 28px !important; max-width: 40px !important; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
+								.krea-mrp-components-table .krea-label-col { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
+							}
+							.krea-bom-title-link,
+							.krea-bom-title-link:link,
+							.krea-bom-title-link:visited,
+							.krea-bom-title-link:hover,
+							.krea-bom-title-link:active,
+							.krea-bom-title-link:focus {
+								color: inherit !important;
+								text-decoration: none !important;
+								font: inherit;
+								cursor: inherit;
+							}
+						</style>';
+					$GLOBALS['KREAPRODUCTS_MRP_COMPONENTS_TABLE_STYLE_PRINTED'] = true;
 				}
 
-				print '</table>';
-				print '</div>';
+				$getShortLabel = function ($key, $fallback) use ($langs) {
+					$translated = $langs->trans($key);
+					return ($translated === $key) ? $fallback : $translated;
+				};
+				$headerCellStyle = 'white-space: nowrap; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;';
+				$headerPosLabel = $getShortLabel('KreapHeaderPosShort', 'Pos.');
+				$headerChildLabel = $getShortLabel('KreapHeaderChildShort', 'Ref.');
+				$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
+				$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
+				$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
+				$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
+				$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
+				$hasStockColumn = isModEnabled('stock');
+				$mrpWidths = array(
+					'pos' => '6%',
+					'ref' => '10%',
+					'name' => '29%',
+					'ingredient_cost' => '12%',
+					'weight_kg' => '10%',
+					'qty' => '8%',
+					'component_cost' => '14%',
+				);
+				if ($hasStockColumn) {
+					$mrpWidths['stock'] = '11%';
+				} else {
+					$mrpWidths['name'] = '39%';
+					$mrpWidths['ingredient_cost'] = '16%';
+					$mrpWidths['weight_kg'] = '10%';
+					$mrpWidths['qty'] = '8%';
+					$mrpWidths['component_cost'] = '12%';
+				}
+
+				foreach ($componentsByBom as $bomData) {
+					$bomId = (int) $bomData['bom_id'];
+					$bomRefRaw = trim((string) $bomData['bom_ref']);
+					$bomLabelForTitle = ($bomRefRaw !== '' ? $bomRefRaw : ($langs->trans('kreaproducts_BOM') . ' #' . $bomId));
+					$bomUrl = dol_buildpath('/bom/bom_card.php?id=' . $bomId, 1);
+
+					print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
+
+					$title = 'MRP - ' . $langs->trans("BOMReference");
+					$title .= ' <a class="krea-bom-title-link" href="' . $bomUrl . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($bomLabelForTitle) . '</a>';
+					print load_fiche_titre($title, '', '');
+
+					print '<div class="krea-mrp-components-wrap">';
+					print '<table class="krea-mrp-components-table liste nobottom" style="table-layout: fixed; width: 100%;">';
+					print '<tr class="liste_titre">';
+					print '<td class="krea-pos-col" style="width:' . $mrpWidths['pos'] . '; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
+					print '<td style="width:' . $mrpWidths['ref'] . '; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
+					print '<td class="krea-label-col" style="width:' . $mrpWidths['name'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
+					print '<td class="right" style="width:' . $mrpWidths['ingredient_cost'] . '; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
+					if ($hasStockColumn) {
+						print '<td class="right" style="width:' . $mrpWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
+					}
+					print '<td class="center" style="width:' . $mrpWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
+					print '<td class="right" style="width:' . $mrpWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
+					print '<td class="right" style="width:' . $mrpWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+					print '</tr>';
+
+					$linePosition = 1;
+					$totalComponentCost = 0.0;
+					$totalWeightKg = 0.0;
+					foreach ((array) $bomData['lines'] as $component) {
+						$unitCost = (float) $component['cost_price'];
+						if ($unitCost <= 0 && !empty($component['pmp'])) {
+							$unitCost = (float) $component['pmp'];
+						}
+						$lineQty = (float) $component['qty'];
+						$unitWeightKg = kreaproducts_weight_to_kg($component['weight'], $component['weight_units']);
+						$lineWeightKg = $unitWeightKg * $lineQty;
+						$lineCost = (float) price2num($unitCost * $lineQty, 'MT');
+						$displayPosition = ((int) $component['line_position'] > 0 ? (int) $component['line_position'] : $linePosition);
+						$totalWeightKg += $lineWeightKg;
+						$totalComponentCost += $lineCost;
+
+						print '<tr class="oddeven">';
+						print '<td class="krea-pos-col">' . $displayPosition . '</td>';
+						print '<td><a href="' . dol_buildpath('/product/card.php?id=' . (int) $component['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($component['ref']) . '</a></td>';
+						print '<td class="krea-label-col">' . dol_escape_htmltag($component['label']) . '</td>';
+						print '<td class="right nowraponall">';
+						if ($unitCost > 0) {
+							print '<span class="amount">' . price($unitCost, '', '', 0, 0, 4, $conf->currency) . '</span>';
+						} else {
+							print '&mdash;';
+						}
+						print '</td>';
+						if ($hasStockColumn) {
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $component['stock_reel'], 4, '.', '') . '</td>';
+						}
+						print '<td class="center">' . number_format((float) $lineQty, 3, '.', '') . '</td>';
+						print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
+						print '<td class="right" style="white-space: nowrap;">';
+						if ($unitCost > 0) {
+							print '<span class="amount">' . price($lineCost, '', '', 0, 0, 4, $conf->currency) . '</span>';
+						} else {
+							print '&mdash;';
+						}
+						print '</td>';
+						print '</tr>';
+
+						$linePosition++;
+					}
+					$totalLabelColspan = ($hasStockColumn ? 6 : 5);
+					print '<tr class="liste_total">';
+					print '<td class="right" colspan="' . $totalLabelColspan . '">' . $langs->trans("Total") . '</td>';
+					print '<td class="right" style="white-space: nowrap;">' . number_format((float) $totalWeightKg, 3, '.', '') . ' kg</td>';
+					print '<td class="right" style="white-space: nowrap;"><span class="amount">' . price($totalComponentCost, '', '', 0, 0, 4, $conf->currency) . '</span></td>';
+					print '</tr>';
+
+					print '</table>';
+					print '</div>';
+					print '</div>';
+				}
 			}
 		}
 

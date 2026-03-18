@@ -207,40 +207,6 @@ print '<tr><td class="titlefield">' . $langs->trans('KreapAboutSupportLabel') . 
 print '<tr><td class="titlefield">' . $langs->trans('KreapAboutWebsiteLabel') . '</td><td><a href="' . dol_escape_htmltag($editorUrl) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($editorUrl) . '</a></td></tr>';
 print '</table>';
 
-print '<div style="margin-top: 14px;">';
-print '<div class="bold" style="margin-bottom: 6px;">' . $langs->trans('KreapAboutHighlightsLabel') . '</div>';
-print '<table class="noborder centpercent">';
-print '<tr><td class="titlefield" style="width: 180px;">' . $langs->trans('KreapAboutFeatureLabelsTitle') . '</td><td>' . $langs->trans('KreapAboutFeatureLabelsText') . '</td></tr>';
-print '<tr><td class="titlefield">' . $langs->trans('KreapAboutFeatureDismantleTitle') . '</td><td>' . $langs->trans('KreapAboutFeatureDismantleText') . '</td></tr>';
-print '</table>';
-print '</div>';
-
-print '<div style="margin-top: 14px;">';
-print '<div class="bold" style="margin-bottom: 6px;">' . $langs->trans('KreapAboutChangeLogLabel') . '</div>';
-if (!empty($latestRelease['version'])) {
-	print '<table class="noborder centpercent">';
-	print '<tr><td class="titlefield" style="width: 180px;">' . $langs->trans('KreapAboutLatestReleaseLabel') . '</td><td>' . dol_escape_htmltag((string) $latestRelease['version']) . '</td></tr>';
-	print '<tr><td class="titlefield">' . $langs->trans('KreapAboutReleaseDateLabel') . '</td><td>' . dol_escape_htmltag((string) $latestRelease['date']) . '</td></tr>';
-	print '</table>';
-
-	if (!empty($latestRelease['sections']) && is_array($latestRelease['sections'])) {
-		foreach ($latestRelease['sections'] as $sectionTitle => $items) {
-			if (!is_array($items) || empty($items)) {
-				continue;
-			}
-			print '<div class="opacitymedium" style="margin-top: 8px; margin-bottom: 2px;">' . dol_escape_htmltag((string) $sectionTitle) . '</div>';
-			print '<ul style="margin-top: 0; margin-bottom: 0;">';
-			foreach ($items as $item) {
-				print '<li>' . dol_escape_htmltag((string) $item) . '</li>';
-			}
-			print '</ul>';
-		}
-	}
-} else {
-	print '<div class="opacitymedium">' . $langs->trans('KreapAboutNoReleaseNotes') . '</div>';
-}
-print '</div>';
-print '</div>';
 
 print '</div>';
 

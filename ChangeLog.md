@@ -1,6 +1,74 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.21] - 2026-03-18
+
+### Changed
+- Updated Portuguese title `BOMExistsAndOriginProduct` to `MRP - Nomenclaturas que originam este produto`.
+
+## [2.26.20] - 2026-03-18
+
+### Changed
+- Added `Stock`, `Qtd.` (3 decimals), `Peso (kg)`, and `Custo comp.` columns to the `BOMExistsAndOriginProduct` MRP table in `associatedProducts.php`.
+
+## [2.26.19] - 2026-03-18
+
+### Changed
+- Standardized quantities to 3 decimal places in the MRP BOM list and kit components tables in `associatedProducts.php`.
+
+## [2.26.18] - 2026-03-18
+
+### Changed
+- Added `Peso (kg)` column to the MRP BOM list and kit components tables in `associatedProducts.php`, converting product weight to kilograms with 3 decimals.
+- Added per-table total weight sums (`kg`) alongside existing totals in both tables.
+
+## [2.26.17] - 2026-03-18
+
+### Changed
+- Added a total row to the MRP BOM list table in `associatedProducts.php`, summing the `Custo comp.` column per BOM section.
+
+## [2.26.16] - 2026-03-18
+
+### Changed
+- Rebalanced desktop column width distribution for the MRP BOM list table in `associatedProducts.php` to improve spacing and readability.
+
+## [2.26.15] - 2026-03-18
+
+### Changed
+- Updated the `ComponentsOfProduct` title format in `associatedProducts.php` to `MRP - Lista de Materiais <BOM_REF>` (no dash before BOM ref).
+
+## [2.26.14] - 2026-03-18
+
+### Changed
+- Styled the BOM reference link in the `ComponentsOfProduct` title to inherit title visuals (same color, no underline) while keeping it clickable and opening in a new tab.
+
+## [2.26.13] - 2026-03-18
+
+### Changed
+- Removed the `Stock +/-` column from the MRP dismantling table rendered in `associatedProducts.php` (`ComponentsOfProduct` section).
+
+## [2.26.12] - 2026-03-18
+
+### Fixed
+- Fixed `ComponentsOfProduct` SQL in `associatedProducts.php` by using BOM line position (`bom_bomline.position`) instead of non-existent `rang`, restoring rendered rows in the MRP dismantling table.
+
+## [2.26.11] - 2026-03-18
+
+### Changed
+- Reworked `ComponentsOfProduct` rendering in `associatedProducts.php` to use the same field set as the kit components table (`Pos.`, `Ref.`, `Nome`, `Custo ingr.`, `Stock`, `Qtd.`, `Custo comp.`, `Stock +/-`).
+- Removed the BOM column from that table and moved BOM identification to the section title using `bom_bom.ref` as a clickable link to the BOM card (opens in a new tab).
+
+## [2.26.10] - 2026-03-18
+
+### Fixed
+- Added server-side product reference resolution in `associations_to_bom.php` so typed refs (for example `1453`) are accepted when combo search does not return the product.
+- Preserved typed source/target product search text across validation redirects on the associations-to-BOM page.
+
+## [2.26.9] - 2026-03-18
+
+### Fixed
+- Allowed `associations_to_bom.php` to copy associations into a draft BOM when source and target are the same product.
+
 ## [2.26.8] - 2026-03-16
 
 ### Fixed

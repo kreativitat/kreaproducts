@@ -282,7 +282,7 @@ KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Usar a lista simplificada do KreaProduc
 #
 # Associated products card
 #
-BOMExistsAndOriginProduct = MRP - Produto Original Antes do Desmantelamento
+BOMExistsAndOriginProduct = MRP - Nomenclaturas que originam este produto
 ComponentsOfProduct = MRP - Produto Final Após Desmantelamento
 OriginProductId = Componentes
 ComponentProductId = Componentes

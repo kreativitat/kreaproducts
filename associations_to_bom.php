@@ -49,7 +49,7 @@ if (!function_exists('kreaproducts_bomhelper_get_accessible_entities')) {
 }
 
 if (!function_exists('kreaproducts_bomhelper_select_products')) {
-	function kreaproducts_bomhelper_select_products($form, $selected, $htmlname, $entityList, $langs, $morecss = 'minwidth300')
+	function kreaproducts_bomhelper_select_products($form, $selected, $htmlname, $entityList, $langs, $morecss = 'minwidth300', $selectedInputValue = '')
 	{
 		$entityList = array_values(array_unique(array_filter($entityList, 'is_numeric')));
 		$method = new ReflectionMethod($form, 'select_produits');
@@ -79,7 +79,7 @@ if (!function_exists('kreaproducts_bomhelper_select_products')) {
 					$args[] = 2;
 					break;
 				case 'selected_input_value':
-					$args[] = '';
+					$args[] = $selectedInputValue;
 					break;
 				case 'hidelabel':
 					$args[] = 0;
@@ -128,6 +128,53 @@ if (!function_exists('kreaproducts_bomhelper_select_products')) {
 		}
 
 		return $method->invokeArgs($form, $args);
+	}
+}
+
+if (!function_exists('kreaproducts_bomhelper_resolve_product_id')) {
+	function kreaproducts_bomhelper_resolve_product_id($db, $searchTerm)
+	{
+		global $conf;
+
+		$searchTerm = trim((string) $searchTerm);
+		if ($searchTerm === '') {
+			return 0;
+		}
+
+		$sql = "SELECT rowid, entity FROM " . MAIN_DB_PREFIX . "product";
+		$sql .= " WHERE ref = '" . $db->escape($searchTerm) . "'";
+		$sql .= " AND entity IN (0," . getEntity('product') . ")";
+		$sql .= " ORDER BY CASE";
+		$sql .= " WHEN entity = " . (int) $conf->entity . " THEN 0";
+		$sql .= " WHEN entity = 0 THEN 1";
+		$sql .= " ELSE 2 END, rowid ASC";
+		$sql .= $db->plimit(1);
+
+		$resql = $db->query($sql);
+		if ($resql) {
+			if ($obj = $db->fetch_object($resql)) {
+				$db->free($resql);
+				return (int) $obj->rowid;
+			}
+			$db->free($resql);
+		} else {
+			dol_syslog(__METHOD__ . " SQL error: " . $db->lasterror(), LOG_ERR);
+		}
+
+		if (!preg_match('/^[0-9]+$/', $searchTerm)) {
+			return 0;
+		}
+
+		$productId = (int) $searchTerm;
+		if ($productId <= 0) {
+			return 0;
+		}
+
+		if (kreaproducts_bomhelper_is_product_in_scope($db, $productId)) {
+			return $productId;
+		}
+
+		return 0;
 	}
 }
 
@@ -194,6 +241,8 @@ $id = GETPOSTINT('id');
 $action = GETPOST('action', 'aZ09');
 $sourceProductId = GETPOSTINT('source_product_id_for_bom');
 $targetProductId = GETPOSTINT('target_product_id_for_bom');
+$sourceProductSearchInput = trim(GETPOST('search_source_product_id_for_bom', 'alphanohtml'));
+$targetProductSearchInput = trim(GETPOST('search_target_product_id_for_bom', 'alphanohtml'));
 $requestedBomLabel = trim(GETPOST('bom_label_for_target', 'restricthtml'));
 $requestedBomQtyRaw = trim(GETPOST('bom_qty_for_target', 'alphanohtml'));
 $showStickySuccess = (GETPOSTINT('success_saved') === 1);
@@ -215,6 +264,12 @@ if ($action === 'copy_associations_to_bom') {
 	if ($targetProductId > 0) {
 		$query[] = 'target_product_id_for_bom=' . ((int) $targetProductId);
 	}
+	if ($sourceProductId <= 0 && $sourceProductSearchInput !== '') {
+		$query[] = 'search_source_product_id_for_bom=' . rawurlencode($sourceProductSearchInput);
+	}
+	if ($targetProductId <= 0 && $targetProductSearchInput !== '') {
+		$query[] = 'search_target_product_id_for_bom=' . rawurlencode($targetProductSearchInput);
+	}
 	if ($id > 0) {
 		$query[] = 'id=' . ((int) $id);
 	}
@@ -234,6 +289,13 @@ if ($action === 'copy_associations_to_bom') {
 		exit;
 	}
 
+	if ($sourceProductId <= 0 && $sourceProductSearchInput !== '') {
+		$sourceProductId = kreaproducts_bomhelper_resolve_product_id($db, $sourceProductSearchInput);
+	}
+	if ($targetProductId <= 0 && $targetProductSearchInput !== '') {
+		$targetProductId = kreaproducts_bomhelper_resolve_product_id($db, $targetProductSearchInput);
+	}
+
 	if ($sourceProductId <= 0 || $targetProductId <= 0) {
 		setEventMessages($langs->trans("Error"), null, 'errors');
 		header("Location: " . $redirectUrl);
@@ -246,11 +308,6 @@ if ($action === 'copy_associations_to_bom') {
 			header("Location: " . $redirectUrl);
 			exit;
 		}
-	}
-	if ($sourceProductId === $targetProductId) {
-		setEventMessages($langs->trans("KreaProductsAssocToBomSameProduct"), null, 'errors');
-		header("Location: " . $redirectUrl);
-		exit;
 	}
 	if (!kreaproducts_bomhelper_is_product_in_scope($db, $sourceProductId) || !kreaproducts_bomhelper_is_product_in_scope($db, $targetProductId)) {
 		setEventMessages($langs->trans("Error"), null, 'errors');
@@ -485,6 +542,8 @@ $form = new Form($db);
 $entityList = kreaproducts_bomhelper_get_accessible_entities();
 $selectedSourceProductId = ($sourceProductId > 0 ? $sourceProductId : (int) $id);
 $selectedTargetProductId = ($targetProductId > 0 ? $targetProductId : 0);
+$sourceSelectedInputValue = ($selectedSourceProductId > 0 ? '' : $sourceProductSearchInput);
+$targetSelectedInputValue = ($selectedTargetProductId > 0 ? '' : $targetProductSearchInput);
 $bomLabelPlaceholder = $langs->trans("KreaProductsAssocToBomBomLabel", $langs->trans("KreaProductsAssocToBomSource"));
 $bomQtyPlaceholder = '1';
 
@@ -529,8 +588,8 @@ print '</div>';
 if (empty($conf->bom->enabled)) {
 	print '<div class="error">' . $langs->trans("KreaProductsAssocToBomModuleDisabled") . '</div>';
 } else {
-	$sourceSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedSourceProductId, 'source_product_id_for_bom', $entityList, $langs, 'minwidth300');
-	$targetSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedTargetProductId, 'target_product_id_for_bom', $entityList, $langs, 'minwidth300');
+	$sourceSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedSourceProductId, 'source_product_id_for_bom', $entityList, $langs, 'minwidth300', $sourceSelectedInputValue);
+	$targetSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedTargetProductId, 'target_product_id_for_bom', $entityList, $langs, 'minwidth300', $targetSelectedInputValue);
 
 	print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
 	print '<input type="hidden" name="token" value="' . newToken() . '">';
