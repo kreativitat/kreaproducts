@@ -1,6 +1,26 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.27] - 2026-03-20
+
+### Changed
+- Removed the BOM reference column from `ProductParentList` in `associatedProducts.php` while keeping quantity formatted with 3 decimals and `un`.
+
+## [2.26.26] - 2026-03-20
+
+### Changed
+- Filtered BOM links in `ProductParentList` (`associatedProducts.php`) to applicable assemble BOMs (`bomtype = 0`) and matched BOM selection by parent/quantity when multiple BOMs exist.
+
+## [2.26.25] - 2026-03-20
+
+### Changed
+- Added BOM reference link column to `ProductParentList` in `associatedProducts.php` and formatted quantity as 3 decimals with `un` unit suffix.
+
+## [2.26.24] - 2026-03-20
+
+### Changed
+- Restricted `BOMExistsAndOriginProduct` query in `associatedProducts.php` to `bom_bom.bomtype = 1` only.
+
 ## [2.26.23] - 2026-03-18
 
 ### Changed

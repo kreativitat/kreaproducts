@@ -1169,7 +1169,6 @@ if ($id > 0 || !empty($ref)) {
 		 * Additionally, this logic only executes if the BOM module is enabled in the Dolibarr system.
 		 */
 		if (!empty($conf->bom->enabled)) {
-			$bomType = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE ?? 1);
 			$productRef = trim((string) $object->ref);
 			$productRefEscaped = ($productRef !== '') ? $db->escape($productRef) : '';
 
@@ -1187,7 +1186,7 @@ if ($id > 0 || !empty($ref)) {
 			if ($productRefEscaped !== '') {
 				$sql_bom .= " OR lp.ref = '" . $productRefEscaped . "' OR cp.ref = '" . $productRefEscaped . "'";
 			}
-			$sql_bom .= ") AND b.bomtype IN (0,1)
+			$sql_bom .= ") AND b.bomtype = 1
                 AND b.status IN (0,1)
                 AND b.entity IN (0," . getEntity('bom') . ")
                 AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))
@@ -2157,10 +2156,12 @@ if ($id > 0 || !empty($ref)) {
 				$productstatic->entity = $value['entity'];
 				$productstatic->status = $value['status'];
 				$productstatic->status_buy = $value['status_buy'];
+				$qtyValue = (float) price2num($value['qty'], 'MS');
+
 				print '<tr class="oddeven">';
 				print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 				print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
-				print '<td class="right">' . dol_escape_htmltag($value['qty']) . '</td>';
+				print '<td class="right">' . number_format($qtyValue, 3, '.', '') . ' un</td>';
 				print '</tr>';
 			}
 			print '</table>';
