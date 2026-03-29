@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.26.28] - 2026-03-30
+
+### Fixed
+- Restricted dismantle valuation/cost-price recalculation to supplier-invoice origin (`originType = invoice_supplier`) in `productDismantle`.
+
 ## [2.26.27] - 2026-03-20
 
 ### Changed

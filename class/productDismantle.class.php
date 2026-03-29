@@ -106,6 +106,7 @@ class ProductDismantleController extends CommonObject
 
         global $conf;
         $user = $userContext ?: ($GLOBALS['user'] ?? null);
+        $applyValuationUpdates = $this->shouldApplyValuationUpdates($originType);
 
         $movementDate = $movementDate ?: dol_now();
         $warehouseId  = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_WAREHOUSE ?? $conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
@@ -118,31 +119,39 @@ class ProductDismantleController extends CommonObject
             return -1;
         }
 
-        $productToConsume = new Product($this->db);
-        $currentPmp = null;
-        if ($productToConsume->fetch($bomData['fk_product']) > 0) {
-            $currentCostPrice = $productToConsume->cost_price;
-            if (is_numeric($productToConsume->pmp)) {
-                $currentPmp = (float) $productToConsume->pmp;
+        $baseCostPrice = null;
+        if ($applyValuationUpdates) {
+            $productToConsume = new Product($this->db);
+            $currentPmp = null;
+            if ($productToConsume->fetch($bomData['fk_product']) > 0) {
+                $currentCostPrice = $productToConsume->cost_price;
+                if (is_numeric($productToConsume->pmp)) {
+                    $currentPmp = (float) $productToConsume->pmp;
+                }
+                dol_syslog(
+                    "Current cost price for product #" . $bomData['fk_product'] . ": " . $currentCostPrice,
+                    LOG_DEBUG
+                );
+            } else {
+                dol_syslog(
+                    "Failed to fetch product #" . $bomData['fk_product'] . " for cost price",
+                    LOG_ERR
+                );
+                $currentCostPrice = null;
             }
-            dol_syslog(
-                "Current cost price for product #" . $bomData['fk_product'] . ": " . $currentCostPrice,
-                LOG_DEBUG
-            );
+
+            if (is_numeric($priceMovement) && (float) $priceMovement > 0) {
+                $baseCostPrice = (float) $priceMovement;
+            } elseif (is_numeric($currentCostPrice) && (float) $currentCostPrice > 0) {
+                $baseCostPrice = (float) $currentCostPrice;
+            } elseif (is_numeric($currentPmp) && (float) $currentPmp > 0) {
+                $baseCostPrice = (float) $currentPmp;
+            }
         } else {
             dol_syslog(
-                "Failed to fetch product #" . $bomData['fk_product'] . " for cost price",
-                LOG_ERR
+                __METHOD__ . " skipping valuation updates for origin type '" . (string) $originType . "'",
+                LOG_DEBUG
             );
-            $currentCostPrice = null; // handle error as needed
-        }
-        $baseCostPrice = null;
-        if (is_numeric($priceMovement) && (float) $priceMovement > 0) {
-            $baseCostPrice = (float) $priceMovement;
-        } elseif (is_numeric($currentCostPrice) && (float) $currentCostPrice > 0) {
-            $baseCostPrice = (float) $currentCostPrice;
-        } elseif (is_numeric($currentPmp) && (float) $currentPmp > 0) {
-            $baseCostPrice = (float) $currentPmp;
         }
 
         // Ensure BOM has lines
@@ -221,34 +230,36 @@ class ProductDismantleController extends CommonObject
                 $rawQty = $item['qty'] * $qtyMovement;
                 $qty    = abs($rawQty);
 
-                // Update cost price
-                $movementPrice = 0.0;
+                // Default to current product cost for movement valuation when supplier-only updates are disabled.
+                $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
                 $shouldUpdateCost = false;
-                if ($arrayname === 'arraytoconsume') {
-                    $movementPrice = is_numeric($priceMovement) ? (float) $priceMovement : 0.0;
-                    if ($movementPrice > 0) {
-                        $shouldUpdateCost = true;
-                    } else {
-                        $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
-                        dol_syslog("Skipping cost update for consumed product ID " . $item['objectid'] . " (missing priceMovement)", LOG_DEBUG);
-                    }
-                } else {
-                    if (!empty($item['qty']) && is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
-                        $movementPrice = (float) $baseCostPrice / $item['qty'];
+                if ($applyValuationUpdates) {
+                    if ($arrayname === 'arraytoconsume') {
+                        $movementPrice = is_numeric($priceMovement) ? (float) $priceMovement : 0.0;
                         if ($movementPrice > 0) {
                             $shouldUpdateCost = true;
+                        } else {
+                            $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
+                            dol_syslog("Skipping cost update for consumed product ID " . $item['objectid'] . " (missing priceMovement)", LOG_DEBUG);
                         }
-                    } elseif (empty($item['qty'])) {
-                        dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
-                        $error++;
-                        break;
                     } else {
-                        $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
-                        dol_syslog("Skipping cost update for produced product ID " . $item['objectid'] . " (missing current cost price)", LOG_WARNING);
+                        if (!empty($item['qty']) && is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
+                            $movementPrice = (float) $baseCostPrice / $item['qty'];
+                            if ($movementPrice > 0) {
+                                $shouldUpdateCost = true;
+                            }
+                        } elseif (empty($item['qty'])) {
+                            dol_syslog("Cannot divide by zero for product ID " . $item['objectid'], LOG_ERR);
+                            $error++;
+                            break;
+                        } else {
+                            $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
+                            dol_syslog("Skipping cost update for produced product ID " . $item['objectid'] . " (missing current cost price)", LOG_WARNING);
+                        }
                     }
-                }
-                if ($shouldUpdateCost) {
-                    $this->persistCostPrice($product, $movementPrice, $user, $arrayname);
+                    if ($shouldUpdateCost) {
+                        $this->persistCostPrice($product, $movementPrice, $user, $arrayname);
+                    }
                 }
 
                 // Link generated stock movements to MO so /mrp/mo_movements.php can load them.
@@ -352,14 +363,26 @@ class ProductDismantleController extends CommonObject
             }
         }
 
-        if (is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
-            $this->updateProducedCostPrices($bomData, (float) $baseCostPrice, $user);
+        if ($applyValuationUpdates) {
+            if (is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
+                $this->updateProducedCostPrices($bomData, (float) $baseCostPrice, $user);
+            } else {
+                dol_syslog("Skipping produced cost price update (missing base cost price)", LOG_DEBUG);
+            }
         } else {
-            dol_syslog("Skipping produced cost price update (missing base cost price)", LOG_DEBUG);
+            dol_syslog(
+                __METHOD__ . " skipping produced cost price update for origin type '" . (string) $originType . "'",
+                LOG_DEBUG
+            );
         }
 
         dol_syslog("Dismantle processed successfully.", LOG_DEBUG);
         return 0;
+    }
+
+    private function shouldApplyValuationUpdates($originType): bool
+    {
+        return ((string) $originType === 'invoice_supplier');
     }
 
     private function registerDismantleMo($bomId, array $bomData, $qtyMovement, $warehouseId, $originRef, $originId, $originType, $movementDate, $user, $originMovementId = 0)
