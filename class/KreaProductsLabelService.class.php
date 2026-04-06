@@ -2432,31 +2432,41 @@ class KreaProductsLabelService
 
 			$type = strtolower(trim((string) $block['type']));
 			$value = self::sanitizeTsplText(!empty($block['value']) ? (string) $block['value'] : '');
-			if ($value === '') {
-				continue;
-			}
 
 			$x = (!empty($block['x_mm']) ? self::toTsplDots((float) $block['x_mm'], $dotsPerMm) : (int) $baseX);
 			$y = (!empty($block['y_mm']) ? self::toTsplDots((float) $block['y_mm'], $dotsPerMm) : (int) $baseY);
 
 			if ($type === 'text') {
+				if ($value === '') {
+					continue;
+				}
+
 				$fontSizePt = 8.0;
+				$fontWeight = '';
+				$align = 'left';
 				if (!empty($block['style']) && is_array($block['style']) && !empty($block['style']['font_size_pt'])) {
 					$fontSizePt = max(4.0, (float) $block['style']['font_size_pt']);
 				}
-				$multiplier = self::mapFontSizePtToTsplMultiplier($fontSizePt);
-				$lineHeightDots = max(16, (int) round(($fontSizePt / 2.6) * $dotsPerMm));
+				if (!empty($block['style']) && is_array($block['style']) && !empty($block['style']['font_weight'])) {
+					$fontWeight = (string) $block['style']['font_weight'];
+				}
+				if (!empty($block['style']) && is_array($block['style']) && !empty($block['style']['align'])) {
+					$align = strtolower(trim((string) $block['style']['align']));
+				}
+				$fontSpec = self::resolveTsplTextFontSpec($fontSizePt, $fontWeight);
+				$lineHeightDots = max(12, (int) $fontSpec['line_height']);
+				$blockWidthDots = (!empty($block['w_mm']) ? max(1, self::toTsplDots((float) $block['w_mm'], $dotsPerMm)) : 0);
 
 				$maxLines = 0;
 				if (!empty($block['h_mm'])) {
 					$maxLines = max(1, (int) floor(self::toTsplDots((float) $block['h_mm'], $dotsPerMm) / max(1, $lineHeightDots)));
 				}
 				$maxCharsPerLine = 0;
-				if (!empty($block['w_mm'])) {
-					$charWidthDots = max(5.0, $fontSizePt * (($multiplier >= 3 ? 1.45 : ($multiplier === 2 ? 1.15 : 0.92))));
-					$maxCharsPerLine = max(4, (int) floor(self::toTsplDots((float) $block['w_mm'], $dotsPerMm) / $charWidthDots));
+				if ($blockWidthDots > 0) {
+					$charWidthDots = max(4.0, (float) $fontSpec['char_width'] * 1.18);
+					$maxCharsPerLine = max(4, (int) floor($blockWidthDots / $charWidthDots));
 				}
-				$lines = self::wrapTsplTextLines($value, $maxCharsPerLine, $maxLines);
+				$lines = self::wrapTsplTextLines($value, $maxCharsPerLine, $maxLines, true);
 				if (empty($lines)) {
 					continue;
 				}
@@ -2468,7 +2478,17 @@ class KreaProductsLabelService
 						continue;
 					}
 
-					$commands[] = 'TEXT ' . ((int) $x) . ',' . ((int) ($y + $lineOffset)) . ',"2",0,' . $multiplier . ',' . $multiplier . ',"' . self::escapeTsplText($lineText) . '"';
+					$drawX = (int) $x;
+					if ($blockWidthDots > 0) {
+						$estimatedLineWidth = (int) ceil(strlen($lineText) * (float) $fontSpec['char_width'] * 1.05);
+						if ($align === 'center' && $estimatedLineWidth < $blockWidthDots) {
+							$drawX += (int) floor(($blockWidthDots - $estimatedLineWidth) / 2);
+						} elseif ($align === 'right' && $estimatedLineWidth < $blockWidthDots) {
+							$drawX += ($blockWidthDots - $estimatedLineWidth);
+						}
+					}
+
+					$commands[] = 'TEXT ' . $drawX . ',' . ((int) ($y + $lineOffset)) . ',"' . $fontSpec['font'] . '",0,' . ((int) $fontSpec['xmul']) . ',' . ((int) $fontSpec['ymul']) . ',"' . self::escapeTsplText($lineText) . '"';
 					$lineOffset += $lineHeightDots;
 				}
 				continue;
@@ -2488,6 +2508,10 @@ class KreaProductsLabelService
 			}
 
 			if ($type === 'image') {
+				if ($value === '') {
+					continue;
+				}
+
 				$bitmapSegment = self::buildTsplBitmapCommandSegmentFromTemplateBlock($block, $x, $y, $dotsPerMm, $value);
 				if ($bitmapSegment !== '') {
 					$commands[] = $bitmapSegment;
@@ -2496,6 +2520,9 @@ class KreaProductsLabelService
 			}
 
 			if ($type !== 'barcode') {
+				continue;
+			}
+			if ($value === '') {
 				continue;
 			}
 
@@ -2516,9 +2543,89 @@ class KreaProductsLabelService
 				continue;
 			}
 
+			if ($widthDots > 0 && $heightDots > 0) {
+				$bitmap = self::buildTsplBitmapDataFromLinearBarcode($value, $symbology, $widthDots, $heightDots);
+				if (!empty($bitmap['data']) && !empty($bitmap['width_bytes']) && !empty($bitmap['height'])) {
+					$commands[] = 'BITMAP ' . ((int) $x) . ',' . ((int) $y) . ',' . ((int) $bitmap['width_bytes']) . ',' . ((int) $bitmap['height']) . ',0,' . $bitmap['data'];
+					continue;
+				}
+			}
+
 			$barcodeType = self::mapBarcodeEncodingToTspl($symbology);
 			$commands[] = 'BARCODE ' . ((int) $x) . ',' . ((int) $y) . ',"' . $barcodeType . '",' . ((int) $heightDots) . ',' . $showHuman . ',0,2,2,"' . self::escapeTsplText($value) . '"';
 		}
+	}
+
+	/**
+	 * Build packed monochrome bitmap bytes from a linear barcode value.
+	 *
+	 * @param string $value Barcode value
+	 * @param string $symbology Barcode symbology
+	 * @param int    $targetWidthDots Target width in dots
+	 * @param int    $targetHeightDots Target height in dots
+	 * @return array{width_bytes:int,height:int,data:string}
+	 */
+	private static function buildTsplBitmapDataFromLinearBarcode($value, $symbology, $targetWidthDots, $targetHeightDots)
+	{
+		$value = self::sanitizeTsplText($value);
+		$targetWidthDots = max(1, (int) $targetWidthDots);
+		$targetHeightDots = max(1, (int) $targetHeightDots);
+		if ($value === '' || $targetWidthDots <= 0 || $targetHeightDots <= 0) {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$encoding = self::mapTemplateBarcodeSymbologyForPreview($symbology);
+		$barcodeArray = self::buildPreviewBarcodeArrayFromTcpdf($value, $encoding);
+		if (empty($barcodeArray['bcode']) || empty($barcodeArray['maxw'])) {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$maxw = max(1.0, (float) $barcodeArray['maxw']);
+		$unitWidth = ((float) $targetWidthDots) / $maxw;
+		$intervals = array();
+		$currentX = 0.0;
+		foreach ($barcodeArray['bcode'] as $segment) {
+			$segmentWidth = max(0.01, ((float) (!empty($segment['w']) ? $segment['w'] : 0.0)) * $unitWidth);
+			if (!empty($segment['t'])) {
+				$start = (int) floor($currentX);
+				$end = (int) ceil($currentX + $segmentWidth) - 1;
+				if ($start < $targetWidthDots && $end >= 0) {
+					$start = max(0, $start);
+					$end = min($targetWidthDots - 1, $end);
+					if ($end >= $start) {
+						$intervals[] = array($start, $end);
+					}
+				}
+			}
+			$currentX += $segmentWidth;
+		}
+		if (empty($intervals)) {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$widthBytes = (int) ceil(((float) $targetWidthDots) / 8.0);
+		$rowBytes = array_fill(0, $widthBytes, 0);
+		foreach ($intervals as $interval) {
+			$start = (int) $interval[0];
+			$end = (int) $interval[1];
+			for ($x = $start; $x <= $end; $x++) {
+				$byteIndex = (int) floor(((float) $x) / 8.0);
+				$bit = 7 - ($x % 8);
+				$rowBytes[$byteIndex] |= (1 << $bit);
+			}
+		}
+
+		$rowBinary = '';
+		foreach ($rowBytes as $rowByte) {
+			$rowByte = (~((int) $rowByte)) & 0xFF;
+			$rowBinary .= chr($rowByte);
+		}
+
+		return array(
+			'width_bytes' => $widthBytes,
+			'height' => $targetHeightDots,
+			'data' => str_repeat($rowBinary, $targetHeightDots),
+		);
 	}
 
 	/**
@@ -2627,6 +2734,9 @@ class KreaProductsLabelService
 						$byte |= (1 << (7 - $bit));
 					}
 				}
+				// XP-365B expects BITMAP bits with inverted polarity versus the
+				// straightforward black=1 map used above.
+				$byte = (~$byte) & 0xFF;
 				$data .= chr($byte);
 			}
 		}
@@ -2737,7 +2847,7 @@ class KreaProductsLabelService
 	 * @param int    $maxLines Max lines (0 = no limit)
 	 * @return array
 	 */
-	private static function wrapTsplTextLines($text, $maxCharsPerLine, $maxLines)
+	private static function wrapTsplTextLines($text, $maxCharsPerLine, $maxLines, $truncate = false)
 	{
 		$text = str_replace(array("\r\n", "\r"), "\n", (string) $text);
 		$parts = preg_split('/\n/', $text);
@@ -2770,6 +2880,14 @@ class KreaProductsLabelService
 
 		if ($maxLines > 0 && count($lines) > $maxLines) {
 			$lines = array_slice($lines, 0, $maxLines);
+			if ($truncate && !empty($lines)) {
+				$lastIndex = count($lines) - 1;
+				$line = (string) $lines[$lastIndex];
+				if (strlen($line) > 3) {
+					$line = rtrim(substr($line, 0, strlen($line) - 1));
+				}
+				$lines[$lastIndex] = rtrim($line) . '...';
+			}
 		}
 
 		return $lines;
@@ -2877,17 +2995,51 @@ class KreaProductsLabelService
 	 * @param float $fontSizePt Font size in points
 	 * @return int
 	 */
-	private static function mapFontSizePtToTsplMultiplier($fontSizePt)
+	private static function resolveTsplTextFontSpec($fontSizePt, $fontWeight = '')
 	{
 		$fontSizePt = max(4.0, (float) $fontSizePt);
-		if ($fontSizePt >= 14.0) {
-			return 3;
-		}
-		if ($fontSizePt >= 10.0) {
-			return 2;
+		$fontWeight = strtolower(trim((string) $fontWeight));
+		$isBold = ($fontWeight === 'bold' || $fontWeight === '700' || $fontWeight === '800' || $fontWeight === '900');
+
+		// Font metrics are conservative to avoid inter-block overlap on thermal labels.
+		$font = '1';
+		$xmul = 1;
+		$ymul = 1;
+		$charWidth = 8.0;
+		$charHeight = 12.0;
+
+		if ($fontSizePt > 7.2 && $fontSizePt <= 10.4) {
+			$font = '2';
+			$charWidth = 12.0;
+			$charHeight = 20.0;
+		} elseif ($fontSizePt > 10.4 && $fontSizePt <= 13.2) {
+			$font = '3';
+			$charWidth = 16.0;
+			$charHeight = 24.0;
+		} elseif ($fontSizePt > 13.2 && $fontSizePt <= 17.0) {
+			$font = '4';
+			$charWidth = 24.0;
+			$charHeight = 32.0;
+		} elseif ($fontSizePt > 17.0) {
+			$font = '5';
+			$charWidth = 32.0;
+			$charHeight = 48.0;
 		}
 
-		return 1;
+		if ($isBold && $font === '1') {
+			$xmul = 2;
+			$charWidth *= 2.0;
+		}
+
+		$lineHeight = ((int) ceil($charHeight * $ymul)) + 3;
+
+		return array(
+			'font' => $font,
+			'xmul' => $xmul,
+			'ymul' => $ymul,
+			'char_width' => $charWidth,
+			'line_height' => $lineHeight,
+		);
 	}
 
 	/**

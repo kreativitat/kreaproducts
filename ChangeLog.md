@@ -1,6 +1,25 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.27.3] - 2026-04-06
+
+### Changed
+- Updated TSPL template rendering to honor block alignment (`left`/`center`/`right`) and improved per-block font sizing so printed typography is closer to PDF layout.
+- TSPL linear barcodes now render as width-constrained bitmap blocks, stretching to use the full template barcode area.
+
+### Fixed
+- Fixed missing product-ref border box in TSPL output by ensuring `rect` blocks are rendered even when they have no dynamic value.
+- Reduced text overlap/superimposition by enforcing tighter text clipping/truncation to template block dimensions.
+
+## [2.27.2] - 2026-04-06
+
+### Changed
+- Improved TSPL text rendering to better match template typography by mapping template font sizes to multiple TSPL fonts and applying stricter line-height/line-wrap fitting per block.
+- Reduced TSPL text overlap risk by clipping wrapped lines to block height with truncation when needed.
+
+### Fixed
+- Fixed inverted TSPL logo/symbol output by adjusting BITMAP bit polarity for XP-365B thermal printer rendering.
+
 ## [2.27.1] - 2026-04-06
 
 ### Changed
