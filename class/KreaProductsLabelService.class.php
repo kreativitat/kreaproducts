@@ -2250,7 +2250,8 @@ class KreaProductsLabelService
 			$commands[] = 'CLS';
 
 			if (!empty($record['template_blocks']) && is_array($record['template_blocks'])) {
-				self::appendTemplateBlocksTsplCommands($commands, $record['template_blocks'], $dotsPerMm, $baseX, $baseY);
+				$labelHeightDots = self::toTsplDots($currentHeightMm, $dotsPerMm);
+				self::appendTemplateBlocksTsplCommands($commands, $record['template_blocks'], $dotsPerMm, $baseX, $baseY, $labelHeightDots);
 			} else {
 				self::appendStandardRecordTsplCommands($commands, $record, $baseX, $baseY, $lineStepDots, $barcodeHeightDots);
 			}
@@ -2421,10 +2422,12 @@ class KreaProductsLabelService
 	 * @param float $dotsPerMm Printer density in dots per millimeter
 	 * @param int   $baseX   Initial X coordinate fallback (dots)
 	 * @param int   $baseY   Initial Y coordinate fallback (dots)
+	 * @param int   $labelHeightDots Label height in dots
 	 * @return void
 	 */
-	private static function appendTemplateBlocksTsplCommands(&$commands, $blocks, $dotsPerMm, $baseX, $baseY)
+	private static function appendTemplateBlocksTsplCommands(&$commands, $blocks, $dotsPerMm, $baseX, $baseY, $labelHeightDots = 0)
 	{
+		$flowSectionNextY = null;
 		foreach ($blocks as $block) {
 			if (!is_array($block) || empty($block['type'])) {
 				continue;
@@ -2457,9 +2460,22 @@ class KreaProductsLabelService
 				$lineHeightDots = max(12, (int) $fontSpec['line_height']);
 				$blockWidthDots = (!empty($block['w_mm']) ? max(1, self::toTsplDots((float) $block['w_mm'], $dotsPerMm)) : 0);
 				$blockHeightDots = (!empty($block['h_mm']) ? max(1, self::toTsplDots((float) $block['h_mm'], $dotsPerMm)) : 0);
+				$isFlowSectionBlock = self::isTsplFlowSectionBlock($block);
+				if ($isFlowSectionBlock) {
+					if ($flowSectionNextY !== null) {
+						$y = (int) $flowSectionNextY;
+					} else {
+						$flowSectionNextY = (int) $y;
+					}
+				}
 
 				$maxLines = 0;
-				if (!empty($block['h_mm'])) {
+				if ($isFlowSectionBlock) {
+					$availableDots = ($labelHeightDots > 0 ? max(0, ((int) $labelHeightDots) - (int) $y) : 0);
+					if ($availableDots > 0) {
+						$maxLines = max(1, (int) floor($availableDots / max(1, $lineHeightDots)));
+					}
+				} elseif (!empty($block['h_mm'])) {
 					$maxLines = max(1, (int) floor(self::toTsplDots((float) $block['h_mm'], $dotsPerMm) / max(1, $lineHeightDots)));
 				}
 				$maxCharsPerLine = 0;
@@ -2497,6 +2513,9 @@ class KreaProductsLabelService
 
 					$commands[] = 'TEXT ' . $drawX . ',' . ((int) ($y + $lineOffset)) . ',"' . $fontSpec['font'] . '",0,' . ((int) $fontSpec['xmul']) . ',' . ((int) $fontSpec['ymul']) . ',"' . self::escapeTsplText($lineText) . '"';
 					$lineOffset += $lineHeightDots;
+				}
+				if ($isFlowSectionBlock) {
+					$flowSectionNextY = (int) ($y + ($lineHeightDots * count($lines)) + $lineHeightDots);
 				}
 				continue;
 			}
@@ -3016,6 +3035,30 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Determine whether one text block belongs to the flowing second-label sections.
+	 *
+	 * Ingredients, allergens, and nutrition sections must be placed one after another
+	 * with one blank line between sections, based on rendered text height.
+	 *
+	 * @param array $block Template block
+	 * @return bool
+	 */
+	private static function isTsplFlowSectionBlock($block)
+	{
+		if (!is_array($block)) {
+			return false;
+		}
+
+		$source = strtolower(trim((string) (!empty($block['source']) ? $block['source'] : '')));
+		if (in_array($source, array('label.ingredients_section', 'label.allergens_section', 'label.nutrition_section'), true)) {
+			return true;
+		}
+
+		$blockId = strtolower(trim((string) (!empty($block['id']) ? $block['id'] : '')));
+		return in_array($blockId, array('back_ingredients_section', 'back_allergens_section', 'back_nutrition_section'), true);
+	}
+
+	/**
 	 * Map common barcode encodings/symbologies to TSPL names.
 	 *
 	 * @param string $encoding Source encoding
@@ -3194,6 +3237,7 @@ class KreaProductsLabelService
 	{
 		$records = array();
 		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $templateInputValues);
+		$skipCompositionBackPage = self::shouldSkipTemplateCompositionBackPage($context);
 		$pages = (!empty($template['pages']) && is_array($template['pages']) ? $template['pages'] : array());
 		if (empty($pages)) {
 			return $records;
@@ -3202,6 +3246,9 @@ class KreaProductsLabelService
 		$pageRecords = array();
 		foreach ($pages as $page) {
 			if (!is_array($page)) {
+				continue;
+			}
+			if ($skipCompositionBackPage && self::isTemplateCompositionBackPage($page)) {
 				continue;
 			}
 
@@ -3233,6 +3280,81 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Tell whether one template page is the composition back page.
+	 *
+	 * A page is considered a composition back page when it includes the three
+	 * dynamic section sources used for ingredients, allergens, and nutrition.
+	 *
+	 * @param array $page Template page definition
+	 * @return bool
+	 */
+	private static function isTemplateCompositionBackPage($page)
+	{
+		if (empty($page['blocks']) || !is_array($page['blocks'])) {
+			return false;
+		}
+
+		$requiredSources = array(
+			'label.ingredients_section' => false,
+			'label.allergens_section' => false,
+			'label.nutrition_section' => false,
+		);
+
+		foreach ($page['blocks'] as $block) {
+			if (!is_array($block)) {
+				continue;
+			}
+			$source = self::sanitizeTemplateSource(!empty($block['source']) ? (string) $block['source'] : '');
+			if ($source !== '' && array_key_exists($source, $requiredSources)) {
+				$requiredSources[$source] = true;
+			}
+		}
+
+		foreach ($requiredSources as $present) {
+			if (!$present) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Decide whether the composition back page should be skipped.
+	 *
+	 * When ingredients, allergens, and nutrition have no data, only the first
+	 * page should be printed.
+	 *
+	 * @param array $context Resolved template context
+	 * @return bool
+	 */
+	private static function shouldSkipTemplateCompositionBackPage($context)
+	{
+		$hasIngredients = self::readTemplateContextBooleanFlag($context, 'meta.label.ingredients_has_data', true);
+		$hasAllergens = self::readTemplateContextBooleanFlag($context, 'meta.label.allergens_has_data', true);
+		$hasNutrition = self::readTemplateContextBooleanFlag($context, 'meta.label.nutrition_has_data', true);
+
+		return (!$hasIngredients && !$hasAllergens && !$hasNutrition);
+	}
+
+	/**
+	 * Read one boolean-like flag from template context.
+	 *
+	 * @param array  $context      Resolved template context
+	 * @param string $key          Context key
+	 * @param bool   $defaultValue Fallback when key is missing
+	 * @return bool
+	 */
+	private static function readTemplateContextBooleanFlag($context, $key, $defaultValue = false)
+	{
+		if (!is_array($context) || !array_key_exists($key, $context)) {
+			return (bool) $defaultValue;
+		}
+
+		return self::parseTemplateBooleanFlag($context[$key], (bool) $defaultValue);
+	}
+
+	/**
 	 * Normalize template blocks for PDF rendering.
 	 *
 	 * @param array $page    Template page
@@ -3254,6 +3376,7 @@ class KreaProductsLabelService
 			$blocks[] = array(
 				'id' => (!empty($block['id']) ? (string) $block['id'] : ''),
 				'type' => (string) $block['type'],
+				'source' => (!empty($block['source']) ? (string) $block['source'] : ''),
 				'value' => self::resolveTemplateBlockValue($block, $context),
 				'x_mm' => (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0),
 				'y_mm' => (float) (!empty($block['y_mm']) ? $block['y_mm'] : 0),
@@ -3731,11 +3854,44 @@ class KreaProductsLabelService
 		if (empty($context['asset.eu_food_contact_material_symbol'])) {
 			$context['asset.eu_food_contact_material_symbol'] = 'templates/assets/eu_food_contact_material_symbol.svg';
 		}
-		foreach (self::sanitizeTemplateInputValues($contextOverrides, array_keys($sourceMeta), $sourceMeta) as $source => $value) {
+		$sanitizedOverrides = self::sanitizeTemplateInputValues($contextOverrides, array_keys($sourceMeta), $sourceMeta);
+		foreach ($sanitizedOverrides as $source => $value) {
 			$context[$source] = $value;
 		}
+		$context = self::applyTemplateSectionDataPresenceOverrides($context, $sanitizedOverrides);
 
 		$context = self::applyDerivedTemplateContextValues($context, $template);
+
+		return $context;
+	}
+
+	/**
+	 * Update composition section data-presence flags from explicit user overrides.
+	 *
+	 * @param array $context   Current context
+	 * @param array $overrides Sanitized template input overrides
+	 * @return array
+	 */
+	private static function applyTemplateSectionDataPresenceOverrides($context, $overrides)
+	{
+		if (!is_array($context) || !is_array($overrides) || empty($overrides)) {
+			return $context;
+		}
+
+		$sectionToFlag = array(
+			'label.ingredients_section' => 'meta.label.ingredients_has_data',
+			'label.allergens_section' => 'meta.label.allergens_has_data',
+			'label.nutrition_section' => 'meta.label.nutrition_has_data',
+		);
+
+		foreach ($sectionToFlag as $sectionSource => $flagSource) {
+			if (!array_key_exists($sectionSource, $overrides)) {
+				continue;
+			}
+
+			$hasData = (trim((string) $overrides[$sectionSource]) !== '');
+			$context[$flagSource] = ($hasData ? '1' : '0');
+		}
 
 		return $context;
 	}
@@ -3819,9 +3975,16 @@ class KreaProductsLabelService
 			return $defaults;
 		}
 
-		$defaults['label.ingredients_section'] = self::buildIngredientsSectionFromAssociations($db, $productId, $outputlangs);
-		$defaults['label.allergens_section'] = self::buildAllergensSectionFromDatabase($db, $productId, $outputlangs);
-		$defaults['label.nutrition_section'] = self::buildNutritionSectionFromDatabase($db, $productId, $outputlangs);
+		$ingredientsHasData = false;
+		$allergensHasData = false;
+		$nutritionHasData = false;
+
+		$defaults['label.ingredients_section'] = self::buildIngredientsSectionFromAssociations($db, $productId, $outputlangs, $ingredientsHasData);
+		$defaults['label.allergens_section'] = self::buildAllergensSectionFromDatabase($db, $productId, $outputlangs, $allergensHasData);
+		$defaults['label.nutrition_section'] = self::buildNutritionSectionFromDatabase($db, $productId, $outputlangs, $nutritionHasData);
+		$defaults['meta.label.ingredients_has_data'] = ($ingredientsHasData ? '1' : '0');
+		$defaults['meta.label.allergens_has_data'] = ($allergensHasData ? '1' : '0');
+		$defaults['meta.label.nutrition_has_data'] = ($nutritionHasData ? '1' : '0');
 
 		return $defaults;
 	}
@@ -3872,8 +4035,9 @@ class KreaProductsLabelService
 	 * @param Translate $outputlangs Output language
 	 * @return string
 	 */
-	private static function buildIngredientsSectionFromAssociations($db, $productId, $outputlangs)
+	private static function buildIngredientsSectionFromAssociations($db, $productId, $outputlangs, &$hasData = null)
 	{
+		$hasData = false;
 		$sql = "SELECT pc.label, pc.ref";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pp ON pp.rowid = pa.fk_product_pere";
@@ -3886,6 +4050,7 @@ class KreaProductsLabelService
 		$resql = $db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			$hasData = true; // Keep back-page printing on transient query errors.
 			return '';
 		}
 
@@ -3900,13 +4065,14 @@ class KreaProductsLabelService
 		}
 		$db->free($resql);
 
+		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTES');
 		if (empty($ingredients)) {
-			return '';
+			$noneText = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_NONE', 'Sem ingredientes declarados');
+			return $prefix . ': ' . $noneText;
 		}
+		$hasData = true;
 
 		$items = array_values($ingredients);
-
-		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTES');
 		return $prefix . ': ' . implode(', ', $items) . '.';
 	}
 
@@ -3918,8 +4084,9 @@ class KreaProductsLabelService
 	 * @param Translate $outputlangs Output language
 	 * @return string
 	 */
-	private static function buildAllergensSectionFromDatabase($db, $productId, $outputlangs)
+	private static function buildAllergensSectionFromDatabase($db, $productId, $outputlangs, &$hasData = null)
 	{
+		$hasData = false;
 		$sql = "SELECT pa.traces, c.code, c.label";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens AS pa";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = pa.fk_product";
@@ -3931,6 +4098,7 @@ class KreaProductsLabelService
 		$resql = $db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			$hasData = true; // Keep back-page printing on transient query errors.
 			return '';
 		}
 
@@ -3956,6 +4124,7 @@ class KreaProductsLabelService
 
 		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_ALLERGENS_PREFIX', 'ALERGENIOS');
 		$parts = array();
+		$hasData = (!empty($contains) || !empty($traces));
 		if (!empty($contains)) {
 			$parts[] = $outputlangs->trans('KREAPRODUCTS_LABELS_SECTION_ALLERGENS_CONTAINS', implode(', ', array_values($contains)));
 		}
@@ -4001,8 +4170,9 @@ class KreaProductsLabelService
 	 * @param Translate $outputlangs Output language
 	 * @return string
 	 */
-	private static function buildNutritionSectionFromDatabase($db, $productId, $outputlangs)
+	private static function buildNutritionSectionFromDatabase($db, $productId, $outputlangs, &$hasData = null)
 	{
+		$hasData = false;
 		$sql = "SELECT n.energy_kj, n.energy_kcal, n.fat, n.saturates, n.carbohydrates, n.sugars, n.protein, n.salt, n.fiber";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
@@ -4014,14 +4184,18 @@ class KreaProductsLabelService
 		$resql = $db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			$hasData = true; // Keep back-page printing on transient query errors.
 			return '';
 		}
 
 		$obj = $db->fetch_object($resql);
 		$db->free($resql);
 		if (!$obj) {
-			return '';
+			$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_NUTRITION_PREFIX_SHORT', 'DECLARACAO NUTRICIONAL');
+			$noneText = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_NUTRITION_NONE', 'Sem valores nutricionais declarados');
+			return $prefix . ': ' . $noneText;
 		}
+		$hasData = true;
 
 		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_NUTRITION_PREFIX', 'DECLARACAO NUTRICIONAL (por 100g)');
 		$energyKj = self::formatTemplateNutritionNumber($obj->energy_kj, 0);

@@ -1,6 +1,19 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.27.7] - 2026-04-06
+
+### Changed
+- Added explicit empty-section defaults for labels: `INGREDIENTES: Sem ingredientes declarados` and `DECLARACAO NUTRICIONAL: Sem valores nutricionais declarados`.
+- Added composition back-page suppression: when ingredients, allergens, and nutrition have no data, only the first label page is generated/printed.
+- Added context flags for section data presence and override-aware evaluation to keep page suppression consistent across PDF and TSPL generation paths.
+
+## [2.27.6] - 2026-04-06
+
+### Changed
+- Updated TSPL back-label composition layout to flow `Ingredients`, `Allergens`, and `Nutritional declaration` sections sequentially from rendered text height with one blank-line gap between sections.
+- TSPL section flow now uses template block `source` metadata for robust section detection while preserving existing PDF rendering behavior.
+
 ## [2.27.5] - 2026-04-06
 
 ### Changed
