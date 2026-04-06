@@ -834,6 +834,178 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Generate one labels TSPL payload and return command content as base64.
+	 *
+	 * Request body example:
+	 * {
+	 *   "product_id": 345,
+	 *   "production_qty": 120,
+	 *   "units_per_label": 1,
+	 *   "labels_count": 120,
+	 *   "template_code": "degema_normal",
+	 *   "produced_batch": "2026031422341",
+	 *   "mo_id": 341,
+	 *   "template_values": {},
+	 *   "tspl_options": {
+	 *     "gap_mm": 3,
+	 *     "direction": 1
+	 *   },
+	 *   "langcode": "pt_PT"
+	 * }
+	 *
+	 * @param int   $product_id   Product id (path)
+	 * @param array $request_data Request body
+	 * @return array
+	 *
+	 * @url POST production/products/{product_id}/labels/tspl
+	 */
+	public function postProductionLabelTspl($product_id = 0, $request_data = null)
+	{
+		global $langs, $conf;
+
+		try {
+			$this->assertLabelReadRights();
+
+			if (!is_array($request_data)) {
+				$request_data = array();
+			}
+
+			$productIdFromPath = (int) $product_id;
+			$productIdFromBody = (int) (isset($request_data['product_id']) ? $request_data['product_id'] : 0);
+			if ($productIdFromPath <= 0) {
+				throw new RestException(400, 'Missing product_id');
+			}
+			if ($productIdFromBody > 0 && $productIdFromBody !== $productIdFromPath) {
+				throw new RestException(400, 'product_id in body does not match path');
+			}
+
+			$product = $this->fetchProduct($productIdFromPath);
+			$this->applyProductAliasToLabel($product);
+			$productionQty = price2num(isset($request_data['production_qty']) ? $request_data['production_qty'] : 1, 'MS');
+			if ($productionQty <= 0) {
+				$productionQty = 1;
+			}
+
+			$unitsPerLabel = price2num(isset($request_data['units_per_label']) ? $request_data['units_per_label'] : 1, 'MS');
+			if ($unitsPerLabel <= 0) {
+				$unitsPerLabel = 1;
+			}
+
+			$labelsCount = (int) (isset($request_data['labels_count']) ? $request_data['labels_count'] : 0);
+			$templateCode = trim((string) (isset($request_data['template_code']) ? $request_data['template_code'] : ''));
+			$templateValues = (!empty($request_data['template_values']) && is_array($request_data['template_values']) ? $request_data['template_values'] : array());
+			$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
+			$producedBatch = $this->resolveProducedBatchCodeFromRequest($request_data, (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0));
+			$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
+
+			$selectedFields = array();
+			if (!empty($request_data['selected_fields']) && is_array($request_data['selected_fields'])) {
+				$selectedFields = KreaProductsLabelService::sanitizeSelectedFields($request_data['selected_fields']);
+			}
+			if (empty($selectedFields) && $templateCode === '') {
+				$selectedFields = array('ref', 'label', 'barcode');
+			}
+
+			$recommendedCount = $this->computeLabelCount($productionQty, $unitsPerLabel, $labelsCount);
+
+			$outputlangs = clone $langs;
+			if ($langcode !== '') {
+				$outputlangs->setDefaultLang($langcode);
+			}
+			$outputlangs->load('main');
+			$outputlangs->load('products');
+			$outputlangs->load('mrp');
+			$outputlangs->load('kreaproducts@kreaproducts');
+
+			$tsplOptions = (!empty($request_data['tspl_options']) && is_array($request_data['tspl_options']) ? $request_data['tspl_options'] : array());
+			if (isset($request_data['label_width_mm']) && !isset($tsplOptions['label_width_mm'])) {
+				$tsplOptions['label_width_mm'] = $request_data['label_width_mm'];
+			}
+			if (isset($request_data['label_height_mm']) && !isset($tsplOptions['label_height_mm'])) {
+				$tsplOptions['label_height_mm'] = $request_data['label_height_mm'];
+			}
+
+			$entityId = (int) $conf->entity;
+			$generated = KreaProductsLabelService::generateProductLabelsTspl(
+				$this->db,
+				$product,
+				$entityId,
+				$selectedFields,
+				$recommendedCount,
+				$outputlangs,
+				$templateCode,
+				$templateValues,
+				$tsplOptions
+			);
+
+			if (!empty($generated['error'])) {
+				throw new RestException(500, 'Error generating labels TSPL: ' . $generated['error']);
+			}
+
+			$tsplContent = (!empty($generated['content']) ? (string) $generated['content'] : '');
+			if ($tsplContent === '') {
+				throw new RestException(500, 'Generated labels TSPL content is empty');
+			}
+
+			return array(
+				'product_id' => (int) $product->id,
+				'product_ref' => (string) $product->ref,
+				'production_qty' => (float) $productionQty,
+				'units_per_label' => (float) $unitsPerLabel,
+				'labels_count' => (int) $recommendedCount,
+				'template_code' => (string) $templateCode,
+				'produced_batch' => (string) $producedBatch,
+				'filename' => (!empty($generated['filename']) ? (string) $generated['filename'] : ('labels_' . ((int) $product->id) . '.tspl')),
+				'mime_type' => 'text/plain',
+				'content_base64' => base64_encode($tsplContent),
+				'generated_at_utc' => dol_print_date(dol_now(), '%Y-%m-%dT%H:%M:%SZ', 'gmt'),
+			);
+		} catch (RestException $ex) {
+			throw $ex;
+		} catch (Throwable $ex) {
+			dol_syslog(__METHOD__ . ' failed: ' . $ex->getMessage(), LOG_ERR);
+			throw new RestException(500, 'Failed to generate labels TSPL: ' . $ex->getMessage());
+		}
+	}
+
+	/**
+	 * Compatibility endpoint for clients calling labels TSPL generation with GET.
+	 *
+	 * @param int    $product_id       Product id (path)
+	 * @param float  $production_qty   Production quantity
+	 * @param float  $units_per_label  Units represented by one label
+	 * @param int    $labels_count     Explicit labels count
+	 * @param string $template_code    Optional template code
+	 * @param string $produced_batch   Optional produced batch code
+	 * @param string $langcode         Optional output language
+	 * @return array
+	 *
+	 * @url GET production/products/{product_id}/labels/tspl
+	 */
+	public function getProductionLabelTspl(
+		$product_id,
+		$production_qty = 1,
+		$units_per_label = 1,
+		$labels_count = 0,
+		$template_code = '',
+		$produced_batch = '',
+		$langcode = ''
+	) {
+		$requestData = array(
+			'product_id' => (int) $product_id,
+			'production_qty' => $production_qty,
+			'units_per_label' => $units_per_label,
+			'labels_count' => $labels_count,
+			'template_code' => $template_code,
+			'produced_batch' => $produced_batch,
+			'langcode' => $langcode,
+		);
+
+		return $this->postProductionLabelTspl((int) $product_id, $requestData);
+	}
+
+	/**
 	 * Compatibility endpoint for clients posting labels generation without the trailing /pdf path segment.
 	 *
 	 * @param int   $product_id   Product id (path)

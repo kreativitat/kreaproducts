@@ -2129,6 +2129,144 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Generate TSPL content for product labels.
+	 *
+	 * This is an additive feature and does not affect existing PDF generation.
+	 * It reuses the same record-building flow (standard fields or template blocks)
+	 * and serializes supported block types to TSPL commands.
+	 *
+	 * @param DoliDB    $db                 Database handler
+	 * @param Product   $product            Product object
+	 * @param int       $entityId           Current entity id
+	 * @param array     $selectedFields     Selected field codes
+	 * @param int       $quantity           Number of labels
+	 * @param Translate $outputlangs        Output language
+	 * @param string    $templateCode       Selected template code
+	 * @param array     $templateInputValues User-provided template field values
+	 * @param array     $tsplOptions        Optional TSPL overrides
+	 * @return array
+	 */
+	public static function generateProductLabelsTspl($db, $product, $entityId, $selectedFields, $quantity, $outputlangs, $templateCode = '', $templateInputValues = array(), $tsplOptions = array())
+	{
+		global $langs;
+
+		try {
+			$quantity = max(1, (int) $quantity);
+			$template = array();
+			if ($templateCode !== '') {
+				$template = self::loadLabelTemplate($templateCode, $entityId);
+			}
+			$useTemplateRenderer = (!empty($template['pages']) && is_array($template['pages']));
+
+			if ($useTemplateRenderer) {
+				$templateSourceMeta = self::getTemplateEditableSourceMeta($template, $outputlangs);
+				$templateInputValues = self::sanitizeTemplateInputValues($templateInputValues, array_keys($templateSourceMeta), $templateSourceMeta);
+				$records = self::buildTemplateRecords($product, $template, $quantity, $outputlangs, $templateInputValues);
+				if (empty($records)) {
+					return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_GENERATION_FAILED'));
+				}
+			} else {
+				$selectedFields = self::sanitizeSelectedFields($selectedFields);
+				if (empty($selectedFields)) {
+					return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_NO_FIELDS'));
+				}
+
+				$records = array();
+				$record = self::buildLabelRecord($db, $product, $selectedFields, $outputlangs);
+				for ($i = 0; $i < $quantity; $i++) {
+					$records[] = $record;
+				}
+			}
+
+			$content = self::generateTsplContent($records, $tsplOptions);
+			if ($content === '') {
+				return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_GENERATION_FAILED'));
+			}
+
+			return array(
+				'filename' => self::buildTsplFilename($product),
+				'content' => $content,
+			);
+		} catch (Throwable $e) {
+			dol_syslog(__METHOD__ . ' failed: ' . $e->getMessage(), LOG_ERR);
+			return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_GENERATION_FAILED'));
+		}
+	}
+
+	/**
+	 * Serialize records into raw TSPL commands.
+	 *
+	 * Supported shapes:
+	 * - Standard records from buildLabelRecord (lines + barcode)
+	 * - Template records from buildTemplateRecords (template_blocks)
+	 *
+	 * @param array $records     Label records
+	 * @param array $tsplOptions Optional TSPL settings
+	 * @return string
+	 */
+	public static function generateTsplContent($records, $tsplOptions = array())
+	{
+		if (empty($records) || !is_array($records)) {
+			return '';
+		}
+
+		$labelWidthMm = max(10.0, (float) (isset($tsplOptions['label_width_mm']) ? $tsplOptions['label_width_mm'] : 50.0));
+		$labelHeightMm = max(10.0, (float) (isset($tsplOptions['label_height_mm']) ? $tsplOptions['label_height_mm'] : 30.0));
+		$gapMm = max(0.0, (float) (isset($tsplOptions['gap_mm']) ? $tsplOptions['gap_mm'] : 3.0));
+		$direction = ((int) (isset($tsplOptions['direction']) ? $tsplOptions['direction'] : 0) > 0 ? 1 : 0);
+		$dpi = (int) (isset($tsplOptions['dpi']) ? $tsplOptions['dpi'] : 203);
+		if ($dpi <= 0) {
+			$dpi = 203;
+		}
+		$dotsPerMm = ((float) $dpi) / 25.4;
+		if ($dotsPerMm <= 0) {
+			$dotsPerMm = 8.0;
+		}
+
+		$baseX = max(6, self::toTsplDots(1.2, $dotsPerMm));
+		$baseY = max(6, self::toTsplDots(1.2, $dotsPerMm));
+		$lineStepDots = max(20, self::toTsplDots(3.2, $dotsPerMm));
+		$barcodeHeightDots = max(45, self::toTsplDots(10.0, $dotsPerMm));
+
+		$commands = array();
+		foreach ($records as $record) {
+			if (!is_array($record)) {
+				continue;
+			}
+
+			$currentWidthMm = $labelWidthMm;
+			$currentHeightMm = $labelHeightMm;
+			if (!empty($record['template_width_mm'])) {
+				$currentWidthMm = max(10.0, (float) $record['template_width_mm']);
+			}
+			if (!empty($record['template_height_mm'])) {
+				$currentHeightMm = max(10.0, (float) $record['template_height_mm']);
+			}
+
+			$commands[] = 'SIZE ' . self::formatTsplNumber($currentWidthMm) . ' mm,' . self::formatTsplNumber($currentHeightMm) . ' mm';
+			$commands[] = 'GAP ' . self::formatTsplNumber($gapMm) . ' mm,0 mm';
+			$commands[] = 'DIRECTION ' . $direction;
+			$commands[] = 'REFERENCE 0,0';
+			$commands[] = 'CLS';
+
+			if (!empty($record['template_blocks']) && is_array($record['template_blocks'])) {
+				self::appendTemplateBlocksTsplCommands($commands, $record['template_blocks'], $dotsPerMm, $baseX, $baseY);
+			} else {
+				self::appendStandardRecordTsplCommands($commands, $record, $baseX, $baseY, $lineStepDots, $barcodeHeightDots);
+			}
+
+			$commands[] = 'PRINT 1';
+			$commands[] = 'CLS';
+		}
+
+		if (empty($commands)) {
+			return '';
+		}
+
+		return implode("\r\n", $commands) . "\r\n";
+	}
+
+	/**
 	 * Delete a generated label PDF after validating the path.
 	 *
 	 * @param int    $entityId      Current entity id
@@ -2202,6 +2340,567 @@ class KreaProductsLabelService
 		}
 
 		require_once __DIR__ . '/KreaProductsProductLabelPdf.class.php';
+	}
+
+	/**
+	 * Build a deterministic TSPL filename for API responses.
+	 *
+	 * @param Product $product Product object
+	 * @return string
+	 */
+	private static function buildTsplFilename($product)
+	{
+		$safeRef = self::sanitizeFilenameFragment(!empty($product->ref) ? (string) $product->ref : '');
+		if ($safeRef === '') {
+			$safeRef = (string) (!empty($product->id) ? (int) $product->id : 'label');
+		}
+
+		return 'labels-' . $safeRef . '-' . dol_print_date(dol_now(), '%Y%m%d%H%M%S') . '.tspl';
+	}
+
+	/**
+	 * Append TSPL commands for one standard (non-template) record.
+	 *
+	 * @param array $commands           TSPL command lines
+	 * @param array $record             Label record
+	 * @param int   $baseX              Initial X coordinate (dots)
+	 * @param int   $baseY              Initial Y coordinate (dots)
+	 * @param int   $lineStepDots       Text line step (dots)
+	 * @param int   $barcodeHeightDots  Barcode height (dots)
+	 * @return void
+	 */
+	private static function appendStandardRecordTsplCommands(&$commands, $record, $baseX, $baseY, $lineStepDots, $barcodeHeightDots)
+	{
+		$y = (int) $baseY;
+		$printedAnyText = false;
+
+		if (!empty($record['lines']) && is_array($record['lines'])) {
+			foreach ($record['lines'] as $line) {
+				$text = '';
+				if (is_array($line)) {
+					$text = (!empty($line['text']) ? (string) $line['text'] : '');
+				} else {
+					$text = (string) $line;
+				}
+
+				$text = self::sanitizeTsplText($text);
+				if ($text === '') {
+					continue;
+				}
+
+				$commands[] = 'TEXT ' . ((int) $baseX) . ',' . ((int) $y) . ',"2",0,1,1,"' . self::escapeTsplText($text) . '"';
+				$y += (int) $lineStepDots;
+				$printedAnyText = true;
+			}
+		}
+
+		$barcodeValue = self::sanitizeTsplText(!empty($record['barcode_value']) ? (string) $record['barcode_value'] : '');
+		if ($barcodeValue === '') {
+			return;
+		}
+
+		if ($printedAnyText) {
+			$y += 6;
+		}
+
+		$encoding = self::mapBarcodeEncodingToTspl(!empty($record['barcode_encoding']) ? (string) $record['barcode_encoding'] : '');
+		$is2d = !empty($record['barcode_is_2d']);
+		if ($is2d) {
+			$commands[] = 'QRCODE ' . ((int) $baseX) . ',' . ((int) $y) . ',L,4,A,0,"' . self::escapeTsplText($barcodeValue) . '"';
+			return;
+		}
+
+		$commands[] = 'BARCODE ' . ((int) $baseX) . ',' . ((int) $y) . ',"' . $encoding . '",' . ((int) $barcodeHeightDots) . ',1,0,2,2,"' . self::escapeTsplText($barcodeValue) . '"';
+	}
+
+	/**
+	 * Append TSPL commands for resolved template blocks.
+	 *
+	 * @param array $commands TSPL command lines
+	 * @param array $blocks   Resolved template blocks
+	 * @param float $dotsPerMm Printer density in dots per millimeter
+	 * @param int   $baseX   Initial X coordinate fallback (dots)
+	 * @param int   $baseY   Initial Y coordinate fallback (dots)
+	 * @return void
+	 */
+	private static function appendTemplateBlocksTsplCommands(&$commands, $blocks, $dotsPerMm, $baseX, $baseY)
+	{
+		foreach ($blocks as $block) {
+			if (!is_array($block) || empty($block['type'])) {
+				continue;
+			}
+
+			$type = strtolower(trim((string) $block['type']));
+			$value = self::sanitizeTsplText(!empty($block['value']) ? (string) $block['value'] : '');
+			if ($value === '') {
+				continue;
+			}
+
+			$x = (!empty($block['x_mm']) ? self::toTsplDots((float) $block['x_mm'], $dotsPerMm) : (int) $baseX);
+			$y = (!empty($block['y_mm']) ? self::toTsplDots((float) $block['y_mm'], $dotsPerMm) : (int) $baseY);
+
+			if ($type === 'text') {
+				$fontSizePt = 8.0;
+				if (!empty($block['style']) && is_array($block['style']) && !empty($block['style']['font_size_pt'])) {
+					$fontSizePt = max(4.0, (float) $block['style']['font_size_pt']);
+				}
+				$multiplier = self::mapFontSizePtToTsplMultiplier($fontSizePt);
+				$lineHeightDots = max(16, (int) round(($fontSizePt / 2.6) * $dotsPerMm));
+
+				$maxLines = 0;
+				if (!empty($block['h_mm'])) {
+					$maxLines = max(1, (int) floor(self::toTsplDots((float) $block['h_mm'], $dotsPerMm) / max(1, $lineHeightDots)));
+				}
+				$maxCharsPerLine = 0;
+				if (!empty($block['w_mm'])) {
+					$charWidthDots = max(5.0, $fontSizePt * (($multiplier >= 3 ? 1.45 : ($multiplier === 2 ? 1.15 : 0.92))));
+					$maxCharsPerLine = max(4, (int) floor(self::toTsplDots((float) $block['w_mm'], $dotsPerMm) / $charWidthDots));
+				}
+				$lines = self::wrapTsplTextLines($value, $maxCharsPerLine, $maxLines);
+				if (empty($lines)) {
+					continue;
+				}
+
+				$lineOffset = 0;
+				foreach ($lines as $lineText) {
+					$lineText = self::sanitizeTsplText($lineText);
+					if ($lineText === '') {
+						continue;
+					}
+
+					$commands[] = 'TEXT ' . ((int) $x) . ',' . ((int) ($y + $lineOffset)) . ',"2",0,' . $multiplier . ',' . $multiplier . ',"' . self::escapeTsplText($lineText) . '"';
+					$lineOffset += $lineHeightDots;
+				}
+				continue;
+			}
+
+			if ($type === 'rect') {
+				$wDots = max(1, (!empty($block['w_mm']) ? self::toTsplDots((float) $block['w_mm'], $dotsPerMm) : 1));
+				$hDots = max(1, (!empty($block['h_mm']) ? self::toTsplDots((float) $block['h_mm'], $dotsPerMm) : 1));
+				$x2 = $x + $wDots;
+				$y2 = $y + $hDots;
+				$thickness = 1;
+				if (!empty($block['style']) && is_array($block['style']) && !empty($block['style']['stroke_width_mm'])) {
+					$thickness = max(1, self::toTsplDots((float) $block['style']['stroke_width_mm'], $dotsPerMm));
+				}
+				$commands[] = 'BOX ' . ((int) $x) . ',' . ((int) $y) . ',' . ((int) $x2) . ',' . ((int) $y2) . ',' . ((int) $thickness);
+				continue;
+			}
+
+			if ($type === 'image') {
+				$bitmapSegment = self::buildTsplBitmapCommandSegmentFromTemplateBlock($block, $x, $y, $dotsPerMm, $value);
+				if ($bitmapSegment !== '') {
+					$commands[] = $bitmapSegment;
+				}
+				continue;
+			}
+
+			if ($type !== 'barcode') {
+				continue;
+			}
+
+			$symbology = (!empty($block['symbology']) ? (string) $block['symbology'] : '');
+			$showHuman = (!empty($block['show_human_readable']) ? 1 : 0);
+			$widthDots = (!empty($block['w_mm']) ? self::toTsplDots((float) $block['w_mm'], $dotsPerMm) : 0);
+			$heightDots = (!empty($block['h_mm']) ? self::toTsplDots((float) $block['h_mm'], $dotsPerMm) : 0);
+			if ($heightDots <= 0) {
+				$heightDots = 50;
+			}
+
+			if (self::isQrCodeSymbology($symbology)) {
+				$qrCell = 4;
+				if ($widthDots > 0 && $heightDots > 0) {
+					$qrCell = max(2, min(8, (int) floor((float) min($widthDots, $heightDots) / 30.0)));
+				}
+				$commands[] = 'QRCODE ' . ((int) $x) . ',' . ((int) $y) . ',L,' . $qrCell . ',A,0,"' . self::escapeTsplText($value) . '"';
+				continue;
+			}
+
+			$barcodeType = self::mapBarcodeEncodingToTspl($symbology);
+			$commands[] = 'BARCODE ' . ((int) $x) . ',' . ((int) $y) . ',"' . $barcodeType . '",' . ((int) $heightDots) . ',' . $showHuman . ',0,2,2,"' . self::escapeTsplText($value) . '"';
+		}
+	}
+
+	/**
+	 * Build a TSPL BITMAP command segment for one template image block.
+	 *
+	 * @param array  $block      Template block
+	 * @param int    $x          X position in dots
+	 * @param int    $y          Y position in dots
+	 * @param float  $dotsPerMm  Printer density
+	 * @param string $assetValue Resolved asset reference
+	 * @return string
+	 */
+	private static function buildTsplBitmapCommandSegmentFromTemplateBlock($block, $x, $y, $dotsPerMm, $assetValue)
+	{
+		$targetWidthDots = max(1, (!empty($block['w_mm']) ? self::toTsplDots((float) $block['w_mm'], $dotsPerMm) : 1));
+		$targetHeightDots = max(1, (!empty($block['h_mm']) ? self::toTsplDots((float) $block['h_mm'], $dotsPerMm) : 1));
+		$bitmap = self::buildTsplBitmapDataFromAssetReference($assetValue, $targetWidthDots, $targetHeightDots);
+		if (empty($bitmap['data']) || empty($bitmap['width_bytes']) || empty($bitmap['height'])) {
+			return '';
+		}
+
+		return 'BITMAP ' . ((int) $x) . ',' . ((int) $y) . ',' . ((int) $bitmap['width_bytes']) . ',' . ((int) $bitmap['height']) . ',0,' . $bitmap['data'];
+	}
+
+	/**
+	 * Build packed monochrome bitmap bytes from one template asset reference.
+	 *
+	 * @param string $assetReference Asset reference/path
+	 * @param int    $targetWidthDots  Target width in dots
+	 * @param int    $targetHeightDots Target height in dots
+	 * @return array{width_bytes:int,height:int,data:string}
+	 */
+	private static function buildTsplBitmapDataFromAssetReference($assetReference, $targetWidthDots, $targetHeightDots)
+	{
+		$assetReference = self::sanitizeTemplateAssetReference($assetReference);
+		if ($assetReference === '') {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$fullPath = self::resolveTemplateAssetLocalPath($assetReference);
+		if ($fullPath === '') {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		return self::buildTsplBitmapDataFromImageFile($fullPath, $targetWidthDots, $targetHeightDots);
+	}
+
+	/**
+	 * Build packed monochrome bitmap bytes from one local image file.
+	 *
+	 * @param string $fullPath Absolute image path
+	 * @param int    $targetWidthDots  Target width in dots
+	 * @param int    $targetHeightDots Target height in dots
+	 * @return array{width_bytes:int,height:int,data:string}
+	 */
+	private static function buildTsplBitmapDataFromImageFile($fullPath, $targetWidthDots, $targetHeightDots)
+	{
+		$targetWidthDots = max(1, (int) $targetWidthDots);
+		$targetHeightDots = max(1, (int) $targetHeightDots);
+		$image = self::loadImageResourceForTspl($fullPath);
+		if (!is_resource($image) && !(is_object($image) && get_class($image) === 'GdImage')) {
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$sourceWidth = (int) @imagesx($image);
+		$sourceHeight = (int) @imagesy($image);
+		if ($sourceWidth <= 0 || $sourceHeight <= 0) {
+			@imagedestroy($image);
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$canvas = @imagecreatetruecolor($targetWidthDots, $targetHeightDots);
+		if (!is_resource($canvas) && !(is_object($canvas) && get_class($canvas) === 'GdImage')) {
+			@imagedestroy($image);
+			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$white = imagecolorallocate($canvas, 255, 255, 255);
+		imagefilledrectangle($canvas, 0, 0, $targetWidthDots, $targetHeightDots, $white);
+		@imagealphablending($canvas, true);
+		@imagesavealpha($canvas, false);
+		@imagecopyresampled($canvas, $image, 0, 0, 0, 0, $targetWidthDots, $targetHeightDots, $sourceWidth, $sourceHeight);
+		@imagedestroy($image);
+
+		$widthBytes = (int) ceil(((float) $targetWidthDots) / 8.0);
+		$data = '';
+		for ($y = 0; $y < $targetHeightDots; $y++) {
+			for ($byteIndex = 0; $byteIndex < $widthBytes; $byteIndex++) {
+				$byte = 0;
+				for ($bit = 0; $bit < 8; $bit++) {
+					$x = ($byteIndex * 8) + $bit;
+					if ($x >= $targetWidthDots) {
+						continue;
+					}
+
+					$rgba = imagecolorat($canvas, $x, $y);
+					$alpha = (($rgba & 0x7F000000) >> 24);
+					if ($alpha >= 120) {
+						continue;
+					}
+					$r = (($rgba >> 16) & 0xFF);
+					$g = (($rgba >> 8) & 0xFF);
+					$b = ($rgba & 0xFF);
+					$luminance = (0.299 * $r) + (0.587 * $g) + (0.114 * $b);
+					if ($luminance < 180) {
+						$byte |= (1 << (7 - $bit));
+					}
+				}
+				$data .= chr($byte);
+			}
+		}
+		@imagedestroy($canvas);
+
+		return array(
+			'width_bytes' => $widthBytes,
+			'height' => $targetHeightDots,
+			'data' => $data,
+		);
+	}
+
+	/**
+	 * Load a local image into a GD resource for TSPL bitmap conversion.
+	 *
+	 * @param string $fullPath Absolute image path
+	 * @return mixed
+	 */
+	private static function loadImageResourceForTspl($fullPath)
+	{
+		$fullPath = (string) $fullPath;
+		if ($fullPath === '' || !is_file($fullPath) || !is_readable($fullPath)) {
+			return null;
+		}
+		if (!function_exists('imagecreatefromstring')) {
+			return null;
+		}
+
+		$ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+		if ($ext === 'svg') {
+			$pngBlob = self::convertSvgToPngBinaryForTspl($fullPath);
+			if ($pngBlob === '') {
+				return null;
+			}
+			return @imagecreatefromstring($pngBlob);
+		}
+
+		if (in_array($ext, array('png', 'jpg', 'jpeg', 'gif', 'webp'), true)) {
+			$binary = @file_get_contents($fullPath);
+			if ($binary === false || $binary === '') {
+				return null;
+			}
+			return @imagecreatefromstring($binary);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Convert one SVG file to PNG binary for TSPL bitmap conversion.
+	 *
+	 * @param string $svgPath Absolute SVG file path
+	 * @return string
+	 */
+	private static function convertSvgToPngBinaryForTspl($svgPath)
+	{
+		$svgPath = (string) $svgPath;
+		if ($svgPath === '' || !is_file($svgPath) || !is_readable($svgPath)) {
+			return '';
+		}
+
+		// Prefer pre-rendered PNG siblings when shipped with the module.
+		$pngSiblingPath = preg_replace('/\.svg$/i', '.png', $svgPath);
+		if (is_string($pngSiblingPath) && $pngSiblingPath !== '' && is_file($pngSiblingPath) && is_readable($pngSiblingPath)) {
+			$pngSiblingBinary = @file_get_contents($pngSiblingPath);
+			if ($pngSiblingBinary !== false && $pngSiblingBinary !== '') {
+				return $pngSiblingBinary;
+			}
+		}
+
+		// Prefer Imagick when available.
+		if (class_exists('Imagick')) {
+			try {
+				$image = new Imagick();
+				$image->setBackgroundColor(new ImagickPixel('white'));
+				$image->readImage($svgPath);
+				$image = $image->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
+				$image->setImageFormat('png');
+				$blob = (string) $image->getImageBlob();
+				$image->clear();
+				$image->destroy();
+				if ($blob !== '') {
+					return $blob;
+				}
+			} catch (Throwable $e) {
+				dol_syslog(__METHOD__ . ' imagick svg conversion failed: ' . $e->getMessage(), LOG_DEBUG);
+			}
+		}
+
+		// Fallback to rsvg-convert when available.
+		$rsvgCmd = trim((string) @shell_exec('command -v rsvg-convert 2>/dev/null'));
+		if ($rsvgCmd !== '') {
+			$command = escapeshellcmd($rsvgCmd) . ' -f png ' . escapeshellarg($svgPath) . ' 2>/dev/null';
+			$blob = (string) @shell_exec($command);
+			if ($blob !== '') {
+				return $blob;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Wrap text for TSPL text blocks.
+	 *
+	 * @param string $text Source text
+	 * @param int    $maxCharsPerLine Max chars per line (0 = no wrap)
+	 * @param int    $maxLines Max lines (0 = no limit)
+	 * @return array
+	 */
+	private static function wrapTsplTextLines($text, $maxCharsPerLine, $maxLines)
+	{
+		$text = str_replace(array("\r\n", "\r"), "\n", (string) $text);
+		$parts = preg_split('/\n/', $text);
+		if (!is_array($parts)) {
+			$parts = array($text);
+		}
+
+		$lines = array();
+		foreach ($parts as $part) {
+			$part = trim((string) $part);
+			if ($part === '') {
+				continue;
+			}
+
+			if ($maxCharsPerLine > 0) {
+				$wrapped = wordwrap($part, $maxCharsPerLine, "\n", true);
+				$wrappedParts = preg_split('/\n/', (string) $wrapped);
+				if (is_array($wrappedParts)) {
+					foreach ($wrappedParts as $wrappedLine) {
+						$wrappedLine = trim((string) $wrappedLine);
+						if ($wrappedLine !== '') {
+							$lines[] = $wrappedLine;
+						}
+					}
+				}
+			} else {
+				$lines[] = $part;
+			}
+		}
+
+		if ($maxLines > 0 && count($lines) > $maxLines) {
+			$lines = array_slice($lines, 0, $maxLines);
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Convert millimeters to TSPL dots.
+	 *
+	 * @param float $mm        Length in millimeters
+	 * @param float $dotsPerMm Printer density in dots per millimeter
+	 * @return int
+	 */
+	private static function toTsplDots($mm, $dotsPerMm)
+	{
+		$mm = max(0.0, (float) $mm);
+		$dotsPerMm = max(0.1, (float) $dotsPerMm);
+		return (int) max(0, round($mm * $dotsPerMm));
+	}
+
+	/**
+	 * Format TSPL numeric values with stable decimal separator.
+	 *
+	 * @param float $value Numeric value
+	 * @return string
+	 */
+	private static function formatTsplNumber($value)
+	{
+		$formatted = number_format((float) $value, 2, '.', '');
+		$formatted = rtrim(rtrim($formatted, '0'), '.');
+		return ($formatted !== '' ? $formatted : '0');
+	}
+
+	/**
+	 * Sanitize text before TSPL serialization.
+	 *
+	 * @param string $text Raw text
+	 * @return string
+	 */
+	private static function sanitizeTsplText($text)
+	{
+		$text = (string) $text;
+		$text = str_replace(array("\r\n", "\r"), "\n", $text);
+		$text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $text);
+		return trim((string) $text);
+	}
+
+	/**
+	 * Escape text for TSPL quoted string literals.
+	 *
+	 * @param string $text Sanitized text
+	 * @return string
+	 */
+	private static function escapeTsplText($text)
+	{
+		$text = str_replace('"', "'", (string) $text);
+		return str_replace('\\', '/', $text);
+	}
+
+	/**
+	 * Map common barcode encodings/symbologies to TSPL names.
+	 *
+	 * @param string $encoding Source encoding
+	 * @return string
+	 */
+	private static function mapBarcodeEncodingToTspl($encoding)
+	{
+		$encoding = strtoupper(trim((string) $encoding));
+		$map = array(
+			'128' => '128',
+			'C128' => '128',
+			'CODE128' => '128',
+			'39' => '39',
+			'C39' => '39',
+			'CODE39' => '39',
+			'EAN13' => 'EAN13',
+			'EAN8' => 'EAN8',
+			'UPCA' => 'UPCA',
+			'UPC-A' => 'UPCA',
+			'UPCE' => 'UPCE',
+			'UPC-E' => 'UPCE',
+			'CODABAR' => 'CODA',
+			'CODA' => 'CODA',
+			'ITF14' => 'ITF14',
+			'ITF' => 'ITF14',
+		);
+
+		return (!empty($map[$encoding]) ? $map[$encoding] : '128');
+	}
+
+	/**
+	 * Resolve whether a symbology should be printed as QRCode in TSPL.
+	 *
+	 * @param string $symbology Symbology identifier
+	 * @return bool
+	 */
+	private static function isQrCodeSymbology($symbology)
+	{
+		$symbology = strtoupper(trim((string) $symbology));
+		return in_array($symbology, array('QR', 'QRCODE', 'QR-CODE', 'QR_CODE'), true);
+	}
+
+	/**
+	 * Map text point size to TSPL text multipliers.
+	 *
+	 * @param float $fontSizePt Font size in points
+	 * @return int
+	 */
+	private static function mapFontSizePtToTsplMultiplier($fontSizePt)
+	{
+		$fontSizePt = max(4.0, (float) $fontSizePt);
+		if ($fontSizePt >= 14.0) {
+			return 3;
+		}
+		if ($fontSizePt >= 10.0) {
+			return 2;
+		}
+
+		return 1;
+	}
+
+	/**
+	 * Sanitize filename fragment used for generated exports.
+	 *
+	 * @param string $value Raw value
+	 * @return string
+	 */
+	private static function sanitizeFilenameFragment($value)
+	{
+		$value = preg_replace('/[^A-Za-z0-9._-]+/', '_', (string) $value);
+		$value = trim((string) $value, '._-');
+		return substr($value, 0, 64);
 	}
 
 	/**

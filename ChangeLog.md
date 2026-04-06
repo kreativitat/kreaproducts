@@ -1,6 +1,26 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.27.1] - 2026-04-06
+
+### Changed
+- Improved TSPL template fidelity for API label generation by rendering additional block types (`rect`, wrapped `text`) with template coordinates.
+- Updated TSPL defaults to `DIRECTION 0` and explicit `REFERENCE 0,0` to reduce 90-degree rotation issues on thermal printers.
+
+### Added
+- Added TSPL image block support using printer `BITMAP` commands with packed monochrome raster data.
+- Added bundled PNG fallbacks for DeGema template symbols (`degema_bw`, `green_dot_symbol`, `eu_food_contact_material_symbol`) to ensure image rendering when SVG runtime conversion is unavailable.
+
+## [2.27.0] - 2026-04-06
+
+### Added
+- Added a new TSPL label API endpoint: `POST production/products/{product_id}/labels/tspl`.
+- Added a TSPL compatibility endpoint: `GET production/products/{product_id}/labels/tspl`.
+- Added TSPL serialization in `KreaProductsLabelService` to generate raw printer commands from existing standard/template label records.
+
+### Changed
+- Kept existing PDF label endpoints (`labels/pdf` and compatibility `labels`) unchanged while introducing TSPL as an additional output path.
+
 ## [2.26.28] - 2026-03-30
 
 ### Fixed
