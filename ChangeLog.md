@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.27.5] - 2026-04-06
+
+### Changed
+- Updated DeGema front static captions to short forms (`Emb.:` and `Cong.:`) to prevent clipping on thermal output.
+- Refined TSPL centered-text positioning to use glyph-height centering for single-line blocks, improving optical vertical centering of product ref inside bordered boxes.
+
+## [2.27.4] - 2026-04-06
+
+### Changed
+- TSPL text output now enforces ASCII-safe transliteration and symbol normalization (including `º`/`°` replacement) to avoid non-printable/mis-encoded characters on thermal printers.
+- TSPL text block rendering now applies vertical centering for centered single-line fields (for example product ref inside bordered box).
+- TSPL barcode bitmap rendering now stretches active bars to use full template barcode width (removing excess quiet margins).
+
+### Fixed
+- Fixed stale template date defaults leaking from database: date/datetime fields now default to label generation date/time at render time unless explicitly overridden by request values.
+
 ## [2.27.3] - 2026-04-06
 
 ### Changed

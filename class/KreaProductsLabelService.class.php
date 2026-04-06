@@ -2456,6 +2456,7 @@ class KreaProductsLabelService
 				$fontSpec = self::resolveTsplTextFontSpec($fontSizePt, $fontWeight);
 				$lineHeightDots = max(12, (int) $fontSpec['line_height']);
 				$blockWidthDots = (!empty($block['w_mm']) ? max(1, self::toTsplDots((float) $block['w_mm'], $dotsPerMm)) : 0);
+				$blockHeightDots = (!empty($block['h_mm']) ? max(1, self::toTsplDots((float) $block['h_mm'], $dotsPerMm)) : 0);
 
 				$maxLines = 0;
 				if (!empty($block['h_mm'])) {
@@ -2472,6 +2473,12 @@ class KreaProductsLabelService
 				}
 
 				$lineOffset = 0;
+				if ($align === 'center' && count($lines) === 1 && $blockHeightDots > 0) {
+					$glyphHeightDots = max(1, (int) (!empty($fontSpec['char_height']) ? $fontSpec['char_height'] : $lineHeightDots));
+					if ($blockHeightDots > $glyphHeightDots) {
+						$lineOffset = (int) floor(((float) ($blockHeightDots - $glyphHeightDots)) / 2.0);
+					}
+				}
 				foreach ($lines as $lineText) {
 					$lineText = self::sanitizeTsplText($lineText);
 					if ($lineText === '') {
@@ -2601,6 +2608,32 @@ class KreaProductsLabelService
 		}
 		if (empty($intervals)) {
 			return array('width_bytes' => 0, 'height' => 0, 'data' => '');
+		}
+
+		$minBlack = $targetWidthDots - 1;
+		$maxBlack = 0;
+		foreach ($intervals as $interval) {
+			$minBlack = min($minBlack, (int) $interval[0]);
+			$maxBlack = max($maxBlack, (int) $interval[1]);
+		}
+		if ($maxBlack >= $minBlack) {
+			$effectiveWidth = max(1, ($maxBlack - $minBlack + 1));
+			if ($effectiveWidth < $targetWidthDots) {
+				$scale = ((float) $targetWidthDots) / ((float) $effectiveWidth);
+				$stretchedIntervals = array();
+				foreach ($intervals as $interval) {
+					$start = (int) floor((((int) $interval[0]) - $minBlack) * $scale);
+					$end = (int) ceil((((int) $interval[1]) - $minBlack + 1) * $scale) - 1;
+					$start = max(0, min($targetWidthDots - 1, $start));
+					$end = max(0, min($targetWidthDots - 1, $end));
+					if ($end >= $start) {
+						$stretchedIntervals[] = array($start, $end);
+					}
+				}
+				if (!empty($stretchedIntervals)) {
+					$intervals = $stretchedIntervals;
+				}
+			}
 		}
 
 		$widthBytes = (int) ceil(((float) $targetWidthDots) / 8.0);
@@ -2930,8 +2963,44 @@ class KreaProductsLabelService
 	{
 		$text = (string) $text;
 		$text = str_replace(array("\r\n", "\r"), "\n", $text);
-		$text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $text);
-		return trim((string) $text);
+		$text = strtr($text, array(
+			'º' => 'o',
+			'°' => 'o',
+			'ª' => 'a',
+			'€' => 'EUR',
+			'–' => '-',
+			'—' => '-',
+			'−' => '-',
+			'“' => '"',
+			'”' => '"',
+			'‘' => "'",
+			'’' => "'",
+			"\xC2\xA0" => ' ',
+		));
+		if (function_exists('iconv')) {
+			$ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+			if ($ascii !== false) {
+				$text = (string) $ascii;
+			}
+		}
+		$text = str_replace("\t", ' ', $text);
+		$text = preg_replace('/[^\x0A\x20-\x7E]/', '', $text);
+		$text = preg_replace('/[ ]{2,}/', ' ', (string) $text);
+
+		$lines = preg_split('/\n/', (string) $text);
+		if (!is_array($lines)) {
+			return trim((string) $text);
+		}
+
+		$cleanLines = array();
+		foreach ($lines as $line) {
+			$line = trim((string) $line);
+			if ($line !== '') {
+				$cleanLines[] = $line;
+			}
+		}
+
+		return trim(implode("\n", $cleanLines));
 	}
 
 	/**
@@ -3038,6 +3107,7 @@ class KreaProductsLabelService
 			'xmul' => $xmul,
 			'ymul' => $ymul,
 			'char_width' => $charWidth,
+			'char_height' => ($charHeight * $ymul),
 			'line_height' => $lineHeight,
 		);
 	}
@@ -3654,6 +3724,7 @@ class KreaProductsLabelService
 				$context[$source] = (string) $meta['default_value'];
 			}
 		}
+		$context = self::applyTemplateRuntimeDateDefaults($context, $sourceMeta);
 		if (empty($context['asset.green_dot_symbol'])) {
 			$context['asset.green_dot_symbol'] = 'templates/assets/green_dot_symbol.svg';
 		}
@@ -3665,6 +3736,44 @@ class KreaProductsLabelService
 		}
 
 		$context = self::applyDerivedTemplateContextValues($context, $template);
+
+		return $context;
+	}
+
+	/**
+	 * Replace persisted date/datetime defaults with runtime generation date.
+	 *
+	 * This prevents stale template defaults saved in database from leaking into
+	 * newly generated labels.
+	 *
+	 * @param array $context    Current context
+	 * @param array $sourceMeta Editable source metadata
+	 * @return array
+	 */
+	private static function applyTemplateRuntimeDateDefaults($context, $sourceMeta)
+	{
+		if (!is_array($context) || !is_array($sourceMeta) || empty($sourceMeta)) {
+			return $context;
+		}
+
+		$nowTs = dol_now();
+		foreach ($sourceMeta as $source => $meta) {
+			if (empty($source) || !is_array($meta)) {
+				continue;
+			}
+
+			$type = strtolower(trim((string) (!empty($meta['type']) ? $meta['type'] : '')));
+			if ($type !== 'date' && $type !== 'datetime') {
+				continue;
+			}
+
+			$format = trim((string) (!empty($meta['output_format']) ? $meta['output_format'] : ''));
+			if ($format === '') {
+				$format = ($type === 'datetime' ? 'd/m/Y H:i' : 'd/m/Y');
+			}
+
+			$context[$source] = self::formatTimestampWithPattern($nowTs, $format);
+		}
 
 		return $context;
 	}
