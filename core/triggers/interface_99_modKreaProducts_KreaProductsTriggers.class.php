@@ -36,7 +36,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		switch ($action) {
 			case 'PRODUCT_PRICE_MODIFY':
-				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				if ($this->hasCostPriceChanged($object)) {
+					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				}
 				return 1;
 
 			case 'PRODUCT_MODIFY':
@@ -112,11 +114,12 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 
 		if (!isset($object->oldcopy) || !is_object($object->oldcopy)) {
-			return true;
+			// Strict mode: without a previous snapshot we cannot prove a cost change.
+			return false;
 		}
 
-		$oldCost = $object->oldcopy->cost_price ?? null;
-		$newCost = $object->cost_price ?? null;
+		$oldCost = $this->normalizeCostValue($object->oldcopy->cost_price ?? null);
+		$newCost = $this->normalizeCostValue($object->cost_price ?? null);
 
 		if ($oldCost === null && $newCost === null) {
 			return false;
@@ -126,6 +129,32 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 
 		return abs((float) $oldCost - (float) $newCost) > 0.0001;
+	}
+
+	/**
+	 * Normalize cost values to float or null.
+	 *
+	 * @param mixed $value
+	 * @return float|null
+	 */
+	private function normalizeCostValue($value): ?float
+	{
+		if ($value === null) {
+			return null;
+		}
+
+		if (is_string($value)) {
+			$value = trim($value);
+			if ($value === '') {
+				return null;
+			}
+		}
+
+		if (!is_numeric($value)) {
+			return null;
+		}
+
+		return (float) $value;
 	}
 
 	/**

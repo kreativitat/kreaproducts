@@ -1,6 +1,120 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.30.12] - 2026-04-09
+
+### Fixed
+- Restricted tree cost synchronization triggers to real `cost_price` changes only; removed fallback behavior that assumed change when no previous cost snapshot exists.
+- `PRODUCT_PRICE_MODIFY` now follows the same strict cost-delta check before launching cascade recalculation.
+
+## [2.30.11] - 2026-04-09
+
+### Fixed
+- Preserved `KREAPRODUCTION_ENABLE` across module disable/uninstall by setting `deleteonunactive=0` in module constants registration.
+- This prevents accidental deletion of the global toggle from `llx_const` when `KreaProducts` is deactivated, keeping `/admin/const.php?mainmenu=home` configuration stable.
+
+## [2.30.10] - 2026-04-09
+
+### Fixed
+- `KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS` now defaults to enabled when constant is missing (first run/legacy installs), ensuring recipe unit auto-scaling works immediately without requiring setup page save.
+
+## [2.30.9] - 2026-04-09
+
+### Added
+- Added setup option `KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS` (default `1`) to enable automatic component unit display scaling.
+
+### Changed
+- Recipe API component lines now expose display-safe scaled fields (`qty_display`, `component_unit_display`, `component_unit_code_display`, `component_unit_label_display`) using the rule `>= 1 => kg/l` and `< 1 => g/ml`.
+- Kept base recipe quantities and base unit fields unchanged to preserve production and stock calculation integrity.
+
+## [2.30.8] - 2026-04-09
+
+### Fixed
+- Fixed `production/run` failures for non-stockable finished products (`stockable_product=0`) by extending MO line normalization to set `disable_stock_change=1` for both `toconsume` and `toproduce` lines when stock movement IDs cannot be produced by Dolibarr core.
+- Preserved the existing subproduct safeguard on consume lines while preventing false `produceAndConsume` rollbacks that deleted auto-created MOs.
+
+## [2.30.7] - 2026-04-09
+
+### Changed
+- Updated Portuguese `kreap_lot_help` text to: `Ativar a introdução do lote do produto no quiosque do módulo KreaProduction.`
+
+## [2.30.6] - 2026-04-09
+
+### Changed
+- Updated MRP `kreap_lot` column short header from `Mostrar` to `Lote`.
+
+## [2.30.5] - 2026-04-09
+
+### Changed
+- Updated MRP component `kreap_lot` checkbox rendering to match Dolibarr disabled checkbox visual style (as in product extrafields view).
+- Editable MRP checkbox now uses disabled/read-only visual rendering and toggles by clicking the checkbox area.
+
+## [2.30.4] - 2026-04-09
+
+### Changed
+- Updated MRP `kreap_lot` column header from initials to a short word label (`Mostrar`).
+- Removed the MRP component `kreap_lot` pencil edit icon and kept only checkbox toggle interaction.
+- Tuned native checkbox accent to keep dimmed grey style with white check mark.
+
+## [2.30.3] - 2026-04-09
+
+### Changed
+- Reverted custom-drawn MRP `kreap_lot` checkbox style and restored native checkbox rendering.
+
+## [2.30.2] - 2026-04-09
+
+### Changed
+- Updated MRP `kreap_lot` checkbox rendering to use a dedicated grey checkbox style with white check mark, matching the requested visual behavior.
+
+## [2.30.1] - 2026-04-09
+
+### Fixed
+- Fixed MRP component checkbox state in `associatedProducts.php`: `kreap_lot = NULL` is now rendered as off when an extrafields row exists.
+
+### Changed
+- Updated MRP component checkbox visual style to a dimmed grey tone.
+- Shortened MRP column header for `Mostrar em OP (KreaProduction)` to `OP` with tooltip help.
+
+## [2.30.0] - 2026-04-09
+
+### Added
+- Added per-component `Mostrar em OP (KreaProduction)` checkbox in MRP components table on `associatedProducts.php` with direct edit link.
+
+### Changed
+- MRP component checkbox column is shown only when `KREAPRODUCTION_ENABLE=1`.
+- Added component toggle action on `associatedProducts.php` to persist `kreap_lot` for each component product.
+
+## [2.29.2] - 2026-04-09
+
+### Fixed
+- Fixed component `kreap_lot` resolution for recipe lines when Dolibarr stores unchecked booleans as null/empty: these values are now normalized to disabled (`0`) instead of falling back to enabled (`1`).
+
+## [2.29.1] - 2026-04-09
+
+### Fixed
+- Fixed component `kreap_lot=0` handling in recipe API lines by replacing `!empty(...)` checks with `isset(...)`, so disabled values (`"0"`) are no longer coerced back to enabled (`"1"`).
+
+## [2.29.0] - 2026-04-09
+
+### Changed
+- Recipe API lines (`production/products/{product_id}/recipe`) now include component `kreap_lot` (`component_kreap_lot`, `kreap_lot`, and `array_options.options_kreap_lot`) sourced from product extrafields.
+- Updated module version after introducing `KREAPRODUCTION_ENABLE` setup toggle and `kreap_lot` visibility gating.
+
+## [2.28.1] - 2026-04-09
+
+### Changed
+- Added global toggle `KREAPRODUCTION_ENABLE` (default `0`) so KreaProduction-specific product fields are off on first install.
+- `kreap_lot` product extrafield is now shown only when `KREAPRODUCTION_ENABLE=1` (set in `/admin/const.php?mainmenu=home`).
+
+## [2.28.0] - 2026-04-09
+
+### Added
+- Added product extrafield `kreap_lot` in module init/update flow (`modKreaProducts`) with default value `1` to control MO availability in KreaProduction.
+- Added upgrade-safe backfill during module init to set `kreap_lot=1` on existing `product_extrafields` rows where value is null.
+
+### Changed
+- Added `kreap_lot` translation keys in `en_US` and `pt_PT` language files.
+
 ## [2.27.7] - 2026-04-06
 
 ### Changed

@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.27.7';
+        $this->version = '2.30.12';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -202,6 +202,8 @@ class modKreaProducts extends DolibarrModules
             13 => array('KREAPRODUCTS_LABELS_TAB_ENABLED', 'chaine', '0', '', 0, 'allentities', 0),
             14 => array('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', 'chaine', '1', '', 0, 'allentities', 1),
             15 => array('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', 'chaine', '1', '', 0, 'allentities', 1),
+            16 => array('KREAPRODUCTION_ENABLE', 'chaine', '0', '', 0, 'allentities', 0),
+            17 => array('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS', 'chaine', '1', '', 0, 'allentities', 1),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 
@@ -566,6 +568,15 @@ class modKreaProducts extends DolibarrModules
         $field_help = $langs->trans("kreap_dismantle_help");
         $result3b = $extrafields->addExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
         $extrafields->updateExtraField($field_name, $field_label, 'boolean', 9, 3, 'product', 0, 0, 0, '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+        $field_name = "kreap_lot";
+        $field_label = $langs->trans("kreap_lot");
+        $field_help = $langs->trans("kreap_lot_help");
+        $result3c = $extrafields->addExtraField($field_name, $field_label, 'boolean', 10, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts") && !empty($conf->global->KREAPRODUCTION_ENABLE)');
+        $extrafields->updateExtraField($field_name, $field_label, 'boolean', 10, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts") && !empty($conf->global->KREAPRODUCTION_ENABLE)');
+        if ($this->columnExists(MAIN_DB_PREFIX . 'product_extrafields', 'kreap_lot')) {
+            $this->db->query("UPDATE " . MAIN_DB_PREFIX . "product_extrafields SET kreap_lot = 1 WHERE kreap_lot IS NULL");
+        }
 
         $field_label = $langs->trans("kreap_recipe");
         $result4 = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
