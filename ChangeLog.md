@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.30.13] - 2026-04-13
+
+### Fixed
+- Excluded associated products marked with `llx_kreaproducts_nutritional.is_food = 0` from the nutritional composition table and its totals/averages.
+
 ## [2.30.12] - 2026-04-09
 
 ### Fixed

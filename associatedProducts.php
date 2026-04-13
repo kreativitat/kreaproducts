@@ -311,6 +311,71 @@ if (!function_exists('kreaproducts_get_product_extrafield_value')) {
 	}
 }
 
+if (!function_exists('kreaproducts_product_extrafield_row_exists')) {
+	function kreaproducts_product_extrafield_row_exists($db, $productId, $entity = null)
+	{
+		static $hasEntityColumn = null;
+		static $cache = array();
+
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return false;
+		}
+
+		$cacheKey = $productId . ':' . (int) $entity;
+		if (array_key_exists($cacheKey, $cache)) {
+			return $cache[$cacheKey];
+		}
+
+		if ($hasEntityColumn === null) {
+			$hasEntityColumn = false;
+			$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "entity");
+			if ($colRes) {
+				$hasEntityColumn = ($db->num_rows($colRes) > 0);
+				$db->free($colRes);
+			}
+		}
+
+		$sql = "SELECT fk_object FROM " . MAIN_DB_PREFIX . "product_extrafields WHERE fk_object = " . $productId;
+		if ($hasEntityColumn && $entity !== null) {
+			$sql .= " AND entity IN (0," . (int) $entity . ") ORDER BY entity DESC";
+		}
+		$sql .= " LIMIT 1";
+
+		$exists = false;
+		$res = $db->query($sql);
+		if ($res) {
+			$exists = ($db->num_rows($res) > 0);
+			$db->free($res);
+		}
+
+		$cache[$cacheKey] = $exists;
+		return $exists;
+	}
+}
+
+if (!function_exists('kreaproducts_normalize_extrafield_boolean')) {
+	function kreaproducts_normalize_extrafield_boolean($rawValue, $defaultWhenNull = 1)
+	{
+		if ($rawValue === null) {
+			return ((int) $defaultWhenNull > 0 ? 1 : 0);
+		}
+
+		$normalized = strtolower(trim((string) $rawValue));
+		if ($normalized === '') {
+			return 0;
+		}
+		if (in_array($normalized, array('1', 'true', 'on', 'yes'), true)) {
+			return 1;
+		}
+		if (in_array($normalized, array('0', 'false', 'off', 'no'), true)) {
+			return 0;
+		}
+
+		return ((int) $rawValue > 0 ? 1 : 0);
+	}
+}
+
 $id     = GETPOST('id', 'int');
 $ref    = GETPOST('ref', 'alpha');
 $action = GETPOST('action', 'aZ09');
@@ -914,6 +979,59 @@ if ($action === 'toggle_dismantle' && $usercancreate) {
 		if (!$db->query($sql)) {
 			setEventMessages($langs->trans("Error"), array($db->lasterror()), 'errors');
 		}
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
+if ($action === 'toggle_component_kreap_lot' && $usercancreate && !empty($conf->global->KREAPRODUCTION_ENABLE)) {
+	$componentProductId = GETPOST('component_product_id', 'int');
+	$newValue = GETPOST('value', 'int') ? 1 : 0;
+
+	if ($componentProductId > 0) {
+		$componentEntity = null;
+		$sqlComponent = "SELECT rowid, entity"
+			. " FROM " . MAIN_DB_PREFIX . "product"
+			. " WHERE rowid = " . (int) $componentProductId
+			. " AND entity IN (" . getEntity('product') . ")"
+			. " LIMIT 1";
+		$resComponent = $db->query($sqlComponent);
+		if ($resComponent && ($objComponent = $db->fetch_object($resComponent))) {
+			$componentEntity = (int) $objComponent->entity;
+		}
+		if ($resComponent) {
+			$db->free($resComponent);
+		}
+
+		if ($componentEntity === null) {
+			setEventMessages($langs->trans("ErrorRecordNotFound"), null, 'errors');
+		} else {
+			$hasEntityColumn = false;
+			$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "entity");
+			if ($colRes) {
+				$hasEntityColumn = ($db->num_rows($colRes) > 0);
+				$db->free($colRes);
+			}
+
+			if ($hasEntityColumn) {
+				$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, entity, kreap_lot) VALUES ("
+					. (int) $componentProductId . ", " . (int) $componentEntity . ", " . (int) $newValue . ") "
+					. "ON DUPLICATE KEY UPDATE kreap_lot = " . (int) $newValue;
+			} else {
+				$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_lot) VALUES ("
+					. (int) $componentProductId . ", " . (int) $newValue . ") "
+					. "ON DUPLICATE KEY UPDATE kreap_lot = " . (int) $newValue;
+			}
+
+			if ($db->query($sql)) {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			} else {
+				setEventMessages($langs->trans("Error"), array($db->lasterror()), 'errors');
+			}
+		}
+	} else {
+		setEventMessages($langs->trans("ErrorBadValueForParameter"), null, 'errors');
 	}
 
 	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
@@ -1976,18 +2094,26 @@ if ($id > 0 || !empty($ref)) {
 						);
 					}
 
-					$componentsByBom[$bomId]['lines'][] = array(
-						'product_id' => $productComponentId,
-						'ref' => (string) $obj_bom->ref,
-						'label' => (string) $obj_bom->label,
-						'qty' => (float) price2num($obj_bom->line_qty, 'MS'),
-						'line_position' => (int) $obj_bom->line_position,
-						'cost_price' => (float) price2num($obj_bom->cost_price, 'MU'),
-						'pmp' => (float) price2num($obj_bom->pmp, 'MU'),
-						'stock_reel' => (float) price2num($obj_bom->stock_reel, 'MS'),
-						'weight' => (float) price2num($obj_bom->weight, 'MS'),
-						'weight_units' => $obj_bom->weight_units,
-					);
+						$componentsByBom[$bomId]['lines'][] = array(
+							'product_id' => $productComponentId,
+							'ref' => (string) $obj_bom->ref,
+							'label' => (string) $obj_bom->label,
+							'qty' => (float) price2num($obj_bom->line_qty, 'MS'),
+							'line_position' => (int) $obj_bom->line_position,
+							'cost_price' => (float) price2num($obj_bom->cost_price, 'MU'),
+							'pmp' => (float) price2num($obj_bom->pmp, 'MU'),
+							'stock_reel' => (float) price2num($obj_bom->stock_reel, 'MS'),
+							'weight' => (float) price2num($obj_bom->weight, 'MS'),
+							'weight_units' => $obj_bom->weight_units,
+							'mo_input_enabled' => (
+								kreaproducts_product_extrafield_row_exists($db, $productComponentId, $conf->entity)
+									? kreaproducts_normalize_extrafield_boolean(
+										kreaproducts_get_product_extrafield_value($db, $productComponentId, 'kreap_lot', $conf->entity),
+										0
+									)
+									: 1
+							),
+						);
 				}
 				$db->free($resql_bom);
 			}
@@ -2005,13 +2131,33 @@ if ($id > 0 || !empty($ref)) {
 							.krea-bom-title-link:visited,
 							.krea-bom-title-link:hover,
 							.krea-bom-title-link:active,
-							.krea-bom-title-link:focus {
-								color: inherit !important;
-								text-decoration: none !important;
-								font: inherit;
-								cursor: inherit;
-							}
-						</style>';
+								.krea-bom-title-link:focus {
+									color: inherit !important;
+									text-decoration: none !important;
+									font: inherit;
+									cursor: inherit;
+								}
+								.krea-kreaplot-cell {
+									display: inline-flex;
+									align-items: center;
+									justify-content: center;
+									gap: 8px;
+									white-space: nowrap;
+								}
+								.krea-kreaplot-cell form {
+									display: inline-flex;
+									align-items: center;
+									margin: 0;
+								}
+								.krea-kreaplot-toggle {
+									display: inline-flex;
+									align-items: center;
+									cursor: pointer;
+								}
+								.krea-kreaplot-toggle input[type="checkbox"] {
+									pointer-events: none;
+								}
+							</style>';
 					$GLOBALS['KREAPRODUCTS_MRP_COMPONENTS_TABLE_STYLE_PRINTED'] = true;
 				}
 
@@ -2023,29 +2169,55 @@ if ($id > 0 || !empty($ref)) {
 				$headerPosLabel = $getShortLabel('KreapHeaderPosShort', 'Pos.');
 				$headerChildLabel = $getShortLabel('KreapHeaderChildShort', 'Ref.');
 				$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
-				$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
-				$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
-				$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
-				$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
-				$hasStockColumn = isModEnabled('stock');
-				$mrpWidths = array(
-					'pos' => '6%',
-					'ref' => '10%',
-					'name' => '29%',
-					'ingredient_cost' => '12%',
-					'weight_kg' => '10%',
-					'qty' => '8%',
-					'component_cost' => '14%',
-				);
-				if ($hasStockColumn) {
-					$mrpWidths['stock'] = '11%';
-				} else {
-					$mrpWidths['name'] = '39%';
-					$mrpWidths['ingredient_cost'] = '16%';
-					$mrpWidths['weight_kg'] = '10%';
-					$mrpWidths['qty'] = '8%';
-					$mrpWidths['component_cost'] = '12%';
-				}
+					$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
+					$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
+					$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
+					$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
+					$showKreaProductionMoColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
+					$hasStockColumn = isModEnabled('stock');
+					$mrpWidths = array(
+						'pos' => '6%',
+						'ref' => '10%',
+						'name' => '29%',
+						'ingredient_cost' => '12%',
+						'weight_kg' => '10%',
+						'qty' => '8%',
+						'component_cost' => '14%',
+					);
+					if ($showKreaProductionMoColumn) {
+						if ($hasStockColumn) {
+							$mrpWidths = array(
+								'pos' => '6%',
+								'ref' => '9%',
+								'name' => '22%',
+								'ingredient_cost' => '11%',
+								'stock' => '10%',
+								'qty' => '7%',
+								'weight_kg' => '10%',
+								'component_cost' => '11%',
+								'kreap_lot' => '14%',
+							);
+						} else {
+							$mrpWidths = array(
+								'pos' => '6%',
+								'ref' => '10%',
+								'name' => '30%',
+								'ingredient_cost' => '13%',
+								'qty' => '8%',
+								'weight_kg' => '10%',
+								'component_cost' => '12%',
+								'kreap_lot' => '11%',
+							);
+						}
+					} elseif ($hasStockColumn) {
+						$mrpWidths['stock'] = '11%';
+					} else {
+						$mrpWidths['name'] = '39%';
+						$mrpWidths['ingredient_cost'] = '16%';
+						$mrpWidths['weight_kg'] = '10%';
+						$mrpWidths['qty'] = '8%';
+						$mrpWidths['component_cost'] = '12%';
+					}
 
 				foreach ($componentsByBom as $bomData) {
 					$bomId = (int) $bomData['bom_id'];
@@ -2069,10 +2241,15 @@ if ($id > 0 || !empty($ref)) {
 					if ($hasStockColumn) {
 						print '<td class="right" style="width:' . $mrpWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
 					}
-					print '<td class="center" style="width:' . $mrpWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
-					print '<td class="right" style="width:' . $mrpWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
-					print '<td class="right" style="width:' . $mrpWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
-					print '</tr>';
+						print '<td class="center" style="width:' . $mrpWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
+						print '<td class="right" style="width:' . $mrpWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
+						print '<td class="right" style="width:' . $mrpWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+						if ($showKreaProductionMoColumn) {
+							$headerKreaLotShort = $getShortLabel('KreapHeaderShowInMoWord', 'Lote');
+							$headerKreaLot = $form->textwithpicto($headerKreaLotShort, $langs->trans('kreap_lot_help'));
+							print '<td class="center" style="width:' . $mrpWidths['kreap_lot'] . '; ' . $headerCellStyle . '">' . $headerKreaLot . '</td>';
+						}
+						print '</tr>';
 
 					$linePosition = 1;
 					$totalComponentCost = 0.0;
@@ -2106,23 +2283,49 @@ if ($id > 0 || !empty($ref)) {
 						}
 						print '<td class="center">' . number_format((float) $lineQty, 3, '.', '') . '</td>';
 						print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
-						print '<td class="right" style="white-space: nowrap;">';
-						if ($unitCost > 0) {
-							print '<span class="amount">' . price($lineCost, '', '', 0, 0, 4, $conf->currency) . '</span>';
-						} else {
-							print '&mdash;';
-						}
-						print '</td>';
-						print '</tr>';
+							print '<td class="right" style="white-space: nowrap;">';
+							if ($unitCost > 0) {
+								print '<span class="amount">' . price($lineCost, '', '', 0, 0, 4, $conf->currency) . '</span>';
+							} else {
+								print '&mdash;';
+							}
+							print '</td>';
+							if ($showKreaProductionMoColumn) {
+								$componentProductId = (int) $component['product_id'];
+								$isMoInputEnabled = ((int) $component['mo_input_enabled'] === 1);
+								$toggleValue = ($isMoInputEnabled ? 0 : 1);
+
+								print '<td class="center" style="white-space: nowrap;">';
+								print '<span class="krea-kreaplot-cell">';
+								if ($usercancreate) {
+									print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . (int) $object->id . '">';
+									print '<input type="hidden" name="token" value="' . newToken() . '">';
+									print '<input type="hidden" name="action" value="toggle_component_kreap_lot">';
+									print '<input type="hidden" name="component_product_id" value="' . $componentProductId . '">';
+									print '<input type="hidden" name="value" value="' . $toggleValue . '">';
+									print '<label class="krea-kreaplot-toggle" onclick="this.closest(\'form\').submit(); return false;" aria-label="' . dol_escape_htmltag($langs->trans('kreap_lot')) . '">';
+									print '<input type="checkbox" ' . ($isMoInputEnabled ? 'checked' : '') . ' readonly disabled>';
+									print '</label>';
+									print '</form>';
+								} else {
+									print '<input type="checkbox" ' . ($isMoInputEnabled ? 'checked' : '') . ' readonly disabled>';
+								}
+								print '</span>';
+								print '</td>';
+							}
+							print '</tr>';
 
 						$linePosition++;
 					}
 					$totalLabelColspan = ($hasStockColumn ? 6 : 5);
 					print '<tr class="liste_total">';
-					print '<td class="right" colspan="' . $totalLabelColspan . '">' . $langs->trans("Total") . '</td>';
-					print '<td class="right" style="white-space: nowrap;">' . number_format((float) $totalWeightKg, 3, '.', '') . ' kg</td>';
-					print '<td class="right" style="white-space: nowrap;"><span class="amount">' . price($totalComponentCost, '', '', 0, 0, 4, $conf->currency) . '</span></td>';
-					print '</tr>';
+						print '<td class="right" colspan="' . $totalLabelColspan . '">' . $langs->trans("Total") . '</td>';
+						print '<td class="right" style="white-space: nowrap;">' . number_format((float) $totalWeightKg, 3, '.', '') . ' kg</td>';
+						print '<td class="right" style="white-space: nowrap;"><span class="amount">' . price($totalComponentCost, '', '', 0, 0, 4, $conf->currency) . '</span></td>';
+						if ($showKreaProductionMoColumn) {
+							print '<td></td>';
+						}
+						print '</tr>';
 
 					print '</table>';
 					print '</div>';

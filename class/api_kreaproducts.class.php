@@ -1273,8 +1273,8 @@ class KreaProductsApi extends DolibarrApi
 			throw new RestException(409, 'MO status does not allow production');
 		}
 
-		$mo->fetchLines();
-		$this->disableStockChangeForNonStockConsumeLines($mo);
+			$mo->fetchLines();
+			$this->disableStockChangeForNonStockMoLines($mo);
 		$mo->fetchLines();
 		$componentLotMaps = $this->indexComponentLotsByMoLine($componentLots);
 		$this->assertComponentLotsMatchMoLines($componentLots, $mo->lines);
@@ -2052,14 +2052,15 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
-	 * Mark MO consume lines as disable_stock_change when Dolibarr stock move will not return
-	 * a movement id (for example non-stockable product or subproduct-managed parent product).
-	 * This avoids core api_mos false failures on valid consume paths.
+	 * Mark MO lines as disable_stock_change when Dolibarr stock move will not return
+	 * a movement id (for example non-stockable product).
+	 * For consume lines we also keep the subproduct-parent safeguard.
+	 * This avoids core api_mos false failures on valid produce/consume paths.
 	 *
 	 * @param object $mo Manufacturing order object
 	 * @return void
 	 */
-	protected function disableStockChangeForNonStockConsumeLines($mo)
+	protected function disableStockChangeForNonStockMoLines($mo)
 	{
 		if (!is_object($mo) || empty($mo->id) || empty($mo->lines) || !is_array($mo->lines)) {
 			return;
@@ -2069,7 +2070,12 @@ class KreaProductsApi extends DolibarrApi
 		$productDecisionCache = array();
 
 		foreach ((array) $mo->lines as $line) {
-			if (!is_object($line) || (string) $line->role !== 'toconsume') {
+			if (!is_object($line)) {
+				continue;
+			}
+
+			$role = (string) (!empty($line->role) ? $line->role : '');
+			if ($role !== 'toconsume' && $role !== 'toproduce') {
 				continue;
 			}
 			if (!empty($line->disable_stock_change)) {
@@ -2089,10 +2095,10 @@ class KreaProductsApi extends DolibarrApi
 					throw new RestException(500, 'Unable to load component product for MO stock configuration update');
 				}
 
-				$disableStockChange = ((int) $product->stockable_product === Product::DISABLED_STOCK);
-				if (!$disableStockChange && $useSubproducts) {
-					$disableStockChange = (((int) $product->hasFatherOrChild(1)) > 0);
-				}
+					$disableStockChange = ((int) $product->stockable_product === Product::DISABLED_STOCK);
+					if (!$disableStockChange && $useSubproducts && $role === 'toconsume') {
+						$disableStockChange = (((int) $product->hasFatherOrChild(1)) > 0);
+					}
 
 				$productDecisionCache[$productId] = $disableStockChange;
 			}
@@ -2107,9 +2113,9 @@ class KreaProductsApi extends DolibarrApi
 			}
 
 			$moLine = new MoLine($this->db);
-			if ($moLine->fetch($lineId) <= 0 || (int) $moLine->fk_mo !== (int) $mo->id) {
-				throw new RestException(500, 'Unable to load MO consume line for stock configuration update');
-			}
+				if ($moLine->fetch($lineId) <= 0 || (int) $moLine->fk_mo !== (int) $mo->id) {
+					throw new RestException(500, 'Unable to load MO line for stock configuration update');
+				}
 
 			$moLine->disable_stock_change = 1;
 			if ($moLine->update(DolibarrApiAccess::$user) <= 0) {
@@ -2117,8 +2123,8 @@ class KreaProductsApi extends DolibarrApi
 				if ($error === '') {
 					$error = $this->db->lasterror();
 				}
-				throw new RestException(500, 'Error disabling stock change for non-stock component line: ' . $error);
-			}
+					throw new RestException(500, 'Error disabling stock change for non-stock MO line: ' . $error);
+				}
 		}
 	}
 
@@ -2946,6 +2952,7 @@ class KreaProductsApi extends DolibarrApi
 				'line_id' => (int) $obj->line_id,
 				'position' => (int) $obj->position,
 				'qty' => (float) price2num($obj->qty, 'MS'),
+				'qty_display' => (float) price2num($obj->qty, 'MS'),
 				'component_product_id' => $componentProductId,
 				'component_ref' => (string) $obj->component_ref,
 				'component_label' => (string) $componentLabel,
@@ -2955,6 +2962,9 @@ class KreaProductsApi extends DolibarrApi
 				'component_unit' => '',
 				'component_unit_code' => '',
 				'component_unit_label' => '',
+				'component_unit_display' => '',
+				'component_unit_code_display' => '',
+				'component_unit_label_display' => '',
 			);
 			if ($componentProductId > 0) {
 				$componentProductIds[$componentProductId] = $componentProductId;
@@ -2963,6 +2973,7 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		$unitsByProductId = $this->loadProductUnitMap(array_values($componentProductIds));
+		$componentMoInputByProductId = $this->loadProductExtrafieldBooleanMap(array_values($componentProductIds), 'kreap_lot');
 		if (!empty($unitsByProductId)) {
 			foreach ($lines as &$line) {
 				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
@@ -2974,6 +2985,33 @@ class KreaProductsApi extends DolibarrApi
 				$line['component_unit'] = (string) (!empty($unit['short']) ? $unit['short'] : '');
 				$line['component_unit_code'] = (string) (!empty($unit['code']) ? $unit['code'] : '');
 				$line['component_unit_label'] = (string) (!empty($unit['label']) ? $unit['label'] : '');
+			}
+			unset($line);
+		}
+		if (!empty($lines)) {
+			foreach ($lines as &$line) {
+				$this->applyRecipeLineDisplayUnitScaling($line);
+			}
+			unset($line);
+		}
+
+		if (!empty($lines)) {
+			foreach ($lines as &$line) {
+				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
+				$componentMoInput = '1';
+				if ($productId > 0 && isset($componentMoInputByProductId[$productId])) {
+					$componentMoInput = trim((string) $componentMoInputByProductId[$productId]);
+					if ($componentMoInput === '') {
+						$componentMoInput = '1';
+					}
+				}
+
+				$line['component_kreap_lot'] = $componentMoInput;
+				$line['kreap_lot'] = $componentMoInput;
+				if (empty($line['array_options']) || !is_array($line['array_options'])) {
+					$line['array_options'] = array();
+				}
+				$line['array_options']['options_kreap_lot'] = $componentMoInput;
 			}
 			unset($line);
 		}
@@ -3014,6 +3052,7 @@ class KreaProductsApi extends DolibarrApi
 				'line_id' => (int) $obj->line_id,
 				'position' => (int) $obj->position,
 				'qty' => (float) price2num($obj->qty, 'MS'),
+				'qty_display' => (float) price2num($obj->qty, 'MS'),
 				'component_product_id' => $componentProductId,
 				'component_ref' => (string) $obj->component_ref,
 				'component_label' => (string) $componentLabel,
@@ -3025,6 +3064,9 @@ class KreaProductsApi extends DolibarrApi
 				'component_unit' => '',
 				'component_unit_code' => '',
 				'component_unit_label' => '',
+				'component_unit_display' => '',
+				'component_unit_code_display' => '',
+				'component_unit_label_display' => '',
 			);
 			if ($componentProductId > 0) {
 				$componentProductIds[$componentProductId] = $componentProductId;
@@ -3033,6 +3075,7 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		$unitsByProductId = $this->loadProductUnitMap(array_values($componentProductIds));
+		$componentMoInputByProductId = $this->loadProductExtrafieldBooleanMap(array_values($componentProductIds), 'kreap_lot');
 		if (!empty($unitsByProductId)) {
 			foreach ($lines as &$line) {
 				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
@@ -3044,6 +3087,33 @@ class KreaProductsApi extends DolibarrApi
 				$line['component_unit'] = (string) (!empty($unit['short']) ? $unit['short'] : '');
 				$line['component_unit_code'] = (string) (!empty($unit['code']) ? $unit['code'] : '');
 				$line['component_unit_label'] = (string) (!empty($unit['label']) ? $unit['label'] : '');
+			}
+			unset($line);
+		}
+		if (!empty($lines)) {
+			foreach ($lines as &$line) {
+				$this->applyRecipeLineDisplayUnitScaling($line);
+			}
+			unset($line);
+		}
+
+		if (!empty($lines)) {
+			foreach ($lines as &$line) {
+				$productId = (!empty($line['component_product_id']) ? (int) $line['component_product_id'] : 0);
+				$componentMoInput = '1';
+				if ($productId > 0 && isset($componentMoInputByProductId[$productId])) {
+					$componentMoInput = trim((string) $componentMoInputByProductId[$productId]);
+					if ($componentMoInput === '') {
+						$componentMoInput = '1';
+					}
+				}
+
+				$line['component_kreap_lot'] = $componentMoInput;
+				$line['kreap_lot'] = $componentMoInput;
+				if (empty($line['array_options']) || !is_array($line['array_options'])) {
+					$line['array_options'] = array();
+				}
+				$line['array_options']['options_kreap_lot'] = $componentMoInput;
 			}
 			unset($line);
 		}
@@ -3133,6 +3203,201 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Check if recipe/component unit auto-scaling is enabled in module setup.
+	 *
+	 * @return bool
+	 */
+	protected function isRecipeUnitAutoScaleEnabled()
+	{
+		global $conf;
+
+		if (!isset($conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS)) {
+			return true;
+		}
+
+		$raw = strtolower(trim((string) $conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS));
+		if ($raw === '') {
+			return true;
+		}
+
+		if (in_array($raw, array('0', 'false', 'off', 'no'), true)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Populate display quantity/unit fields for one recipe line without changing base qty.
+	 *
+	 * @param array<string,mixed> $line Recipe line
+	 * @return void
+	 */
+	protected function applyRecipeLineDisplayUnitScaling(&$line)
+	{
+		if (!is_array($line)) {
+			return;
+		}
+
+		$baseQty = (float) price2num((isset($line['qty']) ? $line['qty'] : 0), 'MS');
+		$baseUnit = trim((string) (isset($line['component_unit']) ? $line['component_unit'] : ''));
+		$baseUnitCode = trim((string) (isset($line['component_unit_code']) ? $line['component_unit_code'] : ''));
+		$baseUnitLabel = trim((string) (isset($line['component_unit_label']) ? $line['component_unit_label'] : ''));
+
+		$line['qty_display'] = $baseQty;
+		$line['component_unit_display'] = $baseUnit;
+		$line['component_unit_code_display'] = $baseUnitCode;
+		$line['component_unit_label_display'] = $baseUnitLabel;
+
+		if (!$this->isRecipeUnitAutoScaleEnabled()) {
+			return;
+		}
+
+		$meta = $this->resolveRecipeUnitAutoScaleMeta($baseUnitCode, $baseUnit, $baseUnitLabel);
+		if (empty($meta)) {
+			return;
+		}
+
+		$canonicalQty = $baseQty * ((float) $meta['factor_to_canonical']);
+		$absCanonicalQty = abs($canonicalQty);
+		$showSmallUnit = ($absCanonicalQty < 1);
+
+		if ($showSmallUnit) {
+			$line['qty_display'] = (float) price2num($canonicalQty * 1000, 'MS');
+			$line['component_unit_display'] = (string) $meta['small_short'];
+			$line['component_unit_code_display'] = (string) $meta['small_code'];
+			$line['component_unit_label_display'] = (string) $meta['small_label'];
+			return;
+		}
+
+		$line['qty_display'] = (float) price2num($canonicalQty, 'MS');
+		$line['component_unit_display'] = (string) $meta['canonical_short'];
+		$line['component_unit_code_display'] = (string) $meta['canonical_code'];
+		$line['component_unit_label_display'] = (string) $meta['canonical_label'];
+	}
+
+	/**
+	 * Resolve quantity scaling metadata for a unit token.
+	 *
+	 * @param string $unitCode
+	 * @param string $unitShort
+	 * @param string $unitLabel
+	 * @return array<string,mixed>
+	 */
+	protected function resolveRecipeUnitAutoScaleMeta($unitCode, $unitShort, $unitLabel)
+	{
+		$tokens = array(
+			$this->normalizeRecipeUnitToken($unitCode),
+			$this->normalizeRecipeUnitToken($unitShort),
+			$this->normalizeRecipeUnitToken($unitLabel),
+		);
+
+		$massFactors = array(
+			'kg' => 1.0,
+			'kilogram' => 1.0,
+			'kilograms' => 1.0,
+			'kilograma' => 1.0,
+			'kilogramas' => 1.0,
+			'g' => 0.001,
+			'gram' => 0.001,
+			'grams' => 0.001,
+			'grama' => 0.001,
+			'gramas' => 0.001,
+			'mg' => 0.000001,
+			'milligram' => 0.000001,
+			'milligrams' => 0.000001,
+			'miligrama' => 0.000001,
+			'miligramas' => 0.000001,
+		);
+
+		$volumeFactors = array(
+			'l' => 1.0,
+			'lt' => 1.0,
+			'ltr' => 1.0,
+			'liter' => 1.0,
+			'liters' => 1.0,
+			'litre' => 1.0,
+			'litres' => 1.0,
+			'litro' => 1.0,
+			'litros' => 1.0,
+			'ml' => 0.001,
+			'milliliter' => 0.001,
+			'milliliters' => 0.001,
+			'millilitre' => 0.001,
+			'millilitres' => 0.001,
+			'mililitro' => 0.001,
+			'mililitros' => 0.001,
+			'cl' => 0.01,
+			'centiliter' => 0.01,
+			'centiliters' => 0.01,
+			'centilitre' => 0.01,
+			'centilitres' => 0.01,
+			'centilitro' => 0.01,
+			'centilitros' => 0.01,
+			'dl' => 0.1,
+			'deciliter' => 0.1,
+			'deciliters' => 0.1,
+			'decilitre' => 0.1,
+			'decilitres' => 0.1,
+			'decilitro' => 0.1,
+			'decilitros' => 0.1,
+		);
+
+		foreach ($tokens as $token) {
+			if ($token === '') {
+				continue;
+			}
+
+			if (isset($massFactors[$token])) {
+				return array(
+					'type' => 'mass',
+					'factor_to_canonical' => (float) $massFactors[$token],
+					'canonical_short' => 'kg',
+					'canonical_code' => 'kg',
+					'canonical_label' => 'Kilogram',
+					'small_short' => 'g',
+					'small_code' => 'g',
+					'small_label' => 'Gram',
+				);
+			}
+
+			if (isset($volumeFactors[$token])) {
+				return array(
+					'type' => 'volume',
+					'factor_to_canonical' => (float) $volumeFactors[$token],
+					'canonical_short' => 'l',
+					'canonical_code' => 'l',
+					'canonical_label' => 'Liter',
+					'small_short' => 'ml',
+					'small_code' => 'ml',
+					'small_label' => 'Milliliter',
+				);
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Normalize one unit token for matching.
+	 *
+	 * @param string $value
+	 * @return string
+	 */
+	protected function normalizeRecipeUnitToken($value)
+	{
+		$value = trim(strtolower((string) $value));
+		if ($value === '') {
+			return '';
+		}
+		if (function_exists('dol_string_unaccent')) {
+			$value = dol_string_unaccent($value);
+		}
+
+		return preg_replace('/[^a-z0-9]+/', '', $value);
+	}
+
+	/**
 	 * Load one product extrafield text value map by product id.
 	 *
 	 * @param array<int> $productIds Product ids
@@ -3206,6 +3471,115 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		return $values;
+	}
+
+	/**
+	 * Load one product extrafield boolean value map by product id.
+	 *
+	 * This helper preserves rows where the value is null/empty and normalizes
+	 * them to "0" so unchecked Dolibarr booleans are treated as disabled.
+	 *
+	 * @param array<int> $productIds Product ids
+	 * @param string $fieldName Extra field column name
+	 * @return array<int,string> Product id => "0"|"1"
+	 */
+	protected function loadProductExtrafieldBooleanMap($productIds, $fieldName)
+	{
+		$fieldName = trim((string) $fieldName);
+		if ($fieldName === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $fieldName)) {
+			return array();
+		}
+
+		$cleanIds = array();
+		foreach ((array) $productIds as $id) {
+			if (!is_numeric($id)) {
+				continue;
+			}
+			$id = (int) $id;
+			if ($id > 0) {
+				$cleanIds[$id] = $id;
+			}
+		}
+		if (empty($cleanIds)) {
+			return array();
+		}
+
+		$table = MAIN_DB_PREFIX . 'product_extrafields';
+		if (!$this->tableColumnExists($table, $fieldName)) {
+			return array();
+		}
+		$hasEntityColumn = $this->tableColumnExists($table, 'entity');
+
+		$sql = "SELECT fk_object, " . $fieldName;
+		if ($hasEntityColumn) {
+			$sql .= ", entity";
+		}
+		$sql .= " FROM " . $table;
+		$sql .= " WHERE fk_object IN (" . implode(',', $cleanIds) . ")";
+		if ($hasEntityColumn) {
+			$sql .= " AND entity IN (0," . getEntity('product') . ")";
+		}
+		$sql .= " ORDER BY fk_object ASC";
+		if ($hasEntityColumn) {
+			$sql .= ", entity DESC";
+		}
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog("KreaProductsApi::loadProductExtrafieldBooleanMap SQL error: " . $this->db->lasterror(), LOG_WARNING);
+			return array();
+		}
+
+		$values = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$productId = (int) $obj->fk_object;
+			if ($productId <= 0 || isset($values[$productId])) {
+				continue;
+			}
+
+			$raw = null;
+			if (property_exists($obj, $fieldName)) {
+				$raw = $obj->{$fieldName};
+			}
+
+			$values[$productId] = $this->normalizeBooleanExtrafieldValue($raw, '0');
+		}
+		$this->db->free($resql);
+
+		return $values;
+	}
+
+	/**
+	 * Normalize Dolibarr extrafield boolean-ish value to "0"|"1".
+	 *
+	 * @param mixed $rawValue Raw DB value
+	 * @param string $defaultValue Fallback normalized value
+	 * @return string
+	 */
+	protected function normalizeBooleanExtrafieldValue($rawValue, $defaultValue = '0')
+	{
+		if ($rawValue === null) {
+			return $defaultValue;
+		}
+
+		$normalized = trim((string) $rawValue);
+		if ($normalized === '') {
+			return $defaultValue;
+		}
+
+		$lower = strtolower($normalized);
+		if (in_array($lower, array('1', 'true', 'yes', 'on'), true)) {
+			return '1';
+		}
+		if (in_array($lower, array('0', 'false', 'no', 'off'), true)) {
+			return '0';
+		}
+
+		if (is_numeric($normalized)) {
+			return ((float) $normalized != 0.0 ? '1' : '0');
+		}
+
+		return $defaultValue;
 	}
 
 	/**

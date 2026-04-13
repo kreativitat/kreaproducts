@@ -58,6 +58,7 @@ class KreaProductsNutritionalCalculator
     private static $weightConversionCache = array();
     private static $calculatedNutritionCache = array();
     private static $calcOptionCache = array();
+    private static $isFoodCache = array();
     private static $associationCache = array();
     
     // Error handling
@@ -747,6 +748,10 @@ class KreaProductsNutritionalCalculator
 
             // Process each subproduct
             foreach ($subList as $childId => $finalQty) {
+                if (self::isNotFoodProduct($childId)) {
+                    continue;
+                }
+
                 $childLp = self::getLocalProduct($childId);
                 if (!$childLp) {
                     self::addWarning("Local product not found for child ID: $childId");
@@ -1319,7 +1324,47 @@ class KreaProductsNutritionalCalculator
      */
     private static function isNotFoodProduct($productId)
     {
-        return self::getCalcOptionCached($productId) === self::CALC_OPTION_NOT_FOOD;
+        if (self::getCalcOptionCached($productId) === self::CALC_OPTION_NOT_FOOD) {
+            return true;
+        }
+
+        $isFood = self::getIsFoodFlagCached($productId);
+        return ($isFood !== null && (int) $isFood === 0);
+    }
+
+    /**
+     * Get is_food flag from nutritional table with caching
+     */
+    private static function getIsFoodFlagCached($productId)
+    {
+        if (array_key_exists($productId, self::$isFoodCache)) {
+            self::$processStats['cache_hits']++;
+            return self::$isFoodCache[$productId];
+        }
+
+        global $db;
+
+        $isFood = null;
+        $sql = "SELECT is_food
+                FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional
+                WHERE fk_product = " . (int) $productId . " LIMIT 1";
+        $resql = $db->query($sql);
+
+        if ($resql) {
+            if ($obj = $db->fetch_object($resql)) {
+                if ($obj->is_food !== null) {
+                    $isFood = (int) $obj->is_food;
+                }
+            }
+            $db->free($resql);
+        } else {
+            self::addWarning("Failed to fetch is_food flag for product $productId: " . $db->lasterror());
+        }
+
+        self::$isFoodCache[$productId] = $isFood;
+        self::$processStats['database_operations']++;
+
+        return $isFood;
     }
 
     /**
@@ -1477,6 +1522,7 @@ class KreaProductsNutritionalCalculator
         self::$weightConversionCache = array();
         self::$calculatedNutritionCache = array();
         self::$calcOptionCache = array();
+        self::$isFoodCache = array();
         self::$associationCache = array();
     }
 

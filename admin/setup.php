@@ -177,6 +177,10 @@ if (!isset($conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE)) 
 	dolibarr_set_const($db, 'KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE = '1';
 }
+if (!isset($conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = '1';
+}
 if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 	$extrafields = new ExtraFields($db);
@@ -372,6 +376,11 @@ $item = $formSetup->newItem('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE
 $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
 $item->defaultFieldValue = '10:00';
