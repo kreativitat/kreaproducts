@@ -33,3 +33,25 @@ WHERE e.elementtype = 'product' AND e.name = 'kreap_syncprice' AND e2.rowid IS N
 
 ALTER TABLE `llx_product_extrafields` MODIFY `kreap_hideproduct` TINYINT(1) NULL DEFAULT 0;
 ALTER TABLE `llx_product_extrafields` MODIFY `kreap_updatebuyprice` TINYINT(1) NULL DEFAULT 1;
+
+-- Increase label payload storage capacity for per-product JSON layout data
+SET @table := CONCAT('llx_product_extrafields');
+SET @has_layout_col := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME = 'kreap_default_label_layout'
+);
+SET @layout_datatype := (
+    SELECT LOWER(DATA_TYPE) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME = 'kreap_default_label_layout'
+    LIMIT 1
+);
+SET @sql := IF(@has_layout_col > 0 AND @layout_datatype NOT IN ('text', 'mediumtext', 'longtext', 'json'),
+    'ALTER TABLE llx_product_extrafields MODIFY kreap_default_label_layout LONGTEXT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE llx_extrafields
+SET type = 'text', size = '65535'
+WHERE elementtype = 'product' AND name = 'kreap_default_label_layout';

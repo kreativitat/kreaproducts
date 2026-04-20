@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  */
 
 // Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
@@ -247,6 +247,18 @@ $requestedBomLabel = trim(GETPOST('bom_label_for_target', 'restricthtml'));
 $requestedBomQtyRaw = trim(GETPOST('bom_qty_for_target', 'alphanohtml'));
 $showStickySuccess = (GETPOSTINT('success_saved') === 1);
 $successBomId = GETPOSTINT('success_bom_id');
+$clearFilters = (GETPOSTINT('clear_filters') === 1);
+
+if ($clearFilters) {
+	$sourceProductId = 0;
+	$targetProductId = 0;
+	$sourceProductSearchInput = '';
+	$targetProductSearchInput = '';
+	$requestedBomLabel = '';
+	$requestedBomQtyRaw = '';
+	$showStickySuccess = false;
+	$successBomId = 0;
+}
 
 $canManageProducts = ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'));
 $canWriteBom = ($user->hasRight('bom', 'write') || $user->hasRight('bom', 'creer'));
@@ -540,7 +552,7 @@ if ($action === 'copy_associations_to_bom') {
 
 $form = new Form($db);
 $entityList = kreaproducts_bomhelper_get_accessible_entities();
-$selectedSourceProductId = ($sourceProductId > 0 ? $sourceProductId : (int) $id);
+$selectedSourceProductId = ($sourceProductId > 0 ? $sourceProductId : ($clearFilters ? 0 : (int) $id));
 $selectedTargetProductId = ($targetProductId > 0 ? $targetProductId : 0);
 $sourceSelectedInputValue = ($selectedSourceProductId > 0 ? '' : $sourceProductSearchInput);
 $targetSelectedInputValue = ($selectedTargetProductId > 0 ? '' : $targetProductSearchInput);
@@ -590,6 +602,10 @@ if (empty($conf->bom->enabled)) {
 } else {
 	$sourceSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedSourceProductId, 'source_product_id_for_bom', $entityList, $langs, 'minwidth300', $sourceSelectedInputValue);
 	$targetSelectHtml = kreaproducts_bomhelper_select_products($form, $selectedTargetProductId, 'target_product_id_for_bom', $entityList, $langs, 'minwidth300', $targetSelectedInputValue);
+	$clearUrl = $_SERVER['PHP_SELF'] . '?clear_filters=1';
+	if ($id > 0) {
+		$clearUrl .= '&id=' . (int) $id;
+	}
 
 	print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '">';
 	print '<input type="hidden" name="token" value="' . newToken() . '">';
@@ -605,6 +621,7 @@ if (empty($conf->bom->enabled)) {
 	print '</table>';
 	print '<div class="center" style="margin-top: 14px;">';
 	print '<input type="submit" class="button button-save" value="' . $langs->trans("KreaProductsAssocToBomButton") . '">';
+	print ' <a class="button button-cancel" href="' . dol_escape_htmltag($clearUrl) . '">' . $langs->trans("Reset") . '</a>';
 	print '</div>';
 	print '</form>';
 }

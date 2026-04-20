@@ -1,6 +1,6 @@
 <?php
 /* Copyright (C) 2004-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -20,7 +20,7 @@
  *
  * Proprietary License:
  * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ * please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
  *
  * For more information, visit <https://www.kreativitat.com>.
  */
@@ -164,10 +164,6 @@ if (!isset($conf->global->KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT)) {
 if (!isset($conf->global->KREAPRODUCTS_DEBUG_LOG)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DEBUG_LOG', '0', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_DEBUG_LOG = '0';
-}
-if (!isset($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED)) {
-	dolibarr_set_const($db, 'KREAPRODUCTS_LABELS_TAB_ENABLED', '0', 'chaine', 0, '', $conf->entity);
-	$conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED = '0';
 }
 if (!isset($conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED', '1', 'chaine', 0, '', $conf->entity);
@@ -356,13 +352,6 @@ $item = $formSetup->newItem('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT');
 $item->defaultFieldValue = '0.1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT_HELP');
 $item->fieldAttr = array('type' => 'number', 'step' => '0.01', 'min' => '0');
-
-// Etiquetas
-$formSetup->newItem('KREAPRODUCTS_LABELS_SETTINGS_TITLE')->setAsTitle();
-$item = $formSetup->newItem('KREAPRODUCTS_LABELS_TAB_ENABLED');
-$item->setAsYesNo();
-$item->defaultFieldValue = '0';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_LABELS_TAB_ENABLED_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED');
 $item->setAsYesNo();

@@ -2,7 +2,7 @@
 /* Copyright (C) 2004-2018  Laurent Destailleur     <eldy@users.sourceforge.net>
  * Copyright (C) 2018-2019  Nicolas ZABOURI         <info@inovea-conseil.com>
  * Copyright (C) 2019-2020  Frederic France         <frederic.france@netlogic.fr>
- * Copyright (C) 2024-2026  Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026  Kreativität Works       <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -22,7 +22,7 @@
  *
  * Proprietary License:
  * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ * please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
  *
  * For more information, visit <https://www.kreativitat.com>.
  */
@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.30.13';
+        $this->version = '2.30.25';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -255,7 +255,7 @@ class modKreaProducts extends DolibarrModules
         $this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/associatedProducts.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/productTree.php?id=__ID__');
-        $this->tabs[] = array('data' => 'product:+(7)krea_labels:KREAPRODUCTS_LABELS_TAB:kreaproducts@kreaproducts:$conf->kreaproducts->enabled && !empty($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED) && ($user->admin || $user->hasRight(\'kreaproducts\', \'labels\', \'read\')):/kreaproducts/product_labels.php?id=__ID__');
+        $this->tabs[] = array('data' => 'product:+(7)krea_labels:KREAPRODUCTS_LABELS_TAB:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/product_labels.php?id=__ID__');
 
 
         // Dictionaries
@@ -589,8 +589,8 @@ class modKreaProducts extends DolibarrModules
 
         $field_label = $langs->trans("kreap_default_label_layout");
         $field_help = $langs->trans("kreap_default_label_layout_help");
-        $result6b = $extrafields->addExtraField('kreap_default_label_layout', $field_label, 'varchar', 303, 128, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
-        $extrafields->updateExtraField('kreap_default_label_layout', $field_label, 'varchar', 303, 128, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $result6b = $extrafields->addExtraField('kreap_default_label_layout', $field_label, 'text', 303, 65535, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField('kreap_default_label_layout', $field_label, 'text', 303, 65535, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_video");
         $result7 = $extrafields->addExtraField('kreap_video', $field_label, 'url', 304, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');

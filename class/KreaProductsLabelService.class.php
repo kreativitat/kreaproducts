@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026       Kreativität Works       <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -3847,6 +3847,10 @@ class KreaProductsLabelService
 				$context[$source] = (string) $meta['default_value'];
 			}
 		}
+		$productLifetimeDays = self::resolveProductLifetimeDays($product);
+		if ($productLifetimeDays !== null) {
+			$context['batch.validity_days'] = $productLifetimeDays;
+		}
 		$context = self::applyTemplateRuntimeDateDefaults($context, $sourceMeta);
 		if (empty($context['asset.green_dot_symbol'])) {
 			$context['asset.green_dot_symbol'] = 'templates/assets/green_dot_symbol.svg';
@@ -3863,6 +3867,31 @@ class KreaProductsLabelService
 		$context = self::applyDerivedTemplateContextValues($context, $template);
 
 		return $context;
+	}
+
+	/**
+	 * Resolve product lifetime as validity days value.
+	 *
+	 * @param Product $product Product object
+	 * @return string|null
+	 */
+	private static function resolveProductLifetimeDays($product)
+	{
+		if (!is_object($product) || !isset($product->lifetime)) {
+			return null;
+		}
+
+		$lifetime = self::sanitizeTemplateNumericValue((string) $product->lifetime);
+		if ($lifetime === '') {
+			return null;
+		}
+
+		$days = (int) round((float) $lifetime);
+		if ($days < 0) {
+			return null;
+		}
+
+		return (string) $days;
 	}
 
 	/**

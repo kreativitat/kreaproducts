@@ -1,5 +1,79 @@
-<!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
+<!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
+
+## [2.30.25] - 2026-04-20
+
+### Changed
+- Deactivated labels setup toggle usage: labels tab/page no longer depend on `KREAPRODUCTS_LABELS_TAB_ENABLED`.
+- Removed labels toggle field from `admin/setup.php`.
+
+### Fixed
+- Normalized module signature metadata from corrupted `Kreativit채t` text to `Kreativität Works`.
+
+## [2.30.24] - 2026-04-20
+
+### Fixed
+- Removed custom labels-tab helper wrapper and restored Dolibarr-native tab condition using `!empty($conf->global->KREAPRODUCTS_LABELS_TAB_ENABLED)`.
+- Removed module-descriptor helper dependency from `product_labels.php` and restored direct constant check for tab/page enable state.
+
+## [2.30.23] - 2026-04-20
+
+### Fixed
+- Removed labels-tab read permission checks from tab condition and aligned visibility with core product tab flow.
+- Removed redundant `$conf->kreaproducts->enabled` gate from labels-tab condition to avoid multicompany false negatives.
+- Kept write actions controlled by native product/service create rights on labels page.
+
+## [2.30.22] - 2026-04-20
+
+### Fixed
+- Removed custom `kreaproducts` labels permission gate from labels tab visibility and aligned it with native product/service read rights.
+- Aligned labels page read/write checks with native product/service permissions (`lire`/`creer`) instead of module-specific labels rights.
+
+## [2.30.21] - 2026-04-20
+
+### Fixed
+- Replaced labels-tab condition static-call syntax with a safe wrapper function compatible with Dolibarr `dol_eval` restrictions.
+- Prevented false-hidden labels tab in multicompany contexts where `::` is blocked in tab condition evaluation.
+
+## [2.30.20] - 2026-04-20
+
+### Fixed
+- Restored product labels tab visibility in multicompany by resolving `KREAPRODUCTS_LABELS_TAB_ENABLED` across shared and legacy per-entity constant rows (including entity `8`).
+- Unified labels page access check with the same toggle resolver used by module tab visibility logic.
+
+## [2.30.19] - 2026-04-14
+
+### Changed
+- `product_labels.php` now prioritizes `product_extrafields.kreap_alias` as the effective product name in the label header and label output context.
+
+## [2.30.18] - 2026-04-14
+
+### Fixed
+- Fixed `Data too long` errors when saving label JSON by upgrading `product_extrafields.kreap_default_label_layout` storage to `LONGTEXT`.
+- Added runtime auto-migration before label save to keep existing environments writable without manual SQL intervention.
+
+## [2.30.17] - 2026-04-14
+
+### Fixed
+- Decoupled label editable data persistence from template files by storing per-product label data as JSON in `product_extrafields.kreap_default_label_layout`.
+- Read-only bundled templates now allow saving label field values and descriptions without forcing template copy creation.
+
+## [2.30.16] - 2026-04-14
+
+### Fixed
+- Added per-field save buttons beside reset in label template fields.
+- Saving from a field save button now persists only the clicked field value.
+
+## [2.30.15] - 2026-04-14
+
+### Fixed
+- Synchronized `batch.validity_days` with `llx_product.lifetime` when saving template values and when generating labels.
+- Label template context now hydrates `Validade (dias)` from `product.lifetime` so updates persist consistently.
+
+## [2.30.14] - 2026-04-13
+
+### Fixed
+- Added a reset button on `associations_to_bom.php` to clear persisted source/target/BOM input fields.
 
 ## [2.30.13] - 2026-04-13
 
