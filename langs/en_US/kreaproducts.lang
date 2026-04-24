@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+# Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
 #
 # This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
 #
@@ -18,7 +18,7 @@
 #
 # Proprietary License:
 # For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+# please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
 #
 # For more information, visit <https://www.kreativitat.com>.
 #
@@ -213,6 +213,10 @@ MyWidgetDescription = My widget description
 kreap_syncprice = Auto Sync Cost Price
 kreap_updatebuyprice = Auto Update Buy Price
 EnableCostPriceSyncForThisProduct = Enable automatic cost price synchronization for this product when child products are updated
+kreap_updatesellprice = Auto Update Selling Price
+EnableSellPriceSyncForThisProduct = Enable automatic selling price synchronization for this product when cost price changes
+kreap_updatesellpricepct = Sell price markup (%)
+EnableSellPriceSyncPercentForThisProduct = Percentage applied over cost price when auto-updating selling price for this product
 kreap_dismantle = Auto Dismantle (MRP)
 kreap_dismantle_help = Enable automatic dismantle for this product
 kreap_hideproduct = Hide Product
@@ -478,6 +482,8 @@ kreap_calc_nut = Nutrition table manual/automatic
 kreap_calc_allergens = Allergens table
 
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagate cost price
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST = Auto update selling price from cost
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP = Recalculate selling price when the product cost changes (requires per-product activation)
 KREAPRODUCTS_REPLACE_PRODUCT_LIST = Replace standard product list
 KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Use the simplified KreaProducts list instead of /product/list.php
 KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Nutrition table in technical sheet tab

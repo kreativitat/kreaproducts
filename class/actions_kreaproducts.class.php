@@ -1,7 +1,6 @@
 <?php
 /* Copyright (C) 2023		Laurent Destailleur			<eldy@users.sourceforge.net>
- * Copyright (C) 2025		Marcelo Marinho de Araujo	<marcelomarinhoaraujo@gmail.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -410,6 +409,7 @@ class ActionsKreaProducts extends CommonHookActions
 
 		if ($this->isNativeProductCardContext($parameters, $object)) {
 			$this->resprints = $this->buildProductCardSeparatorScriptRow('KreaProducts', array('kreap_'), 2, 'kreaproducts');
+			$this->resprints .= $this->buildProductCardDecimalStepperScriptRow('kreap_updatesellpricepct', '0.01', 2, '-99.99');
 			return 0;
 		}
 
@@ -663,6 +663,84 @@ class ActionsKreaProducts extends CommonHookActions
 			. '})();';
 
 		return '<tr class="krea-module-separator-hook-' . dol_escape_htmltag((string) $marker) . '" style="display:none;"><td colspan="' . $colspanInt . '"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
+	}
+
+	/**
+	 * Build a hidden hook row that forces a decimal stepper input on product card extrafields.
+	 *
+	 * @param string $fieldKey Extrafield key without "options_" prefix
+	 * @param string $step Numeric step value
+	 * @param int $decimals Number of decimal places
+	 * @param string $min Minimum allowed value
+	 * @return string
+	 */
+	private function buildProductCardDecimalStepperScriptRow($fieldKey, $step = '0.01', $decimals = 2, $min = '-99.99')
+	{
+		$nonce = function_exists('getNonce') ? getNonce() : '';
+		$nonceAttr = $nonce !== '' ? ' nonce="' . dol_escape_htmltag($nonce) . '"' : '';
+		$fieldKeyJson = json_encode((string) $fieldKey);
+		$stepJson = json_encode((string) $step);
+		$minJson = json_encode((string) $min);
+		$decimalsInt = (int) $decimals;
+
+		$script = '(function(){'
+			. 'var fieldKey=' . $fieldKeyJson . ';'
+			. 'var stepValue=' . $stepJson . ';'
+			. 'var minValue=' . $minJson . ';'
+			. 'var decimals=' . $decimalsInt . ';'
+			. 'function normalizeNumberString(raw){'
+			. 'if(raw===null||raw===undefined){return "";}'
+			. 'var s=String(raw).trim();'
+			. 'if(s===""){return "";}'
+			. 's=s.replace(/\\s+/g,"").replace(/\\u00A0/g,"");'
+			. 'var lastComma=s.lastIndexOf(",");'
+			. 'var lastDot=s.lastIndexOf(".");'
+			. 'if(lastComma>-1&&lastDot>-1){'
+			. 'if(lastComma>lastDot){s=s.replace(/\\./g,"");s=s.replace(/,/g,".");}'
+			. 'else{s=s.replace(/,/g,"");}'
+			. '}else if(lastComma>-1){'
+			. 's=s.replace(/,/g,".");'
+			. '}'
+			. 's=s.replace(/[^0-9\\.\\-]/g,"");'
+			. 'var firstDot=s.indexOf(".");'
+			. 'if(firstDot!==-1){s=s.substring(0,firstDot+1)+s.substring(firstDot+1).replace(/\\./g,"");}'
+			. 'if(s.indexOf("-")>0){s="-"+s.replace(/\\-/g,"");}'
+			. 'return s;'
+			. '}'
+			. 'function formatDecimal(v){'
+			. 'if(v===null||v===undefined||v===""){return "";}'
+			. 'var n=parseFloat(v);'
+			. 'if(!isFinite(n)){return "";}'
+			. 'return n.toFixed(decimals);'
+			. '}'
+			. 'function bindField(input){'
+			. 'if(!input||input.type==="hidden"||input.disabled||input.readOnly){return;}'
+			. 'var normalized=normalizeNumberString(input.value);'
+			. 'input.setAttribute("type","number");'
+			. 'input.setAttribute("step",stepValue);'
+			. 'input.setAttribute("min",minValue);'
+			. 'input.setAttribute("inputmode","decimal");'
+			. 'input.classList.add("right");'
+			. 'if(normalized!==""&&String(input.value)!==formatDecimal(normalized)){input.value=formatDecimal(normalized);}'
+			. 'if(input.dataset.kreapStepperBound==="1"){return;}'
+			. 'input.dataset.kreapStepperBound="1";'
+			. 'input.addEventListener("change",function(){'
+			. 'var val=formatDecimal(normalizeNumberString(input.value));'
+			. 'if(val!==""&&val!==input.value){input.value=val;}'
+			. '});'
+			. '}'
+			. 'function applyStepper(){'
+			. 'if(!fieldKey){return;}'
+			. 'var selector=\'input[name="\'+fieldKey+\'"],input[name="options_\'+fieldKey+\'"],#\'+fieldKey+\',#options_\'+fieldKey;'
+			. 'var nodes=document.querySelectorAll(selector);'
+			. 'for(var i=0;i<nodes.length;i++){bindField(nodes[i]);}'
+			. '}'
+			. 'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",applyStepper);}else{applyStepper();}'
+			. 'setTimeout(applyStepper,200);'
+			. 'setTimeout(applyStepper,600);'
+			. '})();';
+
+		return '<tr class="krea-stepper-hook-' . dol_escape_htmltag((string) $fieldKey) . '" style="display:none;"><td colspan="2"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
 	}
 
 	/**

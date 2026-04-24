@@ -5,7 +5,7 @@
  * Copyright (C) 2008i		Raphael Bertrand (Resultic) <raphael.bertrand@resultic.fr>
  * Copyright (C) 2019-2024	Frédéric France				<frederic.france@free.fr>
  * Copyright (C) 2024		MDW							<mdeweerd@users.noreply.github.com>
- * Copyright (C) 2025		Marcelo Marinho de Araujo	<marcelomarinhoaraujo@gmail.com>
+ * Copyright (C) 2025		Kreativität Works <mail@kreativitat.com>
  * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify

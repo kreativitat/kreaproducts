@@ -1,6 +1,96 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.4] - 2026-04-25
+
+### Changed
+- Normalized remaining module author signatures to `Kreativität Works <mail@kreativitat.com>` in nutritional and product-allergen source/SQL files.
+
+### Security
+- Sanitized repository content for public publication by removing tracked runtime artifacts (`log.log`, `tmp/wordpress_about.html`, `.DS_Store`) and legacy packaged ZIP bundles containing those artifacts.
+
+## [2.33.3] - 2026-04-25
+
+### Changed
+- Product card input for `kreap_updatesellpricepct` now uses a numeric stepper behavior (`step=0.01`) and normalizes values to two decimals.
+
+### Fixed
+- Preserved `KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST` across module disable/enable by setting `deleteonunactive=0` in module constants registration.
+
+## [2.33.2] - 2026-04-25
+
+### Changed
+- Kept sell-price synchronization percentage fully product-level via `product_extrafields.kreap_updatesellpricepct`.
+
+### Fixed
+- Fixed `kreap_updatebuyprice` visibility on product card view mode by normalizing product sync extrafields visibility (`list = 1`).
+- Added one-time setup normalization (`KREAPRODUCTS_PRICE_SYNC_FIELDS_UI_NORMALIZED`) to enforce consistent UI/display metadata and non-null defaults for price-sync extrafields.
+
+## [2.33.1] - 2026-04-24
+
+### Fixed
+- Preserved `KREAPRODUCTS_PRODUCT_REF_SUFFIXES` and `KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED` across module disable/enable by setting `deleteonunactive=0` in module constants registration.
+
+## [2.33.0] - 2026-04-24
+
+### Added
+- Added product extrafields `kreap_updatesellprice` and `kreap_updatesellpricepct` to control automatic selling price synchronization when cost price changes.
+
+### Changed
+- Added setup toggle `KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST` to enable or disable automatic sell-price synchronization.
+- Automatic selling price synchronization now uses the product-level percentage field instead of a global percentage.
+
+### Removed
+- Removed global setup percentage constant `KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_PERCENT`.
+
+## [2.32.2] - 2026-04-24
+
+### Changed
+- Displayed only the product list margin percentage with two decimals.
+
+## [2.32.1] - 2026-04-24
+
+### Changed
+- Rounded product list margin amount and percentage to two decimals and added a formula tooltip.
+
+## [2.32.0] - 2026-04-24
+
+### Added
+- Added setup-controlled product margin column on `product_list.php` using `KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED`.
+
+## [2.31.4] - 2026-04-24
+
+### Changed
+- Displayed product suffix filter checkbox labels in uppercase and updated setup examples to uppercase.
+
+## [2.31.3] - 2026-04-24
+
+### Fixed
+- Changed product suffix filtering in `product_list.php` from product reference to product label suffixes, matching the actual suffix location.
+- Updated suffix checkbox parameter names and setup wording to use product suffix semantics.
+
+## [2.31.2] - 2026-04-24
+
+### Fixed
+- Changed product reference suffix filtering in `product_list.php` to strict end-of-string comparison using `RIGHT(TRIM(p.ref), length)` for each selected suffix.
+
+## [2.31.1] - 2026-04-24
+
+### Added
+- Added setup field `KREAPRODUCTS_PRODUCT_REF_SUFFIXES` in `admin/setup.php` to configure comma-separated reference suffix filters.
+
+### Fixed
+- Removed hardcoded fallback suffix list from `product_list.php`; when `KREAPRODUCTS_PRODUCT_REF_SUFFIXES` is empty or missing, no suffix checkboxes are shown.
+- Updated suffix filtering to use `LOWER(TRIM(p.ref))` for stable end-of-ref matching.
+
+## [2.31.0] - 2026-04-24
+
+### Added
+- Added configurable product reference suffix filter checkboxes on `product_list.php` using global constant `KREAPRODUCTS_PRODUCT_REF_SUFFIXES` (comma-separated values, default `rv,cf,il`).
+
+### Changed
+- Applied OR-based suffix filtering on `p.ref` and preserved selected suffixes across sorting, pagination, and hide-toggle actions.
+
 ## [2.30.25] - 2026-04-20
 
 ### Changed

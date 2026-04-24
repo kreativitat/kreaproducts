@@ -177,6 +177,10 @@ if (!isset($conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = '1';
 }
+if (!isset($conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST', '0', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST = '0';
+}
 if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
 	$extrafields = new ExtraFields($db);
@@ -208,6 +212,80 @@ if (empty($conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED)) {
 
 	dolibarr_set_const($db, 'KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED', '1', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_UPDATEBUYPRICE_DEFAULT_APPLIED = '1';
+}
+
+if (empty($conf->global->KREAPRODUCTS_UPDATESELLPRICE_FIELD_READY)) {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+
+	$field_name = "kreap_updatesellprice";
+	$field_label = $langs->trans("kreap_updatesellprice");
+	$field_help = $langs->trans("EnableSellPriceSyncForThisProduct");
+	$extrafields->addExtraField($field_name, $field_label, 'boolean', 14, 3, 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$extrafields->updateExtraField($field_name, $field_label, 'boolean', 14, 3, 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$field_name = "kreap_updatesellpricepct";
+	$field_label = $langs->trans("kreap_updatesellpricepct");
+	$field_help = $langs->trans("EnableSellPriceSyncPercentForThisProduct");
+	$extrafields->addExtraField($field_name, $field_label, 'double', 15, '24,8', 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$extrafields->updateExtraField($field_name, $field_label, 'double', 15, '24,8', 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');
+	$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_updatesellprice, kreap_updatesellpricepct) ";
+	$sql .= "SELECT p.rowid, 0, 0 FROM " . MAIN_DB_PREFIX . "product p ";
+	$sql .= "LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields pe ON pe.fk_object = p.rowid ";
+	$sql .= "WHERE pe.fk_object IS NULL";
+	if (empty($sharedProducts)) {
+		$sql .= " AND p.entity = " . ((int) $conf->entity);
+	}
+	$db->query($sql);
+
+	if (empty($sharedProducts)) {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields pe ";
+		$sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = pe.fk_object ";
+		$sql .= "SET pe.kreap_updatesellprice = COALESCE(pe.kreap_updatesellprice, 0), pe.kreap_updatesellpricepct = COALESCE(pe.kreap_updatesellpricepct, 0) ";
+		$sql .= "WHERE p.entity = " . ((int) $conf->entity);
+	} else {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields SET kreap_updatesellprice = COALESCE(kreap_updatesellprice, 0), kreap_updatesellpricepct = COALESCE(kreap_updatesellpricepct, 0)";
+	}
+	$db->query($sql);
+
+	dolibarr_set_const($db, 'KREAPRODUCTS_UPDATESELLPRICE_FIELD_READY', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_UPDATESELLPRICE_FIELD_READY = '1';
+}
+
+if (empty($conf->global->KREAPRODUCTS_PRICE_SYNC_FIELDS_UI_NORMALIZED)) {
+	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+	$extrafields = new ExtraFields($db);
+
+	$extrafields->updateExtraField('kreap_updatebuyprice', $langs->trans("kreap_updatebuyprice"), 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $langs->trans("EnableCostPriceSyncForThisProduct"), '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$extrafields->updateExtraField('kreap_updatesellprice', $langs->trans("kreap_updatesellprice"), 'boolean', 14, 3, 'product', 0, 0, '0', '', 1, '', 1, $langs->trans("EnableSellPriceSyncForThisProduct"), '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	$extrafields->updateExtraField('kreap_updatesellpricepct', $langs->trans("kreap_updatesellpricepct"), 'double', 15, '24,8', 'product', 0, 0, '0', '', 1, '', 1, $langs->trans("EnableSellPriceSyncPercentForThisProduct"), '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+	$sql = "UPDATE " . MAIN_DB_PREFIX . "extrafields";
+	$sql .= " SET `list` = '1'";
+	$sql .= " WHERE elementtype = 'product'";
+	$sql .= " AND name IN ('kreap_updatebuyprice','kreap_updatesellprice','kreap_updatesellpricepct')";
+	$sql .= " AND entity IN (0," . ((int) $conf->entity) . ")";
+	$db->query($sql);
+
+	$sharedProducts = getDolGlobalString('MAIN_PRODUCT_PERENTITY_SHARED');
+	if (empty($sharedProducts)) {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields pe ";
+		$sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = pe.fk_object ";
+		$sql .= "SET pe.kreap_updatebuyprice = COALESCE(pe.kreap_updatebuyprice, 1), ";
+		$sql .= "pe.kreap_updatesellprice = COALESCE(pe.kreap_updatesellprice, 0), ";
+		$sql .= "pe.kreap_updatesellpricepct = COALESCE(pe.kreap_updatesellpricepct, 0) ";
+		$sql .= "WHERE p.entity = " . ((int) $conf->entity);
+	} else {
+		$sql = "UPDATE " . MAIN_DB_PREFIX . "product_extrafields ";
+		$sql .= "SET kreap_updatebuyprice = COALESCE(kreap_updatebuyprice, 1), ";
+		$sql .= "kreap_updatesellprice = COALESCE(kreap_updatesellprice, 0), ";
+		$sql .= "kreap_updatesellpricepct = COALESCE(kreap_updatesellpricepct, 0)";
+	}
+	$db->query($sql);
+
+	dolibarr_set_const($db, 'KREAPRODUCTS_PRICE_SYNC_FIELDS_UI_NORMALIZED', '1', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_PRICE_SYNC_FIELDS_UI_NORMALIZED = '1';
 }
 
 if (empty($conf->global->KREAPRODUCTS_DISMANTLE_DEFAULT_APPLIED)) {
@@ -322,12 +400,26 @@ $TBomTypes = array(
 // Sincronização de produtos
 $formSetup->newItem('ZS_SYNC_PRODUCTS_TITLE')->setAsTitle();
 $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
+$item = $formSetup->newItem('KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP');
 
 // Lista de produtos
 $item = $formSetup->newItem('KREAPRODUCTS_REPLACE_PRODUCT_LIST');
 $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP');
+$item = $formSetup->newItem('KREAPRODUCTS_PRODUCT_REF_SUFFIXES');
+$item->nameText = 'Product suffix filters';
+$item->defaultFieldValue = '';
+$item->helpText = 'Comma-separated suffix list shown as checkboxes on the product list. Matching is applied to the last characters of the product label (example: RV,CF,IL). Leave empty to hide suffix filters.';
+$item->fieldAttr = array('placeholder' => 'RV,CF,IL');
+$item = $formSetup->newItem('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED');
+$item->nameText = 'Show product margin column';
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = 'Show margin percentage on the product list using (selling price excl. VAT minus cost excl. VAT) divided by selling price excl. VAT.';
 
 // Nutrição e alergénios
 $formSetup->newItem('KREAPRODUCTS_NUTRITION_SETTINGS_TITLE')->setAsTitle();

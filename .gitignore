@@ -1,1 +1,12 @@
 ChangeLog.md
+
+# OS metadata
+.DS_Store
+**/.DS_Store
+
+# Runtime/debug artifacts
+log.log
+tmp/
+
+# Local build artifacts
+bin/

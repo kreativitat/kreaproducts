@@ -1,12 +1,16 @@
 <?php
-/* Copyright (C) 2023   Laurent Destailleur
- * Copyright (C) 2025   Marcelo
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2023       Laurent Destailleur
+ * Copyright (C) 2024-2026  Kreativität Works  <mail@kreativitat.com>
  *
- * GNU GPL v3
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/triggers/dolibarrtriggers.class.php';
+require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsInventoryService.class.php');
@@ -38,12 +42,14 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			case 'PRODUCT_PRICE_MODIFY':
 				if ($this->hasCostPriceChanged($object)) {
 					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
 				return 1;
 
 			case 'PRODUCT_MODIFY':
 				if ($this->hasCostPriceChanged($object)) {
 					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
 				$this->syncAliasToDolizsynchShortDescription($object, $conf);
 				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
@@ -107,6 +113,98 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 	}
 
+	private function syncSellPriceFromCostIfEnabled(int $productId, User $user, Conf $conf): void
+	{
+		static $inProgress = false;
+
+		if (
+			$productId <= 0
+			|| $inProgress
+			|| empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST)
+		) {
+			return;
+		}
+
+		$product = new Product($this->db);
+		if ($product->fetch($productId) <= 0) {
+			return;
+		}
+		if (!$this->shouldSyncSellPriceForProduct($product)) {
+			return;
+		}
+		$syncPercent = $this->getSellPriceSyncPercentForProduct($product);
+		if ($syncPercent === null || $syncPercent <= -100) {
+			return;
+		}
+
+		$costPrice = $this->normalizeCostValue($product->cost_price ?? null);
+		if ($costPrice === null || $costPrice < 0) {
+			return;
+		}
+
+		$hasMultiprices = !empty($conf->global->PRODUIT_MULTIPRICES);
+		$priceLevel = ($hasMultiprices ? 1 : 0);
+
+		$baseType = 'HT';
+		$vatTx = (float) price2num($product->tva_tx, 'MU');
+		$currentMinPrice = (float) price2num($product->price_min, 'MU');
+		$currentPrice = (float) price2num($product->price, 'MU');
+
+		if ($hasMultiprices) {
+			$baseType = strtoupper((string) ($product->multiprices_base_type[$priceLevel] ?? 'HT'));
+			$vatTx = (float) price2num(
+				$product->multiprices_tva_tx[$priceLevel] ?? $product->tva_tx,
+				'MU'
+			);
+			if ($baseType === 'TTC') {
+				$currentPrice = (float) price2num($product->multiprices_ttc[$priceLevel] ?? 0, 'MU');
+				$currentMinPrice = (float) price2num($product->multiprices_min_ttc[$priceLevel] ?? 0, 'MU');
+			} else {
+				$currentPrice = (float) price2num($product->multiprices[$priceLevel] ?? 0, 'MU');
+				$currentMinPrice = (float) price2num($product->multiprices_min[$priceLevel] ?? 0, 'MU');
+			}
+		} else {
+			$baseType = strtoupper((string) (!empty($product->price_base_type) ? $product->price_base_type : 'HT'));
+			if ($baseType === 'TTC') {
+				$currentPrice = (float) price2num($product->price_ttc, 'MU');
+				$currentMinPrice = (float) price2num($product->price_min_ttc, 'MU');
+			} else {
+				$currentMinPrice = (float) price2num($product->price_min, 'MU');
+			}
+		}
+
+		if ($baseType !== 'TTC') {
+			$baseType = 'HT';
+		}
+
+		$targetPriceHt = (float) price2num($costPrice * (1 + ($syncPercent / 100)), 'MU');
+		if ($targetPriceHt < 0) {
+			return;
+		}
+
+		$targetPrice = $targetPriceHt;
+		if ($baseType === 'TTC') {
+			$targetPrice = (float) price2num($targetPriceHt * (1 + ($vatTx / 100)), 'MU');
+		}
+
+		if (abs($currentPrice - $targetPrice) < 0.0001) {
+			return;
+		}
+
+		$inProgress = true;
+		try {
+			$resUpdate = $product->updatePrice($targetPrice, $baseType, $user, $vatTx, $currentMinPrice, $priceLevel);
+			if ($resUpdate <= 0) {
+				dol_syslog(
+					__METHOD__ . ' failed for product=' . $productId . ' error=' . ($product->error ?: $this->db->lasterror()),
+					LOG_WARNING
+				);
+			}
+		} finally {
+			$inProgress = false;
+		}
+	}
+
 	private function hasCostPriceChanged($object): bool
 	{
 		if (!is_object($object)) {
@@ -155,6 +253,47 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 
 		return (float) $value;
+	}
+
+	private function normalizePercentageValue($value): ?float
+	{
+		if ($value === null) {
+			return null;
+		}
+
+		if (is_string($value)) {
+			$value = trim($value);
+			if ($value === '') {
+				return null;
+			}
+		}
+
+		if (!is_numeric($value)) {
+			return null;
+		}
+
+		return (float) price2num($value, 'MU');
+	}
+
+	private function shouldSyncSellPriceForProduct(Product $product): bool
+	{
+		if (empty($product->id)) {
+			return false;
+		}
+
+		$extrafields = new ExtraFields($this->db);
+		$product->fetch_optionals((int) $product->id, $extrafields);
+
+		return !empty($product->array_options['options_kreap_updatesellprice']);
+	}
+
+	private function getSellPriceSyncPercentForProduct(Product $product): ?float
+	{
+		if (empty($product->array_options) || !is_array($product->array_options)) {
+			return null;
+		}
+
+		return $this->normalizePercentageValue($product->array_options['options_kreap_updatesellpricepct'] ?? null);
 	}
 
 	/**

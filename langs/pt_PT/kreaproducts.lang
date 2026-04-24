@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+# Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
 #
 # This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
 #
@@ -18,7 +18,7 @@
 #
 # Proprietary License:
 # For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+# please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
 #
 # For more information, visit <https://www.kreativitat.com>.
 #
@@ -60,6 +60,8 @@ KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT_HELP = Mostrar o seletor e botão para c
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT = Ativar cópia de alergénios para produto
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP = Mostrar o seletor e botão para copiar alergénios para outro produto
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Auto propagar preço de custo
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST = Atualizar automaticamente preço de venda a partir do custo
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP = Recalcular o preço de venda quando o custo do produto muda (requer ativação no produto)
 KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Auto propagar tabela nutricional
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Data de movimento de stocks é o dia da fatura
 KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE = Atualizar preço de compra do fornecedor ao validar faturas
@@ -219,6 +221,10 @@ StockableProductDescription = Se esta opção estiver ativada, a modificação d
 kreap_syncprice = Sincronizar Preço de Custo Automaticamente
 kreap_updatebuyprice = Atualizar Preço de Custo Automaticamente
 EnableCostPriceSyncForThisProduct = Ativar sincronização automática do preço de custo para este produto quando produtos filhos são atualizados
+kreap_updatesellprice = Atualizar Preço de Venda Automaticamente
+EnableSellPriceSyncForThisProduct = Ativar atualização automática do preço de venda deste produto quando o preço de custo muda
+kreap_updatesellpricepct = Markup do preço de venda (%)
+EnableSellPriceSyncPercentForThisProduct = Percentagem aplicada sobre o preço de custo quando o preço de venda é atualizado automaticamente
 kreap_dismantle = Desmontagem automática (MRP)
 kreap_dismantle_help = Ativar desmontagem automática para este produto
 kreap_hideproduct = Ocultar produto

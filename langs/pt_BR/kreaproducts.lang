@@ -54,6 +54,10 @@ KreapParentStockAdjustShort = Estoque +/-
 
 kreap_calc_nut = Tab. nutricional manual/automatica
 kreap_calc_allergens = Tabela de alergenos
+kreap_updatesellprice = Atualizar Preço de Venda Automaticamente
+EnableSellPriceSyncForThisProduct = Ativar atualização automática do preço de venda deste produto quando o preço de custo mudar
+kreap_updatesellpricepct = Markup do preço de venda (%)
+EnableSellPriceSyncPercentForThisProduct = Percentual aplicado sobre o preço de custo quando o preço de venda é atualizado automaticamente
 
 Settings = Configurações
 About = Sobre
@@ -63,6 +67,8 @@ KreaProductsAbout = Sobre o KreaProducts
 KreaProductsAboutPage = Página sobre o KreaProducts
 ZS_SYNC_PRODUCTS_TITLE = Sincronização de produtos
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Propagar automaticamente o preço de custo
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST = Atualizar automaticamente o preço de venda a partir do custo
+KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP = Recalcular o preço de venda quando o custo do produto mudar (requer ativação no produto)
 KREAPRODUCTS_REPLACE_PRODUCT_LIST = Substituir a lista padrão de produtos
 KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Usar a lista simplificada do KreaProducts em vez de /product/list.php
 KREAPRODUCTS_NUTRITION_SETTINGS_TITLE = Nutrição e alérgenos

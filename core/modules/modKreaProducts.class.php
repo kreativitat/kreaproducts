@@ -88,7 +88,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.30.25';
+        $this->version = '2.33.4';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -204,6 +204,9 @@ class modKreaProducts extends DolibarrModules
             15 => array('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', 'chaine', '1', '', 0, 'allentities', 1),
             16 => array('KREAPRODUCTION_ENABLE', 'chaine', '0', '', 0, 'allentities', 0),
             17 => array('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS', 'chaine', '1', '', 0, 'allentities', 1),
+            18 => array('KREAPRODUCTS_PRODUCT_REF_SUFFIXES', 'chaine', '', '', 0, 'allentities', 0),
+            19 => array('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED', 'chaine', '0', '', 0, 'allentities', 0),
+            20 => array('KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST', 'chaine', '0', '', 0, 'allentities', 0),
             //	4 => array('KREAPRODUCTS_MYNEWCONST2', 'chaine', 'myvalue', 'This is another constant to add', 0, 'current', 1
         );
 
@@ -428,7 +431,7 @@ class modKreaProducts extends DolibarrModules
             'url' => '/categories/categorie_list.php?mode=hierarchy&type=service',
             'langs' => 'kreaproducts@kreaproducts',
             'position' => 1000 + $r,
-            'enabled' => 'isModEnabled("kreaproducts") && !empty($conf->global->KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED)',
+            'enabled' => 'isModEnabled("kreaproducts")',
             'perms' => '$user->hasRight("produit", "lire")',
             'target' => '_blank',
             'user' => 2
@@ -557,6 +560,18 @@ class modKreaProducts extends DolibarrModules
         $field_help = $langs->trans("EnableCostPriceSyncForThisProduct");
         $result2 = $extrafields->addExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
         $extrafields->updateExtraField($field_name, $field_label, 'boolean', 7, 3, 'product', 0, 0, '1', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+        $field_name = "kreap_updatesellprice";
+        $field_label = $langs->trans("kreap_updatesellprice");
+        $field_help = $langs->trans("EnableSellPriceSyncForThisProduct");
+        $result2b = $extrafields->addExtraField($field_name, $field_label, 'boolean', 14, 3, 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField($field_name, $field_label, 'boolean', 14, 3, 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+
+        $field_name = "kreap_updatesellpricepct";
+        $field_label = $langs->trans("kreap_updatesellpricepct");
+        $field_help = $langs->trans("EnableSellPriceSyncPercentForThisProduct");
+        $result2c = $extrafields->addExtraField($field_name, $field_label, 'double', 15, '24,8', 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+        $extrafields->updateExtraField($field_name, $field_label, 'double', 15, '24,8', 'product', 0, 0, '0', '', 1, '', 1, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_name = "kreap_hideproduct";
         $field_label = $langs->trans("kreap_hideproduct");

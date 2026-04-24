@@ -1,7 +1,5 @@
 <?php
-/* Copyright (C) 2025 KreaProducts
- *
-Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2024-2026 Kreativität Works <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,12 +53,42 @@ $search_tosell = GETPOST('search_tosell', 'alpha');
 $search_price_level = GETPOST('search_price_level', 'int');
 $priceLevel = ($search_price_level > 0) ? (int) $search_price_level : 1;
 $useMultiprices = !empty($conf->global->PRODUIT_MULTIPRICES);
+$showMarginColumn = !empty($conf->global->KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED);
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 $leftmenu = GETPOST('leftmenu', 'alpha');
 $type = (string) GETPOST('type', 'int');
 if ($type !== '0' && $type !== '1') {
 	$type = '';
+}
+$configuredSuffixesCsv = isset($conf->global->KREAPRODUCTS_PRODUCT_REF_SUFFIXES) ? (string) $conf->global->KREAPRODUCTS_PRODUCT_REF_SUFFIXES : '';
+$configuredSuffixesCsv = trim($configuredSuffixesCsv);
+$availableProductSuffixes = array();
+if ($configuredSuffixesCsv !== '') {
+	foreach (explode(',', $configuredSuffixesCsv) as $rawSuffix) {
+		$suffix = strtolower(trim((string) $rawSuffix));
+		if ($suffix === '') {
+			continue;
+		}
+		if (!preg_match('/^[a-z0-9._-]+$/', $suffix)) {
+			continue;
+		}
+		$availableProductSuffixes[$suffix] = $suffix;
+	}
+	$availableProductSuffixes = array_values($availableProductSuffixes);
+}
+$search_product_suffixes = GETPOSTISARRAY('search_product_suffixes') ? GETPOST('search_product_suffixes', 'array') : array();
+$selectedProductSuffixes = array();
+if (!empty($search_product_suffixes) && !empty($availableProductSuffixes)) {
+	$availableSuffixLookup = array_fill_keys($availableProductSuffixes, true);
+	foreach ($search_product_suffixes as $rawSuffix) {
+		$suffix = strtolower(trim((string) $rawSuffix));
+		if ($suffix === '' || empty($availableSuffixLookup[$suffix])) {
+			continue;
+		}
+		$selectedProductSuffixes[$suffix] = $suffix;
+	}
+	$selectedProductSuffixes = array_values($selectedProductSuffixes);
 }
 
 $limit = GETPOSTINT('limit') ? GETPOSTINT('limit') : $conf->liste_limit;
@@ -87,6 +115,7 @@ if (GETPOST('button_removefilter', 'alpha') || GETPOST('button_removefilter_x', 
 	$search_tobuy = '';
 	$search_tosell = '';
 	$searchCategoryProductList = array();
+	$selectedProductSuffixes = array();
 	$searchCategoryProductOperator = 1;
 }
 
@@ -95,6 +124,11 @@ $param .= ($search_ref !== '' ? '&search_ref=' . urlencode($search_ref) : '');
 $param .= ($search_label !== '' ? '&search_label=' . urlencode($search_label) : '');
 $param .= ($search_tobuy !== '' ? '&search_tobuy=' . urlencode($search_tobuy) : '');
 $param .= ($search_tosell !== '' ? '&search_tosell=' . urlencode($search_tosell) : '');
+if (!empty($selectedProductSuffixes)) {
+	foreach ($selectedProductSuffixes as $suffixIndex => $suffixValue) {
+		$param .= '&search_product_suffixes[' . ((int) $suffixIndex) . ']=' . urlencode((string) $suffixValue);
+	}
+}
 if (!empty($searchCategoryProductList)) {
 	foreach ($searchCategoryProductList as $key => $valcat) {
 		$param .= '&search_category_product_list[' . $key . ']=' . urlencode((string) $valcat);
@@ -127,15 +161,20 @@ $arrayfields = array(
 	'p.ref' => array('label' => $langs->trans('Ref'), 'checked' => 1, 'position' => 1),
 	'p.label' => array('label' => $langs->trans('Label'), 'checked' => 1, 'position' => 2),
 	'cost_price' => array('label' => $langs->trans('KreapCostWithoutVat'), 'checked' => 1, 'position' => 3),
-	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 4),
-	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 5),
-	'vat_rate' => array('label' => $langs->trans('VAT'), 'checked' => 1, 'position' => 6),
-	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 7),
-	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 8),
-	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 9),
+	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 5),
+	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 6),
+	'vat_rate' => array('label' => $langs->trans('VAT'), 'checked' => 1, 'position' => 7),
+	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 8),
+	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 9),
+	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 10),
 );
+if ($showMarginColumn) {
+	$arrayfields = array_slice($arrayfields, 0, 3, true) + array(
+		'margin_without_vat' => array('label' => $langs->trans('KreapMargin'), 'checked' => 1, 'position' => 4),
+	) + array_slice($arrayfields, 3, null, true);
+}
 if ($show_hidden) {
-	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 10);
+	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 11);
 }
 
 // SQL build
@@ -164,6 +203,19 @@ if ($search_tobuy !== '' && $search_tobuy !== '-1') {
 }
 if ($search_tosell !== '' && $search_tosell !== '-1') {
 	$sql .= " AND p.tosell = " . ((int) $search_tosell);
+}
+if (!empty($selectedProductSuffixes)) {
+	$searchProductSuffixSqlList = array();
+	foreach ($selectedProductSuffixes as $suffix) {
+		$suffixLength = dol_strlen($suffix);
+		if ($suffixLength <= 0) {
+			continue;
+		}
+		$searchProductSuffixSqlList[] = "LOWER(RIGHT(TRIM(p.label), " . ((int) $suffixLength) . ")) = '" . $db->escape($suffix) . "'";
+	}
+	if (!empty($searchProductSuffixSqlList)) {
+		$sql .= " AND (" . implode(' OR ', $searchProductSuffixSqlList) . ")";
+	}
 }
 if (!empty($searchCategoryProductList)) {
 	$listofcategoryid = implode(',', array_map('intval', $searchCategoryProductList));
@@ -221,7 +273,7 @@ if ($resEntity) {
 	$db->free($resEntity);
 }
 
-$toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
+$toggleParams = array(
 	'show_hidden' => $show_hidden ? 0 : 1,
 	'sortfield' => $sortfield,
 	'sortorder' => $sortorder,
@@ -234,7 +286,14 @@ $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query(array(
 	'search_tosell' => $search_tosell,
 	'type' => $type,
 	'leftmenu' => $leftmenu,
-), '', '&', PHP_QUERY_RFC3986);
+);
+if (!empty($searchCategoryProductList)) {
+	$toggleParams['search_category_product_list'] = $searchCategoryProductList;
+}
+if (!empty($selectedProductSuffixes)) {
+	$toggleParams['search_product_suffixes'] = $selectedProductSuffixes;
+}
+$toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleParams, '', '&', PHP_QUERY_RFC3986);
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
 $toggleShortLabel = $show_hidden ? $langs->trans('KreapHideHiddenShort') : $langs->trans('KreapShowHiddenShort');
@@ -254,6 +313,9 @@ $toggleHideBackParams = array(
 );
 if (!empty($searchCategoryProductList)) {
 	$toggleHideBackParams['search_category_product_list'] = $searchCategoryProductList;
+}
+if (!empty($selectedProductSuffixes)) {
+	$toggleHideBackParams['search_product_suffixes'] = $selectedProductSuffixes;
 }
 $toggleHideBackUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleHideBackParams, '', '&', PHP_QUERY_RFC3986);
 
@@ -278,6 +340,19 @@ if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
 	$moreforfilter .= '<div class="divsearchfield">';
 	$moreforfilter .= img_picto($tmptitle, 'category', 'class="pictofixedwidth"');
 	$moreforfilter .= Form::multiselectarray('search_category_product_list', $categoryArray, $searchCategoryProductList, 0, 0, 'minwidth300', 0, 0, '', '', $tmptitle);
+	$moreforfilter .= '</div>';
+}
+if (!empty($availableProductSuffixes)) {
+	$moreforfilter .= '<div class="divsearchfield">';
+	$moreforfilter .= img_picto($langs->transnoentitiesnoconv('Label'), 'filter', 'class="pictofixedwidth"');
+	$moreforfilter .= '<span class="opacitymedium marginrightonly">Product suffix</span>';
+	foreach ($availableProductSuffixes as $suffix) {
+		$inputId = 'search_product_suffix_' . preg_replace('/[^a-z0-9_]/', '_', $suffix);
+		$checked = in_array($suffix, $selectedProductSuffixes, true) ? ' checked' : '';
+		$moreforfilter .= '<label class="nowrap marginrightonly" for="' . dol_escape_htmltag($inputId) . '">';
+		$moreforfilter .= '<input class="flat valignmiddle" type="checkbox" id="' . dol_escape_htmltag($inputId) . '" name="search_product_suffixes[]" value="' . dol_escape_htmltag($suffix) . '"' . $checked . '>';
+		$moreforfilter .= ' ' . dol_escape_htmltag(strtoupper($suffix)) . '</label>';
+	}
 	$moreforfilter .= '</div>';
 }
 
@@ -348,6 +423,9 @@ print '<td class="liste_titre center maxwidthsearch"><div class="nowraponall">' 
 print '<td class="liste_titre left"><input class="flat width75" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
 print '<td class="liste_titre left"><input class="flat width100" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
 print '<td class="liste_titre right"></td>';
+if ($showMarginColumn) {
+	print '<td class="liste_titre right"></td>';
+}
 print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre right"></td>';
 print '<td class="liste_titre right"></td>';
@@ -367,12 +445,16 @@ print '<th class="wrapcolumntitle center maxwidthsearch liste_titre"></th>';
 foreach ($arrayfields as $key => $val) {
 	if (!empty($val['checked'])) {
 		$align = '';
-		if ($key === 'cost_price' || $key === 'sell_price' || $key === 'sell_price_ttc' || $key === 'vat_rate') {
+		if ($key === 'cost_price' || $key === 'margin_without_vat' || $key === 'sell_price' || $key === 'sell_price_ttc' || $key === 'vat_rate') {
 			$align = 'right ';
 		} elseif ($key === 'p.entity') {
 			$align = 'center nowrap ';
 		} elseif ($key === 'p.tobuy' || $key === 'p.tosell' || $key === 'kreap_hideproduct') {
 			$align = 'center ';
+		}
+		if ($key === 'margin_without_vat') {
+			print '<th class="' . trim($align . 'liste_titre') . '">' . dol_escape_htmltag($val['label']) . '</th>';
+			continue;
 		}
 		print_liste_field_titre($val['label'], $_SERVER["PHP_SELF"], $key, '', $param, '', $sortfield, $sortorder, $align);
 	}
@@ -416,6 +498,8 @@ while ($i < min($num, $limit)) {
 		$vatRate = (float) $productstatic->multiprices_tva_tx[$priceLevel];
 	}
 	$costPriceDisplay = isset($productstatic->cost_price) ? $productstatic->cost_price : $obj->cost_price;
+	$marginAmountExclVat = $priceExclVat - (float) $costPriceDisplay;
+	$marginRateExclVat = ($priceExclVat != 0.0) ? (($marginAmountExclVat / $priceExclVat) * 100) : null;
 
 	print '<tr class="oddeven">';
 	print '<td class="center nowrap"></td>';
@@ -443,6 +527,11 @@ while ($i < min($num, $limit)) {
 				break;
 			case 'cost_price':
 				print '<td class="right">' . price($costPriceDisplay) . '</td>';
+				break;
+			case 'margin_without_vat':
+				$marginRateDisplay = ($marginRateExclVat !== null) ? price($marginRateExclVat, '', '', 0, 2, 2) . '%' : '-';
+				$marginTitle = 'Margin % = (Price excl. VAT - Cost excl. VAT) / Price excl. VAT';
+				print '<td class="right nowrap" title="' . dol_escape_htmltag($marginTitle) . '">' . $marginRateDisplay . '</td>';
 				break;
 		case 'p.entity':
 			$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
