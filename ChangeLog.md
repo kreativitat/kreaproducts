@@ -1,6 +1,13 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.9] - 2026-04-26
+
+### Changed
+- Optimized inventory line prefill by loading post-value-date stock movements in one grouped query instead of one query per line.
+- Added idempotent performance indexes for stock movement, inventory line, and inventory anchor date lookups.
+- Normalized touched module and inventory service headers to GPL-3.0-or-later.
+
 ## [2.33.8] - 2026-04-26
 
 ### Changed

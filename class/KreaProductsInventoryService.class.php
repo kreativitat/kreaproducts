@@ -1,6 +1,21 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
@@ -98,9 +113,23 @@ class KreaProductsInventoryService
 			return -1;
 		}
 
-		$error = 0;
-		$inventoryline = new InventoryLine($db);
+		$stockRows = array();
+		$productIds = array();
+		$warehouseIdsForMoveLookup = array();
 		while ($obj = $db->fetch_object($resql)) {
+			$stockRows[] = $obj;
+			$productIds[(int) $obj->fk_product] = (int) $obj->fk_product;
+			$warehouseIdsForMoveLookup[(int) $obj->fk_warehouse] = (int) $obj->fk_warehouse;
+		}
+		$db->free($resql);
+
+		if (!empty($inventoryAnchorDate) && !empty($stockRows)) {
+			$movedCache = $this->loadMovedQuantitiesAfterDate($db, $inventoryAnchorDate, array_values($productIds), array_values($warehouseIdsForMoveLookup));
+		}
+
+		$error = 0;
+		foreach ($stockRows as $obj) {
+			$inventoryline = new InventoryLine($db);
 			$inventoryline->fk_inventory = $inventory->id;
 			$inventoryline->fk_warehouse = $obj->fk_warehouse;
 			$inventoryline->fk_product = $obj->fk_product;
@@ -120,30 +149,7 @@ class KreaProductsInventoryService
 			if (!empty($inventoryAnchorDate)) {
 				$batchKey = (string) $obj->batch;
 				$cacheKey = $obj->fk_product . '|' . $obj->fk_warehouse . '|' . $batchKey;
-				if (!array_key_exists($cacheKey, $movedCache)) {
-					$batchCond = $batchKey !== ''
-						? " AND batch='" . $db->escape($batchKey) . "'"
-						: " AND (batch='' OR batch IS NULL)";
-					$sqlMoved = "SELECT COALESCE(SUM(value),0) as moved";
-					$sqlMoved .= " FROM " . MAIN_DB_PREFIX . "stock_mouvement";
-					$sqlMoved .= " WHERE fk_product=" . (int) $obj->fk_product;
-					$sqlMoved .= " AND fk_entrepot=" . (int) $obj->fk_warehouse;
-					$sqlMoved .= " AND datem > '" . $db->escape($inventoryAnchorDate) . "'";
-					$sqlMoved .= " AND origintype <> 'inventory'";
-					$sqlMoved .= $batchCond;
-
-					$resMoved = $db->query($sqlMoved);
-					$moved = 0.0;
-					if ($resMoved) {
-						$mv = $db->fetch_object($resMoved);
-						$moved = $mv ? (float) $mv->moved : 0.0;
-					} else {
-						dol_syslog(__METHOD__ . " Error loading stock movements: " . $db->lasterror(), LOG_ERR);
-					}
-					$movedCache[$cacheKey] = $moved;
-				}
-
-				$inventoryline->qty_stock = (float) $currentstock - (float) $movedCache[$cacheKey];
+				$inventoryline->qty_stock = (float) $currentstock - (float) ($movedCache[$cacheKey] ?? 0.0);
 			} else {
 				$inventoryline->qty_stock = $currentstock;
 			}
@@ -167,6 +173,49 @@ class KreaProductsInventoryService
 			}
 		}
 		return 1;
+	}
+
+	/**
+	 * Load post-anchor movements for all prefilled inventory lines in one grouped query.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @param string $inventoryAnchorDate SQL datetime used as the inventory value date
+	 * @param int[] $productIds Candidate product ids
+	 * @param int[] $warehouseIds Candidate warehouse ids
+	 * @return array<string,float>
+	 */
+	private function loadMovedQuantitiesAfterDate($db, $inventoryAnchorDate, array $productIds, array $warehouseIds)
+	{
+		$productIds = array_values(array_unique(array_filter(array_map('intval', $productIds))));
+		$warehouseIds = array_values(array_unique(array_filter(array_map('intval', $warehouseIds))));
+		if (empty($inventoryAnchorDate) || empty($productIds) || empty($warehouseIds)) {
+			return array();
+		}
+
+		$movedCache = array();
+		foreach (array_chunk($productIds, 500) as $productChunk) {
+			$sqlMoved = "SELECT fk_product, fk_entrepot, COALESCE(batch, '') as batch_key, COALESCE(SUM(value), 0) as moved";
+			$sqlMoved .= " FROM " . MAIN_DB_PREFIX . "stock_mouvement";
+			$sqlMoved .= " WHERE fk_product IN (" . implode(',', $productChunk) . ")";
+			$sqlMoved .= " AND fk_entrepot IN (" . implode(',', $warehouseIds) . ")";
+			$sqlMoved .= " AND datem > '" . $db->escape($inventoryAnchorDate) . "'";
+			$sqlMoved .= " AND origintype <> 'inventory'";
+			$sqlMoved .= " GROUP BY fk_product, fk_entrepot, COALESCE(batch, '')";
+
+			$resMoved = $db->query($sqlMoved);
+			if (!$resMoved) {
+				dol_syslog(__METHOD__ . " Error loading stock movements: " . $db->lasterror(), LOG_ERR);
+				continue;
+			}
+
+			while ($obj = $db->fetch_object($resMoved)) {
+				$cacheKey = (int) $obj->fk_product . '|' . (int) $obj->fk_entrepot . '|' . (string) $obj->batch_key;
+				$movedCache[$cacheKey] = (float) $obj->moved;
+			}
+			$db->free($resMoved);
+		}
+
+		return $movedCache;
 	}
 
 	public function renameInventoryHeaderRef($inventory, $db)
