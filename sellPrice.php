@@ -13,14 +13,11 @@
  * Copyright (C) 2016		Ferran Marcet			<fmarcet@2byte.es>
  * Copyright (C) 2018-2020  Frédéric France         <frederic.france@netlogic.fr>
  * Copyright (C) 2018		Nicolas ZABOURI			<info@inovea-conseil.com>
- * Copyright (C) 2024       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026  Kreativität Works       <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation, either version 3 of the License,
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -31,11 +28,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support, maintenance, and integration services are available
+ * from Kreativität Works <mail@kreativitat.com>.
  */
 
 /**
@@ -84,9 +78,49 @@ if ($user->socid) {
 	$socid = $user->socid;
 }
 
+$object = new Product($db);
 if ($id > 0 || !empty($ref)) {
-	$object = new Product($db);
 	$object->fetch($id, $ref);
+}
+
+$sellPriceAutoUpdateLabel = 'Atualizar Preço de Venda Automaticamente';
+$sellPriceMarkupLabel = 'Markup do preço de venda (%)';
+$sellPriceAutoUpdateRaw = null;
+$sellPriceMarkupRaw = null;
+$sellPriceAutoUpdateValue = '-';
+$sellPriceMarkupValue = '-';
+$hasSellPriceSyncExtrafields = false;
+$canEditSellPriceSyncFields = !empty($object->id) && (!empty($user->rights->produit->creer) || !empty($user->rights->service->creer));
+
+if (!empty($object->id)) {
+	$tableName = MAIN_DB_PREFIX . 'product_extrafields';
+	$hasAutoUpdateField = false;
+	$hasMarkupField = false;
+
+	$resdesc = $db->DDLDescTable($tableName, 'kreap_updatesellprice');
+	if ($resdesc) {
+		$hasAutoUpdateField = ($db->num_rows($resdesc) > 0);
+		$db->free($resdesc);
+	}
+	$resdesc = $db->DDLDescTable($tableName, 'kreap_updatesellpricepct');
+	if ($resdesc) {
+		$hasMarkupField = ($db->num_rows($resdesc) > 0);
+		$db->free($resdesc);
+	}
+
+	$hasSellPriceSyncExtrafields = ($hasAutoUpdateField && $hasMarkupField);
+	if ($hasSellPriceSyncExtrafields) {
+		$object->fetch_optionals($object->id);
+
+		$sellPriceAutoUpdateRaw = (!empty($object->array_options['options_kreap_updatesellprice']) ? 1 : 0);
+		$sellPriceMarkupRaw = price2num((string) ($object->array_options['options_kreap_updatesellpricepct'] ?? 0), 'MU');
+		if ($sellPriceMarkupRaw === '' || $sellPriceMarkupRaw === null || !is_numeric($sellPriceMarkupRaw)) {
+			$sellPriceMarkupRaw = 0;
+		}
+
+		$sellPriceAutoUpdateValue = ($sellPriceAutoUpdateRaw ? $langs->trans("Yes") : $langs->trans("No"));
+		$sellPriceMarkupValue = price((float) $sellPriceMarkupRaw, 0, $langs, 0, 2, 2) . ' %';
+	}
 }
 
 // Clean param
@@ -126,6 +160,55 @@ if ($reshook < 0) {
 if (empty($reshook)) {
 	if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x', 'alpha') || GETPOST('button_removefilter', 'alpha')) { // All tests are required to be compatible with all browsers
 		$search_soc = '';
+	}
+
+	if ($action == 'set_kreap_updatesellprice' && !$cancel && $canEditSellPriceSyncFields) {
+		if (!$hasSellPriceSyncExtrafields) {
+			setEventMessages($langs->trans("Error"), null, 'errors');
+		} else {
+			$newAutoUpdate = GETPOSTINT('value') ? 1 : 0;
+			$currentMarkup = (float) price2num((string) $sellPriceMarkupRaw, 'MU');
+
+			$object->fetch_optionals($object->id);
+			$object->array_options['options_kreap_updatesellprice'] = $newAutoUpdate;
+			$object->array_options['options_kreap_updatesellpricepct'] = $currentMarkup;
+			$result = $object->insertExtraFields('', $user);
+			if ($result > 0) {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			} else {
+				setEventMessages($object->error ? $object->error : $langs->trans("Error"), $object->errors, 'errors');
+			}
+		}
+
+		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id));
+		exit;
+	}
+
+	if ($action == 'set_kreap_updatesellpricepct' && !$cancel && $canEditSellPriceSyncFields) {
+		if (!$hasSellPriceSyncExtrafields) {
+			setEventMessages($langs->trans("Error"), null, 'errors');
+		} else {
+			$newMarkup = price2num(GETPOST('kreap_updatesellpricepct', 'alphanohtml'), 'MU');
+			if ($newMarkup === '' || $newMarkup === null || !is_numeric($newMarkup)) {
+				setEventMessages($langs->trans("Error"), null, 'errors');
+			} else {
+				$currentAutoUpdate = (!empty($sellPriceAutoUpdateRaw) ? 1 : 0);
+				$newMarkup = (float) price2num((string) $newMarkup, 'MU');
+
+				$object->fetch_optionals($object->id);
+				$object->array_options['options_kreap_updatesellprice'] = $currentAutoUpdate;
+				$object->array_options['options_kreap_updatesellpricepct'] = $newMarkup;
+				$result = $object->insertExtraFields('', $user);
+				if ($result > 0) {
+					setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+				} else {
+					setEventMessages($object->error ? $object->error : $langs->trans("Error"), $object->errors, 'errors');
+				}
+			}
+		}
+
+		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id));
+		exit;
 	}
 
 	if ($action == 'setlabelsellingprice' && $user->admin) {
@@ -1113,6 +1196,64 @@ if (!empty($id) || !empty($ref)) {
 	$object->fetch($id, $ref);
 }
 
+if (!empty($object->id) && $hasSellPriceSyncExtrafields) {
+	$object->fetch_optionals($object->id);
+
+	$sellPriceAutoUpdateRaw = (!empty($object->array_options['options_kreap_updatesellprice']) ? 1 : 0);
+	$sellPriceMarkupRaw = price2num((string) ($object->array_options['options_kreap_updatesellpricepct'] ?? 0), 'MU');
+	if ($sellPriceMarkupRaw === '' || $sellPriceMarkupRaw === null || !is_numeric($sellPriceMarkupRaw)) {
+		$sellPriceMarkupRaw = 0;
+	}
+
+	$sellPriceAutoUpdateValue = ($sellPriceAutoUpdateRaw ? $langs->trans("Yes") : $langs->trans("No"));
+	$sellPriceMarkupValue = price((float) $sellPriceMarkupRaw, 0, $langs, 0, 2, 2) . ' %';
+}
+$canEditSellPriceSyncFields = !empty($object->id) && (!empty($user->rights->produit->creer) || !empty($user->rights->service->creer));
+
+$sellPriceSyncCompactRowHtml = '';
+if (!empty($object->id)) {
+	$currentAutoUpdate = (!empty($sellPriceAutoUpdateRaw) ? 1 : 0);
+	$isMarkupEditMode = ($action == 'edit_kreap_updatesellpricepct');
+	$toggleTargetValue = ($currentAutoUpdate ? 0 : 1);
+	$toggleTitle = $sellPriceAutoUpdateLabel . ' ' . ($currentAutoUpdate ? '(ON)' : '(OFF)');
+
+	ob_start();
+
+	print '<tr><td class="titlefield">' . $sellPriceAutoUpdateLabel . '</td><td>';
+	if ($hasSellPriceSyncExtrafields && $canEditSellPriceSyncFields) {
+		print '<a class="linkobject" href="' . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id) . '&action=set_kreap_updatesellprice&value=' . ((int) $toggleTargetValue) . '&token=' . newToken() . '" title="' . dol_escape_htmltag($toggleTitle) . '">';
+		if ($currentAutoUpdate) {
+			print '<span class="fas fa-toggle-on font-status4"></span>';
+		} else {
+			print '<span class="fas fa-toggle-off" style=" color: #999;"></span>';
+		}
+		print '</a>';
+	} else {
+		print $sellPriceAutoUpdateValue;
+	}
+	print '</td>';
+
+	print '<td class="titlefield"><table class="nobordernopadding centpercent"><tr><td class="nowrap">' . $sellPriceMarkupLabel . '</td>';
+	if ($hasSellPriceSyncExtrafields && $canEditSellPriceSyncFields && !$isMarkupEditMode) {
+		print '<td class="right"><a class="editfielda reposition" href="' . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id) . '&action=edit_kreap_updatesellpricepct&token=' . newToken() . '">' . img_edit($langs->trans("Modify"), 1) . '</a></td>';
+	}
+	print '</tr></table></td><td>';
+	if ($hasSellPriceSyncExtrafields && $canEditSellPriceSyncFields && $isMarkupEditMode) {
+		print '<form method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id) . '">';
+		print '<input type="hidden" name="token" value="' . newToken() . '">';
+		print '<input type="hidden" name="action" value="set_kreap_updatesellpricepct">';
+		print '<input type="text" name="kreap_updatesellpricepct" class="right width75" value="' . dol_escape_htmltag((string) $sellPriceMarkupRaw) . '">';
+		print ' <input type="submit" class="button button-small" value="' . dol_escape_htmltag($langs->trans("Modify")) . '">';
+		print ' <a href="' . $_SERVER["PHP_SELF"] . '?id=' . ((int) $object->id) . '">' . img_picto($langs->trans("Cancel"), 'close', 'class="paddingrightonly"') . '</a>';
+		print '</form>';
+	} else {
+		print $sellPriceMarkupValue;
+	}
+	print '</td></tr>';
+
+	$sellPriceSyncCompactRowHtml = ob_get_clean();
+}
+
 $title = $langs->trans('ProductServiceCard');
 $helpurl = '';
 $shortlabel = dol_trunc($object->label, 16);
@@ -1245,35 +1386,32 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 		}
 	} else {
 		if (!empty($conf->global->PRODUIT_MULTIPRICES_USE_VAT_PER_LEVEL)) {  // using this option is a bug. kept for backward compatibility
-			// Type
+			$typeLabelHtml = $langs->trans('Type');
+			$typeValueHtml = '-';
 			if (isModEnabled("product") && isModEnabled("service")) {
 				$typeformat = 'select;0:' . $langs->trans("Product") . ',1:' . $langs->trans("Service");
-				print '<tr><td class="">';
-				print (empty($conf->global->PRODUCT_DENY_CHANGE_PRODUCT_TYPE)) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, 0, $typeformat) : $langs->trans('Type');
-				print '</td><td>';
+				$typeLabelHtml = (empty($conf->global->PRODUCT_DENY_CHANGE_PRODUCT_TYPE)) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, 0, $typeformat) : $langs->trans('Type');
+				ob_start();
 				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, 0, $typeformat);
-				print '</td></tr>';
+				$typeValueHtml = ob_get_clean();
 			}
 
 			// We show only vat for level 1
-			print '<tr><td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td>';
-			print '<td colspan="2">' . vatrate($object->multiprices_tva_tx[1], true) . '</td>';
-			print '</tr>';
+			print '<tr><td class="titlefield">' . $typeLabelHtml . '</td><td>' . $typeValueHtml . '</td>';
+			print '<td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td><td>' . vatrate($object->multiprices_tva_tx[1], true) . '</td></tr>';
+			print $sellPriceSyncCompactRowHtml;
 		} else {
-			// Type
+			$typeLabelHtml = $langs->trans('Type');
+			$typeValueHtml = '-';
 			if (isModEnabled("product") && isModEnabled("service")) {
 				$typeformat = 'select;0:' . $langs->trans("Product") . ',1:' . $langs->trans("Service");
-				print '<tr><td class="">';
-				print (empty($conf->global->PRODUCT_DENY_CHANGE_PRODUCT_TYPE)) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, 0, $typeformat) : $langs->trans('Type');
-				print '</td><td>';
+				$typeLabelHtml = (empty($conf->global->PRODUCT_DENY_CHANGE_PRODUCT_TYPE)) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, 0, $typeformat) : $langs->trans('Type');
+				ob_start();
 				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, 0, $typeformat);
-				print '</td></tr>';
+				$typeValueHtml = ob_get_clean();
 			}
 
 			// TVA
-			print '<!-- Default VAT Rate -->';
-			print '<tr><td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td><td>';
-
 			// TODO We show localtax from $object, but this properties may not be correct. Only value $object->default_vat_code is guaranted.
 			$positiverates = '';
 			if (price2num($object->tva_tx)) {
@@ -1289,14 +1427,17 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 				$positiverates = '0';
 			}
 
-			print vatrate($positiverates . ($object->default_vat_code ? ' (' . $object->default_vat_code . ')' : ''), true, $object->tva_npr, 1);
+			$defaultTaxValueHtml = vatrate($positiverates . ($object->default_vat_code ? ' (' . $object->default_vat_code . ')' : ''), true, $object->tva_npr, 1);
 			/*
 			if ($object->default_vat_code)
 			{
 				print vatrate($object->tva_tx, true) . ' ('.$object->default_vat_code.')';
 			}
 			else print vatrate($object->tva_tx . ($object->tva_npr ? '*' : ''), true);*/
-			print '</td></tr>';
+			print '<!-- Default VAT Rate -->';
+			print '<tr><td class="titlefield">' . $typeLabelHtml . '</td><td>' . $typeValueHtml . '</td>';
+			print '<td class="titlefieldcreate">' . $langs->trans("DefaultTaxRate") . '</td><td>' . $defaultTaxValueHtml . '</td></tr>';
+			print $sellPriceSyncCompactRowHtml;
 		}
 		print '</table>';
 

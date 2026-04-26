@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.10] - 2026-04-26
+
+### Changed
+- Mirrored DoliZSynch sell-price summary controls in KreaProducts `sellPrice.php`, including compact no-customer layout, automatic sell-price toggle, and inline markup edit.
+- Normalized `sellPrice.php` license header to GPL-3.0-or-later.
+
 ## [2.33.9] - 2026-04-26
 
 ### Changed
