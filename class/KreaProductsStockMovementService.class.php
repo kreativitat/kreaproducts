@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  */
 
 dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
@@ -211,8 +211,8 @@ class KreaProductsStockMovementService
 		}
 		$db->free($res);
 
-		foreach (array_keys($children) as $childId) {
-			ProductUpdater::updateProductCostPrice((int) $childId, true);
+		if (!empty($children)) {
+			ProductUpdater::batchUpdateCostPrices(array_keys($children), true);
 		}
 	}
 

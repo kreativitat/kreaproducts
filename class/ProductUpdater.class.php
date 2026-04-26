@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  */
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
@@ -26,16 +26,6 @@ class ProductUpdater
      * @var array Product hierarchy map
      */
     private static $productMap = [];
-
-    /**
-     * @var array List of products to update
-     */
-    private static $updateList = [];
-
-    /**
-     * @var array Reverse list for bottom-up updates
-     */
-    private static $reverseList = [];
 
     /**
      * @var array Cached cost calculations per product id
@@ -92,37 +82,45 @@ class ProductUpdater
     {
         self::debug("Starting cost price update for product ID: " . $productId);
 
-        // Validate input
         if ($productId <= 0) {
             self::debug("Invalid product ID: " . $productId);
             return [];
         }
 
-        // Reset and load product map
+        return self::batchUpdateCostPrices([$productId], $useWholeSalePriceSync);
+    }
+
+    /**
+     * Update cost prices for multiple products with one hierarchy load.
+     *
+     * @param array<int, int> $productIds Product IDs that changed
+     * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+     * @return array<int, array{updated: bool, ref: string, is_original: bool}>
+     */
+    public static function batchUpdateCostPrices(array $productIds, bool $useWholeSalePriceSync = true): array
+    {
+        $productIds = self::normalizeProductIds($productIds);
+        if (empty($productIds)) {
+            return [];
+        }
+
+        self::debug("Starting batch cost price update for product IDs: " . implode(',', $productIds));
+
         self::resetMap();
-        self::loadProductMap();
+        self::loadImpactedProductMap($productIds);
 
         if (empty(self::$productMap)) {
             self::debug("Product map is empty - no product associations found");
             return [];
         }
 
-        // Clear lists
-        self::$updateList = [];
-        self::$reverseList = [];
-
-        // Add product to update list (the one that was modified)
-        self::addToUpdateList($productId);
-
-        // Create reverse list (builds parent hierarchy)
-        self::createReverseList();
+        $processingOrder = self::createProcessingOrder($productIds);
+        self::preloadSyncFlagsForProductIds($processingOrder);
 
         $results = [];
+        $originalProductIds = array_fill_keys($productIds, true);
 
-        // Process all products in reverse list
-        // This includes the original product AND all its parents that have children
-        while (!empty(self::$reverseList)) {
-            $currentProductId = array_shift(self::$reverseList);
+        foreach ($processingOrder as $currentProductId) {
             $mapProduct = self::getProductFromMap($currentProductId);
 
             // Skip products that don't exist in map or don't have children
@@ -133,33 +131,18 @@ class ProductUpdater
 
             self::debug("Processing product ID: " . $currentProductId . " (ref: " . $mapProduct['ref'] . ")");
 
-            // Check if children are still in reverse list (dependency check)
-            $hasUnprocessedChildren = false;
-            foreach (self::getChildren($currentProductId) as $child) {
-                if (in_array($child['id'], self::$reverseList)) {
-                    $hasUnprocessedChildren = true;
-                    break;
-                }
-            }
-
-            // If has unprocessed children, postpone this product
-            if ($hasUnprocessedChildren) {
-                self::$reverseList[] = $currentProductId;
-                continue;
-            }
-
             // Update cost price if sync is enabled via product extrafield (kreap_updatebuyprice/kreap_syncprice)
             if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
-                $updated = self::updateCostPriceFromChildren($currentProductId, $productId);
+                $updated = self::updateCostPriceFromChildren($currentProductId, null);
                 $results[$currentProductId] = [
                     'updated' => $updated,
                     'ref' => $mapProduct['ref'] ?? 'Unknown',
-                    'is_original' => ($currentProductId == $productId)
+                    'is_original' => !empty($originalProductIds[$currentProductId])
                 ];
 
                 if ($updated) {
                     self::debug("Cost price updated for product: " . $mapProduct['ref'] .
-                              ($currentProductId == $productId ? " (this is the original modified product)" : " (parent product)"));
+                              (!empty($originalProductIds[$currentProductId]) ? " (this is an original modified product)" : " (parent product)"));
                 }
             }
         }
@@ -199,11 +182,14 @@ class ProductUpdater
     /**
      * Load product associations from llx_product_association table
      */
-    private static function loadProductAssociations(): void
+    private static function loadProductAssociations(?array $parentIds = null, ?array $childIds = null): void
     {
         global $db;
 
         self::debug("Loading product associations");
+
+        $parentIds = ($parentIds === null ? null : self::normalizeProductIds($parentIds));
+        $childIds = ($childIds === null ? null : self::normalizeProductIds($childIds));
 
         // Query to get product associations (no sync flags stored here)
         $sql = "SELECT pa.fk_product_pere as parent, pa.fk_product_fils as child, pa.qty as qty, ";
@@ -217,6 +203,18 @@ class ProductUpdater
         $sql .= "WHERE p.rowid = pa.fk_product_pere AND f.rowid = pa.fk_product_fils";
         $sql .= " AND p.entity IN (".getEntity('product').")";
         $sql .= " AND f.entity IN (".getEntity('product').")";
+        if ($parentIds !== null) {
+            if (empty($parentIds)) {
+                return;
+            }
+            $sql .= " AND pa.fk_product_pere IN (" . implode(',', $parentIds) . ")";
+        }
+        if ($childIds !== null) {
+            if (empty($childIds)) {
+                return;
+            }
+            $sql .= " AND pa.fk_product_fils IN (" . implode(',', $childIds) . ")";
+        }
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -278,7 +276,7 @@ class ProductUpdater
     /**
      * Load BOM-based relationships from bom_bom and bom_bomline tables
      */
-    private static function loadBOMRelationships(): void
+    private static function loadBOMRelationships(?array $parentIds = null, ?array $childIds = null): void
     {
         global $db, $conf;
 
@@ -289,6 +287,9 @@ class ProductUpdater
         }
 
         self::debug("Loading BOM relationships");
+
+        $parentIds = ($parentIds === null ? null : self::normalizeProductIds($parentIds));
+        $childIds = ($childIds === null ? null : self::normalizeProductIds($childIds));
 
         // Query to get BOM relationships (manufacturing type only)
         $sql = "SELECT b.fk_product as parent, COALESCE(bl.fk_product, cb.fk_product) as child, bl.qty as qty, ";
@@ -316,6 +317,19 @@ class ProductUpdater
         $sql .= " AND p.entity IN (".getEntity('product').")";
         $sql .= " AND (f.rowid IS NULL OR f.entity IN (".getEntity('product')."))";
         $sql .= " AND (cprod.rowid IS NULL OR cprod.entity IN (".getEntity('product')."))";
+        $sql .= " AND COALESCE(bl.fk_product, cb.fk_product) IS NOT NULL";
+        if ($parentIds !== null) {
+            if (empty($parentIds)) {
+                return;
+            }
+            $sql .= " AND b.fk_product IN (" . implode(',', $parentIds) . ")";
+        }
+        if ($childIds !== null) {
+            if (empty($childIds)) {
+                return;
+            }
+            $sql .= " AND (bl.fk_product IN (" . implode(',', $childIds) . ") OR cb.fk_product IN (" . implode(',', $childIds) . "))";
+        }
 
         $resql = $db->query($sql);
         if (!$resql) {
@@ -389,6 +403,89 @@ class ProductUpdater
 
         $db->free($resql);
         self::debug("Loaded " . $bomCount . " BOM relationships");
+    }
+
+    /**
+     * Load only the hierarchy needed to recalculate changed products and their parents.
+     *
+     * @param array<int, int> $productIds
+     */
+    private static function loadImpactedProductMap(array $productIds): void
+    {
+        $productIds = self::normalizeProductIds($productIds);
+        if (empty($productIds)) {
+            return;
+        }
+
+        self::debug("Loading impacted product map for product IDs: " . implode(',', $productIds));
+
+        $candidateIds = array_fill_keys($productIds, true);
+
+        $frontier = $productIds;
+        $visitedChildLookups = [];
+        while (!empty($frontier)) {
+            $lookupIds = [];
+            foreach ($frontier as $productId) {
+                $productId = (int) $productId;
+                if ($productId > 0 && empty($visitedChildLookups[$productId])) {
+                    $visitedChildLookups[$productId] = true;
+                    $lookupIds[] = $productId;
+                }
+            }
+            if (empty($lookupIds)) {
+                break;
+            }
+
+            self::loadProductAssociations(null, $lookupIds);
+            self::loadBOMRelationships(null, $lookupIds);
+
+            $frontier = [];
+            foreach ($lookupIds as $childId) {
+                $child = self::getProductFromMap((int) $childId);
+                if (!$child || empty($child['parents'])) {
+                    continue;
+                }
+                foreach ($child['parents'] as $parent) {
+                    $parentId = (int) $parent['id'];
+                    if ($parentId > 0 && empty($candidateIds[$parentId])) {
+                        $candidateIds[$parentId] = true;
+                        $frontier[] = $parentId;
+                    }
+                }
+            }
+        }
+
+        $frontier = array_map('intval', array_keys($candidateIds));
+        $visitedParentLookups = [];
+        while (!empty($frontier)) {
+            $lookupIds = [];
+            foreach ($frontier as $productId) {
+                $productId = (int) $productId;
+                if ($productId > 0 && empty($visitedParentLookups[$productId])) {
+                    $visitedParentLookups[$productId] = true;
+                    $lookupIds[] = $productId;
+                }
+            }
+            if (empty($lookupIds)) {
+                break;
+            }
+
+            self::loadProductAssociations($lookupIds, null);
+            self::loadBOMRelationships($lookupIds, null);
+
+            $frontier = [];
+            foreach ($lookupIds as $parentId) {
+                foreach (self::getChildren((int) $parentId) as $child) {
+                    $childId = (int) $child['id'];
+                    if ($childId > 0 && empty($visitedParentLookups[$childId])) {
+                        $frontier[] = $childId;
+                    }
+                }
+            }
+        }
+
+        self::$mapLoaded = true;
+        self::debug("Impacted product map loaded with " . count(self::$productMap) . " products");
     }
 
     /**
@@ -477,50 +574,174 @@ class ProductUpdater
     }
 
     /**
-     * Add product to update list
+     * Normalize and deduplicate product ids.
      *
-     * @param int $productId
+     * @param array<int, mixed> $productIds
+     * @return array<int, int>
      */
-    private static function addToUpdateList(int $productId): void
+    private static function normalizeProductIds(array $productIds): array
     {
-        if (!in_array($productId, self::$updateList)) {
-            self::$updateList[] = $productId;
-            self::debug("Added product " . $productId . " to update list");
-        }
-    }
-
-    /**
-     * Create reverse list for bottom-up processing
-     */
-    private static function createReverseList(): void
-    {
-        self::debug("Creating reverse list");
-        self::$reverseList = [];
-
-        foreach (self::$updateList as $productId) {
-            self::addParentsToReverseList($productId);
-        }
-
-        self::debug("Reverse list created with " . count(self::$reverseList) . " products");
-    }
-
-    /**
-     * Recursively add product and its parents to reverse list
-     *
-     * @param int $productId
-     */
-    private static function addParentsToReverseList(int $productId): void
-    {
-        if (!in_array($productId, self::$reverseList)) {
-            self::$reverseList[] = $productId;
-        }
-
-        $product = self::getProductFromMap($productId);
-        if ($product && !empty($product['parents'])) {
-            foreach ($product['parents'] as $parent) {
-                self::addParentsToReverseList($parent['id']);
+        $normalized = [];
+        foreach ($productIds as $productId) {
+            $productId = (int) $productId;
+            if ($productId > 0) {
+                $normalized[$productId] = $productId;
             }
         }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * Preload per-product cost sync flags for the products that may be updated.
+     *
+     * @param array<int, int> $productIds
+     */
+    private static function preloadSyncFlagsForProductIds(array $productIds): void
+    {
+        global $db;
+
+        $productIds = self::normalizeProductIds($productIds);
+        if (empty($productIds)) {
+            return;
+        }
+
+        foreach ($productIds as $productId) {
+            self::$syncFlagsCache[$productId] = false;
+        }
+
+        $hasUpdateBuyPrice = self::productExtrafieldColumnExists('kreap_updatebuyprice');
+        $hasLegacySyncPrice = self::productExtrafieldColumnExists('kreap_syncprice');
+        if (!$hasUpdateBuyPrice && !$hasLegacySyncPrice) {
+            return;
+        }
+
+        $select = ["fk_object"];
+        if ($hasUpdateBuyPrice) {
+            $select[] = "kreap_updatebuyprice";
+        }
+        if ($hasLegacySyncPrice) {
+            $select[] = "kreap_syncprice";
+        }
+
+        $sql = "SELECT " . implode(', ', $select);
+        $sql .= " FROM " . MAIN_DB_PREFIX . "product_extrafields";
+        $sql .= " WHERE fk_object IN (" . implode(',', $productIds) . ")";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::debug("Error preloading cost sync flags: " . $db->lasterror());
+            return;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $productId = (int) $obj->fk_object;
+            self::$syncFlagsCache[$productId] = (
+                ($hasUpdateBuyPrice && !empty($obj->kreap_updatebuyprice))
+                || ($hasLegacySyncPrice && !empty($obj->kreap_syncprice))
+            );
+        }
+
+        $db->free($resql);
+    }
+
+    private static function productExtrafieldColumnExists(string $columnName): bool
+    {
+        global $db;
+
+        static $cache = [];
+
+        if (array_key_exists($columnName, $cache)) {
+            return $cache[$columnName];
+        }
+
+        $exists = false;
+        $resql = $db->DDLDescTable(MAIN_DB_PREFIX . 'product_extrafields', $columnName);
+        if ($resql) {
+            $exists = ($db->num_rows($resql) > 0);
+            $db->free($resql);
+        }
+
+        $cache[$columnName] = $exists;
+        return $exists;
+    }
+
+    /**
+     * Build a deterministic bottom-up processing order for changed products and their parents.
+     *
+     * @param array<int, int> $productIds
+     * @return array<int, int>
+     */
+    private static function createProcessingOrder(array $productIds): array
+    {
+        $candidates = [];
+        foreach ($productIds as $productId) {
+            self::collectProductAndParents((int) $productId, $candidates);
+        }
+
+        $depthCache = [];
+        $order = array_keys($candidates);
+        usort($order, function ($left, $right) use ($candidates, &$depthCache) {
+            $leftDepth = self::calculateCandidateDepth((int) $left, $candidates, $depthCache);
+            $rightDepth = self::calculateCandidateDepth((int) $right, $candidates, $depthCache);
+            if ($leftDepth === $rightDepth) {
+                return ((int) $left <=> (int) $right);
+            }
+
+            return ($leftDepth <=> $rightDepth);
+        });
+
+        self::debug("Processing order created with " . count($order) . " products");
+        return array_map('intval', $order);
+    }
+
+    /**
+     * @param array<int, bool> $candidates
+     */
+    private static function collectProductAndParents(int $productId, array &$candidates): void
+    {
+        if ($productId <= 0 || !empty($candidates[$productId])) {
+            return;
+        }
+
+        $candidates[$productId] = true;
+        $product = self::getProductFromMap($productId);
+        if (!$product || empty($product['parents'])) {
+            return;
+        }
+
+        foreach ($product['parents'] as $parent) {
+            self::collectProductAndParents((int) $parent['id'], $candidates);
+        }
+    }
+
+    /**
+     * @param array<int, bool> $candidates
+     * @param array<int, int> $depthCache
+     * @param array<int, bool> $path
+     */
+    private static function calculateCandidateDepth(int $productId, array $candidates, array &$depthCache, array $path = []): int
+    {
+        if (isset($depthCache[$productId])) {
+            return $depthCache[$productId];
+        }
+        if (!empty($path[$productId])) {
+            self::debug("Cycle detected while ordering product hierarchy at product ID: " . $productId);
+            return 0;
+        }
+
+        $path[$productId] = true;
+        $maxChildDepth = -1;
+        foreach (self::getChildren($productId) as $child) {
+            $childId = (int) $child['id'];
+            if (empty($candidates[$childId])) {
+                continue;
+            }
+            $maxChildDepth = max($maxChildDepth, self::calculateCandidateDepth($childId, $candidates, $depthCache, $path));
+        }
+
+        $depthCache[$productId] = ($maxChildDepth < 0 ? 0 : $maxChildDepth + 1);
+        return $depthCache[$productId];
     }
 
     /**
@@ -738,25 +959,6 @@ class ProductUpdater
         self::debug("=== End Product Modified Event ===");
 
         return $results;
-    }
-
-    /**
-     * Batch update cost prices for multiple products
-     *
-     * @param array $productIds Array of product IDs
-     * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
-     * @return array Results array
-     */
-    public static function batchUpdateCostPrices(array $productIds, bool $useWholeSalePriceSync = true): array
-    {
-        $allResults = [];
-
-        foreach ($productIds as $productId) {
-            $results = self::updateProductCostPrice($productId, $useWholeSalePriceSync);
-            $allResults = array_merge($allResults, $results);
-        }
-
-        return $allResults;
     }
 
     /**

@@ -12,7 +12,7 @@
  * Copyright (C) 2019      Tim Otte			    <otte@meuser.it>
  * Copyright (C) 2020      Pierre Ardoin        <mapiolca@me.com>
  * Copyright (C) 2023	   Joachim Kueter		<git-jk@bloxera.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works      <mail@kreativitat.com>
  *
  * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
  *
@@ -32,7 +32,7 @@
  *
  * Proprietary License:
  * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
+ * please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
  *
  * For more information, visit <https://www.kreativitat.com>.
  */
@@ -194,7 +194,7 @@ function kreaUpdateDismantleBomChildren($productId, $db, $user)
 	while ($obj = $db->fetch_object($res)) {
 		if (!empty($obj->child)) {
 			$children[(int)$obj->child] = (float) $obj->line_qty;
-		}
+	}
 	}
 	$db->free($res);
 
@@ -218,11 +218,13 @@ function kreaUpdateDismantleBomChildren($productId, $db, $user)
 				$childProd->update($childProd->id, $user);
 			}
 		}
-
-		// Also propagate through nested hierarchies for this child
-		ProductUpdater::updateProductCostPrice((int)$childId, true);
 	}
-}
+
+	if (!empty($children)) {
+		// Also propagate through nested hierarchies for all children in one cascade.
+		ProductUpdater::batchUpdateCostPrices(array_keys($children), true);
+	}
+	}
 
 
 if ($action == 'setcost_price') {

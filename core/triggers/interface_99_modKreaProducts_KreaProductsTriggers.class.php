@@ -22,6 +22,11 @@ dol_include_once('/kreaproducts/class/KreaProductsSupplierPriceSyncService.class
  */
 class InterfaceKreaProductsTriggers extends DolibarrTriggers
 {
+	/**
+	 * @var int Guard used while this trigger performs controlled cost/sell updates.
+	 */
+	private static $costAndSellSyncSuspended = 0;
+
 	public function __construct($db)
 	{
 		parent::__construct($db);
@@ -40,14 +45,14 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		switch ($action) {
 			case 'PRODUCT_PRICE_MODIFY':
-				if ($this->hasCostPriceChanged($object)) {
+				if (self::$costAndSellSyncSuspended <= 0 && $this->hasCostPriceChanged($object)) {
 					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
 					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
 				return 1;
 
 			case 'PRODUCT_MODIFY':
-				if ($this->hasCostPriceChanged($object)) {
+				if (self::$costAndSellSyncSuspended <= 0 && $this->hasCostPriceChanged($object)) {
 					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
 					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
@@ -90,6 +95,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				}
 				$supplierPriceSync = new KreaProductsSupplierPriceSyncService();
 				$supplierPriceSync->syncFromValidatedSupplierInvoice($object, $db, $user, $conf);
+				$this->syncCostAndSellPriceFromValidatedSupplierInvoice($object, $user, $conf);
 				return 1;
 
 			default:
@@ -205,6 +211,98 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 	}
 
+	/**
+	 * Synchronize product cost (and dependent sell price) from validated supplier invoice lines.
+	 *
+	 * This is intentionally independent from supplier price-card rows because purchase invoices
+	 * may be entered without `ref_supplier` and without pre-existing `product_fournisseur_price`.
+	 */
+	private function syncCostAndSellPriceFromValidatedSupplierInvoice($invoice, User $user, Conf $conf): void
+	{
+		static $inProgress = false;
+
+		if ($inProgress || !$this->isSupplierInvoiceEligibleForCostSync($invoice, $conf)) {
+			return;
+		}
+
+		$invoiceLines = $this->extractSupplierInvoiceLines($invoice);
+		if (empty($invoiceLines)) {
+			return;
+		}
+
+		$productTotals = $this->aggregateSupplierInvoiceCostsByProduct($invoiceLines);
+		if (empty($productTotals)) {
+			return;
+		}
+
+		$inProgress = true;
+		self::$costAndSellSyncSuspended++;
+		try {
+			$changedProductIds = array();
+
+			foreach ($productTotals as $productId => $totals) {
+				$productId = (int) $productId;
+				$totalQty = (float) ($totals['qty'] ?? 0);
+				$totalAmount = (float) ($totals['amount'] ?? 0);
+				if ($productId <= 0 || $totalQty <= 0 || $totalAmount < 0) {
+					continue;
+				}
+
+				$newUnitCost = (float) price2num($totalAmount / $totalQty, 'MU');
+				if ($newUnitCost < 0) {
+					continue;
+				}
+
+				$product = new Product($this->db);
+				if ($product->fetch($productId) <= 0) {
+					continue;
+				}
+				if (!$this->isProductInCurrentEntityScope($product, $conf)) {
+					continue;
+				}
+				if (!$this->shouldSyncCostPriceForProduct($product)) {
+					continue;
+				}
+
+				$currentCost = $this->normalizeCostValue($product->cost_price ?? null);
+				if ($currentCost !== null && abs($currentCost - $newUnitCost) < 0.0001) {
+					continue;
+				}
+
+				$product->cost_price = $newUnitCost;
+				$resUpdate = $product->update($product->id, $user);
+				if ($resUpdate <= 0) {
+					dol_syslog(
+						__METHOD__ . ' failed cost update for product=' . $productId . ' invoice=' . ((int) $invoice->id)
+						. ' error=' . ($product->error ?: $this->db->lasterror()),
+						LOG_WARNING
+					);
+					continue;
+				}
+
+				$changedProductIds[$productId] = $productId;
+			}
+
+			if (!empty($changedProductIds) && !empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
+				$cascadeResults = ProductUpdater::batchUpdateCostPrices(array_values($changedProductIds), true);
+				foreach ($cascadeResults as $cascadeProductId => $cascadeResult) {
+					if (!empty($cascadeResult['updated'])) {
+						$changedProductIds[(int) $cascadeProductId] = (int) $cascadeProductId;
+					}
+				}
+			}
+
+			if (!empty($changedProductIds) && !empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST)) {
+				foreach (array_values($changedProductIds) as $changedProductId) {
+					$this->syncSellPriceFromCostIfEnabled((int) $changedProductId, $user, $conf);
+				}
+			}
+		} finally {
+			self::$costAndSellSyncSuspended--;
+			$inProgress = false;
+		}
+	}
+
 	private function hasCostPriceChanged($object): bool
 	{
 		if (!is_object($object)) {
@@ -227,6 +325,162 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		}
 
 		return abs((float) $oldCost - (float) $newCost) > 0.0001;
+	}
+
+	/**
+	 * Check if supplier invoice can drive cost synchronization.
+	 */
+	private function isSupplierInvoiceEligibleForCostSync($invoice, Conf $conf): bool
+	{
+		if (!is_object($invoice) || empty($invoice->id)) {
+			return false;
+		}
+
+		if (!empty($invoice->type) && (int) $invoice->type === 2) {
+			// Never update cost from supplier credit notes.
+			return false;
+		}
+
+		if (!empty($invoice->entity) && (int) $invoice->entity !== (int) $conf->entity) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Extract supplier invoice lines from in-memory object or by fetching them.
+	 *
+	 * @param object $invoice
+	 * @return array<int, object>
+	 */
+	private function extractSupplierInvoiceLines($invoice): array
+	{
+		if (empty($invoice->lines) && method_exists($invoice, 'fetch_lines')) {
+			$invoice->fetch_lines();
+		}
+		if (empty($invoice->lines) || !is_array($invoice->lines)) {
+			return array();
+		}
+
+		return $invoice->lines;
+	}
+
+	/**
+	 * Aggregate effective purchase unit costs by product using weighted totals from invoice lines.
+	 *
+	 * @param array<int, object> $invoiceLines
+	 * @return array<int, array{qty: float, amount: float}>
+	 */
+	private function aggregateSupplierInvoiceCostsByProduct(array $invoiceLines): array
+	{
+		$productTotals = array();
+
+		foreach ($invoiceLines as $line) {
+			if (!is_object($line)) {
+				continue;
+			}
+
+			$productId = (int) ($line->fk_product ?? 0);
+			if ($productId <= 0) {
+				continue;
+			}
+
+			$qty = (float) price2num($line->qty ?? 0, 'MS');
+			if ($qty <= 0) {
+				continue;
+			}
+
+			$unitCost = $this->extractEffectiveLineUnitCost($line, $qty);
+			if ($unitCost === null || $unitCost < 0) {
+				continue;
+			}
+
+			if (!isset($productTotals[$productId])) {
+				$productTotals[$productId] = array('qty' => 0.0, 'amount' => 0.0);
+			}
+
+			$productTotals[$productId]['qty'] += $qty;
+			$productTotals[$productId]['amount'] += (float) price2num($unitCost * $qty, 'MU');
+		}
+
+		return $productTotals;
+	}
+
+	/**
+	 * Resolve an effective HT unit cost for one supplier invoice line.
+	 *
+	 * Priority:
+	 * 1. total_ht / qty (captures line discounts),
+	 * 2. subprice,
+	 * 3. pu_ht.
+	 */
+	private function extractEffectiveLineUnitCost($line, float $qty): ?float
+	{
+		if ($qty <= 0) {
+			return null;
+		}
+
+		$totalHt = $this->normalizeCostValue($line->total_ht ?? null);
+		if ($totalHt !== null) {
+			return (float) price2num($totalHt / $qty, 'MU');
+		}
+
+		$subprice = $this->normalizeCostValue($line->subprice ?? null);
+		if ($subprice !== null) {
+			return $subprice;
+		}
+
+		$puHt = $this->normalizeCostValue($line->pu_ht ?? null);
+		if ($puHt !== null) {
+			return $puHt;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Ensure updates are limited to products reachable from current entity scope.
+	 */
+	private function isProductInCurrentEntityScope(Product $product, Conf $conf): bool
+	{
+		if (!isset($product->entity) || $product->entity === '') {
+			return false;
+		}
+
+		$currentEntity = (int) $conf->entity;
+		$productEntity = (int) $product->entity;
+		if ($productEntity === $currentEntity) {
+			return true;
+		}
+
+		$entityList = getEntity('product');
+		if ($entityList === '') {
+			return false;
+		}
+
+		$entities = array_map('intval', array_filter(array_map('trim', explode(',', $entityList)), 'strlen'));
+		return in_array($productEntity, $entities, true);
+	}
+
+	/**
+	 * Check per-product flag for cost sync from purchase flows.
+	 */
+	private function shouldSyncCostPriceForProduct(Product $product): bool
+	{
+		if (empty($product->id)) {
+			return false;
+		}
+
+		$extrafields = new ExtraFields($this->db);
+		$product->fetch_optionals((int) $product->id, $extrafields);
+
+		if (!empty($product->array_options['options_kreap_updatebuyprice'])) {
+			return true;
+		}
+
+		// Legacy field kept for backward compatibility.
+		return !empty($product->array_options['options_kreap_syncprice']);
 	}
 
 	/**

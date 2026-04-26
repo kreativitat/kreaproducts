@@ -1,6 +1,30 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.8] - 2026-04-26
+
+### Changed
+- Expanded `admin/about.php` to document the complete KreaProducts feature scope and setup controls.
+- Normalized the About page license display and header to GPL-3.0-or-later.
+
+## [2.33.7] - 2026-04-26
+
+### Changed
+- Updated `admin/about.php` to document the prices updater, including ProductUpdater cascade recalculation, supplier invoice cost updates, and per-product price controls.
+
+## [2.33.6] - 2026-04-26
+
+### Changed
+- Optimized automatic cost and sell-price cascade updates by batching hierarchy recalculation, preloading cost-sync flags, and suppressing duplicate trigger recursion during supplier invoice cost updates.
+
+## [2.33.5] - 2026-04-26
+
+### Changed
+- Extended supplier invoice validation trigger to compute weighted HT purchase cost per product line and synchronize `product.cost_price` directly when per-product buy-price sync is enabled.
+
+### Fixed
+- Fixed missing automatic cost/sell synchronization when supplier invoice lines have no supplier reference or no existing supplier price-card row (`product_fournisseur_price`).
+
 ## [2.33.4] - 2026-04-25
 
 ### Changed
