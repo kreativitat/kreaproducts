@@ -1693,6 +1693,7 @@ if ($id > 0 || !empty($ref)) {
 			$atleastonenotdefined = 0;
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
 			print '<style>
+				#tablelines .krea-label-col.tdoverflowmax150 { max-width: 560px; }
 				@media (max-width: 768px) {
 					.krea-tablelines-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 					#tablelines { table-layout: auto !important; }
@@ -1720,19 +1721,32 @@ if ($id > 0 || !empty($ref)) {
 			$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
 			$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
 			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
+			$componentTableWidths = array(
+				'pos' => '44px',
+				'ref' => '104px',
+				'name_min' => '320px',
+				'ingredient_cost' => '116px',
+				'stock' => '88px',
+				'qty' => '76px',
+				'qty_input' => '68px',
+				'weight_kg' => '96px',
+				'component_cost' => '122px',
+				'parent_stock_adjust' => '88px',
+				'move' => '18px',
+			);
 			print '<tr class="liste_titre nodrag nodrop">';
 			// Rank
-			print '<td class="krea-pos-col" style="width:60px; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
+			print '<td class="krea-pos-col" style="width:' . $componentTableWidths['pos'] . '; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
 			// Product ref
-			print '<td style="width:12%; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
+			print '<td style="width:' . $componentTableWidths['ref'] . '; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
 			// Product label
-			print '<td class="krea-label-col" style="min-width:320px; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
+			print '<td class="krea-label-col" style="min-width:' . $componentTableWidths['name_min'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
 			// ZS Menu column removed in list view
 			// Ingredient cost (single column)
-			print '<td class="right" style="width:140px; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
+			print '<td class="right" style="width:' . $componentTableWidths['ingredient_cost'] . '; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
 			// Stock
 			if (isModEnabled('stock')) {
-				print '<td class="right" style="width:80px; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
+				print '<td class="right" style="width:' . $componentTableWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
 			}
 			// Hook fields
 			$parameters = array();
@@ -1744,15 +1758,15 @@ if ($id > 0 || !empty($ref)) {
 			}
 			print $hookTitle;
 			// Qty in kit
-			print '<td class="center" style="width:120px; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
+			print '<td class="center" style="width:' . $componentTableWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
 			// Weight in kg
-			print '<td class="right" style="width:110px; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
+			print '<td class="right" style="width:' . $componentTableWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
 			// Valor por componente
-			print '<td class="right" style="width:200px; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+			print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
 			// Stoc inc/dev
-			print '<td class="center" style="' . $headerCellStyle . '">' . $headerParentStockLabel . '</td>';
+			print '<td class="center" style="width:' . $componentTableWidths['parent_stock_adjust'] . '; ' . $headerCellStyle . '">' . $headerParentStockLabel . '</td>';
 			// Move
-			print '<td class="linecolmove" style="width: 10px"></td>';
+			print '<td class="linecolmove" style="width:' . $componentTableWidths['move'] . ';"></td>';
 			print '</tr>' . "\n";
 
 			$totalsell = 0;
@@ -1781,7 +1795,7 @@ if ($id > 0 || !empty($ref)) {
 						$lineWeightKg = $unitWeightKg * (float) $nb_of_subproduct;
 						$total +=  $totalline;
 						$totalWeightKg += $lineWeightKg;
-						print '<td class="right nowraponall" style="width:140px;">';
+						print '<td class="right nowraponall" style="width:' . $componentTableWidths['ingredient_cost'] . ';">';
 						print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
 						print '</td>';
 						// Stock
@@ -1795,9 +1809,9 @@ if ($id > 0 || !empty($ref)) {
 						// Qty + IncDec
 						$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
 						if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right width90" /></td>';
+							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right" style="width:' . $componentTableWidths['qty_input'] . ';" /></td>';
 							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
-							print '<td class="right" style="width: 190px;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+							print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
 							print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
 						} else {
 							print '<td class="right">' . number_format((float) $nb_of_subproduct, 3, '.', '') . '</td>';
@@ -2169,55 +2183,29 @@ if ($id > 0 || !empty($ref)) {
 				$headerPosLabel = $getShortLabel('KreapHeaderPosShort', 'Pos.');
 				$headerChildLabel = $getShortLabel('KreapHeaderChildShort', 'Ref.');
 				$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
-					$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
-					$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
-					$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
-					$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
-					$showKreaProductionMoColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
-					$hasStockColumn = isModEnabled('stock');
-					$mrpWidths = array(
-						'pos' => '6%',
-						'ref' => '10%',
-						'name' => '29%',
-						'ingredient_cost' => '12%',
-						'weight_kg' => '10%',
-						'qty' => '8%',
-						'component_cost' => '14%',
-					);
-					if ($showKreaProductionMoColumn) {
-						if ($hasStockColumn) {
-							$mrpWidths = array(
-								'pos' => '6%',
-								'ref' => '9%',
-								'name' => '22%',
-								'ingredient_cost' => '11%',
-								'stock' => '10%',
-								'qty' => '7%',
-								'weight_kg' => '10%',
-								'component_cost' => '11%',
-								'kreap_lot' => '14%',
-							);
-						} else {
-							$mrpWidths = array(
-								'pos' => '6%',
-								'ref' => '10%',
-								'name' => '30%',
-								'ingredient_cost' => '13%',
-								'qty' => '8%',
-								'weight_kg' => '10%',
-								'component_cost' => '12%',
-								'kreap_lot' => '11%',
-							);
-						}
-					} elseif ($hasStockColumn) {
-						$mrpWidths['stock'] = '11%';
-					} else {
-						$mrpWidths['name'] = '39%';
-						$mrpWidths['ingredient_cost'] = '16%';
-						$mrpWidths['weight_kg'] = '10%';
-						$mrpWidths['qty'] = '8%';
-						$mrpWidths['component_cost'] = '12%';
-					}
+				$headerIngredientCostLabel = $getShortLabel('KreapIngredientCostShort', 'Custo ingr.');
+				$headerQtyLabel = $getShortLabel('KreapHeaderQtyShort', 'Qtd.');
+				$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
+				$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
+				$showKreaProductionMoColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
+				$hasStockColumn = isModEnabled('stock');
+				$mrpNameMinWidth = '300px';
+				if ($showKreaProductionMoColumn && $hasStockColumn) {
+					$mrpNameMinWidth = '240px';
+				} elseif ($showKreaProductionMoColumn || $hasStockColumn) {
+					$mrpNameMinWidth = '270px';
+				}
+				$mrpWidths = array(
+					'pos' => '44px',
+					'ref' => '104px',
+					'name_min' => $mrpNameMinWidth,
+					'ingredient_cost' => '116px',
+					'stock' => '88px',
+					'qty' => '76px',
+					'weight_kg' => '96px',
+					'component_cost' => '122px',
+					'kreap_lot' => '88px',
+				);
 
 				foreach ($componentsByBom as $bomData) {
 					$bomId = (int) $bomData['bom_id'];
@@ -2236,7 +2224,7 @@ if ($id > 0 || !empty($ref)) {
 					print '<tr class="liste_titre">';
 					print '<td class="krea-pos-col" style="width:' . $mrpWidths['pos'] . '; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
 					print '<td style="width:' . $mrpWidths['ref'] . '; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
-					print '<td class="krea-label-col" style="width:' . $mrpWidths['name'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
+					print '<td class="krea-label-col" style="min-width:' . $mrpWidths['name_min'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
 					print '<td class="right" style="width:' . $mrpWidths['ingredient_cost'] . '; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
 					if ($hasStockColumn) {
 						print '<td class="right" style="width:' . $mrpWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';

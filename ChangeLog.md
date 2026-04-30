@@ -1,6 +1,27 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.14] - 2026-04-30
+
+### Changed
+- Rebalanced all component table columns by data type in `associatedProducts.php` (reference, name, costs, stock, quantity, weight, controls) and aligned editable quantity input width with the new layout.
+- Applied the same width profile to the MRP BOM components table for consistent readability across both lists.
+
+## [2.33.13] - 2026-04-30
+
+### Changed
+- Increased `Qtd.` column and editable quantity input width by 80% from the reduced size to improve readability in the kit components table.
+
+## [2.33.12] - 2026-04-30
+
+### Changed
+- Reduced `Qtd.` column width by half in the kit components table and narrowed the editable quantity input to match.
+
+## [2.33.11] - 2026-04-30
+
+### Changed
+- Rebalanced kit component table widths in `associatedProducts.php` by reducing `Ref.`, `Stock`, `Qtd.`, and `Custo comp.` columns and expanding the `Nome` display area.
+
 ## [2.33.10] - 2026-04-26
 
 ### Changed
