@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  * Enhanced KreaProductsNutritionalCalculator Class
  *
  * This class builds a father→child map for a given product using BFS,
@@ -553,9 +553,6 @@ class KreaProductsNutritionalCalculator
     {
         global $db, $user, $conf;
 
-        // Display table header and keep an empty row if there are no subproducts
-        self::displayTableHeader($langs);
-
         // Calculate and display nutritional data
         $calculationResult = self::calculateNutritionalTotals($subList);
         
@@ -563,6 +560,12 @@ class KreaProductsNutritionalCalculator
             self::displayError("Error calculating nutritional totals: " . $calculationResult['error']);
             return;
         }
+
+        self::printNutritionalTableStyles();
+        print '<div class="krea-nutrition-table-wrap">';
+
+        // Display table header and keep an empty row if there are no subproducts
+        self::displayTableHeader($langs);
 
         if (empty($subList)) {
             print '<tr><td colspan="14" class="opacitymedium">' . $langs->trans("NoSubproductsFound") . '</td></tr>';
@@ -577,6 +580,7 @@ class KreaProductsNutritionalCalculator
             || !empty($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT);
 
         print '</table>';
+        print '</div>';
 
         if (!empty($copyInfo) && !empty($copyInfo['show_copy']) && $enableCopyAvgToProduct) {
             require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
@@ -599,6 +603,51 @@ class KreaProductsNutritionalCalculator
         }
 
         print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
+    }
+
+    /**
+     * Print nutritional table styles once
+     */
+    private static function printNutritionalTableStyles()
+    {
+        if (!empty($GLOBALS['KREAPRODUCTS_NUTRITION_TABLE_STYLE_PRINTED'])) {
+            return;
+        }
+
+        print '<style>
+            .krea-nutrition-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .krea-nutrition-table { width: auto; min-width: 1360px; table-layout: fixed; }
+            .krea-nutrition-table .krea-col-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            @media (max-width: 768px) {
+                .krea-nutrition-table { table-layout: auto !important; }
+                .krea-nutrition-table .krea-col-name { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
+            }
+        </style>';
+
+        $GLOBALS['KREAPRODUCTS_NUTRITION_TABLE_STYLE_PRINTED'] = true;
+    }
+
+    /**
+     * Width profile for nutritional table columns by data type
+     */
+    private static function getNutritionalTableWidths()
+    {
+        return array(
+            'ref' => '80px',
+            'name' => '240px',
+            'weight' => '210px',
+            'qty' => '72px',
+            'qty_weight' => '82px',
+            'energy_kcal' => '72px',
+            'energy_kj' => '72px',
+            'fat' => '70px',
+            'saturates' => '82px',
+            'carbohydrates' => '90px',
+            'sugars' => '74px',
+            'protein' => '74px',
+            'salt' => '70px',
+            'fiber' => '70px',
+        );
     }
 
     private static function buildProductSelector($form, $selected, $htmlname, $langs, $morecss = 'minwidth300')
@@ -705,25 +754,27 @@ class KreaProductsNutritionalCalculator
      */
     private static function displayTableHeader($langs)
     {
-        print '<table class="noborder" width="100%">';
+        $widths = self::getNutritionalTableWidths();
+
+        print '<table class="noborder krea-nutrition-table">';
         print '<tr class="liste_titre">';
-        print '<td width="5%">' . $langs->trans("KreaProductsTableProductRef") . '</td>';
-        print '<td width="25%">' . $langs->trans("KreaProductsTableProductName") . '</td>';
-        print '<td width="5%" style="text-align: right; white-space: nowrap; min-width: 220px;">'
+        print '<td style="width:' . $widths['ref'] . ';">' . $langs->trans("KreaProductsTableProductRef") . '</td>';
+        print '<td class="krea-col-name" style="width:' . $widths['name'] . ';">' . $langs->trans("KreaProductsTableProductName") . '</td>';
+        print '<td style="width:' . $widths['weight'] . '; text-align: right; white-space: nowrap;">'
             . $langs->trans("KreaProductsTableProductWeight")
             . ' <span class="classfortooltip valignmiddle" style="padding: 0px; padding: 0px; padding-right: 2px;" title="Peso por unidade do produto; nao altera a quantidade."><span class="fas fa-info-circle  em088 opacityhigh" style=" vertical-align: middle; cursor: help"></span></span>'
             . '</td>';
-        print '<td width="10%" style="text-align: right;">' . $langs->trans("KreaProductsTableProductQuantity") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableQuantityWeight") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableEnergy_kcal") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableEnergy_kj") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableFat") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableSaturates") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableCarbohydrates") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableSugars") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableProtein") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableSalt") . '</td>';
-        print '<td width="5%" style="text-align: right;">' . $langs->trans("KreaProductsTableFiber") . '</td>';
+        print '<td style="width:' . $widths['qty'] . '; text-align: right;">' . $langs->trans("KreaProductsTableProductQuantity") . '</td>';
+        print '<td style="width:' . $widths['qty_weight'] . '; text-align: right;">' . $langs->trans("KreaProductsTableQuantityWeight") . '</td>';
+        print '<td style="width:' . $widths['energy_kcal'] . '; text-align: right;">' . $langs->trans("KreaProductsTableEnergy_kcal") . '</td>';
+        print '<td style="width:' . $widths['energy_kj'] . '; text-align: right;">' . $langs->trans("KreaProductsTableEnergy_kj") . '</td>';
+        print '<td style="width:' . $widths['fat'] . '; text-align: right;">' . $langs->trans("KreaProductsTableFat") . '</td>';
+        print '<td style="width:' . $widths['saturates'] . '; text-align: right;">' . $langs->trans("KreaProductsTableSaturates") . '</td>';
+        print '<td style="width:' . $widths['carbohydrates'] . '; text-align: right;">' . $langs->trans("KreaProductsTableCarbohydrates") . '</td>';
+        print '<td style="width:' . $widths['sugars'] . '; text-align: right;">' . $langs->trans("KreaProductsTableSugars") . '</td>';
+        print '<td style="width:' . $widths['protein'] . '; text-align: right;">' . $langs->trans("KreaProductsTableProtein") . '</td>';
+        print '<td style="width:' . $widths['salt'] . '; text-align: right;">' . $langs->trans("KreaProductsTableSalt") . '</td>';
+        print '<td style="width:' . $widths['fiber'] . '; text-align: right;">' . $langs->trans("KreaProductsTableFiber") . '</td>';
         print '</tr>';
     }
 
@@ -957,6 +1008,7 @@ class KreaProductsNutritionalCalculator
 
         $form = new Form($db);
         $formproduct = new FormProduct($db);
+        $widths = self::getNutritionalTableWidths();
         $canEditWeight = !getDolGlobalString('PRODUCT_DISABLE_WEIGHT')
             && !empty($user)
             && ($user->admin || $user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'));
@@ -999,23 +1051,23 @@ class KreaProductsNutritionalCalculator
 
             // Display the row
             print '<tr style="font-style: italic;">';
-            print '<td>' . $linkRef . '</td>';
-            print '<td>' . $nameStr . '</td>';
-            print '<td style="text-align: right; white-space: nowrap; min-width: 220px;">' . $weightCell . '</td>';
-            print '<td style="text-align: right;">x ' . number_format($detail['quantity'], 3, '.', '') . '</td>';
-            print '<td style="text-align: right;">' . round($detail['total_weight'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['ref'] . ';">' . $linkRef . '</td>';
+            print '<td class="krea-col-name" title="' . dol_escape_htmltag($childLp->label) . '">' . $nameStr . '</td>';
+            print '<td style="width:' . $widths['weight'] . '; text-align: right; white-space: nowrap;">' . $weightCell . '</td>';
+            print '<td style="width:' . $widths['qty'] . '; text-align: right;">x ' . number_format($detail['quantity'], 3, '.', '') . '</td>';
+            print '<td style="width:' . $widths['qty_weight'] . '; text-align: right;">' . round($detail['total_weight'], self::DISPLAY_PRECISION) . '</td>';
             
             // Display nutritional contributions
             $contrib = $detail['contributions'];
-            print '<td style="text-align: right;">' . round($contrib['energy_kcal'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['energy_kj'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['fat'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['saturates'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['carbohydrates'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['sugars'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['protein'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['salt'], self::DISPLAY_PRECISION) . '</td>';
-            print '<td style="text-align: right;">' . round($contrib['fiber'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['energy_kcal'] . '; text-align: right;">' . round($contrib['energy_kcal'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['energy_kj'] . '; text-align: right;">' . round($contrib['energy_kj'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['fat'] . '; text-align: right;">' . round($contrib['fat'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['saturates'] . '; text-align: right;">' . round($contrib['saturates'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['carbohydrates'] . '; text-align: right;">' . round($contrib['carbohydrates'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['sugars'] . '; text-align: right;">' . round($contrib['sugars'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['protein'] . '; text-align: right;">' . round($contrib['protein'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['salt'] . '; text-align: right;">' . round($contrib['salt'], self::DISPLAY_PRECISION) . '</td>';
+            print '<td style="width:' . $widths['fiber'] . '; text-align: right;">' . round($contrib['fiber'], self::DISPLAY_PRECISION) . '</td>';
             print '</tr>';
         }
     }

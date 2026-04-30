@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.17] - 2026-04-30
+
+### Fixed
+- Reduced excessive horizontal stretch in the calculated nutritional table by switching to content-width table sizing and a tighter width profile while preserving product label visibility.
+
+## [2.33.16] - 2026-04-30
+
+### Fixed
+- Restored visibility of the product label column in the calculated nutritional table by assigning an explicit name-column width and enforcing a minimum table width with horizontal scroll.
+
+## [2.33.15] - 2026-04-30
+
+### Changed
+- Rebalanced the calculated nutritional table (`Tabela nutricional`) column widths by data type in `KreaProductsNutritionalCalculator.class.php` to improve readability for reference, product name, quantity/weight, and nutrient values.
+- Added responsive horizontal wrapping and mobile-friendly cell behavior for the nutritional table.
+
 ## [2.33.14] - 2026-04-30
 
 ### Changed
