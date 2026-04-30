@@ -1494,7 +1494,7 @@ END;
 
 					// ALTERAÇÕES DE PREÇO
 
-					$product_id = $object->id;
+					$product_id = (int) $object->id;
 
 					$sql = "SELECT
   s.nom AS Fornecedor,
@@ -1569,8 +1569,10 @@ LIMIT 10";
 					$sql = "SELECT
 							    e.label AS 'Loja',
 							    f.datef AS 'DataCompra',
+							    s.rowid AS 'FornecedorId',
 							    s.nom AS 'Fornecedores',
-							    f.ref_supplier AS 'Factura',
+							    f.rowid AS 'FacturaId',
+							    COALESCE(NULLIF(f.ref_supplier, ''), f.ref) AS 'Factura',
 							    d.ref AS 'VendorSKU',
 							    d.qty AS 'Quantidade',
 							    d.tva_tx AS 'IVA',
@@ -1585,6 +1587,7 @@ LIMIT 10";
 							     " . MAIN_DB_PREFIX . "societe s ON f.fk_soc = s.rowid
 							WHERE
 							    d.fk_product = $product_id
+							    AND f.entity IN (" . getEntity('facture_fourn') . ")
 							ORDER BY
 							    f.datef DESC
 							LIMIT 100";
@@ -1625,11 +1628,27 @@ LIMIT 10";
 							// Loja
 							print '<td class="tdoverflowmax150">' . $productfourn['Loja'] . '</td>';
 							// Data
-							print '<td>' . date('d/m/Y H:i:s', strtotime($productfourn['DataCompra'])) . '</td>';
+							print '<td>' . date('d/m/Y', strtotime($productfourn['DataCompra'])) . '</td>';
 							// Fornecedores
-							print '<td class="tdoverflowmax150">' . $productfourn['Fornecedores'] . '</td>';
+							$supplierLabel = (!empty($productfourn['Fornecedores']) ? $productfourn['Fornecedores'] : $langs->trans("NotDefined"));
+							$supplierId = (int) $productfourn['FornecedorId'];
+							if ($supplierId > 0) {
+								$supplierUrl = dol_buildpath('/societe/card.php', 1) . '?socid=' . $supplierId;
+								print '<td class="tdoverflowmax150"><a href="' . $supplierUrl . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($supplierLabel) . '</a></td>';
+							} else {
+								print '<td class="tdoverflowmax150">' . dol_escape_htmltag($supplierLabel) . '</td>';
+							}
+
 							// Factura
-							print '<td class="tdoverflowmax150">' . $productfourn['Factura'] . '</td>';
+							$invoiceLabel = (!empty($productfourn['Factura']) ? $productfourn['Factura'] : $langs->trans("NotDefined"));
+							$invoiceId = (int) $productfourn['FacturaId'];
+							if ($invoiceId > 0) {
+								$invoiceUrl = dol_buildpath('/fourn/facture/card.php', 1) . '?facid=' . $invoiceId;
+								print '<td class="tdoverflowmax150"><a href="' . $invoiceUrl . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($invoiceLabel) . '</a></td>';
+							} else {
+								print '<td class="tdoverflowmax150">' . dol_escape_htmltag($invoiceLabel) . '</td>';
+							}
+
 							// VendorSKU
 							print '<td>' . $productfourn['VendorSKU'] . '</td>';
 							// Quantidade

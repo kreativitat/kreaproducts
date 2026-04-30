@@ -1,6 +1,28 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.21] - 2026-04-30
+
+### Changed
+- Removed time from `Data de compra` display in the `Compras` table (`purchasePrice.php`), keeping date-only format.
+
+## [2.33.20] - 2026-04-30
+
+### Changed
+- Updated `Compras` table links in `purchasePrice.php` to open supplier invoice and supplier card in a new browser tab.
+- Added clickable supplier name links in the `Fornecedores` column.
+
+## [2.33.19] - 2026-04-30
+
+### Changed
+- Made `Fatura` values in the `Compras` table (`purchasePrice.php`) clickable links to the supplier invoice card.
+- Added supplier-invoice entity filtering to the purchases query to enforce multicompany-safe invoice listing.
+
+## [2.33.18] - 2026-04-30
+
+### Changed
+- Updated the product name filter input in `custom/kreaproducts/product_list.php` to fill the full label column width, matching the product name cells in the list.
+
 ## [2.33.17] - 2026-04-30
 
 ### Fixed

@@ -421,7 +421,7 @@ if (!empty($moreforfilter)) {
 print '<tr class="liste_titre_filter">';
 print '<td class="liste_titre center maxwidthsearch"><div class="nowraponall">' . $form->showFilterButtons('right') . '</div></td>';
 print '<td class="liste_titre left"><input class="flat width75" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
-print '<td class="liste_titre left"><input class="flat width100" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
+print '<td class="liste_titre left"><input class="flat" style="width: 100%; box-sizing: border-box;" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
 print '<td class="liste_titre right"></td>';
 if ($showMarginColumn) {
 	print '<td class="liste_titre right"></td>';
