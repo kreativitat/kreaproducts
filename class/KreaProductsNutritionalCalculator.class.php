@@ -290,7 +290,9 @@ class KreaProductsNutritionalCalculator
                                FROM " . MAIN_DB_PREFIX . "product_association pa
                                JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
                                JOIN " . MAIN_DB_PREFIX . "product pc ON (pc.rowid = pa.fk_product_fils)
-                               WHERE pa.fk_product_pere = %d";
+                               WHERE pa.fk_product_pere = %d
+                                   AND pf.entity IN (" . getEntity('product') . ")
+                                   AND pc.entity IN (" . getEntity('product') . ")";
 
             $sqlBom = "SELECT b.fk_product as father,
                               COALESCE(bl.fk_product, cb.fk_product) as child,
@@ -310,7 +312,10 @@ class KreaProductsNutritionalCalculator
                        LEFT JOIN " . MAIN_DB_PREFIX . "product cprod ON cprod.rowid = cb.fk_product
                        WHERE b.bomtype IN (0,1)
                            AND b.status = 1
-                           AND b.fk_product = %d";
+                           AND b.fk_product = %d
+                           AND pf.entity IN (" . getEntity('product') . ")
+                           AND (pc.rowid IS NULL OR pc.entity IN (" . getEntity('product') . "))
+                           AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))";
 
             while (!empty($queue) && $depth < self::MAX_HIERARCHY_DEPTH) {
                 $currentLevel = $queue;
@@ -464,6 +469,8 @@ class KreaProductsNutritionalCalculator
                         WHERE b.fk_product = " . (int)$parentId . " 
                             AND b.bomtype IN (0,1)
                             AND b.status = 1
+                            AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))
+                            AND (cprod.rowid IS NULL OR cprod.entity IN (" . getEntity('product') . "))
                             AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
                             AND (p.rowid IS NOT NULL OR cprod.rowid IS NOT NULL)";
 
@@ -503,6 +510,7 @@ class KreaProductsNutritionalCalculator
                     LEFT JOIN " . MAIN_DB_PREFIX . "product p
                         ON pa.fk_product_fils = p.rowid
                     WHERE pa.fk_product_pere = " . (int)$parentId . " 
+                        AND p.entity IN (" . getEntity('product') . ")
                         AND (pe.kreap_calc_nut IS NULL OR pe.kreap_calc_nut <> '2')
                         AND p.rowid IS NOT NULL
                     ORDER BY pa.rang ASC";
@@ -1122,50 +1130,70 @@ class KreaProductsNutritionalCalculator
         global $db;
 
         try {
-            dol_include_once('/kreaproducts/class/nutritional.class.php');
+            $fields = array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber');
+            $values = array();
+            foreach ($fields as $field) {
+                $values[$field] = array_key_exists($field, $normalized) ? round((float) $normalized[$field], self::NUTRITION_PRECISION) : null;
+            }
 
-            // Check if record exists
-            $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional 
-                    WHERE fk_product = " . (int)$productId;
+            $sql = "SELECT n.rowid";
+            $sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
+            $sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
+            $sql .= " WHERE n.fk_product = " . (int)$productId;
+            $sql .= " AND p.entity IN (" . getEntity('product') . ")";
+            $sql .= " ORDER BY n.rowid ASC";
+            $sql .= " LIMIT 1";
             
             $resql = $db->query($sql);
             if (!$resql) {
                 throw new Exception("Database error checking existing record: " . $db->lasterror());
             }
 
-            $recordExists = $db->num_rows($resql) > 0;
-            $nutritional = new Nutritional($db);
-
-            if ($recordExists) {
-                // Update existing record
+            $existingRowId = 0;
+            if ($db->num_rows($resql) > 0) {
                 $obj = $db->fetch_object($resql);
-                $nutritional->fetch($obj->rowid);
-            } else {
-                // Create new record
-                $nutritional->fk_product = $productId;
+                $existingRowId = (int) $obj->rowid;
             }
-            
             $db->free($resql);
 
-            // Set normalized nutritional values
-            foreach ($normalized as $field => $value) {
-                $nutritional->$field = $value;
+            if ($existingRowId > 0) {
+                $setParts = array();
+                foreach ($values as $field => $value) {
+                    $setParts[] = $field . " = " . ($value === null ? "NULL" : price2num($value, 'MU'));
+                }
+                $setParts[] = "fk_user_modif = " . (int) $user->id;
+
+                $sql = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+                $sql .= " SET " . implode(", ", $setParts);
+                $sql .= " WHERE rowid = " . (int) $existingRowId;
+
+                if (!$db->query($sql)) {
+                    throw new Exception("Database error updating nutritional record: " . $db->lasterror());
+                }
+
+                self::$processStats['records_updated']++;
+                self::$nutritionCache[$productId] = $values;
+                return 1;
             }
 
-            // Save the record
-            if (!empty($nutritional->id)) {
-                $result = $nutritional->update($user, 0);
-                if ($result > 0) {
-                    self::$processStats['records_updated']++;
-                }
-            } else {
-                $result = $nutritional->create($user, 0);
-                if ($result > 0) {
-                    self::$processStats['records_inserted']++;
-                }
+            $insertFields = array('fk_product', 'date_creation', 'fk_user_creat', 'is_food');
+            $insertValues = array((int) $productId, "'" . $db->idate(dol_now()) . "'", (int) $user->id, 1);
+            foreach ($values as $field => $value) {
+                $insertFields[] = $field;
+                $insertValues[] = ($value === null ? "NULL" : price2num($value, 'MU'));
             }
 
-            return $result;
+            $sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+            $sql .= " (" . implode(", ", $insertFields) . ")";
+            $sql .= " VALUES (" . implode(", ", $insertValues) . ")";
+
+            if (!$db->query($sql)) {
+                throw new Exception("Database error inserting nutritional record: " . $db->lasterror());
+            }
+
+            self::$processStats['records_inserted']++;
+            self::$nutritionCache[$productId] = $values;
+            return 1;
             
         } catch (Exception $e) {
             throw new Exception("Failed to save nutritional record: " . $e->getMessage());
@@ -1481,6 +1509,7 @@ class KreaProductsNutritionalCalculator
         global $db;
         
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . (int)$productId;
+        $sql .= " AND entity IN (" . getEntity('product') . ")";
         $resql = $db->query($sql);
         
         if (!$resql) {

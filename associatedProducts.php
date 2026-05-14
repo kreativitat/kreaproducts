@@ -2545,6 +2545,13 @@ if ($id > 0 || !empty($ref)) {
 
 
 				dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+				if ($usercancreate) {
+					$saveCalculationResult = KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
+					if ($saveCalculationResult < 0) {
+						dol_syslog('Failed to persist calculated nutritional values for product #' . (int) $object->id, LOG_ERR);
+						setEventMessages($langs->trans("ErrorUpdatingData"), null, 'errors');
+					}
+				}
 				KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
 			}
 

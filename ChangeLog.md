@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.33.22] - 2026-05-14
+
+### Fixed
+- Persisted calculated nutrition table values to product nutritional records in calculated mode without requiring separate module write rights.
+- Added product entity filtering to calculated nutrition persistence.
+
 ## [2.33.21] - 2026-04-30
 
 ### Changed

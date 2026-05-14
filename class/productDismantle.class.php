@@ -207,6 +207,9 @@ class ProductDismantleController extends CommonObject
                 dol_syslog(__METHOD__ . " movement already processed for MO #" . (int) $registeredMoId, LOG_DEBUG);
                 return 0;
             }
+            // Remove any orphaned execution lines (fk_stock_movement NULL or pointing to a
+            // deleted movement) left by a previous failed attempt before writing new ones.
+            $this->purgeOrphanedExecutionLinesForMo((int) $registeredMoId);
             $plannedLineMap = $this->buildMoPlannedLineMap((int) $registeredMoId);
         }
 
@@ -462,18 +465,61 @@ class ProductDismantleController extends CommonObject
             return false;
         }
 
-        $sql = "SELECT COUNT(rowid) AS nb"
-            . " FROM " . MAIN_DB_PREFIX . "mrp_production"
-            . " WHERE fk_mo = " . $moId
-            . " AND role IN ('consumed','produced')";
+        // JOIN with stock_mouvement so that orphaned execution lines (fk_stock_movement NULL
+        // or pointing to a deleted movement) are NOT counted as "processed". This prevents the
+        // dedupe guard from blocking re-execution when secondary movements were never committed.
+        $sql = "SELECT COUNT(mp.rowid) AS nb"
+            . " FROM " . MAIN_DB_PREFIX . "mrp_production AS mp"
+            . " INNER JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
+            . " WHERE mp.fk_mo = " . $moId
+            . " AND mp.role IN ('consumed','produced')";
         $resql = $this->db->query($sql);
         if (!$resql) {
-            dol_syslog(__METHOD__ . " failed to count execution lines: " . $this->db->lasterror(), LOG_WARNING);
+            dol_syslog(__METHOD__ . " failed to verify execution lines: " . $this->db->lasterror(), LOG_WARNING);
             return false;
         }
 
         $obj = $this->db->fetch_object($resql);
         return (is_object($obj) && ((int) $obj->nb > 0));
+    }
+
+    private function purgeOrphanedExecutionLinesForMo($moId)
+    {
+        $moId = (int) $moId;
+        if ($moId <= 0) {
+            return;
+        }
+
+        $findSql = "SELECT mp.rowid"
+            . " FROM " . MAIN_DB_PREFIX . "mrp_production AS mp"
+            . " LEFT JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
+            . " WHERE mp.fk_mo = " . $moId
+            . " AND mp.role IN ('consumed','produced')"
+            . " AND (mp.fk_stock_movement IS NULL OR sm.rowid IS NULL)";
+        $resql = $this->db->query($findSql);
+        if (!$resql) {
+            dol_syslog(__METHOD__ . " failed to identify orphaned lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_WARNING);
+            return;
+        }
+
+        $ids = [];
+        while ($obj = $this->db->fetch_object($resql)) {
+            $ids[] = (int) $obj->rowid;
+        }
+        $this->db->free($resql);
+
+        if (empty($ids)) {
+            return;
+        }
+
+        $delSql = "DELETE FROM " . MAIN_DB_PREFIX . "mrp_production"
+            . " WHERE rowid IN (" . implode(',', $ids) . ")";
+        if (!$this->db->query($delSql)) {
+            dol_syslog(__METHOD__ . " failed to delete orphaned execution lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_WARNING);
+            return;
+        }
+
+        dol_syslog(__METHOD__ . " purged " . count($ids) . " orphaned execution line(s) for MO #" . $moId, LOG_INFO);
     }
 
     private function buildMoPlannedLineMap($moId)
