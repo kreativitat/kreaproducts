@@ -1,9 +1,6 @@
 <?php
-/* Copyright (C) 2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026       Kreativität Works       <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -17,11 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from Kreativität Works.
  */
 
 use Luracast\Restler\RestException;
@@ -190,7 +183,8 @@ class KreaProductsApi extends DolibarrApi
 			$aliases = $this->loadProductExtrafieldTextMap($productIds, 'kreap_alias');
 			foreach ($products as &$row) {
 				$productId = (int) $row['id'];
-				$layout = (!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+				$labelStoragePayload = $this->parseProductLabelStoragePayload(!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+				$layout = (!empty($labelStoragePayload['default_label_layout']) ? (string) $labelStoragePayload['default_label_layout'] : '');
 				$alias = (!empty($aliases[$productId]) ? (string) $aliases[$productId] : '');
 				$row['kreap_alias'] = $alias;
 				$row['default_label_layout'] = $layout;
@@ -745,6 +739,7 @@ class KreaProductsApi extends DolibarrApi
 			$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
 			$producedBatch = $this->resolveProducedBatchCodeFromRequest($request_data, (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0));
 			$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+			$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
 			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 
 			$selectedFields = array();
@@ -897,6 +892,7 @@ class KreaProductsApi extends DolibarrApi
 			$langcode = trim((string) (isset($request_data['langcode']) ? $request_data['langcode'] : ''));
 			$producedBatch = $this->resolveProducedBatchCodeFromRequest($request_data, (int) (isset($request_data['mo_id']) ? $request_data['mo_id'] : 0));
 			$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+			$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
 			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 
 			$selectedFields = array();
@@ -1383,6 +1379,7 @@ class KreaProductsApi extends DolibarrApi
 		$mo->fetch($mo->id);
 		$this->applyProductAliasToLabel($product);
 		$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+		$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
 		$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
 		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
 		$traceSaved = false;
@@ -2570,6 +2567,7 @@ class KreaProductsApi extends DolibarrApi
 		);
 
 		$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+		$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
 		if ($templateCode !== '') {
 			$template = KreaProductsLabelService::loadLabelTemplate($templateCode, $entityId);
 			if (!empty($template)) {
@@ -2899,7 +2897,8 @@ class KreaProductsApi extends DolibarrApi
 						continue;
 					}
 					$productId = (int) $row['id'];
-					$layout = (!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+					$labelStoragePayload = $this->parseProductLabelStoragePayload(!empty($defaultLayouts[$productId]) ? (string) $defaultLayouts[$productId] : '');
+					$layout = (!empty($labelStoragePayload['default_label_layout']) ? (string) $labelStoragePayload['default_label_layout'] : '');
 					$alias = (!empty($aliases[$productId]) ? (string) $aliases[$productId] : '');
 					$row['kreap_alias'] = $alias;
 					$row['default_label_layout'] = $layout;
@@ -3611,6 +3610,118 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Sanitize one label template code for API-side product storage handling.
+	 *
+	 * @param string $templateCode Raw template code
+	 * @return string
+	 */
+	protected function sanitizeLabelTemplateCode($templateCode)
+	{
+		$templateCode = strtolower(trim((string) $templateCode));
+		if ($templateCode === '' || preg_match('/^[a-z0-9_.-]+$/', $templateCode) !== 1) {
+			return '';
+		}
+
+		return $templateCode;
+	}
+
+	/**
+	 * Sanitize one template source key for API-side product storage handling.
+	 *
+	 * @param string $source Raw source key
+	 * @return string
+	 */
+	protected function sanitizeLabelTemplateSource($source)
+	{
+		$source = strtolower(trim((string) $source));
+		if ($source === '' || preg_match('/^[a-z0-9_.-]+$/', $source) !== 1) {
+			return '';
+		}
+
+		return $source;
+	}
+
+	/**
+	 * Parse product-level label storage payload from `kreap_default_label_layout`.
+	 *
+	 * @param string $rawValue Raw extrafield value
+	 * @return array
+	 */
+	protected function parseProductLabelStoragePayload($rawValue)
+	{
+		$payload = array(
+			'default_label_layout' => '',
+			'template_values' => array(),
+		);
+
+		$rawValue = trim((string) $rawValue);
+		if ($rawValue === '') {
+			return $payload;
+		}
+
+		$decoded = json_decode($rawValue, true);
+		if (!is_array($decoded)) {
+			$payload['default_label_layout'] = $this->sanitizeLabelTemplateCode($rawValue);
+			return $payload;
+		}
+
+		$defaultLayoutRaw = '';
+		if (isset($decoded['default_label_layout'])) {
+			$defaultLayoutRaw = (string) $decoded['default_label_layout'];
+		} elseif (isset($decoded['default_layout'])) {
+			$defaultLayoutRaw = (string) $decoded['default_layout'];
+		}
+		$payload['default_label_layout'] = $this->sanitizeLabelTemplateCode($defaultLayoutRaw);
+
+		if (!empty($decoded['template_values']) && is_array($decoded['template_values'])) {
+			foreach ($decoded['template_values'] as $templateCode => $sourceValues) {
+				$sanitizedTemplateCode = $this->sanitizeLabelTemplateCode($templateCode);
+				if ($sanitizedTemplateCode === '' || !is_array($sourceValues)) {
+					continue;
+				}
+
+				$cleanSourceValues = array();
+				foreach ($sourceValues as $source => $value) {
+					$sanitizedSource = $this->sanitizeLabelTemplateSource($source);
+					if ($sanitizedSource === '' || is_array($value) || is_object($value)) {
+						continue;
+					}
+
+					$cleanValue = (string) $value;
+					if (trim($cleanValue) === '') {
+						continue;
+					}
+
+					$cleanSourceValues[$sanitizedSource] = $cleanValue;
+				}
+
+				if (!empty($cleanSourceValues)) {
+					$payload['template_values'][$sanitizedTemplateCode] = $cleanSourceValues;
+				}
+			}
+		}
+
+		return $payload;
+	}
+
+	/**
+	 * Load product label storage payload for one product.
+	 *
+	 * @param int $productId Product id
+	 * @return array
+	 */
+	protected function loadProductLabelStoragePayload($productId)
+	{
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return $this->parseProductLabelStoragePayload('');
+		}
+
+		$layouts = $this->loadProductExtrafieldTextMap(array($productId), 'kreap_default_label_layout');
+		return $this->parseProductLabelStoragePayload(!empty($layouts[$productId]) ? (string) $layouts[$productId] : '');
+	}
+
+	/**
 	 * Resolve effective label template code for one product.
 	 *
 	 * Priority:
@@ -3626,29 +3737,70 @@ class KreaProductsApi extends DolibarrApi
 	{
 		global $conf;
 
-		$templateCode = preg_replace('/[^A-Za-z0-9_.-]/', '', trim((string) $requestedTemplateCode));
+		$templateCode = $this->sanitizeLabelTemplateCode($requestedTemplateCode);
 		if ($templateCode !== '') {
 			return $templateCode;
 		}
 
 		$productId = (is_object($product) && !empty($product->id) ? (int) $product->id : 0);
 		if ($productId > 0) {
-			$layouts = $this->loadProductExtrafieldTextMap(array($productId), 'kreap_default_label_layout');
-			if (!empty($layouts[$productId])) {
-				$templateCode = preg_replace('/[^A-Za-z0-9_.-]/', '', trim((string) $layouts[$productId]));
-				if ($templateCode !== '') {
-					return $templateCode;
-				}
+			$labelStoragePayload = $this->loadProductLabelStoragePayload($productId);
+			if (!empty($labelStoragePayload['default_label_layout'])) {
+				return (string) $labelStoragePayload['default_label_layout'];
 			}
 		}
 
 		$globalDefault = trim((string) (!empty($conf->global->KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE) ? $conf->global->KREAPRODUCTS_LABELS_DEFAULT_TEMPLATE_CODE : ''));
-		$globalDefault = preg_replace('/[^A-Za-z0-9_.-]/', '', $globalDefault);
+		$globalDefault = $this->sanitizeLabelTemplateCode($globalDefault);
 		if ($globalDefault !== '') {
 			return $globalDefault;
 		}
 
 		return '';
+	}
+
+	/**
+	 * Resolve template values by merging product defaults and request overrides.
+	 *
+	 * Product-level values are saved from the label tab and must be honored by
+	 * KreaProduction. Request values remain higher priority for runtime fields
+	 * such as production dates and produced batch.
+	 *
+	 * @param object $product Product object with id
+	 * @param string $templateCode Effective template code
+	 * @param array  $requestedTemplateValues Raw request template values
+	 * @return array
+	 */
+	protected function resolveLabelTemplateValues($product, $templateCode, $requestedTemplateValues)
+	{
+		$templateCode = $this->sanitizeLabelTemplateCode($templateCode);
+		$mergedValues = array();
+
+		$productId = (is_object($product) && !empty($product->id) ? (int) $product->id : 0);
+		if ($productId > 0 && $templateCode !== '') {
+			$labelStoragePayload = $this->loadProductLabelStoragePayload($productId);
+			if (!empty($labelStoragePayload['template_values'][$templateCode]) && is_array($labelStoragePayload['template_values'][$templateCode])) {
+				$mergedValues = $labelStoragePayload['template_values'][$templateCode];
+			}
+		}
+
+		if (is_array($requestedTemplateValues)) {
+			foreach ($requestedTemplateValues as $source => $value) {
+				$sanitizedSource = $this->sanitizeLabelTemplateSource($source);
+				if ($sanitizedSource === '' || is_array($value) || is_object($value)) {
+					continue;
+				}
+
+				$cleanValue = (string) $value;
+				if (trim($cleanValue) === '') {
+					continue;
+				}
+
+				$mergedValues[$sanitizedSource] = $cleanValue;
+			}
+		}
+
+		return $mergedValues;
 	}
 
 	/**

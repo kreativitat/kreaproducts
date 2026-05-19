@@ -1,21 +1,10 @@
 <?php
-/* Copyright (C) 2001-2007  Rodolphe Quiedeville    <rodolphe@quiedeville.org>
- * Copyright (C) 2004-2020  Laurent Destailleur     <eldy@users.sourceforge.net>
- * Copyright (C) 2005       Eric Seigne             <eric.seigne@ryxeo.com>
- * Copyright (C) 2005-2018  Regis Houssin           <regis.houssin@inodbox.com>
- * Copyright (C) 2006       Andre Cianfarani        <acianfa@free.fr>
- * Copyright (C) 2011-2014  Juanjo Menent           <jmenent@2byte.es>
- * Copyright (C) 2015       Raphaël Doursenaud      <rdoursenaud@gpcsolutions.fr>
- * Copyright (C) 2023       Benjamin Falière        <benjamin.faliere@altairis.fr>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -25,11 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 /**
@@ -206,6 +192,22 @@ if (!function_exists('kreaproducts_weight_to_kg')) {
 			default:
 				return $weight;
 		}
+	}
+}
+
+if (!function_exists('kreaproducts_normalize_weight_unit_scale')) {
+	function kreaproducts_normalize_weight_unit_scale($weightUnit)
+	{
+		if ($weightUnit === null || $weightUnit === false) {
+			return '';
+		}
+
+		$weightUnit = trim((string) $weightUnit);
+		if ($weightUnit === '0') {
+			return '';
+		}
+
+		return $weightUnit;
 	}
 }
 
@@ -885,7 +887,7 @@ if ($action == 'updateAllergens') {
 if ($action === 'setweight' && $usercancreate) {
 	$object->fetch($object->id);
 	$object->weight = GETPOST('weight', 'alpha');
-	$object->weight_units = GETPOST('weight_units', 'alpha'); // scale value
+	$object->weight_units = kreaproducts_normalize_weight_unit_scale(GETPOST('weight_units', 'alpha')); // scale value
 
 	$result = $object->update($object->id, $user);
 	if ($result > 0) {
@@ -902,7 +904,7 @@ if ($usercancreate && preg_match('/^setweight_(\d+)$/', $action, $matches)) {
 	$childProduct = new Product($db);
 	if ($childId > 0 && $childProduct->fetch($childId) > 0) {
 		$childProduct->weight = GETPOST('weight', 'alpha');
-		$childProduct->weight_units = GETPOST('weight_units', 'alpha'); // scale value
+		$childProduct->weight_units = kreaproducts_normalize_weight_unit_scale(GETPOST('weight_units', 'alpha')); // scale value
 		$result = $childProduct->update($childId, $user);
 		if ($result > 0) {
 			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
@@ -1230,8 +1232,9 @@ if ($id > 0 || !empty($ref)) {
 				if ($object->weight != '') {
 					$weightDisplay = $object->weight . ' ' . measuringUnitString(0, 'weight', $object->weight_units);
 				}
+				$selectedWeightUnit = kreaproducts_normalize_weight_unit_scale(GETPOSTISSET('weight_units') ? GETPOST('weight_units', 'alpha') : $object->weight_units);
 				$weightEdit = '<input name="weight" size="5" value="' . dol_escape_htmltag(GETPOSTISSET('weight') ? GETPOST('weight') : $object->weight) . '"> ';
-				$weightEdit .= $formproduct->selectMeasuringUnits("weight_units", "weight", GETPOSTISSET('weight_units') ? GETPOST('weight_units', 'alpha') : $object->weight_units, 0, 2);
+				$weightEdit .= $formproduct->selectMeasuringUnits("weight_units", "weight", $selectedWeightUnit, 0, 2);
 				print '<tr><td class="titlefield">';
 				print $form->editfieldkey("Weight", 'weight', $object->weight, $object, $usercancreate, 'asis');
 				print '</td><td>';

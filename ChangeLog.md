@@ -1,6 +1,119 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.34.15] - 2026-05-19
+
+### Changed
+- Weight label templates now render a single composed `Peso: 0.000 kg` line instead of separate weight and unit blocks.
+- Added MO display information to the front page of normal, frozen, and weight label templates.
+
+## [2.34.14] - 2026-05-19
+
+### Changed
+- Aligned weight value and unit closer to the `Peso:` label in weight templates.
+- Disabled human-readable text inside front-page barcodes to prevent barcode/code overlap.
+
+## [2.34.13] - 2026-05-19
+
+### Changed
+- Updated normal and frozen DeGema label barcode blocks to use standard EAN-13 product barcodes instead of Code128 internal-reference barcodes.
+
+## [2.34.12] - 2026-05-19
+
+### Changed
+- Updated normal and frozen DeGema label templates to use the same two-page visual design as their weight-label counterparts.
+
+## [2.34.11] - 2026-05-19
+
+### Changed
+- Added the optional brand logo to the second page of normal and frozen weight label templates.
+
+## [2.34.10] - 2026-05-19
+
+### Changed
+- Weight label unit fields now render as selectable units with kg as the default instead of free text.
+- Weight label barcodes are now generated automatically as EAN-13 variable-measure barcodes and are no longer exposed as editable template fields.
+
+## [2.34.9] - 2026-05-19
+
+### Changed
+- Split weight value and unit into separate visual blocks in normal and frozen weight label templates.
+
+## [2.34.8] - 2026-05-19
+
+### Changed
+- Matched conservation text size to the other composition text sections in normal and frozen weight label templates.
+
+## [2.34.7] - 2026-05-19
+
+### Changed
+- Normalized normal weight label composition page body sections to a consistent printer-readable font size.
+
+## [2.34.6] - 2026-05-19
+
+### Changed
+- Added vertical separation between nutritional information and conservation instructions in normal and frozen weight label templates.
+
+## [2.34.5] - 2026-05-19
+
+### Changed
+- Enlarged the conservation footer block in normal and frozen weight label templates and updated the frozen default text to Portugal Portuguese wording.
+
+## [2.34.4] - 2026-05-19
+
+### Changed
+- Shortened the default conservation instructions in normal and frozen weight label templates to improve fit at printer-readable font size.
+
+## [2.34.3] - 2026-05-19
+
+### Changed
+- Matched conservation text rendering in normal and frozen weight label templates to the allergens block font rules, removing auto-fit shrink behavior that could print below the supported text size.
+
+## [2.34.2] - 2026-05-19
+
+### Changed
+- Moved conservation text from the front page to the composition page in normal and frozen weight label templates while preserving the approved reference and barcode layout.
+
+## [2.34.1] - 2026-05-19
+
+### Changed
+- Increased the conservation text font in normal and frozen weight label templates to match the lot/date text size and prevent auto-fit from shrinking below the surrounding label text.
+
+## [2.34.0] - 2026-05-19
+
+### Added
+- Added normal and frozen DeGema weight label templates with 3-decimal kg display, weight barcode, company data, packaging symbols, and a second page for ingredients, allergens, and nutritional information.
+
+## [2.33.28] - 2026-05-19
+
+### Fixed
+- Fixed product weight edit units to preserve the saved unit and default to kilograms.
+
+## [2.33.27] - 2026-05-19
+
+### Fixed
+- Fixed the product labels page banner to show the native product label instead of the label alias.
+
+## [2.33.26] - 2026-05-19
+
+### Fixed
+- KreaProduction label API calls now use saved product template values as defaults, including manually edited ingredients.
+
+## [2.33.25] - 2026-05-19
+
+### Fixed
+- Fixed label PDF generation for template layouts that define a valid label size without a Dolibarr format hint.
+
+## [2.33.24] - 2026-05-18
+
+### Fixed
+- Fixed product list sorting for price columns with guarded sortable field mapping.
+
+## [2.33.23] - 2026-05-17
+
+### Fixed
+- Fixed nutritional calculation warnings for missing product type and update statistics keys.
+
 ## [2.33.22] - 2026-05-14
 
 ### Fixed

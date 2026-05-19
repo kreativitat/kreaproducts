@@ -1,9 +1,6 @@
 <?php
 /* Copyright (C) 2026       Kreativität Works       <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -17,11 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from Kreativität Works.
  */
 
 /**
@@ -1673,8 +1666,43 @@ class KreaProductsLabelService
 			'min' => (isset($meta['min']) && $meta['min'] !== '' ? self::sanitizeTemplateNumericValue((string) $meta['min']) : ''),
 			'max' => (isset($meta['max']) && $meta['max'] !== '' ? self::sanitizeTemplateNumericValue((string) $meta['max']) : ''),
 			'step' => (!empty($meta['step']) ? self::sanitizeTemplateNumericValue((string) $meta['step']) : ''),
+			'options' => self::normalizeTemplateInputOptions(!empty($meta['options']) && is_array($meta['options']) ? $meta['options'] : array()),
 			'output_format' => self::resolveTemplateInputOutputFormat($type, (!empty($meta['output_format']) ? (string) $meta['output_format'] : '')),
 		);
+	}
+
+	/**
+	 * Normalize select input options.
+	 *
+	 * @param array $options Raw option definitions
+	 * @return array
+	 */
+	private static function normalizeTemplateInputOptions($options)
+	{
+		$clean = array();
+		if (!is_array($options)) {
+			return $clean;
+		}
+
+		foreach ($options as $option) {
+			if (is_array($option)) {
+				$value = (isset($option['value']) ? self::sanitizeTemplateTextValue((string) $option['value']) : '');
+				$label = (isset($option['label']) ? self::cleanText((string) $option['label']) : $value);
+			} else {
+				$value = self::sanitizeTemplateTextValue((string) $option);
+				$label = $value;
+			}
+			if ($value === '') {
+				continue;
+			}
+
+			$clean[] = array(
+				'value' => $value,
+				'label' => ($label !== '' ? $label : $value),
+			);
+		}
+
+		return $clean;
 	}
 
 	/**
@@ -1686,7 +1714,7 @@ class KreaProductsLabelService
 	private static function normalizeTemplateInputType($rawType)
 	{
 		$type = strtolower(trim((string) $rawType));
-		if (in_array($type, array('text', 'textarea', 'date', 'datetime', 'number', 'image'), true)) {
+		if (in_array($type, array('text', 'textarea', 'date', 'datetime', 'number', 'image', 'select'), true)) {
 			return $type;
 		}
 		if ($type === 'datetime-local') {
@@ -1767,6 +1795,20 @@ class KreaProductsLabelService
 		}
 		if ($type === 'number') {
 			return self::sanitizeTemplateNumericValue($value);
+		}
+		if ($type === 'select') {
+			$value = self::sanitizeTemplateTextValue($value);
+			$options = (!empty($meta['options']) && is_array($meta['options']) ? self::normalizeTemplateInputOptions($meta['options']) : array());
+			if (empty($options)) {
+				return $value;
+			}
+			foreach ($options as $option) {
+				if ((string) $option['value'] === $value) {
+					return $value;
+				}
+			}
+
+			return '';
 		}
 		if ($type === 'date' || $type === 'datetime') {
 			$timestamp = self::parseTemplateDateTimeToTimestamp($value);
@@ -3554,11 +3596,7 @@ class KreaProductsLabelService
 	 */
 	private static function getTemplateOutputFormatDetails($template)
 	{
-		if (empty($template['dolibarr_format_hint']) || !is_array($template['dolibarr_format_hint'])) {
-			return array();
-		}
-
-		$hint = $template['dolibarr_format_hint'];
+		$hint = (!empty($template['dolibarr_format_hint']) && is_array($template['dolibarr_format_hint']) ? $template['dolibarr_format_hint'] : array());
 		$labelSize = self::getTemplatePageSize($template);
 		$width = (float) (!empty($labelSize['width']) ? $labelSize['width'] : 0);
 		$height = (float) (!empty($labelSize['height']) ? $labelSize['height'] : 0);
@@ -3582,11 +3620,11 @@ class KreaProductsLabelService
 			$orientation = ($customX > $customY ? 'L' : 'P');
 		}
 
-			return array(
-				'code' => self::buildTemplateVirtualFormatCode($template),
-				'name' => (!empty($template['template_code']) ? (string) $template['template_code'] : 'template'),
-				'paper_size' => $paperSize,
-				'metric' => 'mm',
+		return array(
+			'code' => self::buildTemplateVirtualFormatCode($template),
+			'name' => (!empty($template['template_code']) ? (string) $template['template_code'] : 'template'),
+			'paper_size' => $paperSize,
+			'metric' => 'mm',
 			'nx' => max(1, (int) (!empty($hint['nx']) ? $hint['nx'] : 1)),
 			'ny' => max(1, (int) (!empty($hint['ny']) ? $hint['ny'] : 1)),
 			'width' => $width,
@@ -4719,6 +4757,66 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Build an EAN-13 variable-measure barcode with embedded weight.
+	 *
+	 * @param string $productCode Product reference or barcode
+	 * @param string $weightValue Weight value
+	 * @param string $weightUnit  Weight unit
+	 * @param string $prefix      Variable-measure prefix
+	 * @return string
+	 */
+	private static function buildWeightEmbeddedEan13($productCode, $weightValue, $weightUnit, $prefix = '27')
+	{
+		$prefixDigits = preg_replace('/\D+/', '', (string) $prefix);
+		$prefixDigits = substr(str_pad((string) $prefixDigits, 2, '0', STR_PAD_LEFT), 0, 2);
+		if ($prefixDigits === '') {
+			$prefixDigits = '27';
+		}
+
+		$productDigits = preg_replace('/\D+/', '', (string) $productCode);
+		if ($productDigits === '') {
+			$productDigits = '0';
+		}
+		$productDigits = substr(str_pad((string) $productDigits, 5, '0', STR_PAD_LEFT), -5);
+
+		$weight = self::sanitizeTemplateNumericValue($weightValue);
+		$weightKg = ($weight !== '' ? (float) $weight : 0.0);
+		$unit = strtolower(trim((string) $weightUnit));
+		if ($unit === 'g') {
+			$weightKg /= 1000;
+		} elseif ($unit === 'mg') {
+			$weightKg /= 1000000;
+		} elseif ($unit === 'oz' || $unit === 'onça' || $unit === 'onca') {
+			$weightKg *= 0.028349523125;
+		}
+
+		$weightGrams = (int) round(max(0, $weightKg) * 1000);
+		$weightGrams = min(99999, $weightGrams);
+		$body = $prefixDigits . $productDigits . str_pad((string) $weightGrams, 5, '0', STR_PAD_LEFT);
+
+		return $body . self::calculateEan13CheckDigit($body);
+	}
+
+	/**
+	 * Calculate EAN-13 check digit for the first 12 digits.
+	 *
+	 * @param string $body Twelve-digit EAN body
+	 * @return string
+	 */
+	private static function calculateEan13CheckDigit($body)
+	{
+		$digits = preg_replace('/\D+/', '', (string) $body);
+		$digits = substr(str_pad((string) $digits, 12, '0', STR_PAD_LEFT), 0, 12);
+		$sum = 0;
+		for ($i = 0; $i < 12; $i++) {
+			$digit = (int) $digits[$i];
+			$sum += (($i % 2) === 0 ? $digit : $digit * 3);
+		}
+
+		return (string) ((10 - ($sum % 10)) % 10);
+	}
+
+	/**
 	 * Normalize ingredients text for labels.
 	 *
 	 * @param string $value Ingredients text
@@ -4809,6 +4907,53 @@ class KreaProductsLabelService
 			}
 
 			$operation = strtolower(trim((string) (!empty($rule['operation']) ? $rule['operation'] : '')));
+			if ($operation === 'weight_ean13') {
+				$targetSource = self::sanitizeTemplateSource(!empty($rule['target_source']) ? $rule['target_source'] : '');
+				if ($targetSource === '') {
+					continue;
+				}
+				$weightSource = self::sanitizeTemplateSource(!empty($rule['weight_source']) ? $rule['weight_source'] : 'label.weight_value');
+				$unitSource = self::sanitizeTemplateSource(!empty($rule['unit_source']) ? $rule['unit_source'] : 'label.weight_unit');
+				$productCodeSource = self::sanitizeTemplateSource(!empty($rule['product_code_source']) ? $rule['product_code_source'] : 'product.ref');
+				$productCodeValue = (!empty($context[$productCodeSource]) ? (string) $context[$productCodeSource] : '');
+				if (preg_replace('/\D+/', '', $productCodeValue) === '' && !empty($rule['product_code_fallback_sources']) && is_array($rule['product_code_fallback_sources'])) {
+					foreach ($rule['product_code_fallback_sources'] as $fallbackSource) {
+						$fallbackSource = self::sanitizeTemplateSource($fallbackSource);
+						if ($fallbackSource === '' || empty($context[$fallbackSource])) {
+							continue;
+						}
+						$fallbackValue = (string) $context[$fallbackSource];
+						if (preg_replace('/\D+/', '', $fallbackValue) !== '') {
+							$productCodeValue = $fallbackValue;
+							break;
+						}
+					}
+				}
+				$prefix = (!empty($rule['prefix']) ? (string) $rule['prefix'] : '27');
+				$context[$targetSource] = self::buildWeightEmbeddedEan13(
+					$productCodeValue,
+					(!empty($context[$weightSource]) ? (string) $context[$weightSource] : ''),
+					(!empty($context[$unitSource]) ? (string) $context[$unitSource] : 'kg'),
+					$prefix
+				);
+				continue;
+			}
+			if ($operation === 'weight_line') {
+				$targetSource = self::sanitizeTemplateSource(!empty($rule['target_source']) ? $rule['target_source'] : 'label.weight_line');
+				if ($targetSource === '') {
+					continue;
+				}
+				$weightSource = self::sanitizeTemplateSource(!empty($rule['weight_source']) ? $rule['weight_source'] : 'label.weight_value');
+				$unitSource = self::sanitizeTemplateSource(!empty($rule['unit_source']) ? $rule['unit_source'] : 'label.weight_unit');
+				$weightValue = (!empty($context[$weightSource]) ? self::sanitizeTemplateNumericValue((string) $context[$weightSource]) : '');
+				$weight = ($weightValue !== '' ? (float) $weightValue : 0.0);
+				$unit = (!empty($context[$unitSource]) ? self::sanitizeTemplateTextValue((string) $context[$unitSource]) : 'kg');
+				if ($unit === '') {
+					$unit = 'kg';
+				}
+				$context[$targetSource] = 'Peso: ' . sprintf('%.3f', $weight) . ' ' . $unit;
+				continue;
+			}
 			if ($operation !== 'add_days') {
 				continue;
 			}

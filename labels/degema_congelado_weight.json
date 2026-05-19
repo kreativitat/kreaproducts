@@ -1,12 +1,11 @@
 {
   "schema_version": 1,
-  "template_code": "degema_congelado",
-  "label": "DeGema Etiqueta Congelado",
-  "description": "Etiqueta de produto frente e verso 75.6x49.9 mm otimizada para legibilidade. A frente destaca os principais dados do lote e o código interno. O verso apresenta ingredientes, alergénios, informação nutricional e símbolos obrigatórios da embalagem.",
+  "template_code": "degema_congelado_weight",
+  "label": "DeGema Etiqueta Congelado - Peso",
+  "description": "Etiqueta congelada de peso frente e verso 75.6x49.9 mm com peso a 3 casas decimais, unidade kg, codigo de barras com peso, dados da empresa e pagina de composicao.",
   "source": {
-    "type": "pdf_extract",
-    "file_name": "DeGema_Etiqueta_Congelado.pdf",
-    "mapped_on": "2026-03-06"
+    "type": "bundled",
+    "mapped_on": "2026-05-19"
   },
   "unit": "mm",
   "format_code": "CUSTOM_76X50",
@@ -62,6 +61,41 @@
       "editable": true,
       "output_format": "d/m/Y",
       "placeholder": "30/09/2024"
+    },
+    {
+      "source": "label.weight_value",
+      "label": "Peso",
+      "type": "number",
+      "editable": true,
+      "min": "0",
+      "step": "0.001",
+      "default_value": "1.000",
+      "placeholder": "1.000"
+    },
+    {
+      "source": "label.weight_unit",
+      "label": "Unidade do peso",
+      "type": "select",
+      "editable": true,
+      "default_value": "kg",
+      "options": [
+        {
+          "value": "kg",
+          "label": "kg"
+        },
+        {
+          "value": "g",
+          "label": "g"
+        },
+        {
+          "value": "mg",
+          "label": "mg"
+        },
+        {
+          "value": "onça",
+          "label": "onça"
+        }
+      ]
     },
     {
       "source": "batch.validity_days",
@@ -153,6 +187,23 @@
       ],
       "target_source": "batch.expiry_at",
       "output_format": "d/m/Y"
+    },
+    {
+      "operation": "weight_ean13",
+      "prefix": "27",
+      "product_code_source": "product.ref",
+      "weight_source": "label.weight_value",
+      "unit_source": "label.weight_unit",
+      "target_source": "label.weight_barcode",
+      "product_code_fallback_sources": [
+        "product.barcode"
+      ]
+    },
+    {
+      "operation": "weight_line",
+      "weight_source": "label.weight_value",
+      "unit_source": "label.weight_unit",
+      "target_source": "label.weight_line"
     }
   ],
   "pages": [
@@ -165,7 +216,7 @@
       },
       "blocks": [
         {
-          "id": "front_product_name",
+          "id": "product_name",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
@@ -185,7 +236,7 @@
           "placeholder": "Nome do produto"
         },
         {
-          "id": "front_internal_code_border",
+          "id": "product_ref_box",
           "type": "rect",
           "content_mode": "static",
           "x_mm": 58.0,
@@ -197,7 +248,7 @@
           }
         },
         {
-          "id": "front_internal_code",
+          "id": "product_ref",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 58.0,
@@ -216,7 +267,7 @@
           "placeholder": "0000"
         },
         {
-          "id": "front_company_identity",
+          "id": "company_identity",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
@@ -236,7 +287,7 @@
           "placeholder": "DeGema Distribuicao, Lda - NIPC 514337184"
         },
         {
-          "id": "front_company_address",
+          "id": "company_address",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
@@ -256,7 +307,7 @@
           "placeholder": "Pr. Conde Agrolongo 116 - 4700-312 Braga"
         },
         {
-          "id": "front_green_dot_symbol",
+          "id": "green_dot_symbol",
           "type": "image",
           "content_mode": "asset",
           "asset_key": "green_dot_symbol",
@@ -266,7 +317,7 @@
           "h_mm": 6.0
         },
         {
-          "id": "front_eu_food_contact_symbol",
+          "id": "eu_food_contact_symbol",
           "type": "image",
           "content_mode": "asset",
           "asset_key": "eu_food_contact_material_symbol",
@@ -276,7 +327,26 @@
           "h_mm": 6.0
         },
         {
-          "id": "front_date_label",
+          "id": "weight_line",
+          "type": "text",
+          "content_mode": "dynamic",
+          "source": "label.weight_line",
+          "placeholder": "Peso: 1.000 kg",
+          "x_mm": 2.0,
+          "y_mm": 12.2,
+          "w_mm": 52.0,
+          "h_mm": 7.0,
+          "style": {
+            "font_family": "Helvetica",
+            "font_size_pt": 18.0,
+            "font_weight": "bold",
+            "align": "left",
+            "auto_fit": true,
+            "min_font_size_pt": 12.0
+          }
+        },
+        {
+          "id": "date_label",
           "type": "text",
           "content_mode": "static",
           "x_mm": 2.0,
@@ -292,7 +362,7 @@
           "text": "Cong.:"
         },
         {
-          "id": "front_date_value",
+          "id": "date_value",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 13.0,
@@ -309,7 +379,7 @@
           "placeholder": "19/05/2026"
         },
         {
-          "id": "front_validity_label",
+          "id": "validity_label",
           "type": "text",
           "content_mode": "static",
           "x_mm": 31.0,
@@ -325,7 +395,7 @@
           "text": "Val.:"
         },
         {
-          "id": "front_validity_date",
+          "id": "validity_date",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 41.0,
@@ -342,7 +412,7 @@
           "placeholder": "15/11/2026"
         },
         {
-          "id": "front_lot_label",
+          "id": "lot_label",
           "type": "text",
           "content_mode": "static",
           "x_mm": 2.0,
@@ -358,7 +428,7 @@
           "text": "Lote:"
         },
         {
-          "id": "front_lot_value",
+          "id": "lot_value",
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 13.0,
@@ -376,7 +446,7 @@
           "placeholder": "LOT-0001"
         },
         {
-          "id": "front_mo_display",
+          "id": "mo_display",
           "type": "text",
           "content_mode": "dynamic",
           "source": "production.mo_display",
@@ -394,11 +464,11 @@
           }
         },
         {
-          "id": "front_internal_code_barcode",
+          "id": "weight_barcode",
           "type": "barcode",
           "content_mode": "dynamic",
-          "source": "product.barcode",
-          "placeholder": "5601234567890",
+          "source": "label.weight_barcode",
+          "placeholder": "2700010010008",
           "symbology": "EAN13",
           "show_human_readable": false,
           "x_mm": 4.0,
@@ -519,8 +589,8 @@
     }
   ],
   "notes": [
-    "Refatorado para melhorar a legibilidade e a consistência de espaçamento entre a pré-visualização e o PDF gerado.",
-    "Os símbolos obrigatórios Green Dot e de contacto alimentar da UE estão incorporados como recursos do modelo e renderizados na primeira página.",
-    "A segunda página é dedicada à legibilidade da informação do produto (ingredientes/alergénios/nutrição), sem linhas da entidade nem logótipo."
+    "Weight front page keeps the compact ref box and large Code128 barcode geometry requested for KreaProduction weighing flow.",
+    "Back page keeps the standard DeGema ingredients, allergens, and nutritional information layout.",
+    "Brand logo is intentionally omitted; company data, Green Dot, and food-contact material symbols remain on the front page."
   ]
 }

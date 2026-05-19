@@ -56,14 +56,6 @@
       "placeholder": "30/09/2024"
     },
     {
-      "source": "batch.frozen_at",
-      "label": "Congelado em",
-      "type": "date",
-      "editable": true,
-      "output_format": "d/m/Y",
-      "placeholder": "30/09/2024"
-    },
-    {
       "source": "batch.validity_days",
       "label": "Validade (dias)",
       "type": "number",
@@ -119,7 +111,7 @@
       "type": "textarea",
       "editable": true,
       "rows": 4,
-      "default_value": "No frigorífico conservar entre 0°C e 4°C."
+      "default_value": "CONSERVAÇÃO: 0°C a 4°C."
     },
     {
       "source": "asset.brand_badge",
@@ -147,8 +139,8 @@
     {
       "operation": "add_days",
       "days_source": "batch.validity_days",
-      "base_source": "batch.frozen_at",
-      "base_fallback_sources": ["batch.packaged_at"],
+      "base_source": "batch.packaged_at",
+      "base_fallback_sources": [],
       "target_source": "batch.expiry_at",
       "output_format": "d/m/Y"
     }
@@ -166,62 +158,92 @@
           "id": "front_product_name",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "product.label",
-          "placeholder": "Nome do produto",
-          "x_mm": 1.6,
-          "y_mm": 2.3,
-          "w_mm": 58.0,
-          "h_mm": 3.1,
+          "x_mm": 2.0,
+          "y_mm": 2.2,
+          "w_mm": 52.0,
+          "h_mm": 4.6,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 9.2,
+            "font_size_pt": 10.5,
             "font_weight": "bold",
-            "align": "left"
+            "align": "left",
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 8.0
+          },
+          "source": "product.label",
+          "placeholder": "Nome do produto"
+        },
+        {
+          "id": "front_internal_code_border",
+          "type": "rect",
+          "content_mode": "static",
+          "x_mm": 58.0,
+          "y_mm": 2.0,
+          "w_mm": 15.6,
+          "h_mm": 7.0,
+          "style": {
+            "stroke_width_mm": 0.3
           }
+        },
+        {
+          "id": "front_internal_code",
+          "type": "text",
+          "content_mode": "dynamic",
+          "x_mm": 58.0,
+          "y_mm": 3.2,
+          "w_mm": 15.6,
+          "h_mm": 4.5,
+          "style": {
+            "font_family": "Helvetica",
+            "font_size_pt": 11.0,
+            "font_weight": "bold",
+            "align": "center",
+            "auto_fit": true,
+            "min_font_size_pt": 7.0
+          },
+          "source": "product.ref",
+          "placeholder": "0000"
         },
         {
           "id": "front_company_identity",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "company.name_with_vat",
-          "placeholder": "DeGema Distribuicao, Lda - NIPC 514337184",
-          "x_mm": 1.6,
-          "y_mm": 6.1,
-          "w_mm": 58.0,
-          "h_mm": 2.8,
+          "x_mm": 2.0,
+          "y_mm": 7.2,
+          "w_mm": 55.0,
+          "h_mm": 2.7,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.7,
+            "font_size_pt": 6.5,
             "font_weight": "normal",
-            "align": "left"
-          }
+            "align": "left",
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 5.5
+          },
+          "source": "company.name_with_vat",
+          "placeholder": "DeGema Distribuicao, Lda - NIPC 514337184"
         },
         {
           "id": "front_company_address",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "company.address_singleline",
-          "placeholder": "Pr. Conde Agrolongo 116 - 4700-312 Braga",
-          "x_mm": 1.6,
-          "y_mm": 9.2,
-          "w_mm": 58.0,
-          "h_mm": 2.8,
+          "x_mm": 2.0,
+          "y_mm": 10.0,
+          "w_mm": 55.0,
+          "h_mm": 2.7,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.7,
+            "font_size_pt": 6.5,
             "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "front_brand_badge",
-          "type": "image",
-          "content_mode": "asset",
-          "asset_key": "brand_badge",
-          "x_mm": 63.4,
-          "y_mm": 1.4,
-          "w_mm": 10.5,
-          "h_mm": 10.5
+            "align": "left",
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 5.5
+          },
+          "source": "company.address_singleline",
+          "placeholder": "Pr. Conde Agrolongo 116 - 4700-312 Braga"
         },
         {
           "id": "front_green_dot_symbol",
@@ -229,7 +251,7 @@
           "content_mode": "asset",
           "asset_key": "green_dot_symbol",
           "x_mm": 66.8,
-          "y_mm": 12.7,
+          "y_mm": 10.4,
           "w_mm": 6.0,
           "h_mm": 6.0
         },
@@ -239,204 +261,140 @@
           "content_mode": "asset",
           "asset_key": "eu_food_contact_material_symbol",
           "x_mm": 66.8,
-          "y_mm": 19.5,
+          "y_mm": 17.2,
           "w_mm": 6.0,
           "h_mm": 6.0
         },
         {
-          "id": "front_packed_label",
+          "id": "front_date_label",
           "type": "text",
           "content_mode": "static",
-          "text": "Emb.:",
-          "x_mm": 1.6,
-          "y_mm": 12.4,
-          "w_mm": 12.8,
-          "h_mm": 2.9,
+          "x_mm": 2.0,
+          "y_mm": 20.4,
+          "w_mm": 11.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.4,
+            "font_size_pt": 6.6,
             "font_weight": "normal",
             "align": "left"
-          }
+          },
+          "text": "Emb.:"
         },
         {
-          "id": "front_packed_date",
+          "id": "front_date_value",
           "type": "text",
           "content_mode": "dynamic",
+          "x_mm": 13.0,
+          "y_mm": 20.4,
+          "w_mm": 16.0,
+          "h_mm": 3.0,
+          "style": {
+            "font_family": "Helvetica",
+            "font_size_pt": 6.6,
+            "font_weight": "normal",
+            "align": "left"
+          },
           "source": "batch.packaged_at",
-          "placeholder": "30/09/2024",
-          "x_mm": 14.8,
-          "y_mm": 12.4,
-          "w_mm": 15.2,
-          "h_mm": 2.9,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.4,
-            "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "front_frozen_label",
-          "type": "text",
-          "content_mode": "static",
-          "text": "Cong.:",
-          "x_mm": 31.6,
-          "y_mm": 12.4,
-          "w_mm": 14.8,
-          "h_mm": 2.9,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.4,
-            "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "front_frozen_date",
-          "type": "text",
-          "content_mode": "dynamic",
-          "source": "batch.frozen_at",
-          "placeholder": "30/09/2024",
-          "x_mm": 46.8,
-          "y_mm": 12.4,
-          "w_mm": 14.8,
-          "h_mm": 2.9,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.4,
-            "font_weight": "normal",
-            "align": "left"
-          }
+          "placeholder": "19/05/2026"
         },
         {
           "id": "front_validity_label",
           "type": "text",
           "content_mode": "static",
-          "text": "Validade:",
-          "x_mm": 1.6,
-          "y_mm": 15.8,
-          "w_mm": 10.8,
-          "h_mm": 2.9,
+          "x_mm": 31.0,
+          "y_mm": 20.4,
+          "w_mm": 10.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.4,
+            "font_size_pt": 6.6,
             "font_weight": "normal",
             "align": "left"
-          }
+          },
+          "text": "Val.:"
         },
         {
           "id": "front_validity_date",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "batch.expiry_at",
-          "placeholder": "29/03/2025",
-          "x_mm": 12.8,
-          "y_mm": 15.8,
-          "w_mm": 14.8,
-          "h_mm": 2.9,
+          "x_mm": 41.0,
+          "y_mm": 20.4,
+          "w_mm": 16.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.4,
+            "font_size_pt": 6.6,
             "font_weight": "normal",
             "align": "left"
-          }
+          },
+          "source": "batch.expiry_at",
+          "placeholder": "24/05/2026"
         },
         {
           "id": "front_lot_label",
           "type": "text",
           "content_mode": "static",
-          "text": "Lote:",
-          "x_mm": 31.6,
-          "y_mm": 15.8,
-          "w_mm": 10.0,
-          "h_mm": 2.9,
+          "x_mm": 2.0,
+          "y_mm": 23.8,
+          "w_mm": 11.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.4,
+            "font_size_pt": 6.6,
             "font_weight": "normal",
             "align": "left"
-          }
+          },
+          "text": "Lote:"
         },
         {
           "id": "front_lot_value",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "batch.lot_number",
-          "placeholder": "20240930",
-          "x_mm": 41.6,
-          "y_mm": 15.8,
-          "w_mm": 14.0,
-          "h_mm": 2.9,
+          "x_mm": 13.0,
+          "y_mm": 23.8,
+          "w_mm": 44.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 6.4,
-            "font_weight": "normal",
-            "align": "left"
-          }
-        },
-        {
-          "id": "front_storage_text",
-          "type": "text",
-          "content_mode": "dynamic",
-          "source": "label.storage_text",
-          "placeholder": "No congelador: conservar a -18°C até à data de durabilidade mínima.\nDescongelar 1 dia no frigorífico (0°C a 4°C).\nApós descongelação, conservar entre 0°C e 4°C e consumir em até 3 dias.\nNão voltar a congelar após descongelação.",
-          "x_mm": 1.6,
-          "y_mm": 19.0,
-          "w_mm": 62.5,
-          "h_mm": 11.1,
-          "style": {
-            "font_family": "Helvetica",
-            "font_size_pt": 6.4,
+            "font_size_pt": 6.6,
             "font_weight": "normal",
             "align": "left",
-            "multiline": true,
-            "truncate": true,
-            "auto_fit": true,
-            "min_font_size_pt": 6.2
-          }
+            "truncate": true
+          },
+          "source": "batch.lot_number",
+          "placeholder": "LOT-0001"
         },
         {
-          "id": "front_internal_code_border",
-          "type": "rect",
-          "content_mode": "static",
-          "x_mm": 1.6,
-          "y_mm": 31.8,
-          "w_mm": 16.0,
-          "h_mm": 6.2,
-          "style": {
-            "stroke_width_mm": 0.35
-          }
-        },
-        {
-          "id": "front_internal_code",
+          "id": "front_mo_display",
           "type": "text",
           "content_mode": "dynamic",
-          "source": "product.ref",
-          "placeholder": "2085",
-          "x_mm": 1.6,
-          "y_mm": 32.4,
-          "w_mm": 16.0,
-          "h_mm": 5.0,
+          "source": "production.mo_display",
+          "placeholder": "MO: 12345",
+          "x_mm": 2.0,
+          "y_mm": 27.0,
+          "w_mm": 55.0,
+          "h_mm": 3.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 12.5,
-            "font_weight": "bold",
-            "align": "center"
+            "font_size_pt": 6.6,
+            "font_weight": "normal",
+            "align": "left",
+            "truncate": true
           }
         },
         {
           "id": "front_internal_code_barcode",
           "type": "barcode",
           "content_mode": "dynamic",
-          "source": "product.ref",
-          "placeholder": "02085",
-          "symbology": "C128",
+          "source": "product.barcode",
+          "placeholder": "5601234567890",
+          "symbology": "EAN13",
           "show_human_readable": false,
-          "x_mm": 20.0,
-          "y_mm": 31.8,
-          "w_mm": 42.5,
-          "h_mm": 14.2
+          "x_mm": 4.0,
+          "y_mm": 31.2,
+          "w_mm": 67.5,
+          "h_mm": 14.5
         }
       ]
     },
@@ -464,6 +422,16 @@
             "font_weight": "bold",
             "align": "left"
           }
+        },
+        {
+          "id": "back_brand_badge",
+          "type": "image",
+          "content_mode": "asset",
+          "asset_key": "brand_badge",
+          "x_mm": 63.4,
+          "y_mm": 1.4,
+          "w_mm": 10.5,
+          "h_mm": 10.5
         },
         {
           "id": "back_ingredients_section",
@@ -510,7 +478,7 @@
           "x_mm": 2.2,
           "y_mm": 34.5,
           "w_mm": 60,
-          "h_mm": 9.8,
+          "h_mm": 8.7,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -518,6 +486,24 @@
             "align": "left",
             "multiline": true
           }
+        },
+        {
+          "id": "back_storage_text",
+          "type": "text",
+          "content_mode": "dynamic",
+          "x_mm": 2.2,
+          "y_mm": 45.1,
+          "w_mm": 70.0,
+          "h_mm": 4.7,
+          "style": {
+            "font_family": "Helvetica",
+            "font_size_pt": 6.4,
+            "font_weight": "normal",
+            "align": "left",
+            "multiline": true
+          },
+          "source": "label.storage_text",
+          "placeholder": "CONSERVAÇÃO: 0°C a 4°C."
         }
       ]
     }

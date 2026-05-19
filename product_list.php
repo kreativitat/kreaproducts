@@ -177,13 +177,38 @@ if ($show_hidden) {
 	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 11);
 }
 
+$allowedSortFields = array(
+	'p.ref' => 'p.ref',
+	'p.label' => 'p.label',
+	'cost_price' => 'cost_price',
+	'sell_price' => 'sell_price',
+	'sell_price_ttc' => 'sell_price_ttc',
+	'vat_rate' => 'vat_rate',
+	'p.entity' => 'p.entity',
+	'p.tobuy' => 'p.tobuy',
+	'p.tosell' => 'p.tosell',
+	'kreap_hideproduct' => 'kreap_hideproduct',
+);
+if (empty($allowedSortFields[$sortfield])) {
+	$sortfield = 'p.ref';
+}
+
 // SQL build
 $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_product_type, "
 	. "COALESCE(p.cost_price, p.pmp, 0) as cost_price, "
+	. "COALESCE(pp.price, p.price, 0) as sell_price, "
+	. "COALESCE(pp.price_ttc, p.price_ttc, 0) as sell_price_ttc, "
 	. "COALESCE(p.tva_tx, 0) as vat_rate, "
 	. "COALESCE(pe.kreap_hideproduct, 0) as kreap_hideproduct";
 $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
 $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields as pe ON p.rowid = pe.fk_object";
+$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_price as pp ON pp.rowid = (";
+$sql .= "SELECT pp2.rowid FROM " . MAIN_DB_PREFIX . "product_price as pp2";
+$sql .= " WHERE pp2.fk_product = p.rowid";
+$sql .= " AND pp2.entity IN (" . getEntity('productprice') . ")";
+$sql .= " AND pp2.price_level = " . ((int) $priceLevel);
+$sql .= " ORDER BY pp2.date_price DESC, pp2.rowid DESC";
+$sql .= " LIMIT 1)";
 $sql .= " WHERE p.entity IN (" . getEntity('product') . ")";
 
 if (!$show_hidden) {
@@ -253,7 +278,7 @@ if ($sortfield === 'p.ref') {
 		$sql .= ", p.ref " . $sortorder;
 	}
 } else {
-	$sql .= $db->order($sortfield, $sortorder);
+	$sql .= $db->order($allowedSortFields[$sortfield], $sortorder);
 }
 $sql .= $db->plimit($limit + 1, $offset);
 
@@ -265,7 +290,7 @@ if (!$resql) {
 
 $num = $db->num_rows($resql);
 $entityLabels = array();
-$resEntity = $db->query("SELECT rowid, label FROM " . MAIN_DB_PREFIX . "entity");
+$resEntity = $db->query("SELECT rowid, label FROM " . MAIN_DB_PREFIX . "entity WHERE rowid IN (" . getEntity('product') . ")");
 if ($resEntity) {
 	while ($o = $db->fetch_object($resEntity)) {
 		$entityLabels[$o->rowid] = $o->label;

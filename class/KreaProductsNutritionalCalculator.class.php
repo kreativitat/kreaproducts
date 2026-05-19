@@ -204,7 +204,9 @@ class KreaProductsNutritionalCalculator
             'root_product' => $productId,
             'database_operations' => 0,
             'cache_hits' => 0,
-            'products_processed' => 0
+            'products_processed' => 0,
+            'records_inserted' => 0,
+            'records_updated' => 0
         );
 
         self::logDebug(__METHOD__ . " Starting nutritional calculation for product: $productId");
@@ -283,9 +285,11 @@ class KreaProductsNutritionalCalculator
                                       pf.label as fatherLabel,
                                       pf.weight as fatherWeight,
                                       pf.weight_units as fatherWeightUnits,
+                                      pf.fk_product_type as fatherType,
                                       pc.label as childLabel,
                                       pc.weight as childWeight,
                                       pc.weight_units as childWeightUnits,
+                                      pc.fk_product_type as childType,
                                       'association' as source
                                FROM " . MAIN_DB_PREFIX . "product_association pa
                                JOIN " . MAIN_DB_PREFIX . "product pf ON (pf.rowid = pa.fk_product_pere)
@@ -300,9 +304,11 @@ class KreaProductsNutritionalCalculator
                               pf.label as fatherLabel,
                               pf.weight as fatherWeight,
                               pf.weight_units as fatherWeightUnits,
+                              pf.fk_product_type as fatherType,
                               COALESCE(pc.label, cprod.label) as childLabel,
                               COALESCE(pc.weight, cprod.weight) as childWeight,
                               COALESCE(pc.weight_units, cprod.weight_units) as childWeightUnits,
+                              COALESCE(pc.fk_product_type, cprod.fk_product_type) as childType,
                               'bom' as source
                        FROM " . MAIN_DB_PREFIX . "bom_bom b
                        JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON b.rowid = bl.fk_bom
@@ -352,7 +358,8 @@ class KreaProductsNutritionalCalculator
                                     $obj->father,
                                     $obj->fatherLabel,
                                     $obj->fatherWeight,
-                                    $obj->fatherWeightUnits
+                                    $obj->fatherWeightUnits,
+                                    $obj->fatherType
                                 );
                             }
                             
@@ -362,7 +369,8 @@ class KreaProductsNutritionalCalculator
                                     $obj->child,
                                     $obj->childLabel,
                                     $obj->childWeight,
-                                    $obj->childWeightUnits
+                                    $obj->childWeightUnits,
+                                    $obj->childType
                                 );
                             }
                             
@@ -410,7 +418,8 @@ class KreaProductsNutritionalCalculator
                         $startId,
                         $prod->label,
                         $prod->weight,
-                        $prod->weight_units
+                        $prod->weight_units,
+                        $prod->type
                     );
                 }
             }
@@ -1041,7 +1050,8 @@ class KreaProductsNutritionalCalculator
                 ENT_QUOTES
             );
             $weightCell = $displayWeight;
-            if ($canEditWeight && $childLp->type != Product::TYPE_SERVICE) {
+            $childType = ($res > 0 && isset($subProdObj->type)) ? $subProdObj->type : (isset($childLp->type) ? $childLp->type : Product::TYPE_PRODUCT);
+            if ($canEditWeight && $childType != Product::TYPE_SERVICE) {
                 $fieldName = 'weight_' . $childId;
                 $formObject = new stdClass();
                 $formObject->id = $childId;
@@ -1637,18 +1647,20 @@ class EnhancedLocalProduct
     public $label;
     public $weight;
     public $weight_units;
+    public $type;
     public $children = array();
     private $totalQuantity = 0.0;
 
     /**
      * Constructor with validation
      */
-    public function __construct($id, $label, $weight = 0, $weight_units = 'g')
+    public function __construct($id, $label, $weight = 0, $weight_units = 'g', $type = 0)
     {
         $this->id = (int)$id;
         $this->label = $label ? $label : '';
         $this->weight = $weight ? (float)$weight : 0;
         $this->weight_units = ($weight_units === null || $weight_units === '') ? 0 : $weight_units;
+        $this->type = (int)$type;
     }
 
     /**
@@ -1703,8 +1715,8 @@ class EnhancedLocalProduct
 // Backward compatibility
 class LocalProduct extends EnhancedLocalProduct
 {
-    public function __construct($id, $label, $weight = 0, $weight_units = 'g')
+    public function __construct($id, $label, $weight = 0, $weight_units = 'g', $type = 0)
     {
-        parent::__construct($id, $label, $weight, $weight_units);
+        parent::__construct($id, $label, $weight, $weight_units, $type);
     }
 }

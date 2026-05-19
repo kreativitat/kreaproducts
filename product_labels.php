@@ -1,13 +1,10 @@
 <?php
-/* Copyright (C) 2026       Kreativität Works       <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,11 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 // Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
@@ -239,6 +233,23 @@ function kreaProductsRenderTemplateEditableFields($editableFields, $availableTem
 			$html .= '<img id="' . dol_escape_htmltag($previewId) . '" class="kreaTemplateImagePreview"' . ($assetPreviewUrl !== '' ? '' : ' style="display:none;"');
 			$html .= ' src="' . dol_escape_htmltag($assetPreviewUrl) . '" alt="' . dol_escape_htmltag($label) . '">';
 			$html .= '</div>';
+		} elseif ($type === 'select') {
+			$options = (!empty($field['options']) && is_array($field['options']) ? $field['options'] : array());
+			$html .= '<select id="' . dol_escape_htmltag($inputId) . '" class="flat minwidth75 maxwidth125"';
+			$html .= ' name="' . dol_escape_htmltag($inputName) . '">';
+			foreach ($options as $option) {
+				if (!is_array($option)) {
+					continue;
+				}
+				$optionValue = (isset($option['value']) ? (string) $option['value'] : '');
+				$optionLabel = (isset($option['label']) ? (string) $option['label'] : $optionValue);
+				$html .= '<option value="' . dol_escape_htmltag($optionValue) . '"';
+				if ($optionValue === $value) {
+					$html .= ' selected';
+				}
+				$html .= '>' . dol_escape_htmltag($optionLabel) . '</option>';
+			}
+			$html .= '</select>';
 		} elseif ($type === 'textarea') {
 			$html .= '<textarea id="' . dol_escape_htmltag($inputId) . '" class="minwidth300"';
 			$html .= ' name="' . dol_escape_htmltag($inputName) . '"';
@@ -817,6 +828,7 @@ $formfile = new FormFile($db);
 $currentEntityId = (int) $conf->entity;
 $templateAssetOptions = KreaProductsLabelService::listTemplateAssetReferences($currentEntityId);
 $object->fetch_optionals();
+$productCardLabel = (string) $object->label;
 $productAlias = trim((string) (!empty($object->array_options['options_kreap_alias']) ? $object->array_options['options_kreap_alias'] : ''));
 if ($productAlias !== '') {
 	$object->label = $productAlias;
@@ -1239,7 +1251,7 @@ if ($action === 'save_default_label_layout') {
 }
 
 $objectTypeLabel = ($object->type == Product::TYPE_SERVICE ? $langs->trans('Service') : $langs->trans('Product'));
-$title = $objectTypeLabel . ' ' . dol_trunc($object->label, 16) . ' - ' . $langs->trans('KREAPRODUCTS_LABELS_TAB');
+$title = $objectTypeLabel . ' ' . dol_trunc($productCardLabel, 16) . ' - ' . $langs->trans('KREAPRODUCTS_LABELS_TAB');
 $helpurl = 'EN:Module_Products|FR:Module_Produits|ES:Módulo_Productos';
 $previewHasContent = (!$isStandardMode ? !empty($selectedTemplateViewer) : !empty($formatDetails[$selectedFormat]));
 $previewName = (!$isStandardMode ? (!empty($selectedTemplateViewer['label']) ? $selectedTemplateViewer['label'] : '') : $langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_STANDARD'));
@@ -1296,7 +1308,10 @@ if ($user->socid && !in_array('product', explode(',', getDolGlobalString('MAIN_M
 	$shownav = 0;
 }
 
+$labelGenerationLabel = (string) $object->label;
+$object->label = $productCardLabel;
 dol_banner_tab($object, 'ref', $linkback, $shownav, 'ref');
+$object->label = $labelGenerationLabel;
 
 print '<div class="fichecenter"><div class="fichehalfleft">';
 print '<form method="POST" enctype="multipart/form-data" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . $object->id . '">';
