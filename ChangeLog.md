@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.34.16] - 2026-05-19
+
+### Added
+- Added the food product checkbox to the native product card KreaProducts section.
+
 ## [2.34.15] - 2026-05-19
 
 ### Changed

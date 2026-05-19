@@ -389,6 +389,25 @@ class ActionsKreaProducts extends CommonHookActions
 			}
 		}
 
+		if (
+			($action === 'create' || $action === 'update')
+			&& is_object($object)
+			&& $object->element === 'product'
+			&& !empty($object->id)
+			&& GETPOSTISSET('kreaproducts_is_food_present')
+		) {
+			if (!$this->canEditProductCard($object, $user)) {
+				$langs->load('errors');
+				setEventMessages($langs->trans('ErrorForbidden'), null, 'errors');
+				$error++;
+			} else {
+				$foodResult = $this->saveProductFoodFlag((int) $object->id, GETPOSTINT('kreaproducts_is_food'), $user);
+				if ($foodResult < 0) {
+					$error++;
+				}
+			}
+		}
+
 		return $error ? -1 : 0;
 	}
 
@@ -403,12 +422,22 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	public function formObjectOptions($parameters, &$object, &$action, $hookmanager)
 	{
-		global $conf, $langs, $form, $mc;
+		global $conf, $langs, $form, $mc, $user;
 
 		static $sharedEntitySelectorPrinted = false;
 
 		if ($this->isNativeProductCardContext($parameters, $object)) {
-			$this->resprints = $this->buildProductCardSeparatorScriptRow('KreaProducts', array('kreap_'), 2, 'kreaproducts');
+			$langs->load('kreaproducts@kreaproducts');
+			$canEditFoodFlag = in_array($action, array('create', 'edit'), true) && $this->canEditProductCard($object, $user);
+			$this->resprints = $this->buildProductCardKreaProductsSectionScriptRow(
+				'KreaProducts',
+				array('kreap_'),
+				2,
+				'kreaproducts',
+				$langs->transnoentitiesnoconv('KreaFoodProduct'),
+				$this->fetchProductFoodFlag((int) $object->id),
+				$canEditFoodFlag
+			);
 			$this->resprints .= $this->buildProductCardDecimalStepperScriptRow('kreap_updatesellpricepct', '0.01', 2, '-99.99');
 			return 0;
 		}
@@ -613,41 +642,54 @@ class ActionsKreaProducts extends CommonHookActions
 	}
 
 	/**
-	 * Build a hidden hook row that injects a non-gray section separator on product card.
+	 * Build the native product-card KreaProducts separator and food flag row.
 	 *
 	 * @param string $title Section title
-	 * @param array<int,string> $prefixes Exrafield key prefixes
+	 * @param array<int,string> $prefixes Extrafield key prefixes
 	 * @param int $colspan Table colspan
 	 * @param string $marker Marker key
+	 * @param string $foodLabel Food flag label
+	 * @param int $isFood Current food flag value
+	 * @param bool $canEdit Whether the checkbox can be submitted
 	 * @return string
 	 */
-	private function buildProductCardSeparatorScriptRow($title, $prefixes, $colspan, $marker)
+	private function buildProductCardKreaProductsSectionScriptRow($title, $prefixes, $colspan, $marker, $foodLabel, $isFood, $canEdit)
 	{
 		$nonce = function_exists('getNonce') ? getNonce() : '';
 		$nonceAttr = $nonce !== '' ? ' nonce="' . dol_escape_htmltag($nonce) . '"' : '';
 		$titleJson = json_encode((string) $title);
 		$prefixesJson = json_encode(array_values($prefixes));
 		$markerJson = json_encode((string) $marker);
+		$foodLabelJson = json_encode((string) $foodLabel);
 		$colspanInt = (int) $colspan;
+		$isFoodInt = ((int) $isFood) ? 1 : 0;
+		$canEditInt = $canEdit ? 1 : 0;
 
 		$script = '(function(){'
 			. 'var title=' . $titleJson . ';'
 			. 'var prefixes=' . $prefixesJson . ';'
 			. 'var marker=' . $markerJson . ';'
 			. 'var colspan=' . $colspanInt . ';'
-			. 'function insertSeparator(){'
-			. 'if(!Array.isArray(prefixes)||!prefixes.length){return;}'
-			. 'var firstRow=null;'
-			. 'for(var i=0;i<prefixes.length&&!firstRow;i++){'
+			. 'var foodLabel=' . $foodLabelJson . ';'
+			. 'var isFood=' . $isFoodInt . ';'
+			. 'var canEdit=' . $canEditInt . ';'
+			. 'function findFirstKreaRow(){'
+			. 'if(!Array.isArray(prefixes)||!prefixes.length){return null;}'
+			. 'for(var i=0;i<prefixes.length;i++){'
 			. 'var selector=\'[name^="options_\'+prefixes[i]+\'"],[id^="options_\'+prefixes[i]+\'"]\';'
 			. 'var nodes=document.querySelectorAll(selector);'
 			. 'for(var n=0;n<nodes.length;n++){'
 			. 'var row=nodes[n].closest?nodes[n].closest("tr"):null;'
-			. 'if(row){firstRow=row;break;}'
+			. 'if(row){return row;}'
 			. '}'
 			. '}'
+			. 'return null;'
+			. '}'
+			. 'function insertSection(){'
+			. 'var firstRow=findFirstKreaRow();'
 			. 'if(!firstRow||!firstRow.parentNode){return;}'
-			. 'if(firstRow.parentNode.querySelector(\'tr.krea-module-separator-\'+marker)){return;}'
+			. 'var tbody=firstRow.parentNode;'
+			. 'if(!tbody.querySelector(\'tr.krea-module-separator-\'+marker)){'
 			. 'var tr=document.createElement("tr");'
 			. 'tr.className=\'liste_titre krea-module-separator-\'+marker;'
 			. 'tr.style.setProperty("background","transparent","important");'
@@ -656,13 +698,180 @@ class ActionsKreaProducts extends CommonHookActions
 			. 'td.textContent=title;'
 			. 'td.style.setProperty("background","transparent","important");'
 			. 'tr.appendChild(td);'
-			. 'firstRow.parentNode.insertBefore(tr,firstRow);'
+			. 'tbody.insertBefore(tr,firstRow);'
 			. '}'
-			. 'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",insertSeparator);}else{insertSeparator();}'
-			. 'setTimeout(insertSeparator,250);'
+			. 'if(!tbody.querySelector("tr.kreaproducts-is-food-row")){'
+			. 'var foodRow=document.createElement("tr");'
+			. 'foodRow.className="kreaproducts-is-food-row";'
+			. 'var keyCell=document.createElement("td");'
+			. 'keyCell.className="titlefield";'
+			. 'keyCell.textContent=foodLabel;'
+			. 'var valueCell=document.createElement("td");'
+			. 'var present=document.createElement("input");'
+			. 'present.type="hidden";'
+			. 'present.name="kreaproducts_is_food_present";'
+			. 'present.value="1";'
+			. 'var hidden=document.createElement("input");'
+			. 'hidden.type="hidden";'
+			. 'hidden.name="kreaproducts_is_food";'
+			. 'hidden.value="0";'
+			. 'var checkbox=document.createElement("input");'
+			. 'checkbox.type="checkbox";'
+			. 'checkbox.name="kreaproducts_is_food";'
+			. 'checkbox.value="1";'
+			. 'checkbox.className="flat";'
+			. 'checkbox.checked=(isFood===1);'
+			. 'if(!canEdit){checkbox.disabled=true;checkbox.removeAttribute("name");}'
+			. 'if(canEdit){valueCell.appendChild(present);valueCell.appendChild(hidden);}'
+			. 'valueCell.appendChild(checkbox);'
+			. 'foodRow.appendChild(keyCell);'
+			. 'foodRow.appendChild(valueCell);'
+			. 'tbody.insertBefore(foodRow,firstRow);'
+			. '}'
+			. '}'
+			. 'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",insertSection);}else{insertSection();}'
+			. 'setTimeout(insertSection,250);'
 			. '})();';
 
-		return '<tr class="krea-module-separator-hook-' . dol_escape_htmltag((string) $marker) . '" style="display:none;"><td colspan="' . $colspanInt . '"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
+		return '<tr class="krea-module-section-hook-' . dol_escape_htmltag((string) $marker) . '" style="display:none;"><td colspan="' . $colspanInt . '"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
+	}
+
+	/**
+	 * Fetch food flag for a product.
+	 *
+	 * @param int $productId Product id
+	 * @return int
+	 */
+	private function fetchProductFoodFlag($productId)
+	{
+		if ($productId <= 0) {
+			return 1;
+		}
+
+		$sql = "SELECT n.is_food";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
+		$sql .= " WHERE n.fk_product = " . (int) $productId;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+		$sql .= " ORDER BY n.rowid ASC";
+		$sql .= " LIMIT 1";
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' SQL error: ' . $this->db->lasterror(), LOG_WARNING);
+			return 1;
+		}
+
+		$isFood = 1;
+		$obj = $this->db->fetch_object($resql);
+		if ($obj && $obj->is_food !== null) {
+			$isFood = (int) $obj->is_food ? 1 : 0;
+		}
+		$this->db->free($resql);
+
+		return $isFood;
+	}
+
+	/**
+	 * Save food flag for a product nutritional record.
+	 *
+	 * @param int $productId Product id
+	 * @param int $isFood Food flag
+	 * @param User $user Current user
+	 * @return int
+	 */
+	private function saveProductFoodFlag($productId, $isFood, $user)
+	{
+		global $langs;
+
+		if ($productId <= 0) {
+			return 0;
+		}
+
+		$isFood = ((int) $isFood) ? 1 : 0;
+		$error = 0;
+		$this->db->begin();
+
+		$sql = "SELECT n.rowid";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
+		$sql .= " WHERE n.fk_product = " . (int) $productId;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+		$sql .= " ORDER BY n.rowid ASC";
+		$sql .= " LIMIT 1";
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->errors[] = $this->db->lasterror();
+			$error++;
+		}
+
+		$rowId = 0;
+		if (!$error) {
+			$obj = $this->db->fetch_object($resql);
+			if ($obj) {
+				$rowId = (int) $obj->rowid;
+			}
+			$this->db->free($resql);
+		}
+
+		if (!$error && $rowId > 0) {
+			$setParts = array(
+				"is_food = " . (int) $isFood,
+				"fk_user_modif = " . (int) $user->id,
+			);
+			if ($isFood === 0) {
+				foreach (array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber') as $field) {
+					$setParts[] = $field . " = 0";
+				}
+			}
+
+			$sql = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+			$sql .= " SET " . implode(', ', $setParts);
+			$sql .= " WHERE rowid = " . (int) $rowId;
+			if (!$this->db->query($sql)) {
+				$this->errors[] = $this->db->lasterror();
+				$error++;
+			}
+		}
+
+		if (!$error && $rowId <= 0) {
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+			$sql .= " (fk_product, date_creation, fk_user_creat, is_food)";
+			$sql .= " VALUES (" . (int) $productId . ", '" . $this->db->idate(dol_now()) . "', " . (int) $user->id . ", " . (int) $isFood . ")";
+			if (!$this->db->query($sql)) {
+				$this->errors[] = $this->db->lasterror();
+				$error++;
+			}
+		}
+
+		if ($error) {
+			$this->db->rollback();
+			dol_syslog(__METHOD__ . ' failed for product #' . (int) $productId . ': ' . implode('; ', $this->errors), LOG_ERR);
+			setEventMessages($langs->trans('Error'), $this->errors, 'errors');
+			return -1;
+		}
+
+		$this->db->commit();
+		return 1;
+	}
+
+	/**
+	 * Check whether the current user can edit product fields on the native card.
+	 *
+	 * @param mixed $object Product object
+	 * @param User $user Current user
+	 * @return bool
+	 */
+	private function canEditProductCard($object, $user)
+	{
+		if (!is_object($object) || !is_object($user)) {
+			return false;
+		}
+
+		if (method_exists($object, 'isService') && $object->isService()) {
+			return $user->hasRight('service', 'creer');
+		}
+
+		return $user->hasRight('produit', 'creer');
 	}
 
 	/**
