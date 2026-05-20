@@ -698,6 +698,7 @@ function kreaProductsBuildTemplateSourceMetaMap($editableFields)
 			'max' => (isset($editableField['max']) ? (string) $editableField['max'] : ''),
 			'step' => (!empty($editableField['step']) ? (string) $editableField['step'] : ''),
 			'rows' => (!empty($editableField['rows']) ? (int) $editableField['rows'] : 3),
+			'options' => (!empty($editableField['options']) && is_array($editableField['options']) ? $editableField['options'] : array()),
 		);
 	}
 

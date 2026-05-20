@@ -1063,8 +1063,8 @@ class KreaProductsApi extends DolibarrApi
 	 *   "warehouse_id": 1, // optional when defaults are configured
 	 *   "bom_id": 0,
 	 *   "inventorylabel": "Touch production",
-	 *   "inventorycode": "202603071623",
-	 *   "produced_batch": "202603071623",
+	 *   "inventorycode": "2603123",
+	 *   "produced_batch": "2603123",
 	 *   "autoclose": 1,
 	 *   "units_per_label": 1,
 	 *   "labels_count": 120,
@@ -1503,7 +1503,7 @@ class KreaProductsApi extends DolibarrApi
 	 *
 	 * Preferred sources:
 	 * 1) produced_batch / produced_lot / batch
-	 * 2) inventorycode (normalized to AAAAMMDDHH + fk_mo policy when possible)
+	 * 2) inventorycode (normalized to YYMM + fk_mo policy when possible)
 	 *
 	 * @param array $requestData Request payload
 	 * @param int   $moId        Optional MO id for normalization
@@ -1540,7 +1540,7 @@ class KreaProductsApi extends DolibarrApi
 				if ($moId > 0) {
 					return substr($candidateHourCode . $moId, 0, 128);
 				}
-				// Keep explicit suffix only for numeric payloads already in AAAAMMDDHH + fk_mo format.
+				// Keep explicit suffix only for legacy numeric payloads already in YYYYMMDDHH + fk_mo format.
 				if (preg_match('/^[0-9]+$/', $rawInventoryCode) === 1) {
 					return substr($digits, 0, 128);
 				}
@@ -1573,7 +1573,11 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
-	 * Normalize inventory code to AAAAMMDDHH + fk_mo format.
+	 * Normalize inventory code to YYMM + fk_mo format.
+	 *
+	 * Production lot generation is intentionally based on the current accounting
+	 * month plus MO id so stock movements, trace rows, and labels share one
+	 * compact canonical lot value.
 	 *
 	 * @param string $rawCode
 	 * @param int    $moId
@@ -1581,32 +1585,49 @@ class KreaProductsApi extends DolibarrApi
 	 */
 	protected function normalizeInventoryCode($rawCode, $moId = 0)
 	{
-		$hourCode = '';
+		$monthCode = '';
 		$rawCode = trim((string) $rawCode);
 		if ($rawCode !== '') {
 			$digits = preg_replace('/[^0-9]/', '', $rawCode);
-			if (is_string($digits) && strlen($digits) >= 10) {
-				$candidate = substr($digits, 0, 10);
-				if ($this->isValidInventoryHourCode($candidate)) {
-					$hourCode = $candidate;
+			if (is_string($digits) && strlen($digits) >= 4) {
+				$candidate = substr($digits, 0, 4);
+				if ($this->isValidInventoryMonthCode($candidate)) {
+					$monthCode = $candidate;
 				}
 			}
 		}
 
-		if ($hourCode === '') {
-			$hourCode = dol_print_date(dol_now(), '%Y%m%d%H');
+		if ($monthCode === '') {
+			$monthCode = substr(dol_print_date(dol_now(), '%Y%m'), 2, 4);
 		}
 
 		$moId = (int) $moId;
 		if ($moId > 0) {
-			return $hourCode . $moId;
+			return $monthCode . $moId;
 		}
 
-		return $hourCode;
+		return $monthCode;
 	}
 
 	/**
-	 * Validate inventory code format AAAAMMDDHH.
+	 * Validate inventory month code format YYMM.
+	 *
+	 * @param string $inventoryCode
+	 * @return bool
+	 */
+	protected function isValidInventoryMonthCode($inventoryCode)
+	{
+		$inventoryCode = trim((string) $inventoryCode);
+		if (!preg_match('/^[0-9]{4}$/', $inventoryCode)) {
+			return false;
+		}
+
+		$month = (int) substr($inventoryCode, 2, 2);
+		return ($month >= 1 && $month <= 12);
+	}
+
+	/**
+	 * Validate legacy inventory code format YYYYMMDDHH.
 	 *
 	 * @param string $inventoryCode
 	 * @return bool
@@ -2436,7 +2457,7 @@ class KreaProductsApi extends DolibarrApi
 			throw new Exception('Error creating table ' . $traceTable . ': ' . $this->db->lasterror());
 		}
 
-		// Keep inventorycode wide enough for AAAAMMDDHH + fk_mo.
+		// Keep inventorycode wide enough for legacy YYYYMMDDHH + fk_mo values.
 		if (!$this->db->query("ALTER TABLE " . $traceTable . " MODIFY COLUMN inventorycode varchar(128) NOT NULL")) {
 			throw new Exception('Error widening inventorycode column on ' . $traceTable . ': ' . $this->db->lasterror());
 		}

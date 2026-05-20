@@ -1,6 +1,17 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.34.18] - 2026-05-20
+
+### Changed
+- Changed production lot generation to use `YYMM + MO` as the canonical inventory code and produced batch.
+
+## [2.34.17] - 2026-05-20
+
+### Fixed
+- Fixed weight-unit template fields so product labels render the configured selectable unit options.
+- Moved the second-page label logo away from ingredients content in normal, frozen, and weight templates.
+
 ## [2.34.16] - 2026-05-19
 
 ### Added

@@ -871,6 +871,9 @@ class KreaProductsLabelService
 			if ($newInput['type'] === 'textarea' && !empty($meta['rows'])) {
 				$newInput['rows'] = max(2, (int) $meta['rows']);
 			}
+			if ($newInput['type'] === 'select' && !empty($meta['options']) && is_array($meta['options'])) {
+				$newInput['options'] = $meta['options'];
+			}
 			if ($newInput['type'] === 'number') {
 				if (isset($meta['min']) && (string) $meta['min'] !== '') {
 					$newInput['min'] = (string) $meta['min'];
@@ -1446,6 +1449,7 @@ class KreaProductsLabelService
 				'max' => (isset($meta['max']) ? (string) $meta['max'] : ''),
 				'step' => (!empty($meta['step']) ? (string) $meta['step'] : ''),
 				'placeholder' => (!empty($meta['placeholder']) ? (string) $meta['placeholder'] : ''),
+				'options' => (!empty($meta['options']) && is_array($meta['options']) ? $meta['options'] : array()),
 				'value' => $resolvedValue,
 				'input_value' => self::formatTemplateFieldValueForInput($resolvedValue, $meta),
 				'can_reset' => $hasResetValue,
