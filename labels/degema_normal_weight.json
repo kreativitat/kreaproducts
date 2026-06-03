@@ -210,17 +210,17 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 2.2,
-          "w_mm": 52.0,
-          "h_mm": 4.6,
+          "y_mm": 2.0,
+          "w_mm": 46.0,
+          "h_mm": 7.4,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 10.5,
+            "font_size_pt": 8.8,
             "font_weight": "bold",
             "align": "left",
             "truncate": true,
             "auto_fit": true,
-            "min_font_size_pt": 8.0
+            "min_font_size_pt": 7.0
           },
           "source": "product.label",
           "placeholder": "Nome do produto"
@@ -261,7 +261,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 7.2,
+          "y_mm": 9.8,
           "w_mm": 55.0,
           "h_mm": 2.7,
           "style": {
@@ -281,7 +281,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 10.0,
+          "y_mm": 12.5,
           "w_mm": 55.0,
           "h_mm": 2.7,
           "style": {
@@ -323,16 +323,16 @@
           "source": "label.weight_line",
           "placeholder": "Peso: 1.000 kg",
           "x_mm": 2.0,
-          "y_mm": 12.2,
+          "y_mm": 14.8,
           "w_mm": 52.0,
           "h_mm": 7.0,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 18.0,
+            "font_size_pt": 15.5,
             "font_weight": "bold",
             "align": "left",
             "auto_fit": true,
-            "min_font_size_pt": 12.0
+            "min_font_size_pt": 11.0
           }
         },
         {
@@ -340,7 +340,7 @@
           "type": "text",
           "content_mode": "static",
           "x_mm": 2.0,
-          "y_mm": 20.4,
+          "y_mm": 21.0,
           "w_mm": 11.0,
           "h_mm": 3.0,
           "style": {
@@ -356,7 +356,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 13.0,
-          "y_mm": 20.4,
+          "y_mm": 21.0,
           "w_mm": 16.0,
           "h_mm": 3.0,
           "style": {
@@ -373,7 +373,7 @@
           "type": "text",
           "content_mode": "static",
           "x_mm": 31.0,
-          "y_mm": 20.4,
+          "y_mm": 21.0,
           "w_mm": 10.0,
           "h_mm": 3.0,
           "style": {
@@ -389,7 +389,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 41.0,
-          "y_mm": 20.4,
+          "y_mm": 21.0,
           "w_mm": 16.0,
           "h_mm": 3.0,
           "style": {
@@ -406,7 +406,7 @@
           "type": "text",
           "content_mode": "static",
           "x_mm": 2.0,
-          "y_mm": 23.8,
+          "y_mm": 24.4,
           "w_mm": 11.0,
           "h_mm": 3.0,
           "style": {
@@ -422,7 +422,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 13.0,
-          "y_mm": 23.8,
+          "y_mm": 24.4,
           "w_mm": 44.0,
           "h_mm": 3.0,
           "style": {
@@ -442,7 +442,7 @@
           "source": "production.mo_display",
           "placeholder": "MO: 12345",
           "x_mm": 2.0,
-          "y_mm": 27.0,
+          "y_mm": 27.6,
           "w_mm": 55.0,
           "h_mm": 3.0,
           "style": {
@@ -462,7 +462,7 @@
           "symbology": "EAN13",
           "show_human_readable": false,
           "x_mm": 4.0,
-          "y_mm": 31.2,
+          "y_mm": 31.8,
           "w_mm": 67.5,
           "h_mm": 14.5
         }
@@ -483,14 +483,17 @@
           "source": "product.label",
           "placeholder": "Produto Name",
           "x_mm": 2.2,
-          "y_mm": 3.0,
-          "w_mm": 56.5,
-          "h_mm": 3.8,
+          "y_mm": 2.6,
+          "w_mm": 48.0,
+          "h_mm": 8.2,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 9.2,
+            "font_size_pt": 8.4,
             "font_weight": "bold",
-            "align": "left"
+            "align": "left",
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 6.8
           }
         },
         {
@@ -498,10 +501,10 @@
           "type": "image",
           "content_mode": "asset",
           "asset_key": "brand_badge",
-          "x_mm": 65.0,
+          "x_mm": 61.2,
           "y_mm": 2.0,
-          "w_mm": 8.5,
-          "h_mm": 8.5
+          "w_mm": 12.75,
+          "h_mm": 12.75
         },
         {
           "id": "back_ingredients_section",
@@ -510,9 +513,9 @@
           "source": "label.ingredients_section",
           "placeholder": "INGREDIENTES",
           "x_mm": 2.2,
-          "y_mm": 7.3,
-          "w_mm": 56.5,
-          "h_mm": 36,
+          "y_mm": 11.2,
+          "w_mm": 48.0,
+          "h_mm": 14.4,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -528,9 +531,9 @@
           "source": "label.allergens_section",
           "placeholder": "ALERGENIOS",
           "x_mm": 2.2,
-          "y_mm": 27,
-          "w_mm": 56.5,
-          "h_mm": 7.1,
+          "y_mm": 25.6,
+          "w_mm": 71.2,
+          "h_mm": 6.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -546,9 +549,9 @@
           "source": "label.nutrition_section",
           "placeholder": "DECLARACAO NUTRICIONAL",
           "x_mm": 2.2,
-          "y_mm": 34.5,
-          "w_mm": 56.5,
-          "h_mm": 8.7,
+          "y_mm": 32.2,
+          "w_mm": 71.2,
+          "h_mm": 10.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -562,9 +565,9 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.2,
-          "y_mm": 45.1,
-          "w_mm": 70.0,
-          "h_mm": 4.7,
+          "y_mm": 44.0,
+          "w_mm": 71.2,
+          "h_mm": 5.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -580,7 +583,7 @@
   ],
   "notes": [
     "Weight front page keeps the compact ref box and large Code128 barcode geometry requested for KreaProduction weighing flow.",
-    "Back page keeps the standard DeGema ingredients, allergens, and nutritional information layout.",
-    "Brand logo is intentionally omitted; company data, Green Dot, and food-contact material symbols remain on the front page."
+    "Back page keeps product and ingredients close in the bounded upper-left column while allergens, nutrition, and conservation use the full width below the enlarged brand logo.",
+    "Company data, Green Dot, and food-contact material symbols remain on the front page."
   ]
 }

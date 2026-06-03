@@ -1,6 +1,51 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.34.27] - 2026-06-03
+
+### Fixed
+- Constrained second-page DeGema ingredients to the upper-left text zone so they no longer overlap the enlarged logo.
+
+## [2.34.26] - 2026-06-03
+
+### Fixed
+- Constrained second-page DeGema product names to the upper-left text zone so they no longer overlap the enlarged logo.
+
+## [2.34.25] - 2026-06-03
+
+### Changed
+- Rebalanced second-page DeGema layout without borders so ingredients stay close to product names and lower sections use the full width below the logo.
+
+## [2.34.24] - 2026-06-03
+
+### Fixed
+- Increased second-page DeGema vertical clearance below wrapped product names.
+
+## [2.34.23] - 2026-06-03
+
+### Fixed
+- Increased second-page DeGema spacing between product names and ingredients content.
+
+## [2.34.22] - 2026-06-03
+
+### Fixed
+- Added vertical separation between second-page DeGema product names and ingredients sections.
+
+## [2.34.21] - 2026-06-03
+
+### Fixed
+- Constrained second-page DeGema composition text away from the brand logo and enlarged the logo by 50%.
+
+## [2.34.20] - 2026-06-03
+
+### Fixed
+- Tightened DeGema product label name width so wrapped text stays clear of the product reference border.
+
+## [2.34.19] - 2026-06-03
+
+### Fixed
+- Allowed DeGema product label names to wrap across two bounded lines without overlapping reference or front-page fields.
+
 ## [2.34.18] - 2026-05-20
 
 ### Changed

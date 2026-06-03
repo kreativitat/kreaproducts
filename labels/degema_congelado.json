@@ -169,17 +169,17 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 2.2,
-          "w_mm": 52.0,
-          "h_mm": 4.6,
+          "y_mm": 2.0,
+          "w_mm": 46.0,
+          "h_mm": 7.6,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 10.5,
+            "font_size_pt": 9.2,
             "font_weight": "bold",
             "align": "left",
             "truncate": true,
             "auto_fit": true,
-            "min_font_size_pt": 8.0
+            "min_font_size_pt": 7.0
           },
           "source": "product.label",
           "placeholder": "Nome do produto"
@@ -220,7 +220,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 7.2,
+          "y_mm": 10.0,
           "w_mm": 55.0,
           "h_mm": 2.7,
           "style": {
@@ -240,7 +240,7 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.0,
-          "y_mm": 10.0,
+          "y_mm": 12.8,
           "w_mm": 55.0,
           "h_mm": 2.7,
           "style": {
@@ -423,14 +423,17 @@
           "source": "product.label",
           "placeholder": "Produto Name",
           "x_mm": 2.2,
-          "y_mm": 3.0,
-          "w_mm": 56.5,
-          "h_mm": 3.8,
+          "y_mm": 2.6,
+          "w_mm": 48.0,
+          "h_mm": 8.2,
           "style": {
             "font_family": "Helvetica",
-            "font_size_pt": 9.2,
+            "font_size_pt": 8.4,
             "font_weight": "bold",
-            "align": "left"
+            "align": "left",
+            "truncate": true,
+            "auto_fit": true,
+            "min_font_size_pt": 6.8
           }
         },
         {
@@ -438,10 +441,10 @@
           "type": "image",
           "content_mode": "asset",
           "asset_key": "brand_badge",
-          "x_mm": 65.0,
+          "x_mm": 61.2,
           "y_mm": 2.0,
-          "w_mm": 8.5,
-          "h_mm": 8.5
+          "w_mm": 12.75,
+          "h_mm": 12.75
         },
         {
           "id": "back_ingredients_section",
@@ -450,9 +453,9 @@
           "source": "label.ingredients_section",
           "placeholder": "INGREDIENTES",
           "x_mm": 2.2,
-          "y_mm": 7.3,
-          "w_mm": 56.5,
-          "h_mm": 36,
+          "y_mm": 11.2,
+          "w_mm": 48.0,
+          "h_mm": 14.4,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -468,9 +471,9 @@
           "source": "label.allergens_section",
           "placeholder": "ALERGENIOS",
           "x_mm": 2.2,
-          "y_mm": 27,
-          "w_mm": 56.5,
-          "h_mm": 7.1,
+          "y_mm": 25.6,
+          "w_mm": 71.2,
+          "h_mm": 6.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -486,9 +489,9 @@
           "source": "label.nutrition_section",
           "placeholder": "DECLARACAO NUTRICIONAL",
           "x_mm": 2.2,
-          "y_mm": 34.5,
-          "w_mm": 56.5,
-          "h_mm": 8.7,
+          "y_mm": 32.2,
+          "w_mm": 71.2,
+          "h_mm": 10.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -502,9 +505,9 @@
           "type": "text",
           "content_mode": "dynamic",
           "x_mm": 2.2,
-          "y_mm": 45.1,
-          "w_mm": 70.0,
-          "h_mm": 4.7,
+          "y_mm": 44.0,
+          "w_mm": 71.2,
+          "h_mm": 5.2,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -521,6 +524,6 @@
   "notes": [
     "Refatorado para melhorar a legibilidade e a consistência de espaçamento entre a pré-visualização e o PDF gerado.",
     "Os símbolos obrigatórios Green Dot e de contacto alimentar da UE estão incorporados como recursos do modelo e renderizados na primeira página.",
-    "A segunda página é dedicada à legibilidade da informação do produto (ingredientes/alergénios/nutrição), sem linhas da entidade nem logótipo."
+    "A segunda página usa uma coluna superior esquerda delimitada para produto e ingredientes e aproveita a largura total abaixo do logótipo para alergénios, nutrição e conservação."
   ]
 }
