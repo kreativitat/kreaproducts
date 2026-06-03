@@ -1,6 +1,69 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.35.7] - 2026-06-03
+
+### Fixed
+- Enforced a larger safe text area for all DeGema second-page composition fields and replaced character-count wrapping with proportional-width wrapping for previews and PDFs.
+
+## [2.35.6] - 2026-06-03
+
+### Fixed
+- Added a right safety margin and tighter small-text wrapping to DeGema second-page composition blocks so ingredients and nutrition text no longer touch the label border.
+
+## [2.35.5] - 2026-06-03
+
+### Fixed
+- Improved small-text wrapping in DeGema label previews and PDFs so ingredients use the available full-width line area more accurately.
+
+## [2.35.4] - 2026-06-03
+
+### Changed
+- Moved second-page DeGema ingredients below the logo and expanded them to the full label width while preserving vertical flow for following sections.
+
+## [2.35.3] - 2026-06-03
+
+### Fixed
+- Made second-page DeGema composition sections flow vertically from rendered text height so long ingredients no longer overlap allergens, nutrition, or conservation.
+
+## [2.35.2] - 2026-06-03
+
+### Changed
+- Removed the standalone nutrition copy selector and made the allergen copy action copy nutritional values together with allergens.
+
+## [2.35.1] - 2026-06-03
+
+### Fixed
+- Restricted the allergen copy selector to products using inserted allergen tables instead of showing it for calculated allergen modes.
+
+## [2.35.0] - 2026-06-03
+
+### Added
+- Added a product Ingredients extra field in Other characteristics for explicit label ingredient declarations.
+
+### Changed
+- Product labels now use the explicit Ingredients field as the default ingredients text, falling back to calculated kit ingredients when it is empty.
+
+## [2.34.31] - 2026-06-03
+
+### Fixed
+- Excluded kit components with the KreaProduction lot flag unchecked from generated product label ingredients.
+
+## [2.34.30] - 2026-06-03
+
+### Changed
+- Added the KreaProduction lot flag column to the kit component list and saved it with composed-product component updates.
+
+## [2.34.29] - 2026-06-03
+
+### Changed
+- Further reduced associated-products nutrition weight and nutrient columns to make the table fit more compactly.
+
+## [2.34.28] - 2026-06-03
+
+### Changed
+- Made the associated-products nutrition table more compact with tighter column widths, smaller typography, and reduced cell padding while preserving horizontal overflow fallback.
+
 ## [2.34.27] - 2026-06-03
 
 ### Fixed

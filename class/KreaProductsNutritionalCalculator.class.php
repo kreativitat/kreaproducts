@@ -568,8 +568,6 @@ class KreaProductsNutritionalCalculator
      */
     private static function displayNutritionalTable($productId, $subList, $langs)
     {
-        global $db, $user, $conf;
-
         // Calculate and display nutritional data
         $calculationResult = self::calculateNutritionalTotals($subList);
         
@@ -592,32 +590,10 @@ class KreaProductsNutritionalCalculator
         }
 
         // Display totals and normalized values
-        $copyInfo = self::displayTotalRows($calculationResult, $langs, $productId);
-        $enableCopyAvgToProduct = !isset($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT)
-            || !empty($conf->global->KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT);
+        self::displayTotalRows($calculationResult, $langs, $productId);
 
         print '</table>';
         print '</div>';
-
-        if (!empty($copyInfo) && !empty($copyInfo['show_copy']) && $enableCopyAvgToProduct) {
-            require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
-            $form = new Form($db);
-            $selectHtml = self::buildProductSelector($form, 0, 'target_product_id', $langs, 'minwidth300');
-
-            print '<div class="krea-nutrition-copy" style="margin-top: 8px;">';
-            print '<form method="post" action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . (int) $productId . '">';
-            print '<input type="hidden" name="action" value="copy_nutrition_to_product">';
-            print '<input type="hidden" name="token" value="' . newToken() . '">';
-            print '<input type="hidden" name="id" value="' . (int) $productId . '">';
-            foreach ($copyInfo['normalized'] as $nutrient => $value) {
-                print '<input type="hidden" name="avg_' . $nutrient . '" value="' . dol_escape_htmltag($value) . '">';
-            }
-            print '<span class="inline-block" style="margin-right: 8px;">' . $langs->trans("KreaProductsCopyAvgToProduct") . '</span>';
-            print $selectHtml;
-            print ' <input type="submit" class="button" value="' . $langs->trans("KreaProductsCopyAvgButton") . '">';
-            print '</form>';
-            print '</div>';
-        }
 
         print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
     }
@@ -633,8 +609,11 @@ class KreaProductsNutritionalCalculator
 
         print '<style>
             .krea-nutrition-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            .krea-nutrition-table { width: auto; min-width: 1360px; table-layout: fixed; }
+            .krea-nutrition-table { width: auto; min-width: 920px; table-layout: fixed; font-size: 0.86em; line-height: 1.2; }
+            .krea-nutrition-table td { padding: 3px 4px; vertical-align: top; }
             .krea-nutrition-table .krea-col-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .krea-nutrition-table input.width150 { max-width: 66px; }
+            .krea-nutrition-table select { max-width: 58px; }
             @media (max-width: 768px) {
                 .krea-nutrition-table { table-layout: auto !important; }
                 .krea-nutrition-table .krea-col-name { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
@@ -650,120 +629,21 @@ class KreaProductsNutritionalCalculator
     private static function getNutritionalTableWidths()
     {
         return array(
-            'ref' => '80px',
-            'name' => '240px',
-            'weight' => '210px',
-            'qty' => '72px',
-            'qty_weight' => '82px',
-            'energy_kcal' => '72px',
-            'energy_kj' => '72px',
-            'fat' => '70px',
-            'saturates' => '82px',
-            'carbohydrates' => '90px',
-            'sugars' => '74px',
-            'protein' => '74px',
-            'salt' => '70px',
-            'fiber' => '70px',
+            'ref' => '68px',
+            'name' => '190px',
+            'weight' => '112px',
+            'qty' => '44px',
+            'qty_weight' => '54px',
+            'energy_kcal' => '50px',
+            'energy_kj' => '50px',
+            'fat' => '48px',
+            'saturates' => '56px',
+            'carbohydrates' => '60px',
+            'sugars' => '50px',
+            'protein' => '50px',
+            'salt' => '44px',
+            'fiber' => '44px',
         );
-    }
-
-    private static function buildProductSelector($form, $selected, $htmlname, $langs, $morecss = 'minwidth300')
-    {
-        $entityList = self::getAccessibleEntityIds();
-        $method = new ReflectionMethod($form, 'select_produits');
-        $args = array();
-
-        foreach ($method->getParameters() as $param) {
-            switch ($param->getName()) {
-                case 'selected':
-                    $args[] = $selected;
-                    break;
-                case 'htmlname':
-                    $args[] = $htmlname;
-                    break;
-                case 'filtertype':
-                    $args[] = '';
-                    break;
-                case 'limit':
-                    $args[] = 0;
-                    break;
-                case 'price_level':
-                    $args[] = 0;
-                    break;
-                case 'status':
-                    $args[] = -1;
-                    break;
-                case 'finished':
-                    $args[] = 2;
-                    break;
-                case 'selected_input_value':
-                    $args[] = '';
-                    break;
-                case 'hidelabel':
-                    $args[] = 0;
-                    break;
-                case 'ajaxoptions':
-                    $args[] = array();
-                    break;
-                case 'socid':
-                    $args[] = 0;
-                    break;
-                case 'showempty':
-                    $args[] = $langs->trans("RefOrLabel");
-                    break;
-                case 'forcecombo':
-                    $args[] = 0;
-                    break;
-                case 'morecss':
-                    $args[] = $morecss;
-                    break;
-                case 'hidepriceinlabel':
-                    $args[] = 0;
-                    break;
-                case 'warehouseStatus':
-                    $args[] = '';
-                    break;
-                case 'selected_combinations':
-                    $args[] = null;
-                    break;
-                case 'nooutput':
-                    $args[] = 1;
-                    break;
-                case 'status_purchase':
-                    $args[] = -1;
-                    break;
-                case 'warehouseId':
-                    $args[] = 0;
-                    break;
-                case 'entitylist':
-                case 'entityList':
-                    $args[] = $entityList;
-                    break;
-                default:
-                    $args[] = $param->isDefaultValueAvailable() ? $param->getDefaultValue() : null;
-            }
-        }
-
-        return $method->invokeArgs($form, $args);
-    }
-
-    private static function getAccessibleEntityIds()
-    {
-        global $conf, $mc, $user;
-
-        $entityIds = array((int) $conf->entity);
-        if (isModEnabled('multicompany') && is_object($mc)) {
-            $canAccessAll = (!empty($user->admin) && empty($user->entity));
-            if (!empty($conf->global->MULTICOMPANY_TRANSVERSE_MODE) || $canAccessAll) {
-                $list = $mc->getEntitiesList(false, false, true);
-                if (!empty($list)) {
-                    $entityIds = array_map('intval', array_keys($list));
-                }
-            }
-        }
-
-        $entityIds = array_values(array_unique(array_filter($entityIds, 'is_numeric')));
-        return $entityIds;
     }
 
     /**
@@ -1095,12 +975,9 @@ class KreaProductsNutritionalCalculator
      */
     private static function displayTotalRows($calculationResult, $langs, $productId)
     {
-        global $db, $user;
-
         $totals = $calculationResult['totals'];
         $normalized = $calculationResult['normalized'];
         $totalWeight = $calculationResult['total_weight'];
-        $copyInfo = null;
 
         // Display absolute totals
         print '<tr style="font-style: italic;">';
@@ -1120,16 +997,7 @@ class KreaProductsNutritionalCalculator
                 print '<td style="text-align: right;">' . $value . '</td>';
             }
             print '</tr>';
-
-            $canCopy = !empty($user)
-                && ($user->admin || $user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer'));
-            $copyInfo = array(
-                'normalized' => $normalized,
-                'show_copy' => $canCopy
-            );
         }
-
-        return $copyInfo;
     }
 
     /**

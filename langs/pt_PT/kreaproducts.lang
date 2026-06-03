@@ -1,8 +1,5 @@
-# Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
+# Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 #
-# This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
-#
-# GPL-3.0 License:
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -16,11 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
-# Proprietary License:
-# For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
-#
-# For more information, visit <https://www.kreativitat.com>.
+# Commercial support and integration services are available from
+# Kreativität Works <mail@kreativitat.com>.
 #
 
 #
@@ -273,8 +267,8 @@ EstimatedTotalsForTheProduct = Totais Estimados do Produto
 KreaProductsCopyAvgToProduct = Copiar valores médios por 100g para produto
 KreaProductsCopyAvgButton = Copiar valores
 KreaProductsCopyAvgSuccess = Valores nutricionais copiados com sucesso.
-KreaProductsCopyAllergensToProduct = Copiar alergénios para produto
-KreaProductsCopyAllergensButton = Copiar alergénios
+KreaProductsCopyAllergensToProduct = Copiar alergénios e nutrição para produto
+KreaProductsCopyAllergensButton = Copiar alergénios e nutrição
 KreaProductsCopyAllergensSuccess = Alergénios copiados com sucesso.
 KreaProductsAssocToBomTitle = Converter associacoes para BOM
 KreaProductsAssocToBomSource = Produto origem (associacoes)
@@ -322,6 +316,9 @@ KreaProductAllergensTableTitle = Tabela de alergénios
 KreaProductsTableTitle = Tabela nutricional
 productRecipeTitle = Outras caracteristicas
 productRecipeInline = Preparação
+kreap_ingredients = Ingredientes
+kreap_ingredients_help = Texto de ingredientes usado por defeito nas etiquetas do produto. Se estiver vazio, os ingredientes são calculados a partir dos componentes do kit.
+kreap_ingredients_Inline = Ingredientes
 kreap_default_label_layout = Layout de etiqueta por defeito
 kreap_default_label_layout_help = Código do modelo de etiqueta usado por defeito para este produto no KreaProduction.
 NoneSelected = Nenhum selecionado
@@ -404,7 +401,7 @@ KreapAboutEditorLabel = Editor
 KreapAboutLicenseLabel = Licença
 KreapAboutSupportLabel = Suporte
 KreapAboutWebsiteLabel = Website
-KreapAboutLicenseValue = GPL v3 ou licença proprietária (contacte-nos)
+KreapAboutLicenseValue = GPL-3.0-or-later
 KreapAboutChangeLogLabel = Registo de alterações
 KreapAboutLatestReleaseLabel = Última versão
 KreapAboutReleaseDateLabel = Data de lançamento

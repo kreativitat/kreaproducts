@@ -3091,17 +3091,28 @@ class KreaProductsLabelService
 	 */
 	private static function isTsplFlowSectionBlock($block)
 	{
+		return self::isTemplateFlowSectionBlock($block);
+	}
+
+	/**
+	 * Determine whether one text block belongs to flowing composition sections.
+	 *
+	 * @param array $block Template block
+	 * @return bool
+	 */
+	private static function isTemplateFlowSectionBlock($block)
+	{
 		if (!is_array($block)) {
 			return false;
 		}
 
 		$source = strtolower(trim((string) (!empty($block['source']) ? $block['source'] : '')));
-		if (in_array($source, array('label.ingredients_section', 'label.allergens_section', 'label.nutrition_section'), true)) {
+		if (in_array($source, array('label.ingredients_section', 'label.allergens_section', 'label.nutrition_section', 'label.storage_text'), true)) {
 			return true;
 		}
 
 		$blockId = strtolower(trim((string) (!empty($block['id']) ? $block['id'] : '')));
-		return in_array($blockId, array('back_ingredients_section', 'back_allergens_section', 'back_nutrition_section'), true);
+		return in_array($blockId, array('back_ingredients_section', 'back_allergens_section', 'back_nutrition_section', 'back_storage_text'), true);
 	}
 
 	/**
@@ -3409,17 +3420,31 @@ class KreaProductsLabelService
 	 */
 	private static function normalizeTemplateBlocksForPdf($page, $context)
 	{
+		return self::normalizeTemplateBlocksForRender($page, $context);
+	}
+
+	/**
+	 * Normalize template blocks for SVG/PDF rendering and apply vertical flow
+	 * to composition sections that can vary by product.
+	 *
+	 * @param array $page    Template page
+	 * @param array $context Resolved source context
+	 * @return array
+	 */
+	private static function normalizeTemplateBlocksForRender($page, $context)
+	{
 		$blocks = array();
 		if (empty($page['blocks']) || !is_array($page['blocks'])) {
 			return $blocks;
 		}
 
+		$flowSectionNextY = null;
 		foreach ($page['blocks'] as $block) {
 			if (!is_array($block) || empty($block['type'])) {
 				continue;
 			}
 
-			$blocks[] = array(
+			$normalizedBlock = array(
 				'id' => (!empty($block['id']) ? (string) $block['id'] : ''),
 				'type' => (string) $block['type'],
 				'source' => (!empty($block['source']) ? (string) $block['source'] : ''),
@@ -3432,9 +3457,58 @@ class KreaProductsLabelService
 				'show_human_readable' => !empty($block['show_human_readable']),
 				'symbology' => (!empty($block['symbology']) ? (string) $block['symbology'] : ''),
 			);
+
+			if ((string) $normalizedBlock['type'] === 'text' && self::isTemplateFlowSectionBlock($normalizedBlock)) {
+				$normalizedBlock = self::applyTemplateCompositionSafeArea($normalizedBlock, $page);
+				if ($flowSectionNextY !== null) {
+					$normalizedBlock['y_mm'] = $flowSectionNextY;
+				} else {
+					$flowSectionNextY = (float) $normalizedBlock['y_mm'];
+				}
+
+				$renderedHeight = self::measureTemplateTextBlockHeight($normalizedBlock, (string) $normalizedBlock['value']);
+				if ($renderedHeight > 0) {
+					$normalizedBlock['h_mm'] = max((float) $normalizedBlock['h_mm'], $renderedHeight);
+					$flowSectionNextY = (float) $normalizedBlock['y_mm'] + $renderedHeight + 1.2;
+				}
+			}
+
+			$blocks[] = $normalizedBlock;
 		}
 
 		return $blocks;
+	}
+
+	/**
+	 * Keep variable composition sections inside a safe readable page area.
+	 *
+	 * @param array $block Template block
+	 * @param array $page  Template page
+	 * @return array
+	 */
+	private static function applyTemplateCompositionSafeArea($block, $page)
+	{
+		if (!is_array($block) || !self::isTemplateFlowSectionBlock($block)) {
+			return $block;
+		}
+
+		$pageWidth = 0.0;
+		if (!empty($page['size_mm']) && is_array($page['size_mm']) && !empty($page['size_mm']['width'])) {
+			$pageWidth = (float) $page['size_mm']['width'];
+		}
+		if ($pageWidth <= 0) {
+			return $block;
+		}
+
+		$leftMarginMm = 3.0;
+		$rightMarginMm = 6.0;
+		$x = max($leftMarginMm, (float) (!empty($block['x_mm']) ? $block['x_mm'] : 0));
+		$maxWidth = max(1.0, $pageWidth - $rightMarginMm - $x);
+
+		$block['x_mm'] = $x;
+		$block['w_mm'] = min(max(1.0, (float) (!empty($block['w_mm']) ? $block['w_mm'] : $maxWidth)), $maxWidth);
+
+		return $block;
 	}
 
 	/**
@@ -3789,20 +3863,21 @@ class KreaProductsLabelService
 		$svg[] = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ' . self::formatSvgNumber($width) . ' ' . self::formatSvgNumber($height) . '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' . self::escapeSvgText(!empty($page['label']) ? $page['label'] : $outputlangs->trans('KREAPRODUCTS_LABELS_TEMPLATE_PREVIEW')) . '">';
 		$svg[] = '<rect x="0" y="0" width="' . self::formatSvgNumber($width) . '" height="' . self::formatSvgNumber($height) . '" fill="#ffffff" stroke="#cfd6df" stroke-width="0.35" rx="1.1" ry="1.1"/>';
 
-		if (!empty($page['blocks']) && is_array($page['blocks'])) {
-			foreach ($page['blocks'] as $block) {
+		$blocks = self::normalizeTemplateBlocksForRender($page, $context);
+		if (!empty($blocks)) {
+			foreach ($blocks as $block) {
 				if (!is_array($block) || empty($block['type'])) {
 					continue;
 				}
 
 				if ($block['type'] === 'text') {
-					$svg[] = self::renderTemplateTextBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+					$svg[] = self::renderTemplateTextBlockSvg($block, (isset($block['value']) ? (string) $block['value'] : ''));
 				} elseif ($block['type'] === 'rect') {
 					$svg[] = self::renderTemplateRectBlockSvg($block);
 				} elseif ($block['type'] === 'barcode') {
-					$svg[] = self::renderTemplateBarcodeBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+					$svg[] = self::renderTemplateBarcodeBlockSvg($block, (isset($block['value']) ? (string) $block['value'] : ''));
 				} elseif ($block['type'] === 'image') {
-					$svg[] = self::renderTemplateImageBlockSvg($block, self::resolveTemplateBlockValue($block, $context));
+					$svg[] = self::renderTemplateImageBlockSvg($block, (isset($block['value']) ? (string) $block['value'] : ''));
 				}
 			}
 		}
@@ -4050,7 +4125,13 @@ class KreaProductsLabelService
 		$allergensHasData = false;
 		$nutritionHasData = false;
 
-		$defaults['label.ingredients_section'] = self::buildIngredientsSectionFromAssociations($db, $productId, $outputlangs, $ingredientsHasData);
+		$ingredientsOverride = self::buildIngredientsSectionFromProductField($db, $product, $outputlangs);
+		if ($ingredientsOverride !== '') {
+			$defaults['label.ingredients_section'] = $ingredientsOverride;
+			$ingredientsHasData = true;
+		} else {
+			$defaults['label.ingredients_section'] = self::buildIngredientsSectionFromAssociations($db, $productId, $outputlangs, $ingredientsHasData);
+		}
 		$defaults['label.allergens_section'] = self::buildAllergensSectionFromDatabase($db, $productId, $outputlangs, $allergensHasData);
 		$defaults['label.nutrition_section'] = self::buildNutritionSectionFromDatabase($db, $productId, $outputlangs, $nutritionHasData);
 		$defaults['meta.label.ingredients_has_data'] = ($ingredientsHasData ? '1' : '0');
@@ -4058,6 +4139,119 @@ class KreaProductsLabelService
 		$defaults['meta.label.nutrition_has_data'] = ($nutritionHasData ? '1' : '0');
 
 		return $defaults;
+	}
+
+	/**
+	 * Build ingredients section text from the explicit product extra field.
+	 *
+	 * @param DoliDB    $db          Database handler
+	 * @param Product   $product     Product object
+	 * @param Translate $outputlangs Output language
+	 * @return string
+	 */
+	private static function buildIngredientsSectionFromProductField($db, $product, $outputlangs)
+	{
+		if (!is_object($product) || empty($product->id)) {
+			return '';
+		}
+
+		$rawValue = '';
+		if (!empty($product->array_options) && array_key_exists('options_kreap_ingredients', $product->array_options)) {
+			$rawValue = (string) $product->array_options['options_kreap_ingredients'];
+		}
+		if (trim($rawValue) === '') {
+			$rawValue = self::loadProductExtrafieldTextValue($db, (int) $product->id, 'kreap_ingredients');
+		}
+
+		$text = self::normalizeIngredientsOverrideText($rawValue);
+		if ($text === '') {
+			return '';
+		}
+
+		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTS');
+		if (!preg_match('/^[^:]{1,40}:/u', $text)) {
+			$text = $prefix . ': ' . $text;
+		}
+
+		return self::normalizeIngredientsSectionText($text);
+	}
+
+	/**
+	 * Load a product extrafield text value with product entity scoping.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @param int $productId Product id
+	 * @param string $fieldName Extra field column name
+	 * @return string
+	 */
+	private static function loadProductExtrafieldTextValue($db, $productId, $fieldName)
+	{
+		$productId = (int) $productId;
+		$fieldName = trim((string) $fieldName);
+		if ($productId <= 0 || $fieldName === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $fieldName)) {
+			return '';
+		}
+
+		$table = MAIN_DB_PREFIX . 'product_extrafields';
+		if (!self::tableColumnExists($db, $table, $fieldName)) {
+			return '';
+		}
+		$hasEntityColumn = self::tableColumnExists($db, $table, 'entity');
+
+		$sql = "SELECT pe." . $fieldName;
+		if ($hasEntityColumn) {
+			$sql .= ", pe.entity";
+		}
+		$sql .= " FROM " . $table . " AS pe";
+		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = pe.fk_object";
+		$sql .= " WHERE pe.fk_object = " . $productId;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
+		if ($hasEntityColumn) {
+			$sql .= " AND pe.entity IN (0," . getEntity('product') . ")";
+			$sql .= " ORDER BY pe.entity DESC";
+		}
+		$sql .= " LIMIT 1";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			return '';
+		}
+
+		$value = '';
+		if ($obj = $db->fetch_object($resql)) {
+			if (property_exists($obj, $fieldName)) {
+				$value = (string) $obj->{$fieldName};
+			}
+		}
+		$db->free($resql);
+
+		return $value;
+	}
+
+	/**
+	 * Normalize explicit ingredients field content for label output.
+	 *
+	 * @param string $value Raw product extra field value
+	 * @return string
+	 */
+	private static function normalizeIngredientsOverrideText($value)
+	{
+		$text = trim((string) $value);
+		if ($text === '') {
+			return '';
+		}
+
+		$text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$text = (string) preg_replace('/<\s*br\s*\/?\s*>/i', ', ', $text);
+		$text = (string) preg_replace('/<\s*\/p\s*>/i', ', ', $text);
+		$text = (string) preg_replace('/<[^>]+>/', ' ', $text);
+		$text = self::cleanText($text);
+		$text = (string) preg_replace('/\s+,/', ',', $text);
+		$text = (string) preg_replace('/,\s*,+/', ', ', $text);
+		$text = (string) preg_replace('/\s{2,}/', ' ', $text);
+
+		return trim($text, " \t\n\r\0\x0B,");
 	}
 
 	/**
@@ -4109,7 +4303,7 @@ class KreaProductsLabelService
 	private static function buildIngredientsSectionFromAssociations($db, $productId, $outputlangs, &$hasData = null)
 	{
 		$hasData = false;
-		$sql = "SELECT pc.label, pc.ref";
+		$sql = "SELECT pc.rowid, pc.label, pc.ref";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pp ON pp.rowid = pa.fk_product_pere";
 		$sql .= " JOIN " . MAIN_DB_PREFIX . "product AS pc ON pc.rowid = pa.fk_product_fils";
@@ -4126,7 +4320,25 @@ class KreaProductsLabelService
 		}
 
 		$ingredients = array();
+		$componentProductIds = array();
+		$rows = array();
 		while ($obj = $db->fetch_object($resql)) {
+			$componentProductId = (int) $obj->rowid;
+			if ($componentProductId <= 0) {
+				continue;
+			}
+			$componentProductIds[$componentProductId] = $componentProductId;
+			$rows[] = $obj;
+		}
+		$db->free($resql);
+
+		$componentLotFlags = self::loadProductExtrafieldBooleanMap($db, array_values($componentProductIds), 'kreap_lot');
+		foreach ($rows as $obj) {
+			$componentProductId = (int) $obj->rowid;
+			if ($componentProductId > 0 && isset($componentLotFlags[$componentProductId]) && $componentLotFlags[$componentProductId] === '0') {
+				continue;
+			}
+
 			$ingredientName = self::cleanText(!empty($obj->label) ? $obj->label : $obj->ref);
 			if ($ingredientName === '') {
 				continue;
@@ -4134,7 +4346,6 @@ class KreaProductsLabelService
 
 			$ingredients[] = $ingredientName;
 		}
-		$db->free($resql);
 
 		$prefix = self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_SECTION_INGREDIENTS_PREFIX', 'INGREDIENTES');
 		if (empty($ingredients)) {
@@ -4145,6 +4356,136 @@ class KreaProductsLabelService
 
 		$items = array_values($ingredients);
 		return $prefix . ': ' . implode(', ', $items) . '.';
+	}
+
+	/**
+	 * Load one product extrafield boolean value map by product id.
+	 *
+	 * Missing rows are intentionally omitted so callers may keep their own
+	 * backward-compatible default.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @param array<int> $productIds Product ids
+	 * @param string $fieldName Extra field column name
+	 * @return array<int,string> Product id => "0"|"1"
+	 */
+	private static function loadProductExtrafieldBooleanMap($db, $productIds, $fieldName)
+	{
+		$fieldName = trim((string) $fieldName);
+		if ($fieldName === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $fieldName)) {
+			return array();
+		}
+
+		$cleanIds = array();
+		foreach ((array) $productIds as $id) {
+			if (!is_numeric($id)) {
+				continue;
+			}
+			$id = (int) $id;
+			if ($id > 0) {
+				$cleanIds[$id] = $id;
+			}
+		}
+		if (empty($cleanIds)) {
+			return array();
+		}
+
+		$table = MAIN_DB_PREFIX . 'product_extrafields';
+		if (!self::tableColumnExists($db, $table, $fieldName)) {
+			return array();
+		}
+		$hasEntityColumn = self::tableColumnExists($db, $table, 'entity');
+
+		$sql = "SELECT fk_object, " . $fieldName;
+		if ($hasEntityColumn) {
+			$sql .= ", entity";
+		}
+		$sql .= " FROM " . $table;
+		$sql .= " WHERE fk_object IN (" . implode(',', $cleanIds) . ")";
+		if ($hasEntityColumn) {
+			$sql .= " AND entity IN (0," . getEntity('product') . ")";
+		}
+		$sql .= " ORDER BY fk_object ASC";
+		if ($hasEntityColumn) {
+			$sql .= ", entity DESC";
+		}
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' failed: ' . $db->lasterror(), LOG_WARNING);
+			return array();
+		}
+
+		$values = array();
+		while ($obj = $db->fetch_object($resql)) {
+			$productId = (int) $obj->fk_object;
+			if ($productId <= 0 || isset($values[$productId])) {
+				continue;
+			}
+
+			$raw = null;
+			if (property_exists($obj, $fieldName)) {
+				$raw = $obj->{$fieldName};
+			}
+
+			$values[$productId] = self::normalizeBooleanExtrafieldValue($raw, '0');
+		}
+		$db->free($resql);
+
+		return $values;
+	}
+
+	/**
+	 * Check whether a table column exists.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @param string $tableName Full table name
+	 * @param string $columnName Column name
+	 * @return bool
+	 */
+	private static function tableColumnExists($db, $tableName, $columnName)
+	{
+		$res = $db->DDLDescTable($tableName, $columnName);
+		if (!$res) {
+			return false;
+		}
+
+		$exists = ($db->num_rows($res) > 0);
+		$db->free($res);
+		return $exists;
+	}
+
+	/**
+	 * Normalize Dolibarr extrafield boolean-ish value to "0"|"1".
+	 *
+	 * @param mixed $rawValue Raw DB value
+	 * @param string $defaultValue Fallback normalized value
+	 * @return string
+	 */
+	private static function normalizeBooleanExtrafieldValue($rawValue, $defaultValue = '0')
+	{
+		if ($rawValue === null) {
+			return $defaultValue;
+		}
+
+		$normalized = trim((string) $rawValue);
+		if ($normalized === '') {
+			return $defaultValue;
+		}
+
+		$lower = strtolower($normalized);
+		if (in_array($lower, array('1', 'true', 'yes', 'on'), true)) {
+			return '1';
+		}
+		if (in_array($lower, array('0', 'false', 'no', 'off'), true)) {
+			return '0';
+		}
+
+		if (is_numeric($normalized)) {
+			return ((float) $normalized != 0.0 ? '1' : '0');
+		}
+
+		return $defaultValue;
 	}
 
 	/**
@@ -5098,6 +5439,31 @@ class KreaProductsLabelService
 	}
 
 	/**
+	 * Estimate rendered text height for one template text block.
+	 *
+	 * @param array  $block Text block definition
+	 * @param string $text  Resolved text
+	 * @return float Height in millimeters
+	 */
+	private static function measureTemplateTextBlockHeight($block, $text)
+	{
+		$text = trim((string) $text);
+		if ($text === '') {
+			return 0.0;
+		}
+
+		$w = max(1.0, (float) (!empty($block['w_mm']) ? $block['w_mm'] : 1));
+		$style = (!empty($block['style']) && is_array($block['style']) ? $block['style'] : array());
+		$fontPt = (float) (!empty($style['font_size_pt']) ? $style['font_size_pt'] : 7.5);
+		$minFontPt = (float) (!empty($style['min_font_size_pt']) ? $style['min_font_size_pt'] : 3.8);
+		$fontMm = max(max(0.9, $minFontPt * 0.352778), $fontPt * 0.352778);
+		$lineHeight = max(0.8, $fontMm * 1.18);
+		$lines = self::wrapTemplatePreviewText($text, $fontMm, $w, 0, false);
+
+		return $lineHeight * max(1, count($lines));
+	}
+
+	/**
 	 * Wrap preview text to fit approximately inside a block.
 	 *
 	 * @param string $text        Text to wrap
@@ -5114,13 +5480,24 @@ class KreaProductsLabelService
 			return array('');
 		}
 
-		$estimatedCharsPerLine = max(4, (int) floor($maxWidthMm / max(0.9, $fontSizeMm * 0.5)));
-		$wrapped = preg_split('/\r\n|\r|\n/', wordwrap($text, $estimatedCharsPerLine, "\n", true));
-		if (!is_array($wrapped) || empty($wrapped)) {
-			$wrapped = array($text);
+		$fontSizeMm = max(0.8, (float) $fontSizeMm);
+		$maxWidthMm = max(1.0, (float) $maxWidthMm);
+		$effectiveMaxWidthMm = max(1.0, $maxWidthMm * 0.96);
+		$paragraphs = preg_split('/\r\n|\r|\n/', $text);
+		if (!is_array($paragraphs) || empty($paragraphs)) {
+			$paragraphs = array($text);
 		}
 
-		$wrappedLines = array_values(array_filter(array_map('trim', $wrapped), 'strlen'));
+		$wrappedLines = array();
+		foreach ($paragraphs as $paragraph) {
+			$paragraph = trim((string) $paragraph);
+			if ($paragraph === '') {
+				continue;
+			}
+			$wrappedLines = array_merge($wrappedLines, self::wrapTemplateTextParagraphByEstimatedWidth($paragraph, $fontSizeMm, $effectiveMaxWidthMm));
+		}
+
+		$wrappedLines = array_values(array_filter(array_map('trim', $wrappedLines), 'strlen'));
 		$lines = $wrappedLines;
 		if (empty($lines)) {
 			$lines = array($text);
@@ -5133,10 +5510,168 @@ class KreaProductsLabelService
 
 		if ($truncate && $maxLines > 0 && count($wrappedLines) > $maxLines) {
 			$lastIndex = count($lines) - 1;
-			$lines[$lastIndex] = rtrim(substr($lines[$lastIndex], 0, max(0, $estimatedCharsPerLine - 1))) . '...';
+			$lines[$lastIndex] = self::truncateTemplateTextLineToEstimatedWidth($lines[$lastIndex], $fontSizeMm, $effectiveMaxWidthMm);
 		}
 
 		return $lines;
+	}
+
+	/**
+	 * Wrap one paragraph using a proportional-width estimate.
+	 *
+	 * @param string $text       Paragraph text
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return array
+	 */
+	private static function wrapTemplateTextParagraphByEstimatedWidth($text, $fontSizeMm, $maxWidthMm)
+	{
+		$words = preg_split('/\s+/u', trim((string) $text), -1, PREG_SPLIT_NO_EMPTY);
+		if (!is_array($words) || empty($words)) {
+			return array(trim((string) $text));
+		}
+
+		$lines = array();
+		$currentLine = '';
+		foreach ($words as $word) {
+			$word = trim((string) $word);
+			if ($word === '') {
+				continue;
+			}
+
+			$candidate = ($currentLine === '' ? $word : $currentLine . ' ' . $word);
+			if (self::estimateTemplateTextWidthMm($candidate, $fontSizeMm) <= $maxWidthMm) {
+				$currentLine = $candidate;
+				continue;
+			}
+
+			if ($currentLine !== '') {
+				$lines[] = $currentLine;
+				$currentLine = '';
+			}
+
+			if (self::estimateTemplateTextWidthMm($word, $fontSizeMm) <= $maxWidthMm) {
+				$currentLine = $word;
+				continue;
+			}
+
+			$wordParts = self::splitTemplateWordByEstimatedWidth($word, $fontSizeMm, $maxWidthMm);
+			foreach ($wordParts as $index => $part) {
+				if ($index < (count($wordParts) - 1)) {
+					$lines[] = $part;
+				} else {
+					$currentLine = $part;
+				}
+			}
+		}
+
+		if ($currentLine !== '') {
+			$lines[] = $currentLine;
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Split an oversized word into readable chunks.
+	 *
+	 * @param string $word       Word to split
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return array
+	 */
+	private static function splitTemplateWordByEstimatedWidth($word, $fontSizeMm, $maxWidthMm)
+	{
+		$parts = array();
+		$currentPart = '';
+		foreach (self::splitTemplateTextCharacters($word) as $character) {
+			$candidate = $currentPart . $character;
+			if ($currentPart !== '' && self::estimateTemplateTextWidthMm($candidate, $fontSizeMm) > $maxWidthMm) {
+				$parts[] = $currentPart;
+				$currentPart = $character;
+			} else {
+				$currentPart = $candidate;
+			}
+		}
+
+		if ($currentPart !== '') {
+			$parts[] = $currentPart;
+		}
+
+		return $parts;
+	}
+
+	/**
+	 * Estimate SVG/PDF text width for Helvetica-like label fonts.
+	 *
+	 * @param string $text       Text to measure
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @return float Estimated width in millimeters
+	 */
+	private static function estimateTemplateTextWidthMm($text, $fontSizeMm)
+	{
+		$units = 0.0;
+		foreach (self::splitTemplateTextCharacters($text) as $character) {
+			if (preg_match('/\s/u', $character)) {
+				$units += 0.28;
+			} elseif (preg_match('/[ilI1\|\.,;:\'`!]/u', $character)) {
+				$units += 0.28;
+			} elseif (preg_match('/[fjrt\(\)\[\]\/\\\\°]/u', $character)) {
+				$units += 0.38;
+			} elseif (preg_match('/[mwMW@#%&]/u', $character)) {
+				$units += 0.78;
+			} elseif (preg_match('/[A-ZÀ-ÖØ-Þ0-9]/u', $character)) {
+				$units += 0.58;
+			} elseif (preg_match('/[-+=]/u', $character)) {
+				$units += 0.45;
+			} else {
+				$units += 0.50;
+			}
+		}
+
+		return $units * max(0.8, (float) $fontSizeMm);
+	}
+
+	/**
+	 * Truncate a line so the ellipsis still respects the estimated width.
+	 *
+	 * @param string $text       Source text
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return string
+	 */
+	private static function truncateTemplateTextLineToEstimatedWidth($text, $fontSizeMm, $maxWidthMm)
+	{
+		$text = trim((string) $text);
+		if ($text === '') {
+			return '';
+		}
+		if (self::estimateTemplateTextWidthMm($text, $fontSizeMm) <= $maxWidthMm) {
+			return $text;
+		}
+
+		$characters = self::splitTemplateTextCharacters($text);
+		while (!empty($characters) && self::estimateTemplateTextWidthMm(rtrim(implode('', $characters)) . '...', $fontSizeMm) > $maxWidthMm) {
+			array_pop($characters);
+		}
+
+		return rtrim(implode('', $characters)) . '...';
+	}
+
+	/**
+	 * Split UTF-8 text into characters with a byte-safe fallback.
+	 *
+	 * @param string $text Text to split
+	 * @return array
+	 */
+	private static function splitTemplateTextCharacters($text)
+	{
+		$characters = preg_split('//u', (string) $text, -1, PREG_SPLIT_NO_EMPTY);
+		if (is_array($characters)) {
+			return $characters;
+		}
+
+		return str_split((string) $text);
 	}
 
 	/**

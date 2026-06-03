@@ -1,8 +1,5 @@
-# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+# Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 #
-# This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
-#
-# GPL-3.0 License:
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -16,11 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
-# Proprietary License:
-# For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
-#
-# For more information, visit <https://www.kreativitat.com>.
+# Commercial support and integration services are available from
+# Kreativität Works <mail@kreativitat.com>.
 #
 
 #
@@ -156,8 +150,8 @@ EstimatedTotalsForTheProduct = Totaux estimés du produit
 KreaProductsCopyAvgToProduct = Copier les valeurs moyennes pour 100 g vers le produit
 KreaProductsCopyAvgButton = Copier les valeurs
 KreaProductsCopyAvgSuccess = Valeurs nutritionnelles copiées avec succès.
-KreaProductsCopyAllergensToProduct = Copier les allergènes vers le produit
-KreaProductsCopyAllergensButton = Copier les allergènes
+KreaProductsCopyAllergensToProduct = Copier les allergènes et la nutrition vers le produit
+KreaProductsCopyAllergensButton = Copier les allergènes et la nutrition
 KreaProductsCopyAllergensSuccess = Allergènes copiés avec succès.
 KreaProductsNutritionDisclaimer = Avertissement : Les informations nutritionnelles sont saisies par l'utilisateur. L'exactitude et la conformité relèvent de sa responsabilité.
 KreaProductsAllergensDisclaimer = Avertissement : Les informations sur les allergènes sont saisies par l'utilisateur. L'exactitude et la conformité relèvent de sa responsabilité.
@@ -190,6 +184,9 @@ KreaProductAllergensTableTitle = Tableau des allergènes
 KreaProductsTableTitle = Tableau nutritionnel
 productRecipeTitle = Autres caractéristiques
 productRecipeInline = Préparation
+kreap_ingredients = Ingredients
+kreap_ingredients_help = Default ingredients text used on product labels. If empty, ingredients are calculated from kit components.
+kreap_ingredients_Inline = Ingredients
 NoneSelected = Aucun sélectionné
 Allergens = Allergènes
 AllergensTraces = Traces d'allergènes

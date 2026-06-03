@@ -1,8 +1,5 @@
-# Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
+# Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 #
-# This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
-#
-# GPL-3.0 License:
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -16,11 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
-# Proprietary License:
-# For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
-#
-# For more information, visit <https://www.kreativitat.com>.
+# Commercial support and integration services are available from
+# Kreativität Works <mail@kreativitat.com>.
 #
 
 #
@@ -234,8 +228,8 @@ KreapCostWithoutVat = Cost (excl. VAT)
 KreaProductsCopyAvgToProduct = Copy average values per 100g to product
 KreaProductsCopyAvgButton = Copy values
 KreaProductsCopyAvgSuccess = Nutritional values copied successfully.
-KreaProductsCopyAllergensToProduct = Copy allergens to product
-KreaProductsCopyAllergensButton = Copy allergens
+KreaProductsCopyAllergensToProduct = Copy allergens and nutrition to product
+KreaProductsCopyAllergensButton = Copy allergens and nutrition
 KreaProductsCopyAllergensSuccess = Allergens copied successfully.
 KreaProductsAssocToBomTitle = Convert associations to BOM
 KreaProductsAssocToBomSource = Source product (associations)
@@ -295,6 +289,9 @@ LUPI = Lupin
 updateAllergens = Update allergens
 productRecipeTitle = Other characteristics
 productRecipeInline = Preparation
+kreap_ingredients = Ingredients
+kreap_ingredients_help = Default ingredients text used on product labels. If empty, ingredients are calculated from kit components.
+kreap_ingredients_Inline = Ingredients
 kreap_default_label_layout = Default label layout
 kreap_default_label_layout_help = Template code used as default label layout for this product in KreaProduction.
 kreap_brand_Inline = Product brand
@@ -323,7 +320,7 @@ KreapAboutEditorLabel = Editor
 KreapAboutLicenseLabel = License
 KreapAboutSupportLabel = Support
 KreapAboutWebsiteLabel = Website
-KreapAboutLicenseValue = GPL v3 or proprietary license (contact us)
+KreapAboutLicenseValue = GPL-3.0-or-later
 KreapAboutChangeLogLabel = Changelog
 KreapAboutLatestReleaseLabel = Latest release
 KreapAboutReleaseDateLabel = Release date

@@ -522,10 +522,10 @@
           "content_mode": "dynamic",
           "source": "label.ingredients_section",
           "placeholder": "INGREDIENTES",
-          "x_mm": 2.2,
-          "y_mm": 11.2,
-          "w_mm": 48.0,
-          "h_mm": 14.4,
+          "x_mm": 3.0,
+          "y_mm": 15.6,
+          "w_mm": 66.6,
+          "h_mm": 9.8,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -540,9 +540,9 @@
           "content_mode": "dynamic",
           "source": "label.allergens_section",
           "placeholder": "ALERGENIOS",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 25.6,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 6.2,
           "style": {
             "font_family": "Helvetica",
@@ -558,9 +558,9 @@
           "content_mode": "dynamic",
           "source": "label.nutrition_section",
           "placeholder": "DECLARACAO NUTRICIONAL",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 32.2,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 10.2,
           "style": {
             "font_family": "Helvetica",
@@ -574,9 +574,9 @@
           "id": "back_storage_text",
           "type": "text",
           "content_mode": "dynamic",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 44.0,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 5.2,
           "style": {
             "font_family": "Helvetica",
@@ -593,7 +593,7 @@
   ],
   "notes": [
     "Weight front page keeps the compact ref box and large Code128 barcode geometry requested for KreaProduction weighing flow.",
-    "Back page keeps product and ingredients close in the bounded upper-left column while allergens, nutrition, and conservation use the full width below the enlarged brand logo.",
+    "Back page keeps the product in the upper-left area and uses the usable width below the enlarged brand logo with a right safety margin for ingredients, allergens, nutrition, and conservation.",
     "Company data, Green Dot, and food-contact material symbols remain on the front page."
   ]
 }

@@ -416,13 +416,24 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			return array('');
 		}
 
-		$estimatedCharsPerLine = max(4, (int) floor((float) $maxWidthMm / max(0.9, (float) $fontSizeMm * 0.5)));
-		$wrapped = preg_split('/\r\n|\r|\n/', wordwrap($text, $estimatedCharsPerLine, "\n", true));
-		if (!is_array($wrapped) || empty($wrapped)) {
-			$wrapped = array($text);
+		$fontSizeMm = max(0.8, (float) $fontSizeMm);
+		$maxWidthMm = max(1.0, (float) $maxWidthMm);
+		$effectiveMaxWidthMm = max(1.0, $maxWidthMm * 0.96);
+		$paragraphs = preg_split('/\r\n|\r|\n/', $text);
+		if (!is_array($paragraphs) || empty($paragraphs)) {
+			$paragraphs = array($text);
 		}
 
-		$lines = array_values(array_filter(array_map('trim', $wrapped), 'strlen'));
+		$wrappedLines = array();
+		foreach ($paragraphs as $paragraph) {
+			$paragraph = trim((string) $paragraph);
+			if ($paragraph === '') {
+				continue;
+			}
+			$wrappedLines = array_merge($wrappedLines, $this->wrapTemplateTextParagraphByEstimatedWidth($paragraph, $fontSizeMm, $effectiveMaxWidthMm));
+		}
+
+		$lines = array_values(array_filter(array_map('trim', $wrappedLines), 'strlen'));
 		if (empty($lines)) {
 			$lines = array($text);
 		}
@@ -432,11 +443,169 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 			$lines = array_slice($lines, 0, $maxLines);
 			if ($truncate) {
 				$lastIndex = count($lines) - 1;
-				$lines[$lastIndex] = $this->truncateTextWithEllipsis($lines[$lastIndex], max(1, $estimatedCharsPerLine - 1));
+				$lines[$lastIndex] = $this->truncateTemplateTextLineToEstimatedWidth($lines[$lastIndex], $fontSizeMm, $effectiveMaxWidthMm);
 			}
 		}
 
 		return $lines;
+	}
+
+	/**
+	 * Wrap one paragraph using a proportional-width estimate.
+	 *
+	 * @param string $text       Paragraph text
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return array
+	 */
+	private function wrapTemplateTextParagraphByEstimatedWidth($text, $fontSizeMm, $maxWidthMm)
+	{
+		$words = preg_split('/\s+/u', trim((string) $text), -1, PREG_SPLIT_NO_EMPTY);
+		if (!is_array($words) || empty($words)) {
+			return array(trim((string) $text));
+		}
+
+		$lines = array();
+		$currentLine = '';
+		foreach ($words as $word) {
+			$word = trim((string) $word);
+			if ($word === '') {
+				continue;
+			}
+
+			$candidate = ($currentLine === '' ? $word : $currentLine . ' ' . $word);
+			if ($this->estimateTemplateTextWidthMm($candidate, $fontSizeMm) <= $maxWidthMm) {
+				$currentLine = $candidate;
+				continue;
+			}
+
+			if ($currentLine !== '') {
+				$lines[] = $currentLine;
+				$currentLine = '';
+			}
+
+			if ($this->estimateTemplateTextWidthMm($word, $fontSizeMm) <= $maxWidthMm) {
+				$currentLine = $word;
+				continue;
+			}
+
+			$wordParts = $this->splitTemplateWordByEstimatedWidth($word, $fontSizeMm, $maxWidthMm);
+			foreach ($wordParts as $index => $part) {
+				if ($index < (count($wordParts) - 1)) {
+					$lines[] = $part;
+				} else {
+					$currentLine = $part;
+				}
+			}
+		}
+
+		if ($currentLine !== '') {
+			$lines[] = $currentLine;
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Split an oversized word into readable chunks.
+	 *
+	 * @param string $word       Word to split
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return array
+	 */
+	private function splitTemplateWordByEstimatedWidth($word, $fontSizeMm, $maxWidthMm)
+	{
+		$parts = array();
+		$currentPart = '';
+		foreach ($this->splitTemplateTextCharacters($word) as $character) {
+			$candidate = $currentPart . $character;
+			if ($currentPart !== '' && $this->estimateTemplateTextWidthMm($candidate, $fontSizeMm) > $maxWidthMm) {
+				$parts[] = $currentPart;
+				$currentPart = $character;
+			} else {
+				$currentPart = $candidate;
+			}
+		}
+
+		if ($currentPart !== '') {
+			$parts[] = $currentPart;
+		}
+
+		return $parts;
+	}
+
+	/**
+	 * Estimate PDF text width for Helvetica-like label fonts.
+	 *
+	 * @param string $text       Text to measure
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @return float Estimated width in millimeters
+	 */
+	private function estimateTemplateTextWidthMm($text, $fontSizeMm)
+	{
+		$units = 0.0;
+		foreach ($this->splitTemplateTextCharacters($text) as $character) {
+			if (preg_match('/\s/u', $character)) {
+				$units += 0.28;
+			} elseif (preg_match('/[ilI1\|\.,;:\'`!]/u', $character)) {
+				$units += 0.28;
+			} elseif (preg_match('/[fjrt\(\)\[\]\/\\\\°]/u', $character)) {
+				$units += 0.38;
+			} elseif (preg_match('/[mwMW@#%&]/u', $character)) {
+				$units += 0.78;
+			} elseif (preg_match('/[A-ZÀ-ÖØ-Þ0-9]/u', $character)) {
+				$units += 0.58;
+			} elseif (preg_match('/[-+=]/u', $character)) {
+				$units += 0.45;
+			} else {
+				$units += 0.50;
+			}
+		}
+
+		return $units * max(0.8, (float) $fontSizeMm);
+	}
+
+	/**
+	 * Truncate a line so the ellipsis still respects the estimated width.
+	 *
+	 * @param string $text       Source text
+	 * @param float  $fontSizeMm Font size in millimeters
+	 * @param float  $maxWidthMm Maximum line width in millimeters
+	 * @return string
+	 */
+	private function truncateTemplateTextLineToEstimatedWidth($text, $fontSizeMm, $maxWidthMm)
+	{
+		$text = trim((string) $text);
+		if ($text === '') {
+			return '';
+		}
+		if ($this->estimateTemplateTextWidthMm($text, $fontSizeMm) <= $maxWidthMm) {
+			return $text;
+		}
+
+		$characters = $this->splitTemplateTextCharacters($text);
+		while (!empty($characters) && $this->estimateTemplateTextWidthMm(rtrim(implode('', $characters)) . '...', $fontSizeMm) > $maxWidthMm) {
+			array_pop($characters);
+		}
+
+		return rtrim(implode('', $characters)) . '...';
+	}
+
+	/**
+	 * Split UTF-8 text into characters with a byte-safe fallback.
+	 *
+	 * @param string $text Text to split
+	 * @return array
+	 */
+	private function splitTemplateTextCharacters($text)
+	{
+		$characters = preg_split('//u', (string) $text, -1, PREG_SPLIT_NO_EMPTY);
+		if (is_array($characters)) {
+			return $characters;
+		}
+
+		return str_split((string) $text);
 	}
 
 	/**

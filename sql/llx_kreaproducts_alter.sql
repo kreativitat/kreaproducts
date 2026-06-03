@@ -1,4 +1,4 @@
--- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+-- Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 -- Rename legacy kreap_syncprice extrafield to kreap_updatebuyprice (safe when column is missing)
 SET @schema = DATABASE();
 
@@ -55,3 +55,15 @@ DEALLOCATE PREPARE stmt;
 UPDATE llx_extrafields
 SET type = 'text', size = '65535'
 WHERE elementtype = 'product' AND name = 'kreap_default_label_layout';
+
+-- Add explicit per-product ingredients override used by label generation.
+SET @has_ingredients_col := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME = 'kreap_ingredients'
+);
+SET @sql := IF(@has_ingredients_col = 0,
+    'ALTER TABLE llx_product_extrafields ADD kreap_ingredients LONGTEXT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

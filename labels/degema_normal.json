@@ -442,10 +442,10 @@
           "content_mode": "dynamic",
           "source": "label.ingredients_section",
           "placeholder": "INGREDIENTES",
-          "x_mm": 2.2,
-          "y_mm": 11.2,
-          "w_mm": 48.0,
-          "h_mm": 14.4,
+          "x_mm": 3.0,
+          "y_mm": 15.6,
+          "w_mm": 66.6,
+          "h_mm": 9.8,
           "style": {
             "font_family": "Helvetica",
             "font_size_pt": 6.4,
@@ -460,9 +460,9 @@
           "content_mode": "dynamic",
           "source": "label.allergens_section",
           "placeholder": "ALERGENIOS",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 25.6,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 6.2,
           "style": {
             "font_family": "Helvetica",
@@ -478,9 +478,9 @@
           "content_mode": "dynamic",
           "source": "label.nutrition_section",
           "placeholder": "DECLARACAO NUTRICIONAL",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 32.2,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 10.2,
           "style": {
             "font_family": "Helvetica",
@@ -494,9 +494,9 @@
           "id": "back_storage_text",
           "type": "text",
           "content_mode": "dynamic",
-          "x_mm": 2.2,
+          "x_mm": 3.0,
           "y_mm": 44.0,
-          "w_mm": 71.2,
+          "w_mm": 66.6,
           "h_mm": 5.2,
           "style": {
             "font_family": "Helvetica",
@@ -514,6 +514,6 @@
   "notes": [
     "Refatorado para melhorar a legibilidade e a consistência de espaçamento entre a pré-visualização e o PDF gerado.",
     "Os símbolos obrigatórios Green Dot e de contacto alimentar da UE estão incorporados como recursos do modelo e renderizados na primeira página.",
-    "A segunda página usa uma coluna superior esquerda delimitada para produto e ingredientes e aproveita a largura total abaixo do logótipo para alergénios, nutrição e conservação."
+    "A segunda página mantém o produto no topo esquerdo e usa a largura útil abaixo do logótipo com margem direita de segurança para ingredientes, alergénios, nutrição e conservação."
   ]
 }

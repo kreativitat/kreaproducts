@@ -1,8 +1,5 @@
-# Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+# Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 #
-# This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
-#
-# GPL-3.0 License:
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -16,11 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
-# Proprietary License:
-# For commercial use, support, or if you prefer not to disclose your source code modifications,
-# please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
-#
-# For more information, visit <https://www.kreativitat.com>.
+# Commercial support and integration services are available from
+# Kreativität Works <mail@kreativitat.com>.
 #
 
 #
@@ -156,8 +150,8 @@ EstimatedTotalsForTheProduct = Totali stimati del prodotto
 KreaProductsCopyAvgToProduct = Copia valori medi per 100 g al prodotto
 KreaProductsCopyAvgButton = Copia valori
 KreaProductsCopyAvgSuccess = Valori nutrizionali copiati con successo.
-KreaProductsCopyAllergensToProduct = Copia allergeni al prodotto
-KreaProductsCopyAllergensButton = Copia allergeni
+KreaProductsCopyAllergensToProduct = Copia allergeni e nutrizione al prodotto
+KreaProductsCopyAllergensButton = Copia allergeni e nutrizione
 KreaProductsCopyAllergensSuccess = Allergeni copiati con successo.
 KreaProductsNutritionDisclaimer = Avviso: Le informazioni nutrizionali sono inserite dall'utente. Accuratezza e conformità sono responsabilità dell'utente.
 KreaProductsAllergensDisclaimer = Avviso: Le informazioni sugli allergeni sono inserite dall'utente. Accuratezza e conformità sono responsabilità dell'utente.
@@ -190,6 +184,9 @@ KreaProductAllergensTableTitle = Tabella allergeni
 KreaProductsTableTitle = Tabella nutrizionale
 productRecipeTitle = Altre caratteristiche
 productRecipeInline = Preparazione
+kreap_ingredients = Ingredients
+kreap_ingredients_help = Default ingredients text used on product labels. If empty, ingredients are calculated from kit components.
+kreap_ingredients_Inline = Ingredients
 NoneSelected = Nessuno selezionato
 Allergens = Allergeni
 AllergensTraces = Tracce di allergeni
@@ -270,7 +267,7 @@ KreapAboutEditorLabel = Editore
 KreapAboutLicenseLabel = Licenza
 KreapAboutSupportLabel = Supporto
 KreapAboutWebsiteLabel = Sito web
-KreapAboutLicenseValue = GPL v3 o licenza proprietaria (contattaci)
+KreapAboutLicenseValue = GPL-3.0-or-later
 KreapCostPricesUpdated = Prezzi di costo aggiornati!
 KreapUpdateBomPrice = Aggiorna prezzo BOM
 KreapUpdateBomPriceTitle = Aggiorna il prezzo basato sulla BOM con gli acquisti più recenti

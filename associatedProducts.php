@@ -356,6 +356,58 @@ if (!function_exists('kreaproducts_product_extrafield_row_exists')) {
 	}
 }
 
+if (!function_exists('kreaproducts_set_product_extrafield_value')) {
+	function kreaproducts_set_product_extrafield_value($db, $productId, $field, $value)
+	{
+		$productId = (int) $productId;
+		$field = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $field);
+		if ($productId <= 0 || $field === '') {
+			return -1;
+		}
+
+		$componentEntity = null;
+		$sqlComponent = "SELECT rowid, entity"
+			. " FROM " . MAIN_DB_PREFIX . "product"
+			. " WHERE rowid = " . $productId
+			. " AND entity IN (" . getEntity('product') . ")"
+			. " LIMIT 1";
+		$resComponent = $db->query($sqlComponent);
+		if ($resComponent && ($objComponent = $db->fetch_object($resComponent))) {
+			$componentEntity = (int) $objComponent->entity;
+		}
+		if ($resComponent) {
+			$db->free($resComponent);
+		}
+		if ($componentEntity === null) {
+			return -1;
+		}
+
+		$hasEntityColumn = false;
+		$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "entity");
+		if ($colRes) {
+			$hasEntityColumn = ($db->num_rows($colRes) > 0);
+			$db->free($colRes);
+		}
+
+		if ($hasEntityColumn) {
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, entity, " . $field . ") VALUES ("
+				. $productId . ", " . $componentEntity . ", " . (int) $value . ") "
+				. "ON DUPLICATE KEY UPDATE " . $field . " = " . (int) $value;
+		} else {
+			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, " . $field . ") VALUES ("
+				. $productId . ", " . (int) $value . ") "
+				. "ON DUPLICATE KEY UPDATE " . $field . " = " . (int) $value;
+		}
+
+		if (!$db->query($sql)) {
+			dol_syslog("Error updating product extrafield " . $field . " for product " . $productId . ": " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+
+		return 1;
+	}
+}
+
 if (!function_exists('kreaproducts_normalize_extrafield_boolean')) {
 	function kreaproducts_normalize_extrafield_boolean($rawValue, $defaultWhenNull = 1)
 	{
@@ -375,6 +427,142 @@ if (!function_exists('kreaproducts_normalize_extrafield_boolean')) {
 		}
 
 		return ((int) $rawValue > 0 ? 1 : 0);
+	}
+}
+
+if (!function_exists('kreaproducts_ensure_product_ingredients_extrafield')) {
+	function kreaproducts_ensure_product_ingredients_extrafield($db, $langs)
+	{
+		global $conf;
+
+		static $checked = false;
+		if ($checked) {
+			return;
+		}
+		$checked = true;
+
+		$columnReady = false;
+		$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "kreap_ingredients");
+		if ($colRes) {
+			$columnReady = ($db->num_rows($colRes) > 0);
+			$db->free($colRes);
+		}
+		$metadataReady = false;
+		$sqlMeta = "SELECT rowid FROM " . MAIN_DB_PREFIX . "extrafields";
+		$sqlMeta .= " WHERE elementtype = 'product'";
+		$sqlMeta .= " AND name = 'kreap_ingredients'";
+		$sqlMeta .= " AND entity IN (0," . (int) $conf->entity . ")";
+		$sqlMeta .= " LIMIT 1";
+		$resMeta = $db->query($sqlMeta);
+		if ($resMeta) {
+			$metadataReady = ($db->num_rows($resMeta) > 0);
+			$db->free($resMeta);
+		}
+		if ($columnReady && $metadataReady) {
+			return;
+		}
+
+		require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+		$extrafields = new ExtraFields($db);
+		$fieldLabel = $langs->trans("kreap_ingredients");
+		$fieldHelp = $langs->trans("kreap_ingredients_help");
+		$extrafields->addExtraField('kreap_ingredients', $fieldLabel, 'html', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $fieldHelp, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$extrafields->updateExtraField('kreap_ingredients', $fieldLabel, 'html', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $fieldHelp, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+	}
+}
+
+if (!function_exists('kreaproducts_copy_nutritional_values_to_product')) {
+	/**
+	 * Copy saved nutritional values from one product to another.
+	 *
+	 * @return int 1 when values were copied, 0 when no source values exist, -1 on error
+	 */
+	function kreaproducts_copy_nutritional_values_to_product($db, $sourceProductId, $targetProductId, $user)
+	{
+		$sourceProductId = (int) $sourceProductId;
+		$targetProductId = (int) $targetProductId;
+		if ($sourceProductId <= 0 || $targetProductId <= 0) {
+			return -1;
+		}
+
+		$entityList = getEntity('product');
+		$sqlTarget = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product";
+		$sqlTarget .= " WHERE rowid = " . $targetProductId;
+		$sqlTarget .= " AND entity IN (" . $entityList . ")";
+		$sqlTarget .= " LIMIT 1";
+		$resTarget = $db->query($sqlTarget);
+		if (!$resTarget) {
+			dol_syslog("Error checking target product entity before nutritional copy: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+		$targetExists = ($db->num_rows($resTarget) > 0);
+		$db->free($resTarget);
+		if (!$targetExists) {
+			dol_syslog("Blocked nutritional copy to inaccessible product ID " . $targetProductId, LOG_WARNING);
+			return -1;
+		}
+
+		$fields = array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber');
+		$sqlSource = "SELECT n." . implode(", n.", $fields);
+		$sqlSource .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional AS n";
+		$sqlSource .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = n.fk_product";
+		$sqlSource .= " WHERE n.fk_product = " . $sourceProductId;
+		$sqlSource .= " AND p.entity IN (" . $entityList . ")";
+		$sqlSource .= " ORDER BY n.rowid ASC LIMIT 1";
+		$resSource = $db->query($sqlSource);
+		if (!$resSource) {
+			dol_syslog("Error reading source nutritional data: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+		if ($db->num_rows($resSource) <= 0) {
+			$db->free($resSource);
+			return 0;
+		}
+		$sourceValues = $db->fetch_object($resSource);
+		$db->free($resSource);
+
+		$sqlExisting = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+		$sqlExisting .= " WHERE fk_product = " . $targetProductId;
+		$sqlExisting .= " ORDER BY rowid ASC LIMIT 1";
+		$resExisting = $db->query($sqlExisting);
+		if (!$resExisting) {
+			dol_syslog("Error checking target nutritional data: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+		$existingRowId = 0;
+		if ($db->num_rows($resExisting) > 0) {
+			$objExisting = $db->fetch_object($resExisting);
+			$existingRowId = (int) $objExisting->rowid;
+		}
+		$db->free($resExisting);
+
+		if ($existingRowId <= 0) {
+			$sqlInsert = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional";
+			$sqlInsert .= " (fk_product, date_creation, fk_user_creat)";
+			$sqlInsert .= " VALUES (" . $targetProductId . ", '" . $db->idate(dol_now()) . "', " . (int) $user->id . ")";
+			$resInsert = $db->query($sqlInsert);
+			if (!$resInsert) {
+				dol_syslog("Error creating target nutritional data: " . $db->lasterror(), LOG_ERR);
+				return -1;
+			}
+			$existingRowId = (int) $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
+		}
+
+		$setClauses = array();
+		foreach ($fields as $field) {
+			$value = isset($sourceValues->$field) ? $sourceValues->$field : null;
+			$setClauses[] = ($value === null) ? $field . " = NULL" : $field . " = " . (float) $value;
+		}
+
+		$sqlUpdate = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET " . implode(", ", $setClauses);
+		$sqlUpdate .= " WHERE rowid = " . $existingRowId;
+		$resUpdate = $db->query($sqlUpdate);
+		if (!$resUpdate) {
+			dol_syslog("Error copying nutritional data: " . $db->lasterror(), LOG_ERR);
+			return -1;
+		}
+
+		return 1;
 	}
 }
 
@@ -451,6 +639,7 @@ $usercanread   = (($object->type == Product::TYPE_PRODUCT && $user->rights->prod
 $usercancreate = (($object->type == Product::TYPE_PRODUCT && $user->rights->produit->creer) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
 $usercandelete = (($object->type == Product::TYPE_PRODUCT && $user->rights->produit->supprimer) || ($object->type == Product::TYPE_SERVICE && $user->rights->service->supprimer));
 
+kreaproducts_ensure_product_ingredients_extrafield($db, $langs);
 
 /*
  * Actions
@@ -554,17 +743,40 @@ if (empty($reshook)) {
 			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 			exit;
 		}
-	} elseif ($action === 'save_composed_product') {
+	} elseif ($action === 'save_composed_product' && $usercancreate) {
 		$TProduct = GETPOST('TProduct', 'array');
+		$error = 0;
+		$errors = array();
 		if (!empty($TProduct)) {
 			foreach ($TProduct as $id_product => $row) {
-				if ($row['qty'] > 0) {
-					$object->update_sousproduit($id, $id_product, $row['qty'], isset($row['incdec']) ? 1 : 0);
+				$id_product = (int) $id_product;
+				$qty = price2num(isset($row['qty']) ? $row['qty'] : 0, 'MS');
+				if ($qty > 0) {
+					$result = $object->update_sousproduit($id, $id_product, $qty, isset($row['incdec']) ? 1 : 0);
+					if ($result < 0) {
+						$error++;
+						$errors = array_merge($errors, !empty($object->errors) ? $object->errors : array($object->error));
+					}
+					if (!$error && !empty($conf->global->KREAPRODUCTION_ENABLE)) {
+						$lotValue = isset($row['kreap_lot']) ? 1 : 0;
+						if (kreaproducts_set_product_extrafield_value($db, $id_product, 'kreap_lot', $lotValue) < 0) {
+							$error++;
+							$errors[] = $langs->trans("ErrorRecordNotFound") . ' #' . $id_product;
+						}
+					}
 				} else {
-					$object->del_sousproduit($id, $id_product);
+					$result = $object->del_sousproduit($id, $id_product);
+					if ($result < 0) {
+						$error++;
+						$errors = array_merge($errors, !empty($object->errors) ? $object->errors : array($object->error));
+					}
 				}
 			}
-			setEventMessages('RecordSaved', null);
+			if ($error) {
+				setEventMessages($langs->trans("Error"), array_filter($errors), 'errors');
+			} else {
+				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+			}
 		}
 		$action = '';
 		header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
@@ -826,7 +1038,11 @@ if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAlle
 	}
 	if ($targetProductId > 0) {
 		$allergensToCopy = array();
-		$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int) $object->id;
+		$sql = "SELECT pa.fk_allergen, pa.traces";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens AS pa";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = pa.fk_product";
+		$sql .= " WHERE pa.fk_product = " . (int) $object->id;
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
 		$resql = $db->query($sql);
 		if ($resql) {
 			while ($obj = $db->fetch_object($resql)) {
@@ -839,23 +1055,76 @@ if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAlle
 				}
 			}
 			$db->free($resql);
+		} else {
+			dol_syslog("Error reading source allergens: " . $db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+			exit;
 		}
 
-		$resdel = $db->query("DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int) $targetProductId);
-		if ($resdel) {
-			if (!empty($allergensToCopy)) {
-				dol_include_once('/kreaproducts/class/productallergens.class.php');
-				foreach ($allergensToCopy as $row) {
-					$prodAllergen = new ProductAllergens($db);
-					$prodAllergen->fk_product = $targetProductId;
-					$prodAllergen->fk_allergen = $row['fk_allergen'];
-					$prodAllergen->traces = $row['traces'];
-					$prodAllergen->create($user);
+		$sqlTarget = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product";
+		$sqlTarget .= " WHERE rowid = " . (int) $targetProductId;
+		$sqlTarget .= " AND entity IN (" . getEntity('product') . ")";
+		$sqlTarget .= " LIMIT 1";
+		$resTarget = $db->query($sqlTarget);
+		if (!$resTarget || $db->num_rows($resTarget) <= 0) {
+			if ($resTarget) {
+				$db->free($resTarget);
+			}
+			dol_syslog("Blocked allergen and nutritional copy to inaccessible product ID " . $targetProductId, LOG_WARNING);
+			setEventMessages($langs->trans("Error"), null, 'errors');
+			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+			exit;
+		}
+		$db->free($resTarget);
+
+		$error = 0;
+		$messages = array($langs->trans("KreaProductsCopyAllergensSuccess"));
+		$nutritionCopyResult = 0;
+		$db->begin();
+
+		$sqlDelete = "DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens";
+		$sqlDelete .= " WHERE fk_product = " . (int) $targetProductId;
+		$resdel = $db->query($sqlDelete);
+		if (!$resdel) {
+			$error++;
+			dol_syslog("Error deleting target allergens: " . $db->lasterror(), LOG_ERR);
+		}
+
+		if (!$error && !empty($allergensToCopy)) {
+			dol_include_once('/kreaproducts/class/productallergens.class.php');
+			foreach ($allergensToCopy as $row) {
+				$prodAllergen = new ProductAllergens($db);
+				$prodAllergen->fk_product = $targetProductId;
+				$prodAllergen->fk_allergen = $row['fk_allergen'];
+				$prodAllergen->traces = $row['traces'];
+				if ($prodAllergen->create($user) <= 0) {
+					$error++;
+					dol_syslog("Error creating target allergen: " . $prodAllergen->error, LOG_ERR);
+					break;
 				}
 			}
-			setEventMessages($langs->trans("KreaProductsCopyAllergensSuccess"), null, 'mesgs');
+		}
+
+		if (!$error) {
+			$nutritionCopyResult = kreaproducts_copy_nutritional_values_to_product($db, $object->id, $targetProductId, $user);
+			if ($nutritionCopyResult < 0) {
+				$error++;
+			}
+		}
+
+		if (!$error) {
+			$db->commit();
+			if ($nutritionCopyResult > 0) {
+				$result = KreaProductsNutrientUpdater::updateNutrientAttributes($targetProductId, $user);
+				if ($result < 0) {
+					kreaproducts_debug_log("Error updating nutritional attributes for product ID " . $targetProductId);
+				}
+				$messages[] = $langs->trans("KreaProductsCopyAvgSuccess");
+			}
+			setEventMessages('', $messages, 'mesgs');
 		} else {
-			dol_syslog("Error updating allergens: " . $db->lasterror(), LOG_ERR);
+			$db->rollback();
 			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
 		}
 	} else {
@@ -992,45 +1261,10 @@ if ($action === 'toggle_component_kreap_lot' && $usercancreate && !empty($conf->
 	$newValue = GETPOST('value', 'int') ? 1 : 0;
 
 	if ($componentProductId > 0) {
-		$componentEntity = null;
-		$sqlComponent = "SELECT rowid, entity"
-			. " FROM " . MAIN_DB_PREFIX . "product"
-			. " WHERE rowid = " . (int) $componentProductId
-			. " AND entity IN (" . getEntity('product') . ")"
-			. " LIMIT 1";
-		$resComponent = $db->query($sqlComponent);
-		if ($resComponent && ($objComponent = $db->fetch_object($resComponent))) {
-			$componentEntity = (int) $objComponent->entity;
-		}
-		if ($resComponent) {
-			$db->free($resComponent);
-		}
-
-		if ($componentEntity === null) {
-			setEventMessages($langs->trans("ErrorRecordNotFound"), null, 'errors');
+		if (kreaproducts_set_product_extrafield_value($db, $componentProductId, 'kreap_lot', $newValue) > 0) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
 		} else {
-			$hasEntityColumn = false;
-			$colRes = $db->DDLDescTable(MAIN_DB_PREFIX . "product_extrafields", "entity");
-			if ($colRes) {
-				$hasEntityColumn = ($db->num_rows($colRes) > 0);
-				$db->free($colRes);
-			}
-
-			if ($hasEntityColumn) {
-				$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, entity, kreap_lot) VALUES ("
-					. (int) $componentProductId . ", " . (int) $componentEntity . ", " . (int) $newValue . ") "
-					. "ON DUPLICATE KEY UPDATE kreap_lot = " . (int) $newValue;
-			} else {
-				$sql = "INSERT INTO " . MAIN_DB_PREFIX . "product_extrafields (fk_object, kreap_lot) VALUES ("
-					. (int) $componentProductId . ", " . (int) $newValue . ") "
-					. "ON DUPLICATE KEY UPDATE kreap_lot = " . (int) $newValue;
-			}
-
-			if ($db->query($sql)) {
-				setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
-			} else {
-				setEventMessages($langs->trans("Error"), array($db->lasterror()), 'errors');
-			}
+			setEventMessages($langs->trans("ErrorRecordNotFound"), null, 'errors');
 		}
 	} else {
 		setEventMessages($langs->trans("ErrorBadValueForParameter"), null, 'errors');
@@ -1697,6 +1931,7 @@ if ($id > 0 || !empty($ref)) {
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
 			print '<style>
 				#tablelines .krea-label-col.tdoverflowmax150 { max-width: 560px; }
+				#tablelines .krea-kreaplot-cell { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
 				@media (max-width: 768px) {
 					.krea-tablelines-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 					#tablelines { table-layout: auto !important; }
@@ -1724,6 +1959,7 @@ if ($id > 0 || !empty($ref)) {
 			$headerWeightKgLabel = $getShortLabel('KreapWeightKgShort', 'Peso (kg)');
 			$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
 			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
+			$showKreaProductionLotColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
 			$componentTableWidths = array(
 				'pos' => '44px',
 				'ref' => '104px',
@@ -1734,6 +1970,7 @@ if ($id > 0 || !empty($ref)) {
 				'qty_input' => '68px',
 				'weight_kg' => '96px',
 				'component_cost' => '122px',
+				'kreap_lot' => '88px',
 				'parent_stock_adjust' => '88px',
 				'move' => '18px',
 			);
@@ -1766,6 +2003,11 @@ if ($id > 0 || !empty($ref)) {
 			print '<td class="right" style="width:' . $componentTableWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
 			// Valor por componente
 			print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+			if ($showKreaProductionLotColumn) {
+				$headerKreaLotShort = $getShortLabel('KreapHeaderShowInMoWord', 'Lote');
+				$headerKreaLot = $form->textwithpicto($headerKreaLotShort, $langs->trans('kreap_lot_help'));
+				print '<td class="center" style="width:' . $componentTableWidths['kreap_lot'] . '; ' . $headerCellStyle . '">' . $headerKreaLot . '</td>';
+			}
 			// Stoc inc/dev
 			print '<td class="center" style="width:' . $componentTableWidths['parent_stock_adjust'] . '; ' . $headerCellStyle . '">' . $headerParentStockLabel . '</td>';
 			// Move
@@ -1796,6 +2038,14 @@ if ($id > 0 || !empty($ref)) {
 						$totalline = price2num($value['nb'] * ($fourn_unitprice * (1 - ($fourn_remise_percent / 100)) - $fourn_remise), 'MT');
 						$unitWeightKg = kreaproducts_weight_to_kg($productstatic->weight, $productstatic->weight_units);
 						$lineWeightKg = $unitWeightKg * (float) $nb_of_subproduct;
+						$isMoInputEnabled = (
+							kreaproducts_product_extrafield_row_exists($db, (int) $productstatic->id, $conf->entity)
+								? kreaproducts_normalize_extrafield_boolean(
+									kreaproducts_get_product_extrafield_value($db, (int) $productstatic->id, 'kreap_lot', $conf->entity),
+									0
+								)
+								: 1
+						);
 						$total +=  $totalline;
 						$totalWeightKg += $lineWeightKg;
 						print '<td class="right nowraponall" style="width:' . $componentTableWidths['ingredient_cost'] . ';">';
@@ -1815,11 +2065,17 @@ if ($id > 0 || !empty($ref)) {
 							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right" style="width:' . $componentTableWidths['qty_input'] . ';" /></td>';
 							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
 							print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+							if ($showKreaProductionLotColumn) {
+								print '<td class="center"><span class="krea-kreaplot-cell"><input type="checkbox" name="TProduct[' . (int) $productstatic->id . '][kreap_lot]" value="1" ' . ($isMoInputEnabled ? 'checked' : '') . ' /></span></td>';
+							}
 							print '<td class="center"><input type="checkbox" name="TProduct[' . $productstatic->id . '][incdec]" value="1" ' . ($value['incdec'] == 1 ? 'checked' : '') . ' /></td>';
 						} else {
 							print '<td class="right">' . number_format((float) $nb_of_subproduct, 3, '.', '') . '</td>';
 							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
 							print '<td class="right" style="white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+							if ($showKreaProductionLotColumn) {
+								print '<td class="center"><span class="krea-kreaplot-cell"><input type="checkbox" ' . ($isMoInputEnabled ? 'checked' : '') . ' readonly disabled></span></td>';
+							}
 							print '<td>' . ($value['incdec'] == 1 ? 'x' : '') . '</td>';
 						}
 						// Move action
@@ -1859,6 +2115,9 @@ if ($id > 0 || !empty($ref)) {
 						print '<td>&nbsp;</td>';
 						// Cost per component placeholder
 						print '<td>&nbsp;</td>';
+						if ($showKreaProductionLotColumn) {
+							print '<td>&nbsp;</td>';
+						}
 						// Inc/dec
 						print '<td>&nbsp;</td>';
 						// Action move
@@ -1882,6 +2141,9 @@ if ($id > 0 || !empty($ref)) {
 				}
 				print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
 				print '</td>';
+				if ($showKreaProductionLotColumn) {
+					print '<td></td>';
+				}
 				print '<td class="center">'; // Inc/dec col
 				if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
 					print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
@@ -1896,6 +2158,9 @@ if ($id > 0 || !empty($ref)) {
 					$colspan++; // account for stock column
 				}
 				$colspan += $hookColumnCount;
+				if ($showKreaProductionLotColumn) {
+					$colspan++;
+				}
 				print '<tr class="oddeven">';
 				print '<td colspan="' . $colspan . '" class="opacitymedium">' . $langs->trans("None") . '</td>';
 				print '</tr>';
@@ -2834,6 +3099,7 @@ if ($id > 0 || !empty($ref)) {
 				}
 
 				$prepValue = isset($object->array_options['options_kreap_recipe']) ? $object->array_options['options_kreap_recipe'] : '';
+				$ingredientsValue = isset($object->array_options['options_kreap_ingredients']) ? $object->array_options['options_kreap_ingredients'] : '';
 				$brandValue = isset($object->array_options['options_kreap_brand']) ? $object->array_options['options_kreap_brand'] : '';
 				$videoValue = isset($object->array_options['options_kreap_video']) ? $object->array_options['options_kreap_video'] : '';
 				$descriptionValue = isset($object->array_options['options_kreap_description']) ? $object->array_options['options_kreap_description'] : '';
@@ -2848,6 +3114,12 @@ if ($id > 0 || !empty($ref)) {
 				print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
 				print '</td><td>';
 				print $form->editfieldval($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
+				print '</td></tr>';
+
+				print '<tr><td class="titlefield">';
+				print $form->editfieldkey($langs->trans("kreap_ingredients_Inline"), 'options_kreap_ingredients', $ingredientsValue, $object, $usercancreate, 'ckeditor');
+				print '</td><td>';
+				print $form->editfieldval($langs->trans("kreap_ingredients_Inline"), 'options_kreap_ingredients', $ingredientsValue, $object, $usercancreate, 'ckeditor');
 				print '</td></tr>';
 
 				print '<tr><td class="titlefield">';
