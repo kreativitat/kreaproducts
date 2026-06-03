@@ -1422,6 +1422,11 @@ class KreaProductsLabelService
 				continue;
 			}
 			$meta = $sourceMeta[$source];
+			$isProductLabelSource = ($source === 'product.label');
+			$hasExplicitInputValue = array_key_exists($source, $sanitizedValues);
+			if ($isProductLabelSource && !empty($baseContext['product.label'])) {
+				$meta['placeholder'] = (string) $baseContext['product.label'];
+			}
 			$resolvedValue = (isset($context[$source]) ? (string) $context[$source] : '');
 			if ($resolvedValue === '' && isset($meta['default_value'])) {
 				$resolvedValue = (string) $meta['default_value'];
@@ -1440,6 +1445,12 @@ class KreaProductsLabelService
 				$resetValue = (string) $meta['default_value'];
 			}
 			$fieldType = (!empty($meta['type']) ? self::normalizeTemplateInputType((string) $meta['type']) : 'text');
+			$inputValue = self::formatTemplateFieldValueForInput($resolvedValue, $meta);
+			$resetInputValue = ($hasResetValue ? self::formatTemplateFieldValueForInput($resetValue, $meta) : '');
+			if ($isProductLabelSource) {
+				$inputValue = ($hasExplicitInputValue ? self::formatTemplateFieldValueForInput($sanitizedValues[$source], $meta) : '');
+				$resetInputValue = '';
+			}
 			$fields[] = array(
 				'source' => $source,
 				'label' => (!empty($meta['label']) ? (string) $meta['label'] : self::humanizeTemplateSource($source)),
@@ -1451,10 +1462,10 @@ class KreaProductsLabelService
 				'placeholder' => (!empty($meta['placeholder']) ? (string) $meta['placeholder'] : ''),
 				'options' => (!empty($meta['options']) && is_array($meta['options']) ? $meta['options'] : array()),
 				'value' => $resolvedValue,
-				'input_value' => self::formatTemplateFieldValueForInput($resolvedValue, $meta),
+				'input_value' => $inputValue,
 				'can_reset' => $hasResetValue,
 				'reset_value' => ($hasResetValue ? $resetValue : ''),
-				'reset_input_value' => ($hasResetValue ? self::formatTemplateFieldValueForInput($resetValue, $meta) : ''),
+				'reset_input_value' => $resetInputValue,
 				'asset_preview_url' => (
 					($fieldType === 'image')
 					? self::buildTemplateAssetPreviewUrl($resolvedValue)
@@ -1559,6 +1570,12 @@ class KreaProductsLabelService
 		}
 
 		usort($sources, function ($a, $b) use ($scoreBySource, $originalIndexBySource) {
+			$aWeight = self::getTemplateEditableSourceOrderWeight($a);
+			$bWeight = self::getTemplateEditableSourceOrderWeight($b);
+			if ($aWeight !== $bWeight) {
+				return ($aWeight <=> $bWeight);
+			}
+
 			$aHasScore = array_key_exists($a, $scoreBySource);
 			$bHasScore = array_key_exists($b, $scoreBySource);
 			if ($aHasScore && $bHasScore) {
@@ -1590,6 +1607,38 @@ class KreaProductsLabelService
 		}
 
 		return $sources;
+	}
+
+	/**
+	 * Return a stable preferred editor order for common label sources.
+	 *
+	 * @param string $source Template source
+	 * @return int
+	 */
+	private static function getTemplateEditableSourceOrderWeight($source)
+	{
+		$source = self::sanitizeTemplateSource($source);
+		$order = array(
+			'product.label' => 10,
+			'batch.packaged_at' => 20,
+			'batch.frozen_at' => 21,
+			'batch.validity_days' => 30,
+			'batch.lot_number' => 40,
+			'production.mo_display' => 50,
+			'label.weight_value' => 60,
+			'label.weight_unit' => 61,
+			'label.ingredients_section' => 70,
+			'label.allergens_section' => 80,
+			'label.nutrition_section' => 90,
+			'label.storage_text' => 100,
+			'company.name_with_vat' => 110,
+			'company.address_singleline' => 120,
+			'asset.brand_badge' => 130,
+			'asset.green_dot_symbol' => 140,
+			'asset.eu_food_contact_material_symbol' => 150,
+		);
+
+		return (isset($order[$source]) ? (int) $order[$source] : 1000000);
 	}
 
 	/**
@@ -1644,7 +1693,11 @@ class KreaProductsLabelService
 			}
 
 			$meta = (!empty($normalizedMetaMap[$sanitizedSource]) ? $normalizedMetaMap[$sanitizedSource] : array());
-			$clean[$sanitizedSource] = self::sanitizeTemplateInputValue((string) $value, $meta);
+			$cleanValue = self::sanitizeTemplateInputValue((string) $value, $meta);
+			if ($sanitizedSource === 'product.label' && trim((string) $cleanValue) === '') {
+				continue;
+			}
+			$clean[$sanitizedSource] = $cleanValue;
 		}
 
 		return $clean;
@@ -4757,7 +4810,6 @@ class KreaProductsLabelService
 
 		$nonEditable = array(
 			'product.ref',
-			'product.label',
 			'product.barcode',
 			'product.internal_code',
 			'product.internal_code_barcode',
@@ -4936,17 +4988,14 @@ class KreaProductsLabelService
 	 */
 	private static function resolveTemplateEditableSourceLabel($source, $page, $block, $outputlangs)
 	{
-		$hint = self::findTemplateFieldStaticLabelHint($page, $block);
-		if ($hint !== '') {
-			return $hint;
-		}
-
 		$map = array(
 			'batch.packaged_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_PACKAGED_AT', 'Packed on'),
 			'batch.frozen_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_FROZEN_AT', 'Frozen on'),
 			'batch.expiry_at' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_EXPIRY_AT', 'Expiry date'),
 			'batch.validity_days' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_VALIDITY_DAYS', 'Validity (days)'),
 			'batch.lot_number' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_LOT_NUMBER', 'Lot number'),
+			'product.label' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_PRODUCT_LABEL', 'Product label'),
+			'production.mo_display' => 'MO',
 			'label.ingredients_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_INGREDIENTS_SECTION', 'Ingredients section'),
 			'label.allergens_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_ALLERGENS_SECTION', 'Allergens section'),
 			'label.nutrition_section' => self::translateTemplateLabelText($outputlangs, 'KREAPRODUCTS_LABELS_FIELD_NUTRITION_SECTION', 'Nutrition section'),
@@ -4958,6 +5007,11 @@ class KreaProductsLabelService
 
 		if (!empty($map[$source])) {
 			return (string) $map[$source];
+		}
+
+		$hint = self::findTemplateFieldStaticLabelHint($page, $block);
+		if ($hint !== '') {
+			return $hint;
 		}
 
 		return self::humanizeTemplateSource($source);

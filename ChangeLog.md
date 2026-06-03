@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.35.9] - 2026-06-03
+
+### Changed
+- Reordered product label template fields into a stable logical sequence and labeled production order display fields as MO instead of inferring a duplicate lot label.
+
+## [2.35.8] - 2026-06-03
+
+### Changed
+- Made template product labels editable from the product label screen while keeping the product short label as the fallback when no override is entered.
+
 ## [2.35.7] - 2026-06-03
 
 ### Fixed

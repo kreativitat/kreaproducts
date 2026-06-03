@@ -231,7 +231,7 @@ function kreaProductsRenderTemplateEditableFields($editableFields, $availableTem
 
 			$html .= '<div class="kreaTemplateImagePreviewWrap">';
 			$html .= '<img id="' . dol_escape_htmltag($previewId) . '" class="kreaTemplateImagePreview"' . ($assetPreviewUrl !== '' ? '' : ' style="display:none;"');
-			$html .= ' src="' . dol_escape_htmltag($assetPreviewUrl) . '" alt="' . dol_escape_htmltag($label) . '">';
+			$html .= ' src="' . dol_escape_htmltag($assetPreviewUrl) . '" alt="" aria-hidden="true">';
 			$html .= '</div>';
 		} elseif ($type === 'select') {
 			$options = (!empty($field['options']) && is_array($field['options']) ? $field['options'] : array());
@@ -928,7 +928,7 @@ $templateSourceMetaBySource = kreaProductsBuildTemplateSourceMetaMap($selectedTe
 $templateInputValues = array();
 foreach ($selectedTemplateEditableFields as $editableField) {
 	if (!empty($editableField['source'])) {
-		$templateInputValues[$editableField['source']] = (isset($editableField['value']) ? (string) $editableField['value'] : '');
+		$templateInputValues[$editableField['source']] = (isset($editableField['input_value']) ? (string) $editableField['input_value'] : (isset($editableField['value']) ? (string) $editableField['value'] : ''));
 	}
 }
 $selectedTemplateViewer = (!$isStandardMode && !empty($templateViewerMap[$selectedTemplate]) ? $templateViewerMap[$selectedTemplate] : array());
