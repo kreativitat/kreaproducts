@@ -1,7 +1,24 @@
 <?php
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
+ */
 
 /**
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Enhanced ProductHierarchyTree Class
  *
  * Provides methods to build a non-recursive map of product associations, display
@@ -81,6 +98,7 @@ class ProductHierarchyTree
             
             try {
                 // Generate page sections
+                self::generateCollapsibleTreeAssets($langs);
                 self::generateHeaderSection($prod, $productId, $langs);
                 self::generateChildrenSection($productId, $langs);
                 self::generateParentsSection($productId, $langs);
@@ -696,6 +714,82 @@ class ProductHierarchyTree
     }
 
     /**
+     * Generate CSS and JavaScript for compact collapsible product trees.
+     */
+    private static function generateCollapsibleTreeAssets($langs)
+    {
+        print '<style>
+.kreap-collapsible-tree{table-layout:auto;min-width:100%;width:max-content;max-width:none}
+.kreap-collapsible-tree tr.kreap-tree-row.is-hidden{display:none}
+.kreap-collapsible-tree th,.kreap-collapsible-tree td{vertical-align:middle;white-space:nowrap}
+.kreap-collapsible-tree td:nth-child(3),.kreap-collapsible-tree td:nth-child(5){text-align:right}
+.kreap-tree-scroll{max-width:100%;overflow-x:auto}
+.kreap-tree-cell{white-space:nowrap}
+.kreap-tree-toggle{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:4px;border:1px solid #bbb;background:#fff;color:#333;border-radius:3px;line-height:16px;font-size:12px;cursor:pointer}
+.kreap-tree-toggle-placeholder{display:inline-block;width:22px}
+.kreap-tree-toggle[aria-expanded="true"]::before{content:"-"}
+.kreap-tree-toggle[aria-expanded="false"]::before{content:"+"}
+.kreap-tree-row.kreap-level-0 .kreap-tree-cell{font-weight:600}
+.kreap-tree-row.kreap-selected-ingredient{background:#fff8d7}
+</style>';
+
+        print '<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("table.kreap-collapsible-tree").forEach(function (table) {
+        var rows = Array.prototype.slice.call(table.querySelectorAll("tr.kreap-tree-row"));
+        rows.forEach(function (row, index) {
+            var level = parseInt(row.getAttribute("data-kreap-level") || "0", 10);
+            var next = rows[index + 1];
+            var nextLevel = next ? parseInt(next.getAttribute("data-kreap-level") || "0", 10) : -1;
+            var firstCell = row.querySelector("td");
+            if (!firstCell) return;
+            firstCell.classList.add("kreap-tree-cell");
+
+            if (next && nextLevel > level) {
+                var button = document.createElement("button");
+                button.type = "button";
+                button.className = "kreap-tree-toggle";
+                button.setAttribute("aria-expanded", level === 0 ? "true" : "false");
+                button.setAttribute("title", ' . json_encode($langs->trans('KreapToggleBranch')) . ');
+                button.addEventListener("click", function () {
+                    var expanded = button.getAttribute("aria-expanded") === "true";
+                    button.setAttribute("aria-expanded", expanded ? "false" : "true");
+                    setDescendantsVisible(rows, index, level, !expanded);
+                });
+                firstCell.insertBefore(button, firstCell.firstChild);
+                if (level > 0) {
+                    setDescendantsVisible(rows, index, level, false);
+                }
+            } else {
+                var spacer = document.createElement("span");
+                spacer.className = "kreap-tree-toggle-placeholder";
+                firstCell.insertBefore(spacer, firstCell.firstChild);
+            }
+        });
+    });
+
+    function setDescendantsVisible(rows, startIndex, parentLevel, visible) {
+        for (var i = startIndex + 1; i < rows.length; i++) {
+            var row = rows[i];
+            var level = parseInt(row.getAttribute("data-kreap-level") || "0", 10);
+            if (level <= parentLevel) break;
+            var directChild = level === parentLevel + 1;
+            if (visible && directChild) {
+                row.classList.remove("is-hidden");
+            } else {
+                row.classList.add("is-hidden");
+            }
+            if (!visible) {
+                var toggle = row.querySelector(".kreap-tree-toggle");
+                if (toggle) toggle.setAttribute("aria-expanded", "false");
+            }
+        }
+    }
+});
+</script>';
+    }
+
+    /**
      * Generate children section
      */
 	private static function generateChildrenSection($productId, $langs)
@@ -715,9 +809,9 @@ class ProductHierarchyTree
 			}
 
 			print '<p><strong>' . $langs->trans('KreapKitComponentsList') . '</strong></p>';
-			print '<table class="noborder" width="100%">';
+			print '<div class="kreap-tree-scroll"><table class="noborder kreap-collapsible-tree" width="100%">';
 			
-			self::printChildParentTableHead($langs);
+			self::printChildParentTableHead($langs, self::MODE_CHILD);
 
             $maxDepth = self::MAX_HIERARCHY_DEPTH;
             
@@ -728,7 +822,7 @@ class ProductHierarchyTree
             $visitedChildren = array();
             self::fancyChildRecursive($productId, 1, $maxDepth, $visitedChildren, array());
             
-            print '</table><br>';
+            print '</table></div><br>';
             
         } catch (Exception $e) {
             self::addError("Failed to generate children section: " . $e->getMessage());
@@ -742,26 +836,575 @@ class ProductHierarchyTree
     private static function generateParentsSection($productId, $langs)
     {
         try {
-            print '<p><strong>' . $langs->trans('KreapKitParentsList') . '</strong></p>';
-            print '<table class="noborder" width="100%">';
-            
-            self::printChildParentTableHead($langs);
+            $rows = 0;
+            $rows += self::generateFilteredParentsSection($productId, $langs->trans('KreapAssociatedSubproductsList'), 'association');
+            $rows += self::generateFilteredParentsSection($productId, $langs->trans('KreapBomParentsList'), 'bom');
 
-            $maxDepth = self::MAX_HIERARCHY_DEPTH;
-            
-            // Print top-level row
-            self::printLine($productId, 0, 0, array(), true, 0, 1, self::MODE_PARENT);
-            
-            // Recursively display parents
-            $visitedParents = array();
-            self::fancyParentRecursive($productId, 1, $maxDepth, $visitedParents, array());
-            
-            print '</table><br>';
+            if ($rows === 0) {
+                print '<p><strong>' . $langs->trans('KreapKitParentsList') . '</strong></p>';
+                print '<div class="kreap-tree-scroll"><table class="noborder kreap-collapsible-tree" width="100%">';
+                self::printChildParentTableHead($langs, self::MODE_PARENT);
+                self::printLine($productId, 0, 0, array(), true, 0, 1, self::MODE_PARENT);
+                print '</table></div><br>';
+            }
             
         } catch (Exception $e) {
             self::addError("Failed to generate parents section: " . $e->getMessage());
             print '<p style="color:red;">' . $langs->trans('KreapErrorParentsSection') . '</p>';
         }
+    }
+
+    /**
+     * Generate one filtered upstream parent tree.
+     */
+    private static function generateFilteredParentsSection($productId, $title, $sourceFilter)
+    {
+        global $langs;
+
+        ob_start();
+
+        print '<p><strong>' . $title . '</strong></p>';
+        print '<div class="kreap-tree-scroll"><table class="noborder kreap-collapsible-tree" width="100%">';
+        self::printChildParentTableHead($langs, self::MODE_PARENT);
+        self::printLine($productId, 0, 0, array(), true, 0, 1, self::MODE_PARENT);
+
+        $visitedParents = array();
+        $rows = self::fancyParentRecursive($productId, 1, self::MAX_HIERARCHY_DEPTH, $visitedParents, array(), $sourceFilter);
+
+        print '</table></div><br>';
+
+        $html = ob_get_clean();
+        if ($rows > 0) {
+            print $html;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Generate complete BOM and associated-product traceability for the selected product.
+     */
+    private static function generateBomTraceabilitySection($productId, $langs)
+    {
+        global $conf, $user;
+
+        try {
+            if (empty($conf->bom->enabled) || (!$user->hasRight('bom', 'read') && !$user->hasRight('bom', 'lire'))) {
+                return;
+            }
+
+            $visitedProducts = array();
+            $visitedBoms = array();
+
+            print '<p><strong>' . $langs->trans('KreapBomTraceability') . '</strong></p>';
+            print '<table class="noborder" width="100%">';
+            self::printTraceabilityTableHead($langs);
+
+            $rows = self::printProductTraceabilityRows($productId, 0, $visitedProducts, $visitedBoms);
+            $rows += self::printWhereUsedTraceabilityRows($productId, 0);
+
+            if ($rows === 0) {
+                print '<tr><td colspan="6">' . $langs->trans('KreapNoBomTraceability') . '</td></tr>';
+            }
+
+            print '</table><br>';
+        } catch (Exception $e) {
+            self::addError("Failed to generate BOM traceability section: " . $e->getMessage());
+            print '<p style="color:red;">' . $langs->trans('KreapErrorBomTraceabilitySection') . '</p>';
+        }
+    }
+
+    /**
+     * Print standard traceability table header.
+     */
+    private static function printTraceabilityTableHead($langs)
+    {
+        print '<tr class="liste_titre">';
+        print '<td width="16%">' . $langs->trans('Source') . '</td>';
+        print '<td width="18%">' . $langs->trans('Reference') . '</td>';
+        print '<td width="36%">' . $langs->trans('Designation') . '</td>';
+        print '<td width="10%" class="right">' . $langs->trans('Qty') . '</td>';
+        print '<td width="10%">' . $langs->trans('Type') . '</td>';
+        print '<td width="10%">' . $langs->trans('Entity') . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print traceability rows for one product and recurse into its BOM/sub-association graph.
+     */
+    private static function printProductTraceabilityRows($productId, $level, &$visitedProducts, &$visitedBoms)
+    {
+        $productId = (int) $productId;
+        if ($productId <= 0 || $level > self::MAX_HIERARCHY_DEPTH) {
+            return 0;
+        }
+
+        if (!empty($visitedProducts[$productId])) {
+            self::printTraceabilityCycleRow('product', $productId, $level);
+            return 1;
+        }
+
+        $visitedProducts[$productId] = true;
+        $rows = 0;
+
+        $boms = self::loadTraceabilityBomsForProduct($productId);
+        foreach ($boms as $bom) {
+            $rows += self::printBomTraceabilityRows($bom, $level, $visitedProducts, $visitedBoms);
+        }
+
+        $associations = self::loadTraceabilityAssociatedProducts($productId);
+        foreach ($associations as $association) {
+            self::printAssociatedProductTraceabilityRow($association, $level);
+            $rows++;
+
+            $childId = (int) $association->child_id;
+            if ($childId > 0) {
+                $rows += self::printProductTraceabilityRows($childId, $level + 1, $visitedProducts, $visitedBoms);
+            }
+        }
+
+        unset($visitedProducts[$productId]);
+
+        return $rows;
+    }
+
+    /**
+     * Print direct upstream BOM and association usage for the selected product.
+     */
+    private static function printWhereUsedTraceabilityRows($productId, $level)
+    {
+        $productId = (int) $productId;
+        if ($productId <= 0 || $level > self::MAX_HIERARCHY_DEPTH) {
+            return 0;
+        }
+
+        $rows = 0;
+
+        $bomUsages = self::loadTraceabilityBomUsagesForProduct($productId);
+        foreach ($bomUsages as $usage) {
+            self::printBomUsageTraceabilityRow($usage, $level);
+            $rows++;
+        }
+
+        $associationUsages = self::loadTraceabilityAssociationUsagesForProduct($productId);
+        foreach ($associationUsages as $usage) {
+            self::printAssociationUsageTraceabilityRow($usage, $level);
+            $rows++;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Print one BOM and all its lines, including lines linked to a child BOM.
+     */
+    private static function printBomTraceabilityRows($bom, $level, &$visitedProducts, &$visitedBoms)
+    {
+        $bomId = (int) $bom->bom_id;
+        if ($bomId <= 0 || $level > self::MAX_HIERARCHY_DEPTH) {
+            return 0;
+        }
+
+        if (!empty($visitedBoms[$bomId])) {
+            self::printTraceabilityCycleRow('bom', $bomId, $level);
+            return 1;
+        }
+
+        $visitedBoms[$bomId] = true;
+        self::printBomTraceabilityHeaderRow($bom, $level);
+        $rows = 1;
+
+        $lines = self::loadTraceabilityBomLines($bomId);
+        foreach ($lines as $line) {
+            self::printBomLineTraceabilityRow($line, $level + 1);
+            $rows++;
+
+            if (!empty($line->child_bom_id)) {
+                $childBom = self::loadTraceabilityBomById((int) $line->child_bom_id);
+                if ($childBom) {
+                    $rows += self::printBomTraceabilityRows($childBom, $level + 2, $visitedProducts, $visitedBoms);
+                }
+            } elseif (!empty($line->product_id)) {
+                $rows += self::printProductTraceabilityRows((int) $line->product_id, $level + 2, $visitedProducts, $visitedBoms);
+            }
+        }
+
+        unset($visitedBoms[$bomId]);
+
+        return $rows;
+    }
+
+    /**
+     * Load active BOMs composing a product with current-entity BOMs taking precedence over shared BOMs.
+     */
+    private static function loadTraceabilityBomsForProduct($productId)
+    {
+        global $db, $conf;
+
+        $records = array();
+
+        $sql = "SELECT b.rowid AS bom_id, b.ref AS bom_ref, b.label AS bom_label, b.qty AS bom_qty,";
+        $sql .= " b.bomtype, b.entity, b.fk_product AS product_id";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "bom_bom AS b";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product";
+        $sql .= " WHERE b.fk_product = " . ((int) $productId);
+        $sql .= " AND b.bomtype IN (0,1)";
+        $sql .= " AND b.status = 1";
+        $sql .= " AND b.entity IN (0," . getEntity('bom') . ")";
+        $sql .= " AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (";
+        $sql .= " SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom AS b2";
+        $sql .= " WHERE b2.fk_product = b.fk_product";
+        $sql .= " AND b2.entity = " . ((int) $conf->entity);
+        $sql .= " AND b2.bomtype = b.bomtype";
+        $sql .= " AND b2.status = 1";
+        $sql .= ")))";
+        $sql .= " AND p.entity IN (" . getEntity('product') . ")";
+        $sql .= " ORDER BY b.entity DESC, b.bomtype ASC, b.ref ASC, b.rowid ASC";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load traceability BOMs for product $productId: " . $db->lasterror());
+            return $records;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $records[] = $obj;
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $records;
+    }
+
+    /**
+     * Load one active BOM by id, respecting entity scope.
+     */
+    private static function loadTraceabilityBomById($bomId)
+    {
+        global $db;
+
+        $sql = "SELECT b.rowid AS bom_id, b.ref AS bom_ref, b.label AS bom_label, b.qty AS bom_qty,";
+        $sql .= " b.bomtype, b.entity, b.fk_product AS product_id";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "bom_bom AS b";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = b.fk_product";
+        $sql .= " WHERE b.rowid = " . ((int) $bomId);
+        $sql .= " AND b.bomtype IN (0,1)";
+        $sql .= " AND b.status = 1";
+        $sql .= " AND b.entity IN (0," . getEntity('bom') . ")";
+        $sql .= " AND p.entity IN (" . getEntity('product') . ")";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load traceability BOM $bomId: " . $db->lasterror());
+            return null;
+        }
+
+        $obj = $db->fetch_object($resql);
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $obj ?: null;
+    }
+
+    /**
+     * Load BOM lines with either a direct product or a child BOM target.
+     */
+    private static function loadTraceabilityBomLines($bomId)
+    {
+        global $db;
+
+        $records = array();
+
+        $sql = "SELECT bl.rowid AS line_id, bl.qty, bl.position, bl.description,";
+        $sql .= " bl.fk_product AS direct_product_id, bl.fk_bom_child AS child_bom_id,";
+        $sql .= " COALESCE(bl.fk_product, cb.fk_product) AS product_id,";
+        $sql .= " COALESCE(p.ref, cp.ref) AS product_ref, COALESCE(p.label, cp.label) AS product_label,";
+        $sql .= " cb.ref AS child_bom_ref, cb.label AS child_bom_label, cb.bomtype AS child_bomtype, cb.entity AS child_bom_entity";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "bom_bomline AS bl";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS p ON p.rowid = bl.fk_product";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS cp ON cp.rowid = cb.fk_product";
+        $sql .= " WHERE bl.fk_bom = " . ((int) $bomId);
+        $sql .= " AND (p.rowid IS NULL OR p.entity IN (" . getEntity('product') . "))";
+        $sql .= " AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
+        $sql .= " AND (cp.rowid IS NULL OR cp.entity IN (" . getEntity('product') . "))";
+        $sql .= " ORDER BY bl.position ASC, bl.rowid ASC";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load traceability BOM lines for BOM $bomId: " . $db->lasterror());
+            return $records;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $records[] = $obj;
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $records;
+    }
+
+    /**
+     * Load product associations for a product.
+     */
+    private static function loadTraceabilityAssociatedProducts($productId)
+    {
+        global $db;
+
+        $records = array();
+
+        $sql = "SELECT pa.fk_product_pere AS parent_id, pa.fk_product_fils AS child_id, pa.qty,";
+        $sql .= " child.ref AS child_ref, child.label AS child_label, child.entity AS child_entity";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = pa.fk_product_pere";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS child ON child.rowid = pa.fk_product_fils";
+        $sql .= " WHERE pa.fk_product_pere = " . ((int) $productId);
+        $sql .= " AND parent.entity IN (" . getEntity('product') . ")";
+        $sql .= " AND child.entity IN (" . getEntity('product') . ")";
+        $sql .= " ORDER BY child.ref ASC, child.rowid ASC";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load associated products for traceability product $productId: " . $db->lasterror());
+            return $records;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $records[] = $obj;
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $records;
+    }
+
+    /**
+     * Load active BOMs that use the product as a direct line or child-BOM produced product.
+     */
+    private static function loadTraceabilityBomUsagesForProduct($productId)
+    {
+        global $db, $conf;
+
+        $records = array();
+
+        $sql = "SELECT b.rowid AS bom_id, b.ref AS bom_ref, b.label AS bom_label, b.bomtype, b.entity,";
+        $sql .= " b.fk_product AS parent_product_id, parent.ref AS parent_product_ref, parent.label AS parent_product_label,";
+        $sql .= " bl.rowid AS line_id, bl.qty AS line_qty, bl.fk_bom_child AS child_bom_id";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "bom_bomline AS bl";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.rowid = bl.fk_bom";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = b.fk_product";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS direct_product ON direct_product.rowid = bl.fk_product";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS child_bom_product ON child_bom_product.rowid = cb.fk_product";
+        $sql .= " WHERE COALESCE(bl.fk_product, cb.fk_product) = " . ((int) $productId);
+        $sql .= " AND b.bomtype IN (0,1)";
+        $sql .= " AND b.status = 1";
+        $sql .= " AND b.entity IN (0," . getEntity('bom') . ")";
+        $sql .= " AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (";
+        $sql .= " SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom AS b2";
+        $sql .= " WHERE b2.fk_product = b.fk_product";
+        $sql .= " AND b2.entity = " . ((int) $conf->entity);
+        $sql .= " AND b2.bomtype = b.bomtype";
+        $sql .= " AND b2.status = 1";
+        $sql .= ")))";
+        $sql .= " AND parent.entity IN (" . getEntity('product') . ")";
+        $sql .= " AND (direct_product.rowid IS NULL OR direct_product.entity IN (" . getEntity('product') . "))";
+        $sql .= " AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
+        $sql .= " AND (child_bom_product.rowid IS NULL OR child_bom_product.entity IN (" . getEntity('product') . "))";
+        $sql .= " ORDER BY b.entity DESC, b.ref ASC, bl.position ASC, bl.rowid ASC";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load BOM usages for traceability product $productId: " . $db->lasterror());
+            return $records;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $records[] = $obj;
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $records;
+    }
+
+    /**
+     * Load associated products that use this product as a component.
+     */
+    private static function loadTraceabilityAssociationUsagesForProduct($productId)
+    {
+        global $db;
+
+        $records = array();
+
+        $sql = "SELECT pa.fk_product_pere AS parent_id, pa.fk_product_fils AS child_id, pa.qty,";
+        $sql .= " parent.ref AS parent_ref, parent.label AS parent_label, parent.entity AS parent_entity";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = pa.fk_product_pere";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS child ON child.rowid = pa.fk_product_fils";
+        $sql .= " WHERE pa.fk_product_fils = " . ((int) $productId);
+        $sql .= " AND parent.entity IN (" . getEntity('product') . ")";
+        $sql .= " AND child.entity IN (" . getEntity('product') . ")";
+        $sql .= " ORDER BY parent.ref ASC, parent.rowid ASC";
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            self::addError("Failed to load association usages for traceability product $productId: " . $db->lasterror());
+            return $records;
+        }
+
+        while ($obj = $db->fetch_object($resql)) {
+            $records[] = $obj;
+        }
+
+        $db->free($resql);
+        self::$processStats['database_operations']++;
+
+        return $records;
+    }
+
+    /**
+     * Print a BOM header traceability row.
+     */
+    private static function printBomTraceabilityHeaderRow($bom, $level)
+    {
+        global $langs;
+
+        $bomUrl = DOL_URL_ROOT . '/bom/bom_card.php?id=' . ((int) $bom->bom_id);
+        $ref = '<a href="' . dol_escape_htmltag($bomUrl) . '">' . img_object('', 'bom') . ' ' . dol_escape_htmltag($bom->bom_ref) . '</a>';
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $langs->trans('BOM') . '</td>';
+        print '<td>' . $ref . '</td>';
+        print '<td>' . dol_escape_htmltag($bom->bom_label) . '</td>';
+        print '<td class="right">' . price2num($bom->bom_qty, 'MS') . '</td>';
+        print '<td>' . self::getBomTypeLabel((int) $bom->bomtype) . '</td>';
+        print '<td>' . ((int) $bom->entity) . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print a BOM line traceability row.
+     */
+    private static function printBomLineTraceabilityRow($line, $level)
+    {
+        global $langs;
+
+        $productId = (int) $line->product_id;
+        $product = $productId > 0 ? self::loadAndValidateProduct($productId) : null;
+        $ref = $product && method_exists($product, 'getNomUrl') ? $product->getNomUrl(1) : dol_escape_htmltag($line->product_ref);
+        $source = !empty($line->child_bom_id) ? $langs->trans('KreapSubBomLine') : $langs->trans('KreapBomLine');
+        $type = !empty($line->child_bom_id) ? self::getBomTypeLabel((int) $line->child_bomtype) : $langs->trans('Product');
+        $entity = !empty($line->child_bom_id) ? (int) $line->child_bom_entity : '';
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $source . '</td>';
+        print '<td>' . $ref . '</td>';
+        print '<td>' . dol_escape_htmltag($line->product_label) . '</td>';
+        print '<td class="right">' . price2num($line->qty, 'MS') . '</td>';
+        print '<td>' . $type . '</td>';
+        print '<td>' . $entity . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print an associated product traceability row.
+     */
+    private static function printAssociatedProductTraceabilityRow($association, $level)
+    {
+        global $langs;
+
+        $product = self::loadAndValidateProduct((int) $association->child_id);
+        $ref = $product && method_exists($product, 'getNomUrl') ? $product->getNomUrl(1) : dol_escape_htmltag($association->child_ref);
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $langs->trans('KreapAssociatedProduct') . '</td>';
+        print '<td>' . $ref . '</td>';
+        print '<td>' . dol_escape_htmltag($association->child_label) . '</td>';
+        print '<td class="right">' . price2num($association->qty, 'MS') . '</td>';
+        print '<td>' . $langs->trans('Product') . '</td>';
+        print '<td>' . ((int) $association->child_entity) . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print an upstream BOM usage row.
+     */
+    private static function printBomUsageTraceabilityRow($usage, $level)
+    {
+        global $langs;
+
+        $bomUrl = DOL_URL_ROOT . '/bom/bom_card.php?id=' . ((int) $usage->bom_id);
+        $ref = '<a href="' . dol_escape_htmltag($bomUrl) . '">' . img_object('', 'bom') . ' ' . dol_escape_htmltag($usage->bom_ref) . '</a>';
+        $parentProduct = self::loadAndValidateProduct((int) $usage->parent_product_id);
+        $parentRef = $parentProduct && method_exists($parentProduct, 'getNomUrl') ? $parentProduct->getNomUrl(1) : dol_escape_htmltag($usage->parent_product_ref);
+        $designation = $parentRef . ' - ' . dol_escape_htmltag($usage->parent_product_label);
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $langs->trans('KreapUsedInBom') . '</td>';
+        print '<td>' . $ref . '</td>';
+        print '<td>' . $designation . '</td>';
+        print '<td class="right">' . price2num($usage->line_qty, 'MS') . '</td>';
+        print '<td>' . self::getBomTypeLabel((int) $usage->bomtype) . '</td>';
+        print '<td>' . ((int) $usage->entity) . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print an upstream association usage row.
+     */
+    private static function printAssociationUsageTraceabilityRow($usage, $level)
+    {
+        global $langs;
+
+        $parentProduct = self::loadAndValidateProduct((int) $usage->parent_id);
+        $ref = $parentProduct && method_exists($parentProduct, 'getNomUrl') ? $parentProduct->getNomUrl(1) : dol_escape_htmltag($usage->parent_ref);
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $langs->trans('KreapUsedInAssociatedProduct') . '</td>';
+        print '<td>' . $ref . '</td>';
+        print '<td>' . dol_escape_htmltag($usage->parent_label) . '</td>';
+        print '<td class="right">' . price2num($usage->qty, 'MS') . '</td>';
+        print '<td>' . $langs->trans('Product') . '</td>';
+        print '<td>' . ((int) $usage->parent_entity) . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Print a cycle guard row.
+     */
+    private static function printTraceabilityCycleRow($type, $id, $level)
+    {
+        global $langs;
+
+        print '<tr class="oddeven">';
+        print '<td>' . self::buildTraceabilityIndent($level) . $langs->trans('KreapTraceabilityCycle') . '</td>';
+        print '<td>' . dol_escape_htmltag($type . ':' . (int) $id) . '</td>';
+        print '<td colspan="4">' . $langs->trans('KreapTraceabilityCycleSkipped') . '</td>';
+        print '</tr>';
+    }
+
+    /**
+     * Build visible indentation for the traceability table.
+     */
+    private static function buildTraceabilityIndent($level)
+    {
+        return str_repeat('&nbsp;&nbsp;&nbsp;&nbsp;', max(0, (int) $level));
+    }
+
+    /**
+     * Return a translated BOM type label.
+     */
+    private static function getBomTypeLabel($bomtype)
+    {
+        global $langs;
+
+        return $bomtype === 1 ? $langs->trans('Disassemble') : $langs->trans('Manufacturing');
     }
 
     /**
@@ -886,13 +1529,13 @@ class ProductHierarchyTree
     /**
      * Print table headers with enhanced structure
      */
-    private static function printChildParentTableHead($langs)
+    private static function printChildParentTableHead($langs, $mode = self::MODE_CHILD)
     {
         print '<tr class="liste_titre">';
         print '<td width="20%">' . $langs->trans("Reference") . '</td>';
         print '<td width="35%">' . $langs->trans("Designation") . '</td>';
-        print '<td width="10%">' . $langs->trans("Subproducts") . '</td>';
-        print '<td width="10%">' . $langs->trans("Type") . '</td>';
+        print '<td width="10%">' . ($mode === self::MODE_PARENT ? $langs->trans("Qty") : $langs->trans("Subproducts")) . '</td>';
+        print '<td width="10%">' . ($mode === self::MODE_PARENT ? $langs->trans("KreapRelation") : $langs->trans("Type")) . '</td>';
         print '<td width="5%">' . $langs->trans("CostPrice") . '</td>';
         print '</tr>';
     }
@@ -901,7 +1544,7 @@ class ProductHierarchyTree
      * Enhanced printLine method with better error handling
      * Fixed PHP 5.6+ compatibility by removing type hints
      */
-    private static function printLine($productId, $qty, $level, $prefix, $isLast, $index, $count, $mode)
+    private static function printLine($productId, $qty, $level, $prefix, $isLast, $index, $count, $mode, $relatedProductId = 0)
     {
         global $db, $langs, $conf;
 
@@ -924,12 +1567,19 @@ class ProductHierarchyTree
 
             // Determine type
             $type = (!empty($lp->children)) ? $langs->trans('KreapTechnicalSheetType') : '';
+            if ($mode === self::MODE_PARENT && $level > 0 && $relatedProductId > 0) {
+                $relation = self::loadParentRelationInfo($productId, $relatedProductId);
+                $assoc = $relation['qty'];
+                $type = $relation['type'];
+            } elseif ($mode === self::MODE_PARENT && $level === 0) {
+                $type = $langs->trans('KreapSelectedProduct');
+            }
             
             // Format price
             $priceStr = self::formatPrice($lp->buyprice, $conf);
 
             // Generate row
-            print '<tr>';
+            print '<tr class="kreap-tree-row kreap-level-' . ((int) $level) . '" data-kreap-level="' . ((int) $level) . '">';
             print '<td>' . $indent . $pr->getNomUrl(1) . '</td>';
             print '<td>' . htmlspecialchars($lp->label, ENT_QUOTES) . '</td>';
             print '<td>' . $assoc . '</td>';
@@ -969,15 +1619,97 @@ class ProductHierarchyTree
      */
     private static function buildAssociationInfo($qty, $lp)
     {
+        global $langs;
+
         if ($qty > 0) {
             return number_format($qty, 3, '.', '');
         } elseif (!empty($lp->children)) {
             return count($lp->children);
         } elseif (!empty($lp->parents)) {
-            return count($lp->parents) . ' Pais';
+            return count($lp->parents) . ' ' . $langs->trans('KreapParentsShort');
         }
         
         return '';
+    }
+
+    /**
+     * Load relation metadata for a parent row in the upstream tree.
+     */
+    private static function loadParentRelationInfo($parentProductId, $childProductId)
+    {
+        global $db, $conf, $langs;
+
+        $result = array(
+            'qty' => '',
+            'type' => $langs->trans('KreapParentProduct'),
+            'source' => ''
+        );
+
+        $sql = "SELECT bl.qty, b.ref AS bom_ref";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "bom_bomline AS bl";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "bom_bom AS b ON b.rowid = bl.fk_bom";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = b.fk_product";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS direct_product ON direct_product.rowid = bl.fk_product";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom AS cb ON cb.rowid = bl.fk_bom_child";
+        $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product AS child_bom_product ON child_bom_product.rowid = cb.fk_product";
+        $sql .= " WHERE b.fk_product = " . ((int) $parentProductId);
+        $sql .= " AND COALESCE(bl.fk_product, cb.fk_product) = " . ((int) $childProductId);
+        $sql .= " AND b.bomtype IN (0,1)";
+        $sql .= " AND b.status = 1";
+        $sql .= " AND b.entity IN (0," . getEntity('bom') . ")";
+        $sql .= " AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (";
+        $sql .= " SELECT 1 FROM " . MAIN_DB_PREFIX . "bom_bom AS b2";
+        $sql .= " WHERE b2.fk_product = b.fk_product";
+        $sql .= " AND b2.entity = " . ((int) $conf->entity);
+        $sql .= " AND b2.bomtype = b.bomtype";
+        $sql .= " AND b2.status = 1";
+        $sql .= ")))";
+        $sql .= " AND parent.entity IN (" . getEntity('product') . ")";
+        $sql .= " AND (direct_product.rowid IS NULL OR direct_product.entity IN (" . getEntity('product') . "))";
+        $sql .= " AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
+        $sql .= " AND (child_bom_product.rowid IS NULL OR child_bom_product.entity IN (" . getEntity('product') . "))";
+        $sql .= " ORDER BY b.entity DESC, b.ref ASC, bl.position ASC, bl.rowid ASC";
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            if ($obj = $db->fetch_object($resql)) {
+                $result['qty'] = price2num($obj->qty, 'MS');
+                $result['type'] = $langs->trans('KreapBomParent') . ' ' . dol_escape_htmltag($obj->bom_ref);
+                $result['source'] = 'bom';
+            }
+            $db->free($resql);
+            self::$processStats['database_operations']++;
+
+            if ($result['qty'] !== '') {
+                return $result;
+            }
+        } else {
+            self::addError("Failed to load BOM parent relation $parentProductId->$childProductId: " . $db->lasterror());
+        }
+
+        $sql = "SELECT pa.qty";
+        $sql .= " FROM " . MAIN_DB_PREFIX . "product_association AS pa";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS parent ON parent.rowid = pa.fk_product_pere";
+        $sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product AS child ON child.rowid = pa.fk_product_fils";
+        $sql .= " WHERE pa.fk_product_pere = " . ((int) $parentProductId);
+        $sql .= " AND pa.fk_product_fils = " . ((int) $childProductId);
+        $sql .= " AND parent.entity IN (" . getEntity('product') . ")";
+        $sql .= " AND child.entity IN (" . getEntity('product') . ")";
+
+        $resql = $db->query($sql);
+        if ($resql) {
+            if ($obj = $db->fetch_object($resql)) {
+                $result['qty'] = price2num($obj->qty, 'MS');
+                $result['type'] = $langs->trans('KreapAssociatedSubproduct');
+                $result['source'] = 'association';
+            }
+            $db->free($resql);
+            self::$processStats['database_operations']++;
+        } else {
+            self::addError("Failed to load association parent relation $parentProductId->$childProductId: " . $db->lasterror());
+        }
+
+        return $result;
     }
 
     /**
@@ -1019,21 +1751,22 @@ class ProductHierarchyTree
     /**
      * Enhanced recursive parent display with cycle detection
      */
-    private static function fancyParentRecursive($productId, $level, $maxLevel, &$visited, $prefix)
+    private static function fancyParentRecursive($productId, $level, $maxLevel, &$visited, $prefix, $sourceFilter = '')
     {
         if (in_array($productId, $visited, true) || $level > $maxLevel) {
-            return;
+            return 0;
         }
         
         $visited[] = $productId;
 
         $lp = self::getLocalProduct($productId);
         if (!$lp) {
-            return;
+            return 0;
         }
 
         $pars = $lp->parents;
         $n = count($pars);
+        $printedRows = 0;
 
         for ($i = 0; $i < $n; $i++) {
             $parId = $pars[$i];
@@ -1041,17 +1774,25 @@ class ProductHierarchyTree
                 continue;
             }
             
+            $relation = self::loadParentRelationInfo($parId, $productId);
+            if ($sourceFilter !== '' && $relation['source'] !== $sourceFilter) {
+                continue;
+            }
+
             $isLast = ($i == $n - 1);
 
             $parPrefix = $prefix;
             $parPrefix[$level] = !$isLast;
 
-            self::printLine($parId, 0, $level, $parPrefix, $isLast, $i, $n, self::MODE_PARENT);
+            self::printLine($parId, 0, $level, $parPrefix, $isLast, $i, $n, self::MODE_PARENT, $productId);
+            $printedRows++;
 
             if ($level < $maxLevel) {
-                self::fancyParentRecursive($parId, $level + 1, $maxLevel, $visited, $parPrefix);
+                $printedRows += self::fancyParentRecursive($parId, $level + 1, $maxLevel, $visited, $parPrefix);
             }
         }
+
+        return $printedRows;
     }
 
     /**
@@ -1194,6 +1935,7 @@ class ProductHierarchyTree
         global $db;
         
         $sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid = " . (int)$productId;
+        $sql .= " AND entity IN (" . getEntity('product') . ")";
         $resql = $db->query($sql);
         
         if (!$resql) {

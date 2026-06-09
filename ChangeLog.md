@@ -1,6 +1,77 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.35.23] - 2026-06-09
+
+### Removed
+- Removed the separate BOM and associated-product traceability section from the product tree page.
+
+## [2.35.22] - 2026-06-09
+
+### Changed
+- Allowed parent tree ancestry to continue through BOM and association links after the first filtered parent level.
+
+## [2.35.21] - 2026-06-09
+
+### Fixed
+- Prevented compact product tree rows from clipping references by allowing horizontal expansion.
+
+## [2.35.20] - 2026-06-09
+
+### Changed
+- Displayed associated subproduct usage before BOM parent usage in the product tree.
+
+## [2.35.19] - 2026-06-09
+
+### Changed
+- Renamed association-based product tree labels from parents to associated subproducts.
+
+## [2.35.18] - 2026-06-09
+
+### Changed
+- Split the parent kits tree into separate BOM-parent and association-parent trees.
+- Restored combined upstream usage rows in the traceability table.
+
+## [2.35.17] - 2026-06-09
+
+### Changed
+- Split BOM usage and associated-product usage into separate product traceability tables.
+
+## [2.35.16] - 2026-06-09
+
+### Changed
+- Forced product tree rows to stay on one line with compact ellipsis columns.
+
+## [2.35.15] - 2026-06-09
+
+### Changed
+- Reverted the inverted where-used product tree to the compact upstream parent tree.
+
+## [2.35.14] - 2026-06-09
+
+### Changed
+- Made product tree tables compact with collapsible JavaScript branches.
+
+## [2.35.13] - 2026-06-09
+
+### Changed
+- Rebuilt the product parent tree as an inverted where-used tree with parent compositions expanded separately.
+
+## [2.35.12] - 2026-06-09
+
+### Fixed
+- Labeled upstream product tree rows as BOM or association parents instead of subproducts.
+
+## [2.35.11] - 2026-06-09
+
+### Fixed
+- Included upstream BOM and associated-product usage in product tree traceability.
+
+## [2.35.10] - 2026-06-09
+
+### Added
+- Added BOM, sub-BOM, and associated-product traceability to the product tree tab.
+
 ## [2.35.9] - 2026-06-03
 
 ### Changed
