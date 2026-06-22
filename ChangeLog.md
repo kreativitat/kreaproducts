@@ -1,6 +1,17 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.35.25] - 2026-06-22
+
+### Added
+- Added the KreaProducts `GET purchase_prices` API endpoint to export supplier-scoped product references from `product_fournisseur_price`.
+
+## [2.35.24] - 2026-06-11
+
+### Fixed
+- Restricted custom selling-price tabs to products enabled for sale.
+- Restricted custom buying-price tabs and direct `purchasePrice.php` access to products enabled for purchase.
+
 ## [2.35.23] - 2026-06-09
 
 ### Removed

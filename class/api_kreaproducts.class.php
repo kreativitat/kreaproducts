@@ -1414,6 +1414,99 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * List supplier purchase-price references for product matching integrations.
+	 *
+	 * @param int    $export    Compatibility flag accepted by external cache jobs
+	 * @param int    $limit     Maximum rows to return
+	 * @param int    $fk_soc    Optional supplier id filter
+	 * @param string $ref_fourn Optional supplier reference filter
+	 * @param int    $exact     Use exact supplier reference match when set
+	 * @return array
+	 *
+	 * @url GET purchase_prices
+	 */
+	public function getPurchasePrices($export = 0, $limit = 100000, $fk_soc = 0, $ref_fourn = '', $exact = 0)
+	{
+		$this->assertProductReadRights();
+
+		$limit = (int) $limit;
+		if ($limit <= 0) {
+			$limit = 100000;
+		}
+		$limit = min($limit, 100000);
+
+		$productEntitySql = $this->entityListToSql($this->getEntityIdList('product', false));
+		$thirdpartyEntitySql = $this->entityListToSql($this->getEntityIdList('societe', false));
+
+		$sql = "SELECT";
+		$sql .= " fp.rowid AS supplier_price_id,";
+		$sql .= " fp.fk_product,";
+		$sql .= " fp.fk_soc,";
+		$sql .= " fp.ref_fourn,";
+		$sql .= " fp.desc_fourn,";
+		$sql .= " fp.quantity,";
+		$sql .= " fp.price,";
+		$sql .= " fp.unitprice,";
+		$sql .= " fp.tva_tx,";
+		$sql .= " p.ref AS product_ref,";
+		$sql .= " p.label AS product_label,";
+		$sql .= " p.entity,";
+		$sql .= " s.nom AS supplier_name";
+		$sql .= " FROM " . MAIN_DB_PREFIX . "product AS p";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product_fournisseur_price AS fp ON fp.fk_product = p.rowid";
+		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "societe AS s ON s.rowid = fp.fk_soc";
+		$sql .= " WHERE p.entity IN (" . $productEntitySql . ")";
+		$sql .= " AND s.entity IN (" . $thirdpartyEntitySql . ")";
+		$sql .= " AND fp.ref_fourn IS NOT NULL";
+		$sql .= " AND TRIM(fp.ref_fourn) <> ''";
+		$sql .= " AND fp.ref_fourn <> '-'";
+		if ((int) $fk_soc > 0) {
+			$sql .= " AND fp.fk_soc = " . ((int) $fk_soc);
+		}
+		$refFourn = trim((string) $ref_fourn);
+		if ($refFourn !== '') {
+			if ((int) $exact > 0) {
+				$sql .= " AND fp.ref_fourn = '" . $this->db->escape($refFourn) . "'";
+			} else {
+				$sql .= " AND fp.ref_fourn LIKE '%" . $this->db->escape($refFourn) . "%'";
+			}
+		}
+		$sql .= " ORDER BY p.ref ASC, fp.ref_fourn ASC, fp.rowid ASC";
+		$sql .= $this->db->plimit($limit);
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new RestException(503, 'Error when loading supplier purchase prices: ' . $this->db->lasterror());
+		}
+
+		$rows = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$rows[] = array(
+				'supplier_price_id' => (int) $obj->supplier_price_id,
+				'fk_product' => (int) $obj->fk_product,
+				'product_id' => (int) $obj->fk_product,
+				'fk_soc' => (int) $obj->fk_soc,
+				'supplier_id' => (int) $obj->fk_soc,
+				'ref_fourn' => (string) $obj->ref_fourn,
+				'supplier_ref' => (string) $obj->ref_fourn,
+				'desc_fourn' => (string) $obj->desc_fourn,
+				'supplier_description' => (string) $obj->desc_fourn,
+				'quantity' => (float) $obj->quantity,
+				'price' => (float) $obj->price,
+				'unitprice' => (float) $obj->unitprice,
+				'tva_tx' => (float) $obj->tva_tx,
+				'product_ref' => (string) $obj->product_ref,
+				'product_label' => (string) $obj->product_label,
+				'entity' => (int) $obj->entity,
+				'supplier_name' => (string) $obj->supplier_name,
+			);
+		}
+		$this->db->free($resql);
+
+		return $rows;
+	}
+
+	/**
 	 * Build MO label for production execution payload.
 	 *
 	 * @param string $requestedLabel
@@ -1648,6 +1741,18 @@ class KreaProductsApi extends DolibarrApi
 		}
 
 		return checkdate($month, $day, $year);
+	}
+
+	/**
+	 * Assert read rights for product browsing endpoints.
+	 *
+	 * @return void
+	 */
+	protected function assertProductReadRights()
+	{
+		if (!DolibarrApiAccess::$user->hasRight('produit', 'lire')) {
+			throw new RestException(403, 'Missing product read right');
+		}
 	}
 
 	/**

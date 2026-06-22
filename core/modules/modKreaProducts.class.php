@@ -79,7 +79,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-        $this->version = '2.35.23';
+        $this->version = '2.35.25';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -241,10 +241,10 @@ class modKreaProducts extends DolibarrModules
         // 'user'             to add a tab in user view
 
         $this->tabs = array();
-        $this->tabs[] = array('data' => 'product:-price:NU:$conf->kreaproducts->enabled');
-        $this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:!$conf->dolizsynch->enabled:/kreaproducts/sellPrice.php?id=__ID__');
-        $this->tabs[] = array('data' => 'product:-suppliers:NU:$conf->kreaproducts->enabled');
-        $this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/purchasePrice.php?id=__ID__');
+        $this->tabs[] = array('data' => 'product:-price:NU:$conf->kreaproducts->enabled && $object->status == 1');
+        $this->tabs[] = array('data' => 'product:+(2)krea_price:SellingPrices:kreaproducts@kreaproducts:!$conf->dolizsynch->enabled && $object->status == 1:/kreaproducts/sellPrice.php?id=__ID__');
+        $this->tabs[] = array('data' => 'product:-suppliers:NU:$conf->kreaproducts->enabled && $object->status_buy == 1');
+        $this->tabs[] = array('data' => 'product:+(3)krea_suppliers:BuyingPrices:kreaproducts@kreaproducts:$conf->kreaproducts->enabled && $object->status_buy == 1:/kreaproducts/purchasePrice.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:-subproduct:NU:$conf->kreaproducts->enabled');
         $this->tabs[] = array('data' => 'product:+(4)krea_subproduct:AssociatedProducts,AssociatedProductsHelper,/kreaproducts/class/AssociatedProductsHelper.class.php,getLabelWithChildCount:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/associatedProducts.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
