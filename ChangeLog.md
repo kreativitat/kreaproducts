@@ -1,6 +1,11 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [2.35.26] - 2026-06-23
+
+### Changed
+- Added supplier VAT fields to the `GET purchase_prices` API export.
+
 ## [2.35.25] - 2026-06-22
 
 ### Added

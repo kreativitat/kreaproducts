@@ -1451,7 +1451,8 @@ class KreaProductsApi extends DolibarrApi
 		$sql .= " p.ref AS product_ref,";
 		$sql .= " p.label AS product_label,";
 		$sql .= " p.entity,";
-		$sql .= " s.nom AS supplier_name";
+		$sql .= " s.nom AS supplier_name,";
+		$sql .= " s.tva_intra AS supplier_tva_intra";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "product AS p";
 		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "product_fournisseur_price AS fp ON fp.fk_product = p.rowid";
 		$sql .= " INNER JOIN " . MAIN_DB_PREFIX . "societe AS s ON s.rowid = fp.fk_soc";
@@ -1481,12 +1482,15 @@ class KreaProductsApi extends DolibarrApi
 
 		$rows = array();
 		while ($obj = $this->db->fetch_object($resql)) {
+			$supplierTvaIntra = (string) $obj->supplier_tva_intra;
 			$rows[] = array(
 				'supplier_price_id' => (int) $obj->supplier_price_id,
 				'fk_product' => (int) $obj->fk_product,
 				'product_id' => (int) $obj->fk_product,
 				'fk_soc' => (int) $obj->fk_soc,
 				'supplier_id' => (int) $obj->fk_soc,
+				'supplier_vat' => $this->normalizeSupplierVat($supplierTvaIntra),
+				'supplier_tva_intra' => $supplierTvaIntra,
 				'ref_fourn' => (string) $obj->ref_fourn,
 				'supplier_ref' => (string) $obj->ref_fourn,
 				'desc_fourn' => (string) $obj->desc_fourn,
@@ -1504,6 +1508,18 @@ class KreaProductsApi extends DolibarrApi
 		$this->db->free($resql);
 
 		return $rows;
+	}
+
+	/**
+	 * Normalize a Dolibarr thirdparty VAT value for API consumers that match by NIF.
+	 *
+	 * @param string $tvaIntra Thirdparty VAT value
+	 * @return string
+	 */
+	private function normalizeSupplierVat($tvaIntra)
+	{
+		$vat = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $tvaIntra));
+		return preg_replace('/^[A-Z]+/', '', $vat);
 	}
 
 	/**
