@@ -12,14 +12,11 @@
  * Copyright (C) 2019      Tim Otte			    <otte@meuser.it>
  * Copyright (C) 2020      Pierre Ardoin        <mapiolca@me.com>
  * Copyright (C) 2023	   Joachim Kueter		<git-jk@bloxera.com>
- * Copyright (C) 2024-2026       Kreativität Works      <mail@kreativitat.com>
+ * Copyright (C) 2026      Kreativität Works      <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation, either version 3 of the License,
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -30,11 +27,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 /**
@@ -132,6 +126,9 @@ if ($object->id > 0) {
 	}
 	if ($object->type == $object::TYPE_SERVICE) {
 		restrictedArea($user, 'service', $object->id, 'product&product', '', '');
+	}
+	if (empty($object->status_buy)) {
+		accessforbidden();
 	}
 } else {
 	restrictedArea($user, 'produit|service', $fieldvalue, 'product&product', '', '', $fieldtype);
