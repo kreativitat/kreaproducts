@@ -1,6 +1,13 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.11] - 2026-07-31
+
+### Fixed
+
+- Recorded non-stock-managed dismantling outputs as completed MO execution lines without requiring an impossible stock movement.
+- Preserved intentional non-stock MO execution lines during retry and orphan cleanup checks.
+
 ## [4.5.10] - 2026-07-31
 
 ### Fixed

@@ -123,7 +123,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, 'ProductUpdater::get
 assertSameValue(true, strpos((string) $stockMovementSource, "\t\treturn 0;\n\t}") !== false, 'Successful stock movement processing must use Dolibarr trigger success code zero.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.5.10'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.5.11'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
 assertSameValue(true, strpos((string) $moduleSource, '/kreaproducts/inventory_stock_overview.php?leftmenu=stock_inventories') !== false, 'The inventory stock overview must be registered in the stock inventory left menu.');
@@ -396,12 +396,14 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.5.10', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.5.10', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.5.10', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.5.11', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.5.11', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.5.11', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');
 assertSameValue(true, strpos((string) $dismantleSource, 'PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE') !== false, 'Kit-parent dismantling outputs must use the scoped parent-movement compatibility boundary.');
+assertSameValue(true, strpos((string) $dismantleSource, '$product->isStockManaged()') !== false, 'Dismantling must distinguish stock-managed and non-stock-managed MO products.');
+assertSameValue(true, strpos((string) $dismantleSource, 'mp.fk_stock_movement IS NULL AND mp.fk_warehouse IS NULL') !== false, 'Intentional non-stock MO execution lines must remain idempotent.');
 
 print "Stock logic tests passed.\n";

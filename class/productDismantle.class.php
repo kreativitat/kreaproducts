@@ -384,23 +384,29 @@ class ProductDismantleController extends CommonObject
                     $stockmove->setOrigin($originType, $originId);
                 }
 
-				$movementQty = ($arrayname === 'arraytoconsume' ? -$rawQty : $rawQty);
-				$movementLabel = ($arrayname === 'arraytoconsume'
-					? ($rawQty >= 0 ? 'Consume' : 'Reverse consume')
-					: ($rawQty >= 0 ? 'Produce' : 'Reverse produce'));
-				$result = $this->createDismantleStockMovement(
-					$stockmove,
-					$product,
-					$user,
-					(int) $item['fk_warehouse'],
-					(float) $movementQty,
-					(float) $movementPrice,
-					$movementLabel." for MO ($originRef)",
-					$movementDate
-				);
+				$isStockManaged = $product->isStockManaged();
+				$result = 0;
+				if ($isStockManaged) {
+					$movementQty = ($arrayname === 'arraytoconsume' ? -$rawQty : $rawQty);
+					$movementLabel = ($arrayname === 'arraytoconsume'
+						? ($rawQty >= 0 ? 'Consume' : 'Reverse consume')
+						: ($rawQty >= 0 ? 'Produce' : 'Reverse produce'));
+					$result = $this->createDismantleStockMovement(
+						$stockmove,
+						$product,
+						$user,
+						(int) $item['fk_warehouse'],
+						(float) $movementQty,
+						(float) $movementPrice,
+						$movementLabel." for MO ($originRef)",
+						$movementDate
+					);
+				} else {
+					dol_syslog(__METHOD__." recorded MO execution without stock movement for non-stock-managed product #".(int) $product->id, LOG_INFO);
+				}
 
                 // Check for errors
-                if ($result <= 0) {
+                if ($isStockManaged && $result <= 0) {
                     dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
                     $error++;
                     break;
@@ -412,7 +418,7 @@ class ProductDismantleController extends CommonObject
                         'execution_role' => ($arrayname === 'arraytoconsume' ? 'consumed' : 'produced'),
                         'product_id' => (int) $item['objectid'],
                         'qty' => (float) $rawQty,
-                        'fk_warehouse' => (int) $item['fk_warehouse'],
+                        'fk_warehouse' => ($isStockManaged ? (int) $item['fk_warehouse'] : null),
                         'fk_stock_movement' => (int) $result,
                         'position' => (int) $movementPosition,
                     ];
@@ -608,9 +614,10 @@ class ProductDismantleController extends CommonObject
         // dedupe guard from blocking re-execution when secondary movements were never committed.
         $sql = "SELECT COUNT(mp.rowid) AS nb"
             . " FROM " . MAIN_DB_PREFIX . "mrp_production AS mp"
-            . " INNER JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
+            . " LEFT JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
             . " WHERE mp.fk_mo = " . $moId
-            . " AND mp.role IN ('consumed','produced')";
+            . " AND mp.role IN ('consumed','produced')"
+			. " AND (sm.rowid IS NOT NULL OR (mp.fk_stock_movement IS NULL AND mp.fk_warehouse IS NULL))";
         $resql = $this->db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . " failed to verify execution lines: " . $this->db->lasterror(), LOG_ERR);
@@ -633,7 +640,8 @@ class ProductDismantleController extends CommonObject
             . " LEFT JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
             . " WHERE mp.fk_mo = " . $moId
             . " AND mp.role IN ('consumed','produced')"
-            . " AND (mp.fk_stock_movement IS NULL OR sm.rowid IS NULL)";
+            . " AND ((mp.fk_stock_movement IS NOT NULL AND sm.rowid IS NULL)"
+			. " OR (mp.fk_stock_movement IS NULL AND mp.fk_warehouse IS NOT NULL))";
         $resql = $this->db->query($findSql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . " failed to identify orphaned lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_ERR);
