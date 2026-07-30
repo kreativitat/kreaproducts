@@ -1,8 +1,8 @@
-<!-- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com> -->
+<!-- Copyright (C) 2026 Kreativität Works <mail@kreativitat.com> -->
 
 # KreaProducts para Dolibarr ERP/CRM
 
-KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/CRM](https://www.dolibarr.org). Amplia o módulo de Produtos com nutrição, alergénios, BOM/Fichas Técnicas, inventário e automatizações de custos e stock — pensado para operações de restauração e retalho que precisam de consistência, rastreabilidade e _food cost_ sempre certo.
+KreaProducts é um módulo avançado de gestão de produtos para o [Dolibarr ERP/CRM](https://www.dolibarr.org). Amplia o módulo Produtos com nutrição, alergénios, BOM/fichas técnicas, inventário e automatizações de custos e stock — para operações de restauração e retalho que exigem consistência, rastreabilidade e um custo alimentar rigoroso.
 
 ## Funcionalidades
 
@@ -32,12 +32,12 @@ O Dolibarr, por defeito, regista muitos movimentos **na data em que o documento 
 O KreaProducts corrige esta limitação com duas automações essenciais:
 
 - **Entrada de stock pela data da fatura (fornecedores):** os produtos são lançados em stock com a **data da fatura/data de entrada**, em vez da data em que o documento é registado no Dolibarr. Isto elimina discrepâncias quando a fatura é registada dias depois.
-- **Inventário por data-valor (retroativo):** o ajuste do inventário é aplicado com base na **data do inventário (data-valor)**, e não na data de validação. Desta forma, é possível lançar um inventário com data-valor anterior (por exemplo, de há uma semana) e assegurar que as correções e os relatórios permanecem consistentes — algo que o módulo standard não garante.
-- **Recalculo por inventário físico:** o stock é recalculado com base na **quantidade contada** (qty_stock) quando disponível, usando qty_view apenas como fallback — evitando desvios em retroativos.
+- **Inventário por data-valor (retroativo):** o ajuste do inventário é aplicado com base na **data do inventário (data-valor)**, e não na data de validação. Desta forma, é possível lançar um inventário com data-valor anterior (por exemplo, de há uma semana) e assegurar que as correções e os relatórios permanecem consistentes — algo que o módulo padrão não garante.
+- **Recálculo por inventário físico:** o stock é recalculado com base na **quantidade contada** (`qty_stock`) quando disponível, usando `qty_view` apenas como alternativa — evitando desvios em lançamentos retroativos.
 
 ### Gestão inteligente de embalagens e custo unitário (desmantelamento automático)
 
-Na restauração, é comum comprar o mesmo artigo em embalagens diferentes — mas para _food cost_ o que interessa é o custo **unitário real** (ex.: €/L, €/kg, €/un).
+Na restauração, é comum comprar o mesmo artigo em embalagens diferentes — mas para o custo alimentar o que interessa é o custo **unitário real** (ex.: €/L, €/kg, €/un.).
 
 Exemplo típico: **óleo**. Pode ser comprado em **garrafões de 10L, 5L, 1L** ou **caixas 12×1L**. Se estas embalagens entrarem no sistema como “produtos diferentes”, rapidamente surgem inconsistências de stock e custo por unidade.
 
@@ -52,15 +52,15 @@ Este processo:
 - mantém o **custo proporcional** e a rastreabilidade (origem → destino),
 - e garante que o produto unitário fica pronto para utilização em receitas, inventário e cálculos de margem.
 
-### Atualização automática de custos e _food cost_ (em cascata)
+### Atualização automática de custos e custo alimentar (em cascata)
 
-O KreaProducts automatiza ainda a atualização do **preço de custo** e do **food cost** dos produtos finais, com base nas respetivas fichas técnicas (BOM/FM).
+O KreaProducts automatiza ainda a atualização do **preço de custo** e do **custo alimentar** dos produtos finais, com base nas respetivas fichas técnicas (BOM/FM).
 
 Na prática:
 
 - se um constituinte (ex.: **óleo**) tiver o preço de compra atualizado,
 - todos os produtos onde esse constituinte é usado (ex.: **batatas fritas**) têm o seu **custo recalculado automaticamente**,
-- garantindo que o _food cost_ e as margens refletem sempre a realidade, sem ajustes manuais.
+- garantindo que o custo alimentar e as margens refletem sempre a realidade, sem ajustes manuais.
 
 Esta funcionalidade é especialmente relevante em operações com muitas receitas e compras frequentes, onde pequenas variações de custo devem refletir-se de imediato nos produtos finais.
 
@@ -90,7 +90,7 @@ Esta funcionalidade é especialmente relevante em operações com muitas receita
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | `KREAPRODUCTS_DEFAULT_WEIGHT_LABEL`         | Classe de unidades para peso.                                        |
 | `KREAPRODUCTS_NUTRITIONAL_TABLE_TAB`        | Mostrar tabela nutricional na ficha técnica.                         |
-| `KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT`   | Mostrar o seletor e botão para copiar valores médios por 100g.        |
+| `KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT`   | Mostrar o seletor e botão para copiar valores médios por 100 g.       |
 | `KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT` | Mostrar o seletor e botão para copiar alergénios para outro produto. |
 | `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE`         | Propagar automaticamente o preço de custo (recálculo em cascata).    |
 | `KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT`  | Percentagem do peso total para considerar alergénios como presentes. |
@@ -104,7 +104,7 @@ Esta funcionalidade é especialmente relevante em operações com muitas receita
 | `KREAPRODUCTS_SIM_ENABLE`                   | Ativar simulador de preços.                                          |
 | `KREAPRODUCTS_SIM_DEFAULT_MARKUP`           | Markup predefinido do simulador.                                     |
 | `KREAPRODUCTS_REPLACE_PRODUCT_LIST`         | Substituir a lista padrão de produtos.                               |
-| `KREAPRODUCTS_DEBUG_LOG`                    | Ativar logs de debug do KreaProducts.                                |
+| `KREAPRODUCTS_DEBUG_LOG`                    | Ativar registos de diagnóstico do KreaProducts.                      |
 
 Nota: os limiares de alergénios são percentagens do peso total da receita do produto final.
 
@@ -117,13 +117,12 @@ Nota: os limiares de alergénios são percentagens do peso total da receita do p
 ## Licença
 
 - GPL-3.0-or-later (ver LICENSE e COPYING).
-- Licença proprietária disponível para uso comercial ou código fechado; contacte mail@kreativitat.com.
 
 ## Suporte e contribuições
 
 - GitHub: https://github.com/kreativitat
-- Website: https://www.kreativitat.com
-- Demo: https://dolibarr.kreativitat.com
+- Site: https://www.kreativitat.com
+- Demonstração: https://dolibarr.kreativitat.com
 
 ## Aviso legal
 

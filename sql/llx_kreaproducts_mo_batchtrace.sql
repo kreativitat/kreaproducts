@@ -1,4 +1,4 @@
--- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+-- Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 --
 -- Production batch/component trace tables for KreaProducts touch production flow.
 

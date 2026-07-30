@@ -1,6 +1,18 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.class.php';
@@ -33,7 +45,7 @@ class KreaProductsSupplierPriceSyncService
 
 		$supplierId = $this->resolveSupplierId($invoice);
 		if ($supplierId <= 0) {
-			return 0;
+			throw new RuntimeException('Validated supplier invoice has no supplier identifier');
 		}
 
 		$invoiceLines = $this->extractInvoiceLines($invoice);
@@ -43,8 +55,7 @@ class KreaProductsSupplierPriceSyncService
 
 		$supplier = new Fournisseur($db);
 		if ($supplier->fetch($supplierId) <= 0) {
-			dol_syslog(__METHOD__ . ' supplier not found for invoice=' . (int) $invoice->id . ' supplier=' . $supplierId, LOG_WARNING);
-			return 0;
+			throw new RuntimeException('Unable to load supplier ' . $supplierId . ' for invoice ' . (int) $invoice->id);
 		}
 
 		$updated = 0;
@@ -118,7 +129,10 @@ class KreaProductsSupplierPriceSyncService
 	private function extractInvoiceLines($invoice)
 	{
 		if (empty($invoice->lines) && method_exists($invoice, 'fetch_lines')) {
-			$invoice->fetch_lines();
+			$result = $invoice->fetch_lines();
+			if ($result < 0) {
+				throw new RuntimeException('Unable to load supplier invoice lines for invoice ' . (int) $invoice->id);
+			}
 		}
 		if (empty($invoice->lines) || !is_array($invoice->lines)) {
 			return array();
@@ -196,8 +210,7 @@ class KreaProductsSupplierPriceSyncService
 
 		$resql = $db->query($sql);
 		if (!$resql) {
-			dol_syslog(__METHOD__ . ' sql error: ' . $db->lasterror(), LOG_WARNING);
-			return 0;
+			throw new RuntimeException('Unable to locate the supplier price row: ' . $db->lasterror());
 		}
 
 		$obj = $db->fetch_object($resql);
@@ -219,13 +232,12 @@ class KreaProductsSupplierPriceSyncService
 		$productFourn = new ProductFournisseur($db);
 		$resultFetch = $productFourn->fetch_product_fournisseur_price($pfpId, 1);
 		if ($resultFetch <= 0) {
-			return 0;
+			throw new RuntimeException('Unable to load supplier price row ' . $pfpId);
 		}
 
 		$rowQty = (float) price2num($productFourn->fourn_qty, 'MS');
 		if ($rowQty <= 0) {
-			dol_syslog(__METHOD__ . ' skipped rowid=' . $pfpId . ' because quantity<=0', LOG_WARNING);
-			return 0;
+			throw new RuntimeException('Supplier price row ' . $pfpId . ' has an invalid quantity');
 		}
 
 		$newBuyPrice = (float) price2num($lineUnitPrice * $rowQty, 'MU');
@@ -278,16 +290,11 @@ class KreaProductsSupplierPriceSyncService
 		);
 
 		if ($resultUpdate <= 0) {
-			dol_syslog(
-				__METHOD__
-				. ' failed for pfp=' . $pfpId
-				. ' product=' . (int) $productFourn->id
-				. ' supplier=' . (int) $supplier->id
-				. ' ref=' . $supplierRef
-				. ' error=' . $productFourn->error,
-				LOG_WARNING
+			throw new RuntimeException(
+				'Unable to update supplier price row ' . $pfpId
+				. ' for product ' . (int) $productFourn->id
+				. ': ' . ($productFourn->error ?: $db->lasterror())
 			);
-			return 0;
 		}
 
 		return 1;

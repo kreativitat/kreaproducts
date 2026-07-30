@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  */
 
 if (!class_exists('ProductDismantleController', false)) {

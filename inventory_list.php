@@ -2,7 +2,7 @@
 /* Copyright (C) 2007-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
  * Copyright (C) 2024		Frederic France			<frederic.france@free.fr>
  * Copyright (C) 2025		MDW						<mdeweerd@users.noreply.github.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,7 +56,7 @@ function kreaproducts_format_inventory_ref_display($ref)
 }
 
 // Load translation files required by the page
-$langs->loadLangs(array("stocks", "other"));
+$langs->loadLangs(array("stocks", "other", "kreaproducts@kreaproducts"));
 
 $action     = GETPOST('action', 'aZ09') ? GETPOST('action', 'aZ09') : 'view'; // The action 'add', 'create', 'edit', 'update', 'view', ...
 $massaction = GETPOST('massaction', 'alpha'); // The bulk action (combo box choice into lists)
@@ -88,7 +88,8 @@ $pagenext = $page + 1;
 $object = new Inventory($db);
 $extrafields = new ExtraFields($db);
 if (isset($object->fields['date_inventory'])) {
-	$object->fields['date_inventory']['type'] = 'datetime';
+	$object->fields['date_inventory']['type'] = 'date';
+	$object->fields['date_inventory']['label'] = 'KREAPRODUCTS_VALUE_DATE';
 }
 if (isset($object->fields['ref'])) {
 	$object->fields['ref']['csslist'] = 'tdoverflowmax120';
@@ -444,7 +445,7 @@ $num = $db->num_rows($resql);
 if ($num == 1 && getDolGlobalString('MAIN_SEARCH_DIRECT_OPEN_IF_ONLY_ONE') && $search_all && !$page) {
 	$obj = $db->fetch_object($resql);
 	$id = $obj->rowid;
-	header("Location: ".DOL_URL_ROOT.'/inventory/card.php?id='.$id);
+	header('Location: '.dol_buildpath('/custom/kreaproducts/inventory.php', 1).'?id='.$id);
 	exit;
 }
 
@@ -524,11 +525,10 @@ print '<input type="hidden" name="page_y" value="">';
 print '<input type="hidden" name="mode" value="'.$mode.'">';
 
 $newcardbutton = '';
-$newcardbacktopage = dol_buildpath('/custom/kreaproducts/inventory.php', 1).'?id=__ID__';
 $newcardbutton .= dolGetButtonTitle($langs->trans('ViewList'), '', 'fa fa-bars imgforviewmode', $_SERVER["PHP_SELF"].'?mode=common'.preg_replace('/(&|\?)*mode=[^&]+/', '', $param), '', ((empty($mode) || $mode == 'common') ? 2 : 1), array('morecss' => 'reposition'));
 $newcardbutton .= dolGetButtonTitle($langs->trans('ViewKanban'), '', 'fa fa-th-list imgforviewmode', $_SERVER["PHP_SELF"].'?mode=kanban'.preg_replace('/(&|\?)*mode=[^&]+/', '', $param), '', ($mode == 'kanban' ? 2 : 1), array('morecss' => 'reposition'));
 $newcardbutton .= dolGetButtonTitleSeparator();
-$newcardbutton .= dolGetButtonTitle($langs->trans('New'), '', 'fa fa-plus-circle', DOL_URL_ROOT.'/product/inventory/card.php?action=create&backtopage='.urlencode($newcardbacktopage).'&backtopageforcancel='.urlencode($_SERVER['PHP_SELF']), '', $permissiontoadd);
+$newcardbutton .= dolGetButtonTitle($langs->trans('New'), '', 'fa fa-plus-circle', dol_buildpath('/custom/kreaproducts/inventory.php', 1), '', $permissiontoadd);
 
 print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sortorder, $massactionbutton, $num, $nbtotalofrecords, $object->picto, 0, $newcardbutton, '', $limit, 0, 0, 1);
 
@@ -786,7 +786,10 @@ while ($i < $imaxinloop) {
 				}
 				print '>';
 				if ($key == 'ref') {
-					$url = dol_buildpath('/custom/kreaproducts/inventory.php', 1).'?id='.$object->id;
+					$isManagedInventory = (string) $object->import_key === 'KPS' || preg_match('/^(?:KPS|KS)-/', (string) $object->ref) === 1;
+					$url = $isManagedInventory
+						? dol_buildpath('/custom/kreaproducts/inventory.php', 1).'?id='.$object->id
+						: DOL_URL_ROOT.'/product/inventory/inventory.php?id='.$object->id;
 					$title = $langs->trans("Inventory");
 					$refdisplay = kreaproducts_format_inventory_ref_display($object->ref);
 					print '<a href="'.$url.'" class="classfortooltip" title="'.dol_escape_htmltag($title).'">';

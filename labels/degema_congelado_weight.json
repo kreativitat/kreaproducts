@@ -2,7 +2,7 @@
   "schema_version": 1,
   "template_code": "degema_congelado_weight",
   "label": "DeGema Etiqueta Congelado - Peso",
-  "description": "Etiqueta congelada de peso frente e verso 75.6x49.9 mm com peso a 3 casas decimais, unidade kg, codigo de barras com peso, dados da empresa e pagina de composicao.",
+  "description": "Etiqueta de peso para produto congelado, frente e verso, de 75,6 x 49,9 mm, com peso a três casas decimais, unidade em kg, código de barras com peso, dados da empresa e página de composição.",
   "source": {
     "type": "bundled",
     "mapped_on": "2026-05-19"
@@ -592,8 +592,8 @@
     }
   ],
   "notes": [
-    "Weight front page keeps the compact ref box and large Code128 barcode geometry requested for KreaProduction weighing flow.",
-    "Back page keeps the product in the upper-left area and uses the usable width below the enlarged brand logo with a right safety margin for ingredients, allergens, nutrition, and conservation.",
-    "Company data, Green Dot, and food-contact material symbols remain on the front page."
+    "A frente da etiqueta de peso mantém a caixa compacta da referência e a geometria ampliada do código de barras Code128, conforme exigido pelo fluxo de pesagem do KreaProduction.",
+    "O verso mantém o produto na zona superior esquerda e usa a largura disponível por baixo do logótipo ampliado, com uma margem de segurança à direita para ingredientes, alergénios, nutrição e conservação.",
+    "Os dados da empresa e os símbolos Green Dot e de material em contacto com alimentos permanecem na frente."
   ]
 }

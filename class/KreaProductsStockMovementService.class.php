@@ -1,27 +1,36 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 dol_include_once('/kreaproducts/class/ProductUpdater.class.php');
 dol_include_once('/kreaproducts/class/productdismantlecontroller.class.php');
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
+require_once __DIR__.'/KreaProductsInventoryLedgerCalculator.class.php';
+require_once __DIR__.'/KreaProductsInventoryMovementService.class.php';
+require_once __DIR__.'/KreaProductsBusinessDayService.class.php';
 
 /**
  * KreaProductsStockMovementService
  *
  * Full-featured version with robust stock rules:
  * - Supports inventory moves (including backdated inventories).
- * - Supports supplier invoice moves (including backdated purchases).
+ * - Supports customer and supplier invoice moves (including delayed posting).
  * - Keeps later inventories consistent by adjusting the next inventory movement when needed.
  * - Handles history-truncated systems safely (old stock_mouvement deleted) by refusing to rebuild
  *   reel from sums when no valid inventory anchor exists.
  *
- * IMPORTANT: A "valid inventory anchor" requires BOTH:
- * - inventory.status = RECORDED
- * - and an existing stock_mouvement row with origintype='inventory' for the same inventory (fk_origin)
- *   and same product + warehouse (+ batch).
- * This prevents phantom anchors when inventory rows exist but their movements were deleted.
+ * A valid anchor requires a recorded inventory plus either an active KreaProducts adjustment
+ * audit row or a matching legacy inventory movement for the product, warehouse, and batch.
  */
 class KreaProductsStockMovementService
 {
@@ -34,39 +43,272 @@ class KreaProductsStockMovementService
 
 		// First: align timestamps (optional)
 		if ($applyMovementDates) {
+			if ($move->origintype === 'facture') {
+				if (!$this->shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)) {
+					return -1;
+				}
+			}
 			if ($move->origintype === 'invoice_supplier') {
-				$this->shiftSupplierInvoiceMoveToConfiguredTime($move, $db, $conf);
+				if (!$this->shiftSupplierInvoiceMoveToConfiguredTime($move, $db, $conf)) {
+					return -1;
+				}
 			}
 			if ($move->origintype === 'inventory') {
-				$this->alignInventoryMoveToDateInventory($move, $db);
+				if (!$this->alignInventoryMoveToDateInventory($move, $db, $conf)) {
+					return -1;
+				}
 			}
 		}
 
 		// Then: stock routines
 		if ($move->origintype === 'inventory' && $applyMovementDates) {
-			$this->recalculateAfterInventory($move, $db);
+			if (!$this->recalculateAfterInventory($move, $db)) {
+				return -1;
+			}
 		}
 
 		if ($move->origintype === 'invoice_supplier') {
 			if ($applyMovementDates) {
-				$this->recalculateAfterSupplierInvoice($move, $db);
+				if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
+					return -1;
+				}
 			}
 
 			// Dismantle routines are independent from the stock rebuild logic
 			if ($skipDismantle) {
 				dol_syslog(__METHOD__ . ' skip dismantle for movement id=' . (int) $move->id . ' label=' . (string) $move->label, LOG_DEBUG);
 			} else {
-				$this->updateDismantleChildrenBeforeTrigger($move, $db, $user);
-				$this->dismantleIfNeeded($move, $db, $user);
+				if (!$this->updateDismantleChildrenBeforeTrigger($move, $db, $user)) {
+					return -1;
+				}
+				if ($this->dismantleIfNeeded($move, $db, $user) < 0) {
+					return -1;
+				}
+			}
+		}
+
+		if ($move->origintype === 'facture' && $applyMovementDates) {
+			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
+				return -1;
 			}
 		}
 
 		// Auto-dismantle generated MO movements can be backdated too; keep reel recalculation consistent.
 		if ($move->origintype === 'mo' && $skipDismantle && $applyMovementDates) {
-			$this->recalculateAfterSupplierInvoice($move, $db);
+			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
+				return -1;
+			}
 		}
 
-		return 1;
+		return 0;
+	}
+
+	/**
+	 * Put customer sales for invoice day D at the business close on D+1.
+	 *
+	 * @param MouvementStock $move Customer invoice stock movement
+	 * @param DoliDB         $db   Database handler
+	 * @param Conf           $conf Dolibarr configuration
+	 * @return bool
+	 */
+	protected function shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)
+	{
+		if (empty($move->origin_id)) {
+			return true;
+		}
+
+		$sql = 'SELECT datef FROM '.MAIN_DB_PREFIX.'facture';
+		$sql .= ' WHERE rowid='.(int) $move->origin_id;
+		$sql .= ' AND entity='.(int) $conf->entity;
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' Error querying customer invoice date: '.$db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$row = $db->fetch_object($resql);
+		$db->free($resql);
+		if (!$row || empty($row->datef)) {
+			return false;
+		}
+
+		try {
+			$invoiceDate = is_numeric($row->datef) ? $db->idate($row->datef) : (string) $row->datef;
+			$new = $db->idate($this->resolveCustomerInvoiceValueTimestamp($invoiceDate, $conf));
+		} catch (InvalidArgumentException $exception) {
+			dol_syslog(__METHOD__.' '.$exception->getMessage(), LOG_ERR);
+			return false;
+		}
+
+		$current = $move->datem;
+		if (is_numeric($current)) {
+			$current = $db->idate($current);
+		}
+		if (!empty($move->id) && $new !== $current) {
+			$sql = 'UPDATE '.MAIN_DB_PREFIX."stock_mouvement SET datem='".$db->escape($new)."'";
+			$sql .= ' WHERE rowid='.(int) $move->id;
+			if (!$db->query($sql)) {
+				dol_syslog(__METHOD__.' Error updating customer movement date: '.$db->lasterror(), LOG_ERR);
+				return false;
+			}
+		}
+
+		$move->datem = $new;
+		return true;
+	}
+
+	/**
+	 * Normalize customer movements relevant to a physical inventory reconstruction.
+	 *
+	 * Retimed historical movements are passed through the same append-only rebase logic
+	 * as newly generated movements. Source quantities and invoice dates remain immutable.
+	 *
+	 * @param DoliDB $db             Database handler
+	 * @param Conf   $conf           Dolibarr configuration
+	 * @param User   $user           Movement author
+	 * @param int    $productId      Product ID
+	 * @param int    $warehouseId    Warehouse ID
+	 * @param string $batch          Lot or serial
+	 * @param int    $valueTimestamp Inventory value timestamp
+	 * @return bool
+	 */
+	public function normalizeCustomerInvoiceMovementsForReconstruction($db, $conf, $user, $productId, $warehouseId, $batch, $valueTimestamp)
+	{
+		$timezone = $this->getBusinessTimezone($conf);
+		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone);
+		$minimumInvoiceDate = $valueDate->modify('-1 day')->format('Y-m-d');
+
+		$sql = 'SELECT sm.rowid, sm.fk_origin, sm.fk_product, sm.fk_entrepot, sm.batch, sm.datem, sm.value, f.datef';
+		$sql .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement sm';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'facture f ON f.rowid=sm.fk_origin AND f.entity='.(int) $conf->entity;
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product p ON p.rowid=sm.fk_product AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'entrepot e ON e.rowid=sm.fk_entrepot AND e.entity IN ('.getEntity('stock').')';
+		$sql .= " WHERE sm.origintype='facture'";
+		$sql .= ' AND sm.fk_product='.(int) $productId;
+		$sql .= ' AND sm.fk_entrepot='.(int) $warehouseId;
+		$sql .= " AND (f.datef >= '".$db->escape($minimumInvoiceDate)."'";
+		$sql .= " OR sm.datem > '".$db->escape($db->idate((int) $valueTimestamp))."')";
+		$sql .= $this->batchCondMoveValue($db, (string) $batch);
+		$sql .= ' ORDER BY sm.rowid ASC';
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' Error loading customer movements: '.$db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$rows = array();
+		while ($row = $db->fetch_object($resql)) {
+			$rows[] = $row;
+		}
+		$db->free($resql);
+
+		foreach ($rows as $row) {
+			$move = new stdClass();
+			$move->id = (int) $row->rowid;
+			$move->origin_id = (int) $row->fk_origin;
+			$move->origintype = 'facture';
+			$move->product_id = (int) $row->fk_product;
+			$move->fk_entrepot = (int) $row->fk_entrepot;
+			$move->batch = (string) $row->batch;
+			$move->datem = (string) $row->datem;
+			if (!$this->shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)) {
+				return false;
+			}
+			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Normalize supplier movements relevant to a physical inventory reconstruction.
+	 *
+	 * Existing late-posted movements are reconciled through the same append-only rebase
+	 * path as newly triggered movements. Source quantities and supplier invoice dates remain immutable.
+	 *
+	 * @param DoliDB $db             Database handler
+	 * @param Conf   $conf           Dolibarr configuration
+	 * @param User   $user           Movement author
+	 * @param int    $productId      Product ID
+	 * @param int    $warehouseId    Warehouse ID
+	 * @param string $batch          Lot or serial
+	 * @param int    $valueTimestamp Inventory value timestamp
+	 * @return bool
+	 */
+	public function normalizeSupplierInvoiceMovementsForReconstruction($db, $conf, $user, $productId, $warehouseId, $batch, $valueTimestamp)
+	{
+		$valueDateSql = $db->idate((int) $valueTimestamp);
+		$valueCalendarDate = substr($valueDateSql, 0, 10);
+		$sql = 'SELECT sm.rowid, sm.fk_origin, sm.fk_product, sm.fk_entrepot, sm.batch, sm.datem, sm.value, ff.datef';
+		$sql .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement sm';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'facture_fourn ff ON ff.rowid=sm.fk_origin AND ff.entity='.(int) $conf->entity;
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product p ON p.rowid=sm.fk_product AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'entrepot e ON e.rowid=sm.fk_entrepot AND e.entity IN ('.getEntity('stock').')';
+		$sql .= " WHERE sm.origintype='invoice_supplier'";
+		$sql .= ' AND sm.fk_product='.(int) $productId;
+		$sql .= ' AND sm.fk_entrepot='.(int) $warehouseId;
+		$sql .= " AND (ff.datef >= '".$db->escape($valueCalendarDate)."'";
+		$sql .= " OR sm.datem > '".$db->escape($valueDateSql)."')";
+		$sql .= $this->batchCondMoveValue($db, (string) $batch);
+		$sql .= ' ORDER BY sm.rowid ASC';
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' Error loading supplier movements: '.$db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$rows = array();
+		while ($row = $db->fetch_object($resql)) {
+			$rows[] = $row;
+		}
+		$db->free($resql);
+
+		foreach ($rows as $row) {
+			$move = new stdClass();
+			$move->id = (int) $row->rowid;
+			$move->origin_id = (int) $row->fk_origin;
+			$move->origintype = 'invoice_supplier';
+			$move->product_id = (int) $row->fk_product;
+			$move->fk_entrepot = (int) $row->fk_entrepot;
+			$move->batch = (string) $row->batch;
+			$move->datem = (string) $row->datem;
+			if (!$this->shiftSupplierInvoiceMoveToConfiguredTime($move, $db, $conf)) {
+				return false;
+			}
+			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * @param string $invoiceDate Customer invoice date
+	 * @param Conf   $conf        Dolibarr configuration
+	 * @return int
+	 */
+	protected function resolveCustomerInvoiceValueTimestamp($invoiceDate, $conf)
+	{
+		$businessDay = new KreaProductsBusinessDayService();
+		return $businessDay->resolveCustomerInvoiceValueTimestamp(
+			substr((string) $invoiceDate, 0, 10),
+			$this->getBusinessTimezone($conf),
+			trim((string) ($conf->global->KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME ?? '06:00'))
+		);
+	}
+
+	/**
+	 * @param Conf $conf Dolibarr configuration
+	 * @return DateTimeZone
+	 */
+	protected function getBusinessTimezone($conf)
+	{
+		$timezoneName = trim((string) ($conf->global->KREAPRODUCTS_BUSINESS_TIMEZONE ?? date_default_timezone_get()));
+		try {
+			return new DateTimeZone($timezoneName);
+		} catch (Exception $exception) {
+			throw new InvalidArgumentException('Invalid business timezone configuration.');
+		}
 	}
 
 	protected function isDismantleMovement($move)
@@ -84,45 +326,41 @@ class KreaProductsStockMovementService
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
 		if (empty($move->origin_id)) {
-			return;
+			return true;
 		}
 
 		$time = trim($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:00');
-		if (!preg_match('/^[0-9]{2}:[0-9]{2}(:[0-9]{2})?$/', $time)) {
-			$time = '10:00';
+		if (!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/', $time)) {
+			dol_syslog(__METHOD__.' Invalid KREAPRODUCTS_SUPPLIER_MOVE_TIME value.', LOG_ERR);
+			return false;
 		}
 		if (strlen($time) === 5) {
 			$time .= ':00';
 		}
 
-		$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn WHERE rowid=' . (int) $move->origin_id;
+		$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn';
+		$sql .= ' WHERE rowid=' . (int) $move->origin_id;
+		$sql .= ' AND entity=' . (int) $conf->entity;
 		$res = $db->query($sql);
 		if (!$res) {
 			dol_syslog(__METHOD__ . ' Error querying supplier invoice date: ' . $db->lasterror(), LOG_ERR);
-			return;
+			return false;
 		}
 		$row = $db->fetch_object($res);
 		if (!$row || empty($row->datef)) {
-			return;
+			return false;
 		}
 
 		$invoiceDate = $row->datef;
 		if (is_numeric($invoiceDate)) {
 			$invoiceDate = $db->idate($invoiceDate);
 		}
-		if (empty($invoiceDate)) {
-			return;
+		$invoiceDate = substr((string) $invoiceDate, 0, 10);
+		if (!preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/', $invoiceDate)) {
+			return false;
 		}
 
-		$new = $invoiceDate;
-		if (strlen($invoiceDate) <= 10) {
-			$new = $invoiceDate . ' ' . $time;
-		} else {
-			$timePart = substr($invoiceDate, 11, 8);
-			if ($timePart === '00:00:00') {
-				$new = substr($invoiceDate, 0, 10) . ' ' . $time;
-			}
-		}
+		$new = $invoiceDate.' '.$time;
 
 		$current = $move->datem;
 		if (is_numeric($current)) {
@@ -131,30 +369,36 @@ class KreaProductsStockMovementService
 
 		if (!empty($move->id) && $new !== $current) {
 			$upd = 'UPDATE ' . MAIN_DB_PREFIX . "stock_mouvement SET datem='" . $db->escape($new) . "' WHERE rowid=" . (int) $move->id;
-			$db->query($upd);
+			if (!$db->query($upd)) {
+				dol_syslog(__METHOD__.' Error updating supplier movement date: '.$db->lasterror(), LOG_ERR);
+				return false;
+			}
 		}
 
 		$move->datem = $new;
+		return true;
 	}
 
-	protected function alignInventoryMoveToDateInventory($move, $db)
+	protected function alignInventoryMoveToDateInventory($move, $db, $conf)
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
 		$inventoryId = (int) $move->origin_id;
 		if ($inventoryId <= 0 || empty($move->id)) {
-			return;
+			return true;
 		}
 
-		$sql = 'SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid = ' . $inventoryId;
+		$sql = 'SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory';
+		$sql .= ' WHERE rowid = ' . $inventoryId;
+		$sql .= ' AND entity = '.(int) $conf->entity;
 		$res = $db->query($sql);
 		if (!$res) {
 			dol_syslog(__METHOD__ . ' Error querying inventory date: ' . $db->lasterror(), LOG_ERR);
-			return;
+			return false;
 		}
 		$row = $db->fetch_object($res);
 		if (!$row || empty($row->date_inventory)) {
-			return;
+			return false;
 		}
 
 		$dateInventory = $row->date_inventory;
@@ -169,9 +413,13 @@ class KreaProductsStockMovementService
 
 		if ($current !== $dateInventory) {
 			$upd = 'UPDATE ' . MAIN_DB_PREFIX . "stock_mouvement SET datem='" . $db->escape($dateInventory) . "' WHERE rowid=" . (int) $move->id;
-			$db->query($upd);
+			if (!$db->query($upd)) {
+				dol_syslog(__METHOD__.' Error updating inventory movement date: '.$db->lasterror(), LOG_ERR);
+				return false;
+			}
 			$move->datem = $dateInventory;
 		}
+		return true;
 	}
 
 	protected function updateDismantleChildrenBeforeTrigger($move, $db, $user)
@@ -180,13 +428,20 @@ class KreaProductsStockMovementService
 
 		$dismantle = new ProductDismantleController($db);
 
-		if (!$dismantle->productInDismantleCategory($move->product_id)) {
-			return;
+		$isDismantleProduct = $dismantle->productInDismantleCategory($move->product_id);
+		if ($isDismantleProduct === null) {
+			return false;
+		}
+		if (!$isDismantleProduct) {
+			return true;
 		}
 
 		$bomId = $dismantle->findBom($move->product_id);
+		if ($bomId === null) {
+			return false;
+		}
 		if (!$bomId) {
-			return;
+			return true;
 		}
 
 		$sql = 'SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child'
@@ -200,7 +455,7 @@ class KreaProductsStockMovementService
 		$res = $db->query($sql);
 		if (!$res) {
 			dol_syslog(__METHOD__ . ' Error loading dismantle BOM children: ' . $db->lasterror(), LOG_ERR);
-			return;
+			return false;
 		}
 
 		$children = array();
@@ -212,8 +467,20 @@ class KreaProductsStockMovementService
 		$db->free($res);
 
 		if (!empty($children)) {
-			ProductUpdater::batchUpdateCostPrices(array_keys($children), true);
+			try {
+				ProductUpdater::batchUpdateCostPrices(array_keys($children), true);
+				$cascadeErrors = ProductUpdater::getLastErrors();
+				if (!empty($cascadeErrors)) {
+					dol_syslog(__METHOD__.' cost cascade failed: '.implode('; ', $cascadeErrors), LOG_ERR);
+					return false;
+				}
+			} catch (Throwable $exception) {
+				dol_syslog(__METHOD__.' '.$exception->getMessage(), LOG_ERR);
+				return false;
+			}
 		}
+
+		return true;
 	}
 
 	protected function dismantleIfNeeded($move, $db, $user = null)
@@ -221,15 +488,22 @@ class KreaProductsStockMovementService
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
 		$d = new ProductDismantleController($db);
-		if (!$d->productInDismantleCategory($move->product_id)) {
-			return;
+		$isDismantleProduct = $d->productInDismantleCategory($move->product_id);
+		if ($isDismantleProduct === null) {
+			return -1;
+		}
+		if (!$isDismantleProduct) {
+			return 1;
 		}
 		$bom = $d->findBom($move->product_id);
+		if ($bom === null) {
+			return -1;
+		}
 		if (!$bom) {
-			return;
+			return 1;
 		}
 
-		$d->produceAndConsume(
+		return (int) $d->produceAndConsume(
 			$bom,
 			$move->qty,
 			$move->price,
@@ -249,25 +523,29 @@ class KreaProductsStockMovementService
 		$warehouse = $this->resolveWarehouseFromMoveOrInventory($move, $db);
 		if ($warehouse <= 0) {
 			dol_syslog(__METHOD__ . ' Cannot determine warehouse for inventory recalc', LOG_ERR);
-			return;
+			return false;
 		}
 
 		// If this inventory is inserted before an existing later inventory, adjust the next inventory movement.
-		if ($this->adjustForBackdatedInventory($move, $db, $warehouse)) {
-			return;
+		$backdatedResult = $this->adjustForBackdatedInventory($move, $db, $warehouse);
+		if ($backdatedResult === null) {
+			return false;
+		}
+		if ($backdatedResult) {
+			return true;
 		}
 
 		// Normal inventory: rebuild from this anchor only if this inventory has an inventory movement row.
-		$this->recalculateStockFromInventoryAnchor($db, (int) $move->origin_id, (int) $move->product_id, (int) $warehouse, (string) ($move->batch ?? ''));
+		return $this->recalculateStockFromInventoryAnchor($db, (int) $move->origin_id, (int) $move->product_id, (int) $warehouse, (string) ($move->batch ?? ''));
 	}
 
-	protected function recalculateAfterSupplierInvoice($move, $db)
+	protected function recalculateAfterOperationalMovement($move, $db, $conf, $user)
 	{
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
 		$moveDate = $move->datem;
 		if (empty($moveDate)) {
-			return;
+			return true;
 		}
 		if (is_numeric($moveDate)) {
 			$moveDate = $db->idate($moveDate);
@@ -275,87 +553,100 @@ class KreaProductsStockMovementService
 
 		$warehouse = $this->resolveWarehouseFromMove($move, $db);
 		if ($warehouse <= 0) {
-			dol_syslog(__METHOD__ . ' Cannot determine warehouse for supplier recalc', LOG_ERR);
-			return;
+			dol_syslog(__METHOD__ . ' Cannot determine warehouse for operational movement reconciliation', LOG_ERR);
+			return false;
 		}
 
-		if ($this->applySupplierInvoiceCase3($move, $db, $warehouse, $moveDate)) {
-			return;
+		$case3 = $this->applySupplierInvoiceCase3($move, $db, $conf, $user, $warehouse, $moveDate);
+		if ($case3 !== null) {
+			return $case3;
 		}
 
-		$this->applySupplierInvoiceCase4($move, $db, $warehouse, $moveDate);
+		return $this->applySupplierInvoiceCase4($move, $db, $warehouse, $moveDate);
 	}
 
-	protected function applySupplierInvoiceCase3($move, $db, $warehouse, $moveDate)
+	protected function applySupplierInvoiceCase3($move, $db, $conf, $user, $warehouse, $moveDate)
 	{
 		$batch = (string) ($move->batch ?? '');
 		$nextAnchor = $this->getNextInventoryAnchorAfter($db, (int) $move->product_id, (int) $warehouse, $batch, $moveDate);
 		if (!$nextAnchor['valid']) {
-			return true;
+			return false;
 		}
 		if (!$nextAnchor['found']) {
+			return null;
+		}
+		return $this->createInventoryRebaseMovement($move, $db, $conf, $user, $warehouse, $nextAnchor);
+	}
+
+	/**
+	 * Compensate a late operational movement before an immutable mobile inventory anchor.
+	 *
+	 * @return bool
+	 */
+	protected function createInventoryRebaseMovement($move, $db, $conf, $user, $warehouse, array $anchor)
+	{
+		$moveId = (int) $move->id;
+		$inventoryId = (int) $anchor['inv_id'];
+		$inventoryCode = 'KPS-REBASE-'.$moveId;
+		$sql = 'SELECT rowid FROM '.MAIN_DB_PREFIX.'stock_mouvement';
+		$sql .= " WHERE origintype='".$db->escape(KreaProductsInventoryLedgerCalculator::REBASE_ORIGIN)."'";
+		$sql .= ' AND fk_origin='.$inventoryId;
+		$sql .= " AND inventorycode='".$db->escape($inventoryCode)."' LIMIT 1";
+		$resql = $db->query($sql);
+		if (!$resql) {
+			return false;
+		}
+		if ($db->fetch_object($resql)) {
+			return true;
+		}
+
+		$sql = 'SELECT value FROM '.MAIN_DB_PREFIX.'stock_mouvement WHERE rowid='.$moveId;
+		$resql = $db->query($sql);
+		$row = $resql ? $db->fetch_object($resql) : false;
+		if (!$row) {
+			return false;
+		}
+		$quantity = (float) price2num(-((float) $row->value), 'MS');
+		if ($quantity == 0.0) {
+			return true;
+		}
+
+		$movement = new MouvementStock($db);
+		$movement->setOrigin(KreaProductsInventoryLedgerCalculator::REBASE_ORIGIN, $inventoryId);
+		$movement->context['kreaproducts_inventory_ledger'] = 1;
+		$movementService = new KreaProductsInventoryMovementService($db, $conf);
+		$result = $movementService->create(
+			$movement,
+			$user,
+			(int) $move->product_id,
+			(int) $warehouse,
+			$quantity,
+			0,
+			'Inventory rebase '.$anchor['ref'],
+			$inventoryCode,
+			$anchor['date_inventory'],
+			(string) ($move->batch ?? '')
+		);
+		if ($result <= 0) {
+			dol_syslog(__METHOD__.' '.$movementService->error, LOG_ERR);
 			return false;
 		}
 
-		return $this->adjustNextInventoryMovementForBackdatedNonInventoryMove(
-			$db,
-			(int) $move->id,
-			(int) $move->product_id,
-			(int) $warehouse,
-			$batch,
-			(int) $nextAnchor['fk_movement']
-		);
+		return true;
 	}
 
 	protected function applySupplierInvoiceCase4($move, $db, $warehouse, $moveDate)
 	{
 		$anchorBefore = $this->getLatestInventoryAnchorBefore($db, (int) $move->product_id, (int) $warehouse, (string) ($move->batch ?? ''), $moveDate);
 		if (!$anchorBefore['valid']) {
-			return;
+			return false;
 		}
 		if (!$anchorBefore['found']) {
 			// History truncated: baseline unknown -> do nothing, let Dolibarr keep reel.
-			return;
-		}
-
-		$this->recalculateStockFromLatestInventoryAnchor($db, (int) $move->product_id, (int) $warehouse, (string) ($move->batch ?? ''), $anchorBefore);
-	}
-
-	protected function adjustNextInventoryMovementForBackdatedNonInventoryMove($db, $moveId, $productId, $warehouse, $batch, $nextInventoryMoveId)
-	{
-		$moveId = (int) $moveId;
-		$productId = (int) $productId;
-		$warehouse = (int) $warehouse;
-		$nextInventoryMoveId = (int) $nextInventoryMoveId;
-		$batch = trim((string) $batch);
-
-		if ($moveId <= 0 || $productId <= 0 || $warehouse <= 0 || $nextInventoryMoveId <= 0) {
 			return true;
 		}
 
-		$res = $db->query('SELECT value, batch FROM ' . MAIN_DB_PREFIX . 'stock_mouvement WHERE rowid = ' . $moveId);
-		if (!$res) {
-			dol_syslog(__METHOD__ . ' Error fetching movement value: ' . $db->lasterror(), LOG_ERR);
-			return true;
-		}
-		$row = $db->fetch_object($res);
-		if (!$row) {
-			return true;
-		}
-
-		$val = (float) $row->value;
-		if ($batch === '' && isset($row->batch)) {
-			$batch = (string) $row->batch;
-		}
-
-		if ($val != 0.0) {
-			$db->query('UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement SET value = value - ' . price2num($val, 'MT') . ' WHERE rowid = ' . $nextInventoryMoveId);
-		}
-
-		// Truth-set only if a valid anchor exists (function returns early if none).
-		$this->recalculateStockFromLatestInventoryAnchor($db, $productId, $warehouse, $batch);
-
-		return true;
+		return $this->recalculateStockFromLatestInventoryAnchor($db, (int) $move->product_id, (int) $warehouse, (string) ($move->batch ?? ''), $anchorBefore);
 	}
 
 	protected function adjustForBackdatedInventory($move, $db, $warehouse)
@@ -374,7 +665,7 @@ class KreaProductsStockMovementService
 		$resInv = $db->query('SELECT date_inventory FROM ' . MAIN_DB_PREFIX . 'inventory WHERE rowid = ' . $inventoryId);
 		if (!$resInv) {
 			dol_syslog(__METHOD__ . ' Error fetching inventory date: ' . $db->lasterror(), LOG_ERR);
-			return true;
+			return null;
 		}
 		$rowInv = $db->fetch_object($resInv);
 		if (!$rowInv || empty($rowInv->date_inventory)) {
@@ -388,91 +679,15 @@ class KreaProductsStockMovementService
 
 		$nextInvMove = $this->getNextInventoryMovementAfter($db, $productId, $warehouse, $batch, $invDate);
 		if (!$nextInvMove['valid']) {
-			return true;
+			return null;
 		}
 		if (!$nextInvMove['found']) {
 			return false;
 		}
 
-		// counted qty: prefer qty_view, fallback to qty_stock if needed
-		$condDet = $this->batchCondDet($db, $batch);
-		$sqlLine = 'SELECT qty_view, qty_stock, batch FROM ' . MAIN_DB_PREFIX . 'inventorydet id'
-			. ' WHERE id.fk_inventory = ' . $inventoryId
-			. ' AND id.fk_product = ' . $productId
-			. ' AND id.fk_warehouse = ' . $warehouse
-			. $condDet
-			. ' LIMIT 1';
-		$resLine = $db->query($sqlLine);
-		if (!$resLine) {
-			dol_syslog(__METHOD__ . ' Error fetching inventory line: ' . $db->lasterror(), LOG_ERR);
-			return true;
-		}
-		$line = $db->fetch_object($resLine);
-		if (!$line) {
-			return true;
-		}
-
-		if ($batch === '' && !empty($line->batch)) {
-			$batch = trim((string) $line->batch);
-		}
-
-		$hasView = ($line->qty_view !== null && $line->qty_view !== '');
-		$hasStock = ($line->qty_stock !== null && $line->qty_stock !== '');
-		if (!$hasView && !$hasStock) {
-			return true;
-		}
-		$counted = $hasView ? (float) $line->qty_view : (float) $line->qty_stock;
-
-		$resMove = $db->query('SELECT value FROM ' . MAIN_DB_PREFIX . 'stock_mouvement WHERE rowid = ' . $moveId);
-		if (!$resMove) {
-			return true;
-		}
-		$rowMove = $db->fetch_object($resMove);
-		$Vold = $rowMove ? (float) $rowMove->value : 0.0;
-
-		// previous valid anchor (may be none)
-		$prev = $this->getLatestInventoryAnchorBeforeExcluding($db, $productId, $warehouse, $batch, $invDate, $inventoryId);
-		if (!$prev['valid']) {
-			return true;
-		}
-		$prevDate = $prev['found'] ? $prev['date_inventory'] : '';
-		if (is_numeric($prevDate)) {
-			$prevDate = $db->idate($prevDate);
-		}
-		$prevQty = $prev['found'] ? $this->resolveInventoryAnchorQty($prev) : 0.0;
-
-		// expected = prevQty + sum non-inventory moves in (prevDate, invDate]
-		$condMove = $this->batchCondMoveValue($db, $batch);
-		$sqlMoved = 'SELECT COALESCE(SUM(value),0) AS moved FROM ' . MAIN_DB_PREFIX . 'stock_mouvement'
-			. ' WHERE fk_product = ' . $productId
-			. ' AND fk_entrepot = ' . $warehouse
-			. " AND origintype <> 'inventory'"
-			. $condMove;
-		if (!empty($prevDate)) {
-			$sqlMoved .= " AND datem > '" . $db->escape($prevDate) . "'";
-		}
-		$sqlMoved .= " AND datem <= '" . $db->escape($invDate) . "'";
-		$resMoved = $db->query($sqlMoved);
-		if (!$resMoved) {
-			return true;
-		}
-		$movedRow = $db->fetch_object($resMoved);
-		$moved = $movedRow ? (float) $movedRow->moved : 0.0;
-
-		$expected = $prevQty + $moved;
-		$Vnew = $counted - $expected;
-
-		if ($Vnew !== $Vold) {
-			$db->query('UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement SET value = ' . price2num($Vnew, 'MT') . ' WHERE rowid = ' . $moveId);
-		}
-
-		$delta = $Vnew - $Vold;
-		if ($delta != 0.0) {
-			$db->query('UPDATE ' . MAIN_DB_PREFIX . 'stock_mouvement SET value = value - ' . price2num($delta, 'MT') . ' WHERE rowid = ' . (int) $nextInvMove['rowid']);
-		}
-
-		$this->recalculateStockFromLatestInventoryAnchor($db, $productId, $warehouse, $batch);
-		return true;
+		// Inventory movements are correction markers, not operational quantities.
+		// Keep both inventory movements immutable and rebuild current stock from the later anchor.
+		return $this->recalculateStockFromLatestInventoryAnchor($db, $productId, $warehouse, $batch) ? true : null;
 	}
 
 	protected function resolveWarehouseFromMove($move, $db)
@@ -535,14 +750,6 @@ class KreaProductsStockMovementService
 		return 0.0;
 	}
 
-	protected function batchCondDet($db, $batch)
-	{
-		$batch = trim((string) $batch);
-		return ($batch !== '')
-			? " AND id.batch='" . $db->escape($batch) . "'"
-			: " AND (id.batch='' OR id.batch IS NULL)";
-	}
-
 	protected function batchCondMoveValue($db, $batch)
 	{
 		$batch = trim((string) $batch);
@@ -557,6 +764,22 @@ class KreaProductsStockMovementService
 		return ($batch !== '')
 			? " AND sm.batch='" . $db->escape($batch) . "'"
 			: " AND (sm.batch='' OR sm.batch IS NULL)";
+	}
+
+	/**
+	 * Exclude inventory ledger corrections from operational movement sums.
+	 *
+	 * @param DoliDB $db     Database handler
+	 * @param string $column Qualified or unqualified origin column
+	 * @return string
+	 */
+	protected function operationalOriginCondition($db, $column = 'origintype')
+	{
+		$origins = array();
+		foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
+			$origins[] = "'".$db->escape($origin)."'";
+		}
+		return ' AND ('.$column.' IS NULL OR '.$column.' NOT IN ('.implode(', ', $origins).'))';
 	}
 
 	protected function getLatestInventoryAnchor($db, $productId, $warehouse, $batch)
@@ -574,12 +797,14 @@ class KreaProductsStockMovementService
 		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
-			. ' JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
+			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
 			. ' ORDER BY i.date_inventory DESC, i.rowid DESC LIMIT 1';
 
 		$res = $db->query($sql);
@@ -619,61 +844,15 @@ class KreaProductsStockMovementService
 		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
-			. ' JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory <= '" . $db->escape($beforeDate) . "'"
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
-			. ' ORDER BY i.date_inventory DESC, i.rowid DESC LIMIT 1';
-
-		$res = $db->query($sql);
-		if (!$res) {
-			return array('found' => false, 'valid' => false);
-		}
-		$row = $db->fetch_object($res);
-		if (!$row) {
-			return array('found' => false, 'valid' => true);
-		}
-
-		return array(
-			'found' => true,
-			'valid' => true,
-			'date_inventory' => $row->date_inventory,
-			'qty_view' => (float) $row->qty_view,
-			'qty_stock' => $row->qty_stock,
-			'batch' => $row->batch,
-		);
-	}
-
-	protected function getLatestInventoryAnchorBeforeExcluding($db, $productId, $warehouse, $batch, $beforeDate, $excludeInventoryId)
-	{
-		$productId = (int) $productId;
-		$warehouse = (int) $warehouse;
-		$excludeInventoryId = (int) $excludeInventoryId;
-		if ($productId <= 0 || $warehouse <= 0 || empty($beforeDate)) {
-			return array('found' => false, 'valid' => true);
-		}
-		if (is_numeric($beforeDate)) {
-			$beforeDate = $db->idate($beforeDate);
-		}
-
-		$batch = trim((string) $batch);
-		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
-		$condSm = $this->batchCondSm($db, $batch);
-
-		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch'
-			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
-			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
-			. ' JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
-			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
-			. ' AND i.entity IN (' . getEntity('inventory') . ')'
-			. ' AND i.rowid <> ' . $excludeInventoryId
-			. " AND i.date_inventory < '" . $db->escape($beforeDate) . "'"
-			. ' AND id.fk_product = ' . $productId
-			. ' AND id.fk_warehouse = ' . $warehouse
-			. $condDet
+			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
 			. ' ORDER BY i.date_inventory DESC, i.rowid DESC LIMIT 1';
 
 		$res = $db->query($sql);
@@ -739,16 +918,19 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.rowid AS inv_id, i.date_inventory, id.qty_view, id.qty_stock, id.batch, sm.rowid AS fk_movement'
+		$sql = 'SELECT i.rowid AS inv_id, i.ref, i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+			. ' sm.rowid AS fk_movement, a.rowid AS fk_adjustment'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
-			. ' JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory > '" . $db->escape($afterDate) . "'"
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
+			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
 			. ' ORDER BY i.date_inventory ASC, i.rowid ASC LIMIT 1';
 
 		$res = $db->query($sql);
@@ -764,11 +946,13 @@ class KreaProductsStockMovementService
 			'found' => true,
 			'valid' => true,
 			'inv_id' => (int) $row->inv_id,
+			'ref' => (string) $row->ref,
 			'date_inventory' => $row->date_inventory,
 			'qty_view' => (float) $row->qty_view,
 			'qty_stock' => $row->qty_stock,
 			'batch' => $row->batch,
 			'fk_movement' => (int) $row->fk_movement,
+			'ledger_managed' => !empty($row->fk_adjustment),
 		);
 	}
 
@@ -783,7 +967,7 @@ class KreaProductsStockMovementService
 		$anchor = ($anchorOverride !== null) ? $anchorOverride : $this->getLatestInventoryAnchor($db, $productId, $warehouse, $batch);
 		if (!$anchor['valid'] || !$anchor['found']) {
 			// No valid anchor -> baseline unknown -> do nothing
-			return;
+			return $anchor['valid'];
 		}
 
 		if ($batch === '' && !empty($anchor['batch'])) {
@@ -800,18 +984,18 @@ class KreaProductsStockMovementService
 		$sqlMoved = 'SELECT COALESCE(SUM(value),0) AS moved FROM ' . MAIN_DB_PREFIX . 'stock_mouvement'
 			. ' WHERE fk_product = ' . $productId
 			. ' AND fk_entrepot = ' . $warehouse
-			. " AND origintype <> 'inventory'"
+			. $this->operationalOriginCondition($db)
 			. $condMove
 			. " AND datem > '" . $db->escape($anchorDate) . "'";
 
 		$resMoved = $db->query($sqlMoved);
 		if (!$resMoved) {
-			return;
+			return false;
 		}
 		$row = $db->fetch_object($resMoved);
 		$moved = $row ? (float) $row->moved : 0.0;
 
-		$this->setWarehouseReel($db, $productId, $warehouse, $batch, $anchorQty + $moved);
+		return $this->setWarehouseReel($db, $productId, $warehouse, $batch, $anchorQty + $moved);
 	}
 
 	protected function recalculateStockFromInventoryAnchor($db, $inventoryId, $productId, $warehouse, $batch)
@@ -827,7 +1011,7 @@ class KreaProductsStockMovementService
 		$cond = ($batch !== '') ? " AND batch='" . $db->escape($batch) . "'" : " AND (batch='' OR batch IS NULL)";
 		$resChk = $db->query('SELECT rowid FROM ' . MAIN_DB_PREFIX . "stock_mouvement WHERE origintype='inventory' AND fk_origin=" . $inventoryId . ' AND fk_product=' . $productId . ' AND fk_entrepot=' . $warehouse . $cond . ' LIMIT 1');
 		if (!$resChk || !$db->fetch_object($resChk)) {
-			return;
+			return (bool) $resChk;
 		}
 
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
@@ -841,11 +1025,11 @@ class KreaProductsStockMovementService
 
 		$res = $db->query($sql);
 		if (!$res) {
-			return;
+			return false;
 		}
 		$row = $db->fetch_object($res);
 		if (!$row || $row->qty_view === null || $row->qty_view === '') {
-			return;
+			return true;
 		}
 
 		$anchorDate = $row->date_inventory;
@@ -861,18 +1045,18 @@ class KreaProductsStockMovementService
 		$sqlMoved = 'SELECT COALESCE(SUM(value),0) AS moved FROM ' . MAIN_DB_PREFIX . 'stock_mouvement'
 			. ' WHERE fk_product = ' . $productId
 			. ' AND fk_entrepot = ' . $warehouse
-			. " AND origintype <> 'inventory'"
+			. $this->operationalOriginCondition($db)
 			. $condMove
 			. " AND datem > '" . $db->escape($anchorDate) . "'";
 
 		$resMoved = $db->query($sqlMoved);
 		if (!$resMoved) {
-			return;
+			return false;
 		}
 		$movedRow = $db->fetch_object($resMoved);
 		$moved = $movedRow ? (float) $movedRow->moved : 0.0;
 
-		$this->setWarehouseReel($db, $productId, $warehouse, $batch, $anchorQty + $moved);
+		return $this->setWarehouseReel($db, $productId, $warehouse, $batch, $anchorQty + $moved);
 	}
 
 	protected function setWarehouseReel($db, $productId, $warehouse, $batch, $reel)
@@ -883,7 +1067,7 @@ class KreaProductsStockMovementService
 		$reel = (float) $reel;
 
 		if ($productId <= 0 || $warehouse <= 0) {
-			return;
+			return false;
 		}
 
 		if ($batch !== '' && isModEnabled('productbatch')) {
@@ -893,7 +1077,9 @@ class KreaProductsStockMovementService
 				. ' WHERE ps.fk_product = ' . $productId
 				. ' AND ps.fk_entrepot = ' . $warehouse
 				. " AND pb.batch = '" . $db->escape($batch) . "'";
-			$db->query($sqlUpBatch);
+			if (!$db->query($sqlUpBatch)) {
+				return false;
+			}
 
 			$sqlTotal = 'SELECT COALESCE(SUM(pb.qty),0) AS total'
 				. ' FROM ' . MAIN_DB_PREFIX . 'product_batch pb'
@@ -907,11 +1093,15 @@ class KreaProductsStockMovementService
 				$total = $t ? (float) $t->total : $reel;
 			}
 
-			$db->query('UPDATE ' . MAIN_DB_PREFIX . 'product_stock SET reel = ' . price2num($total, 'MT') . ' WHERE fk_product = ' . $productId . ' AND fk_entrepot = ' . $warehouse);
+			if (!$db->query('UPDATE ' . MAIN_DB_PREFIX . 'product_stock SET reel = ' . price2num($total, 'MT') . ' WHERE fk_product = ' . $productId . ' AND fk_entrepot = ' . $warehouse)) {
+				return false;
+			}
 		} else {
-			$db->query('UPDATE ' . MAIN_DB_PREFIX . 'product_stock SET reel = ' . price2num($reel, 'MT') . ' WHERE fk_product = ' . $productId . ' AND fk_entrepot = ' . $warehouse);
+			if (!$db->query('UPDATE ' . MAIN_DB_PREFIX . 'product_stock SET reel = ' . price2num($reel, 'MT') . ' WHERE fk_product = ' . $productId . ' AND fk_entrepot = ' . $warehouse)) {
+				return false;
+			}
 		}
 
-		$db->query('UPDATE ' . MAIN_DB_PREFIX . 'product SET stock = (SELECT COALESCE(SUM(ps.reel),0) FROM ' . MAIN_DB_PREFIX . 'product_stock ps WHERE ps.fk_product = ' . $productId . ') WHERE rowid = ' . $productId);
+		return (bool) $db->query('UPDATE ' . MAIN_DB_PREFIX . 'product SET stock = (SELECT COALESCE(SUM(ps.reel),0) FROM ' . MAIN_DB_PREFIX . 'product_stock ps WHERE ps.fk_product = ' . $productId . ') WHERE rowid = ' . $productId);
 	}
 }

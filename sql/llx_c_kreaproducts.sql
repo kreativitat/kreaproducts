@@ -1,5 +1,5 @@
 -- Copyright (C) 2025 Kreativität Works
--- Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+-- Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 --
 -- KreaProducts Allergens Dictionary Table
 --

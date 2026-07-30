@@ -1,6 +1,490 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.9] - 2026-07-31
+
+### Fixed
+
+- Returned the Dolibarr trigger success code after stock movement processing.
+- Prevented transactional cost updates from starting synchronous WooCommerce synchronization.
+
+## [4.5.8] - 2026-07-17
+
+### Fixed
+
+- Restored recursive cost propagation through product-association recipes.
+- Preserved changed product costs as authoritative cascade inputs.
+- Selected multiple active manufacturing BOMs automatically from production history.
+
+## [4.5.7] - 2026-07-16
+
+### Fixed
+
+- Restored automatic selling-price markup updates after every module-managed product cost change.
+
+## [4.5.6] - 2026-07-16
+
+### Fixed
+
+- Preserved Dolibarr's kilogram weight scale in native and KreaProducts product forms.
+- Defaulted new product weight selection to kilograms.
+
+## [4.5.5] - 2026-07-12
+
+### Changed
+
+- Synchronized the mobile package version with the module release.
+
+### Fixed
+
+- Made every product cost cascade fail closed on calculation or persistence errors.
+- Preserved raw dismantling output quantities with one value-preserving unit cost.
+- Removed the direct SQL fallback from dismantling cost updates.
+
+### Security
+
+- Hid internal database and exception details from REST and mobile responses.
+
+## [4.5.4] - 2026-07-12
+
+### Changed
+
+- Raised the minimum PHP version to 7.3.
+- Made the release builder consume the production allowlist.
+
+### Fixed
+
+- Restricted cost cascades to unambiguous manufacturing BOMs.
+- Rejected cyclic BOM cost graphs before product updates.
+- Removed the obsolete product-association sync setup utility.
+
+### Security
+
+- Enforced POST and CSRF validation for association-to-BOM writes.
+- Hid internal label generation errors from REST responses.
+
+## [4.5.3] - 2026-07-12
+
+### Changed
+
+- Declared MySQL or MariaDB as the supported database.
+- Replaced broad release packaging with a production allowlist.
+- Normalized remaining module authorship and GPL notices.
+
+### Fixed
+
+- Made supplier price, product cost, cascade, and selling-price synchronization fail validation atomically.
+- Made module activation fail when required product extrafields cannot be installed.
+- Included globally activated entities in mobile Google login discovery.
+- Removed custom helper execution from the product tab descriptor.
+- Hid internal exception details from mobile API responses.
+
+### Security
+
+- Limited every label generation request to a hard maximum of 1000 labels.
+- Excluded internal maintainer, test, source-build, and deployment files from release packages.
+
+## [4.5.2] - 2026-07-12
+
+### Fixed
+
+- Allowed authorized counters to delete initiated inventories without close or reversal permission.
+- Prevented Dolibarr core draft-delete permission detection from blocking the custom initiated-inventory deletion flow.
+
+## [4.5.1] - 2026-07-12
+
+### Changed
+
+- Completed the European Portuguese translation across module interfaces, permissions, inventory messages, documentation, and label templates.
+- Routed user-facing setup and mobile inventory messages through Dolibarr translation keys.
+
+## [4.5.0] - 2026-07-12
+
+### Added
+
+- Added an inventory-category overview with current Dolibarr virtual stock for every countable product.
+- Added the stock overview to the inventory left menu for authorized analysis users.
+
+## [4.4.2] - 2026-07-12
+
+### Fixed
+
+- Replaced mixed-product inventory graphs with selectable 15-day graphs for each product.
+
+## [4.4.1] - 2026-07-12
+
+### Changed
+
+- Restricted virtual stock, deviations, and inventory statistics to the inventory analysis permission.
+
+### Security
+
+- Removed expected stock from unauthorized inventory API responses and blocked direct statistics access.
+
+## [4.4.0] - 2026-07-12
+
+### Added
+
+- Added 15-day inventory product consumption and intake statistics with daily and product graphs.
+
+## [4.3.0] - 2026-07-12
+
+### Added
+
+- Restored virtual stock and absolute and relative deviation columns on the inventory page.
+
+## [4.2.0] - 2026-07-12
+
+### Changed
+
+- Moved the mobile stock link to DeGema Utilities and Tools Utilities.
+
+## [4.1.4] - 2026-07-12
+
+### Changed
+
+- Linked the left menu to the integrated KreaProducts mobile stock application.
+
+## [4.1.3] - 2026-07-12
+
+### Fixed
+
+- Removed obsolete KreaStock and KreaProducts mobile menu records during activation.
+
+## [4.1.2] - 2026-07-12
+
+### Changed
+
+- Updated the mobile stock left-menu destination.
+
+## [4.1.1] - 2026-07-12
+
+### Fixed
+
+- Made allergen replacement transactional and corrected its failure handling.
+- Fixed deletion of all quantity-price rows.
+- Removed duplicate product synchronization execution.
+
+### Security
+
+- Enforced product edit permissions on supplier costs, selling prices, nutrition, allergens, and synchronization actions.
+- Removed schema mutations from the product association page.
+
+## [4.1.0] - 2026-07-12
+
+### Added
+
+- Added an isolated runner for automatic inventory closure.
+- Added the product-allergen product lookup index.
+
+### Changed
+
+- Limited cost cascades to one unambiguous manufacturing BOM.
+- Normalized BOM costs by line efficiency and header quantity.
+- Moved all label-storage schema changes to module activation.
+
+### Fixed
+
+- Locked inventory headers before reversal ledger rows.
+- Limited scheduled audit users to the current or shared entity.
+- Separated allergen and nutritional numbering settings.
+- Required explicit POST confirmation for maintenance schema changes.
+
+### Security
+
+- Centralized mobile mutation CSRF enforcement.
+- Required the BOM helper token and hardened local redirects.
+
+## [4.0.1] - 2026-07-12
+
+### Changed
+
+- Moved production trace schema upgrades to module activation.
+
+### Fixed
+
+- Made the complete production and trace lifecycle transactional.
+- Made automatic dismantling validation and idempotency checks fail closed.
+- Allowed administrator-run scheduled inventory closure without mobile UI rights.
+- Limited post-close correction state to the current business day.
+
+### Security
+
+- Enforced entity and user access for production third parties and projects.
+
+## [4.0.0] - 2026-07-12
+
+### Added
+
+- Added automatic closure of due initiated inventories 15 minutes before the configured entry cutoff.
+
+### Changed
+
+- Blocked new category inventories while another managed inventory remains initiated.
+- Limited production API posting to validated, unprocessed manufacturing orders.
+- Preserved mobile value dates in offline drafts.
+
+### Fixed
+
+- Prevented future inventory anchors from posting stock before their value time.
+- Prevented production retries from reposting manufacturing-order quantities.
+- Made production stock and trace writes atomic.
+- Propagated dismantling failures and preserved total multi-output valuation.
+
+### Security
+
+- Enforced warehouse and product entity scope in production, nutrition, and allergen operations.
+
+## [3.2.0] - 2026-07-11
+
+### Added
+
+- Added editable value dates to initiated inventories in Dolibarr and mobile.
+
+### Changed
+
+- Renamed the inventory field label to `Data valor` in Portuguese.
+
+### Fixed
+
+- Blocked stock movement generation when a recorded inventory already exists for the selected category, warehouse, and value date.
+
+## [3.1.0] - 2026-07-11
+
+### Changed
+
+- Used padded Dolibarr provisional references while inventories are initiated.
+- Assigned the final `YYYYMMDD_CATEGORY` reference only when recording stock movements.
+- Normalized existing initiated technical KPS references when they are reopened.
+
+## [3.0.2] - 2026-07-11
+
+### Changed
+
+- Displayed inventory value dates without their internal ordering time in Dolibarr and mobile views.
+
+## [3.0.1] - 2026-07-11
+
+### Changed
+
+- Selected Yes by default in inventory-closing confirmations.
+
+## [3.0.0] - 2026-07-11
+
+### Changed
+
+- Changed new inventory references to the `YYYYMMDD_CATEGORY` business format.
+- Moved new managed-inventory ownership detection to the hidden Dolibarr import key while preserving legacy references.
+
+## [2.41.1] - 2026-07-11
+
+### Fixed
+
+- Saved current count entries before opening inventory movement confirmation.
+
+## [2.41.0] - 2026-07-11
+
+### Changed
+
+- Moved product references to the first inventory column and linked them to product cards in new tabs.
+
+## [2.40.12] - 2026-07-11
+
+### Fixed
+
+- Standardized all inventory action typography across buttons and links.
+
+## [2.40.11] - 2026-07-11
+
+### Fixed
+
+- Enforced identical category button dimensions.
+- Equalized inventory action heights while preserving automatic widths.
+
+## [2.40.10] - 2026-07-11
+
+### Fixed
+
+- Restored native compact Dolibarr sizing for inventory detail actions.
+- Scoped equal-width styling to category actions only.
+- Removed the redundant initiated-status row from inventory details.
+
+## [2.40.9] - 2026-07-11
+
+### Changed
+
+- Added the native one-tab Dolibarr fiche bar to the category selector.
+
+## [2.40.8] - 2026-07-11
+
+### Changed
+
+- Added the native Dolibarr pagination return control to the category selector.
+
+## [2.40.7] - 2026-07-11
+
+### Fixed
+
+- Standardized inventory action height and increased spacing below product search.
+
+## [2.40.6] - 2026-07-11
+
+### Changed
+
+- Restored the native Dolibarr fiche bar with one active Inventory tab.
+
+## [2.40.5] - 2026-07-11
+
+### Changed
+
+- Moved Save into the single Dolibarr action row and removed the saved-status block.
+- Widened inventory action buttons and prevented multiline labels.
+
+## [2.40.4] - 2026-07-11
+
+### Changed
+
+- Replaced the custom list button with Dolibarr banner return and previous/next navigation.
+
+## [2.40.3] - 2026-07-11
+
+### Changed
+
+- Used light green for new inventory actions and light yellow for already-started inventory actions.
+
+### Fixed
+
+- Fixed expired-token errors when confirming inventory deletion, closure, or reversal.
+
+## [2.40.2] - 2026-07-11
+
+### Fixed
+
+- Standardized all unified inventory action buttons to the same width.
+
+## [2.40.1] - 2026-07-11
+
+### Fixed
+
+- Replaced category cards with a native Dolibarr category table.
+- Separated category names, product totals, and actions.
+- Hid unused lot columns, aligned search, and removed the mobile shortcut.
+
+## [2.40.0] - 2026-07-11
+
+### Changed
+
+- Combined category selection, counting, saving, and closure on one page.
+- Generated inventory metadata automatically and displayed the value date without time.
+- Added dynamic product filtering, progress, and unsaved-change feedback.
+- Added dated warnings when correcting an already recorded daily inventory.
+
+## [2.39.0] - 2026-07-11
+
+### Changed
+
+- Replaced the copied Dolibarr inventory sheet with a dedicated KreaProducts page.
+- Kept ordinary inventories on the native Dolibarr inventory page.
+
+## [2.38.2] - 2026-07-11
+
+### Fixed
+
+- Added a bottom save button to every editable mobile inventory.
+
+## [2.38.1] - 2026-07-11
+
+### Fixed
+
+- Locked counted open inventories after their business-day cutoff.
+- Reconciled delayed customer and supplier movements selected by actual movement time.
+- Restored corrections for audited legacy kit-parent inventory lines.
+- Added a bottom save action to the mobile correction screen.
+
+## [2.38.0] - 2026-07-11
+
+### Added
+
+- Added append-only audit records for same-day physical-count corrections.
+
+### Changed
+
+- Limited inventories to one per template, warehouse, and business day.
+- Reused the recorded day inventory for corrections until the counting cutoff.
+- Stopped module activation from changing Dolibarr composed-product stock settings.
+- Required invoice value dating before starting or changing managed inventories.
+
+### Fixed
+
+- Value-dated customer invoice movements before the following inventory anchor.
+- Blocked overlapping product anchors and equal-time inventory conflicts.
+- Reversed count corrections together with their inventory.
+
+## [2.37.1] - 2026-07-11
+
+### Changed
+
+- Excluded kit parents whose stock is not maintained by normal Dolibarr movements.
+- Assigned the business-day value date when the first physical count is saved.
+- Used append-only corrections for legacy and mobile inventory anchors.
+
+### Fixed
+
+- Prevented duplicate open inventories from concurrent starts.
+- Aligned Dolibarr inventory buttons with KreaProducts count and close permissions.
+- Removed remaining historical stock-movement value rewrites.
+- Preserved reversal support for kit-parent corrections recorded by version 2.37.0.
+
+## [2.37.0] - 2026-07-11
+
+### Changed
+
+- Made the mobile inventory list always available.
+- Routed KreaProducts inventory closure in Dolibarr through the same audited ledger as mobile.
+- Added append-only rebasing for late supplier and production movements.
+
+### Fixed
+
+- Fixed inventory closure for counted kit-parent products without changing kit children.
+- Standardized inventory count-save and close locking order.
+- Made stock recalculation database failures abort the triggering transaction.
+
+## [2.36.2] - 2026-07-11
+
+### Changed
+
+- Treated blank inventory quantities as not counted while preserving explicit zero counts.
+- Added confirmation before closing mobile or Dolibarr inventories with uncounted products.
+
+### Fixed
+
+- Kept stock unchanged for uncounted inventory lines.
+
+## [2.36.1] - 2026-07-11
+
+### Fixed
+
+- Fixed mobile API routing and service-worker scope.
+- Made inventory and reversal movement failures block closure.
+- Excluded reversal movements from inventory reconstruction.
+- Normalized existing supplier movements before delayed inventory calculations.
+- Made stock and anchor query failures stop inventory processing.
+
+## [2.36.0] - 2026-07-11
+
+### Added
+- Merged the KreaStock mobile counting application into KreaProducts.
+- Added business-day inventory dating, an adjustment ledger, and reversible corrections.
+
+### Changed
+- Assigned counts entered from 20:00 until the next 20:00 to one minute after the configured business-day close.
+- Preserved later non-inventory movements when closing a delayed physical count.
+
+## [2.35.27] - 2026-07-06
+
+### Fixed
+- Kept the KreaProducts buying-prices page and product tab available when products are disabled for purchase while preserving product, service, and supplier permission checks.
+
 ## [2.35.26] - 2026-06-23
 
 ### Changed

@@ -1,9 +1,23 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
+require_once __DIR__ . '/KreaProductsBomCostCalculator.class.php';
 
 /**
  * Cost Price Updater - Standalone Class
@@ -11,12 +25,14 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
  * Extracted from ProductMixer Dolibarr module to handle product cost price updates
  * Independent implementation using native Dolibarr framework
  *
- * ENHANCED WITH BOM SUPPORT:
- * - Supports both product associations (llx_product_association) and BOM compositions (llx_bom_bom/llx_bom_bomline)
- * - When BOM module is enabled, automatically includes BOM-based parent-child relationships
- * - BOM quantities take precedence over association quantities when both exist
- * - Supports Manufacturing BOMs (bomtype = 0) that are validated (status = 1)
- * - Cost/buy price calculations work with any combination of associations and BOMs
+ * PRODUCT HIERARCHY AND COST CASCADE:
+ * - Read-only hierarchy inspection supports product associations and manufacturing BOMs
+ * - Cost cascades select the most recently produced active manufacturing BOM automatically
+ * - When no active BOM has production history, the newest validated BOM is selected automatically
+ * - Product associations are the recipe fallback when no active manufacturing BOM exists
+ * - Explicitly changed products remain authoritative source costs for every transitive dependent
+ * - Cost cascades reject cyclic product graphs before updating any product
+ * - Supports manufacturing BOMs (bomtype = 0) that are validated (status = 1)
  * - Buy price updates are controlled by the product extrafield kreap_updatebuyprice (fallback to kreap_syncprice for legacy installs)
  * - Debug output shows the source of each relationship (association, bom, or both)
  */
@@ -45,7 +61,72 @@ class ProductUpdater
     /**
      * @var array Cached sync flags per product id
      */
-    private static $syncFlagsCache = [];
+	private static $syncFlagsCache = [];
+
+	/**
+	 * @var array<int, string> Errors from the current batch cascade.
+	 */
+	private static $lastErrors = [];
+
+	/**
+	 * @var array<string, bool> Product extrafield column cache for the current batch.
+	 */
+	private static $extraFieldColumnExistsCache = [];
+
+	/**
+	 * @var array<int, bool> Products whose persisted cost initiated the current cascade.
+	 */
+	private static $sourceProductIds = [];
+
+	/**
+	 * @var array<int,int>|null Selected active manufacturing BOM IDs by parent product ID.
+	 */
+	private static $selectedManufacturingBomIds = null;
+
+	/**
+	 * Return errors collected by the latest batch cascade.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function getLastErrors(): array
+	{
+		return self::$lastErrors;
+	}
+
+	/**
+	 * Record one deterministic cascade error.
+	 *
+	 * @param string $message Error message
+	 * @return void
+	 */
+	private static function addError(string $message): void
+	{
+		self::$lastErrors[] = $message;
+		self::debug($message);
+	}
+
+	/**
+	 * Preserve the database-backed product state before changing its cost.
+	 *
+	 * Dolibarr expects callers to populate oldcopy before mutating properties.
+	 * Without this snapshot, Product::update() clones the already-modified
+	 * object and PRODUCT_MODIFY triggers cannot detect the cost change.
+	 *
+	 * @param Product $product Product loaded before the cost mutation
+	 * @return void
+	 */
+	public static function prepareProductCostUpdate(Product $product): void
+	{
+		if (
+			isset($product->oldcopy)
+			&& is_object($product->oldcopy)
+			&& !empty($product->oldcopy->id)
+		) {
+			return;
+		}
+
+		$product->oldcopy = dol_clone($product, 1);
+	}
 
     /**
      * Set debug mode
@@ -71,8 +152,7 @@ class ProductUpdater
     }
 
     /**
-     * Update cost price for a single product and all its parents (matches original ProductMixer behavior)
-     * This mimics the exact flow from ProductMixer::updateProductAttributes()
+     * Propagate one changed product cost through every transitive dependent.
      *
      * @param int $productId Product ID that was modified
      * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
@@ -106,22 +186,38 @@ class ProductUpdater
 
         self::debug("Starting batch cost price update for product IDs: " . implode(',', $productIds));
 
-        self::resetMap();
-        self::loadImpactedProductMap($productIds);
+		self::resetMap();
+		self::$sourceProductIds = array_fill_keys($productIds, true);
+		self::loadImpactedProductMap($productIds);
+		if (!empty(self::$lastErrors)) {
+			return array();
+		}
 
-        if (empty(self::$productMap)) {
-            self::debug("Product map is empty - no product associations found");
-            return [];
-        }
+		if (empty(self::$productMap)) {
+				self::debug("Product map is empty - no impacted association or manufacturing BOM found");
+			return [];
+		}
+		if (!self::validateProductMapIsAcyclic()) {
+			return array();
+		}
 
-        $processingOrder = self::createProcessingOrder($productIds);
-        self::preloadSyncFlagsForProductIds($processingOrder);
+		$processingOrder = self::createProcessingOrder($productIds);
+		self::preloadSyncFlagsForProductIds($processingOrder);
+		if (!empty(self::$lastErrors)) {
+			return array();
+		}
 
         $results = [];
         $originalProductIds = array_fill_keys($productIds, true);
 
         foreach ($processingOrder as $currentProductId) {
             $mapProduct = self::getProductFromMap($currentProductId);
+
+            // The products that initiated the cascade are authoritative inputs.
+            // Recalculating them here would overwrite the cost that must propagate.
+            if (!empty($originalProductIds[$currentProductId])) {
+                continue;
+            }
 
             // Skip products that don't exist in map or don't have children
             // (matches original logic: only virtual products with children get updated)
@@ -132,15 +228,15 @@ class ProductUpdater
             self::debug("Processing product ID: " . $currentProductId . " (ref: " . $mapProduct['ref'] . ")");
 
             // Update cost price if sync is enabled via product extrafield (kreap_updatebuyprice/kreap_syncprice)
-            if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
-                $updated = self::updateCostPriceFromChildren($currentProductId, null);
+			if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
+				$updated = self::updateCostPriceFromChildren($currentProductId, null);
                 $results[$currentProductId] = [
                     'updated' => $updated,
                     'ref' => $mapProduct['ref'] ?? 'Unknown',
                     'is_original' => !empty($originalProductIds[$currentProductId])
                 ];
 
-                if ($updated) {
+				if ($updated) {
                     self::debug("Cost price updated for product: " . $mapProduct['ref'] .
                               (!empty($originalProductIds[$currentProductId]) ? " (this is an original modified product)" : " (parent product)"));
                 }
@@ -182,9 +278,9 @@ class ProductUpdater
     /**
      * Load product associations from llx_product_association table
      */
-    private static function loadProductAssociations(?array $parentIds = null, ?array $childIds = null): void
+    private static function loadProductAssociations(?array $parentIds = null, ?array $childIds = null, bool $costFallbackOnly = false): void
     {
-        global $db;
+        global $db, $conf;
 
         self::debug("Loading product associations");
 
@@ -203,6 +299,14 @@ class ProductUpdater
         $sql .= "WHERE p.rowid = pa.fk_product_pere AND f.rowid = pa.fk_product_fils";
         $sql .= " AND p.entity IN (".getEntity('product').")";
         $sql .= " AND f.entity IN (".getEntity('product').")";
+		if ($costFallbackOnly && !empty($conf->bom->enabled)) {
+			// An active manufacturing BOM is the authoritative recipe for its
+			// parent. Associations are used only when no applicable BOM exists.
+			$sql .= " AND NOT EXISTS (SELECT 1 FROM ".MAIN_DB_PREFIX."bom_bom active_bom";
+			$sql .= " WHERE active_bom.fk_product = pa.fk_product_pere";
+			$sql .= " AND active_bom.bomtype = 0 AND active_bom.status = 1";
+			$sql .= " AND active_bom.entity IN (0,".((int) $conf->entity)."))";
+		}
         if ($parentIds !== null) {
             if (empty($parentIds)) {
                 return;
@@ -216,9 +320,9 @@ class ProductUpdater
             $sql .= " AND pa.fk_product_fils IN (" . implode(',', $childIds) . ")";
         }
 
-        $resql = $db->query($sql);
-        if (!$resql) {
-            self::debug("Error loading product associations: " . $db->lasterror());
+		$resql = $db->query($sql);
+		if (!$resql) {
+			self::addError("Error loading product associations: " . $db->lasterror());
             return;
         }
 
@@ -291,8 +395,15 @@ class ProductUpdater
         $parentIds = ($parentIds === null ? null : self::normalizeProductIds($parentIds));
         $childIds = ($childIds === null ? null : self::normalizeProductIds($childIds));
 
-        // Query to get BOM relationships (manufacturing type only)
-        $sql = "SELECT b.fk_product as parent, COALESCE(bl.fk_product, cb.fk_product) as child, bl.qty as qty, ";
+        $selectedBomIds = self::getSelectedManufacturingBomIds();
+        if (!empty(self::$lastErrors) || empty($selectedBomIds)) {
+            return;
+        }
+
+        // Cost cascades use one automatically selected manufacturing BOM per parent.
+        // Dismantling allocates the purchased parent value to outputs separately.
+        $sql = "SELECT b.fk_product as parent, COALESCE(bl.fk_product, cb.fk_product) as child, ";
+        $sql .= "bl.qty as line_qty, bl.efficiency as line_efficiency, b.qty as header_qty, ";
         // Parent product info
         $sql .= "p.label as p_label, p.ref as p_ref, p.cost_price as p_cost_price, ";
         // Child product info
@@ -305,14 +416,8 @@ class ProductUpdater
         $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."product as f ON f.rowid = bl.fk_product ";
         $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."bom_bom as cb ON cb.rowid = bl.fk_bom_child ";
         $sql .= "LEFT JOIN ".MAIN_DB_PREFIX."product as cprod ON cprod.rowid = cb.fk_product ";
-        $sql .= "WHERE b.bomtype IN (0,1) AND b.status = 1"; // Include manufacturing and dismantle BOMs
-        $sql .= " AND b.entity IN (0,".getEntity('bom').")";
-        $sql .= " AND (b.entity = " . ((int) $conf->entity) . " OR (b.entity = 0 AND NOT EXISTS (";
-        $sql .= "SELECT 1 FROM ".MAIN_DB_PREFIX."bom_bom b2";
-        $sql .= " WHERE b2.fk_product = b.fk_product";
-        $sql .= " AND b2.entity = " . ((int) $conf->entity);
-        $sql .= " AND b2.bomtype = b.bomtype AND b2.status = 1";
-        $sql .= ")))";
+        $sql .= "WHERE b.bomtype = 0 AND b.status = 1";
+		$sql .= " AND b.rowid IN (".implode(',', $selectedBomIds).")";
         $sql .= " AND (cb.rowid IS NULL OR cb.entity IN (0,".getEntity('bom')."))";
         $sql .= " AND p.entity IN (".getEntity('product').")";
         $sql .= " AND (f.rowid IS NULL OR f.entity IN (".getEntity('product')."))";
@@ -331,14 +436,19 @@ class ProductUpdater
             $sql .= " AND (bl.fk_product IN (" . implode(',', $childIds) . ") OR cb.fk_product IN (" . implode(',', $childIds) . "))";
         }
 
-        $resql = $db->query($sql);
-        if (!$resql) {
-            self::debug("Error loading BOM relationships: " . $db->lasterror());
+		$resql = $db->query($sql);
+		if (!$resql) {
+			self::addError("Error loading BOM relationships: " . $db->lasterror());
             return;
         }
 
         $bomCount = 0;
         while ($obj = $db->fetch_object($resql)) {
+            $normalizedQuantity = KreaProductsBomCostCalculator::normalizeLineQuantity(
+                (float) $obj->line_qty,
+                (float) $obj->line_efficiency,
+                (float) $obj->header_qty
+            );
             // Add parent to map if not exists
             if (!isset(self::$productMap[$obj->parent])) {
                 self::$productMap[$obj->parent] = [
@@ -368,7 +478,7 @@ class ProductUpdater
             if (!isset(self::$productMap[$obj->parent]['children'][$childKey])) {
                 self::$productMap[$obj->parent]['children'][$childKey] = [
                     'id' => $obj->child,
-                    'qty' => $obj->qty,
+                    'qty' => $normalizedQuantity,
                     'source' => 'bom',
                     'bom_id' => $obj->bom_id,
                     'bom_ref' => $obj->bom_ref
@@ -379,7 +489,7 @@ class ProductUpdater
                 self::$productMap[$obj->parent]['children'][$childKey]['bom_id'] = $obj->bom_id;
                 self::$productMap[$obj->parent]['children'][$childKey]['bom_ref'] = $obj->bom_ref;
                 // Use BOM quantity as it's likely more accurate
-                self::$productMap[$obj->parent]['children'][$childKey]['qty'] = $obj->qty;
+                self::$productMap[$obj->parent]['children'][$childKey]['qty'] = $normalizedQuantity;
             }
 
             // Add parent to child's parents
@@ -405,8 +515,115 @@ class ProductUpdater
         self::debug("Loaded " . $bomCount . " BOM relationships");
     }
 
+	/**
+	 * Select one active manufacturing BOM per parent without manual input.
+	 *
+	 * Entity-local BOMs take precedence over global BOMs. Multiple BOMs in the
+	 * effective scope are ranked by their latest non-cancelled produced line;
+	 * BOM validation and creation dates provide a deterministic fallback when
+	 * none of the candidates has production history.
+	 *
+	 * @return array<int,int> Selected BOM IDs keyed by parent product ID
+	 */
+	private static function getSelectedManufacturingBomIds(): array
+	{
+		global $db, $conf;
+
+		if (self::$selectedManufacturingBomIds !== null) {
+			return self::$selectedManufacturingBomIds;
+		}
+
+		self::$selectedManufacturingBomIds = array();
+		$entity = (int) $conf->entity;
+		$sql = "SELECT b.rowid, b.fk_product, b.entity, b.ref, b.date_valid, b.date_creation";
+		$sql .= " FROM ".MAIN_DB_PREFIX."bom_bom b";
+		$sql .= " INNER JOIN ".MAIN_DB_PREFIX."product p ON p.rowid = b.fk_product";
+		$sql .= " WHERE b.bomtype = 0 AND b.status = 1";
+		$sql .= " AND b.entity IN (0,".$entity.")";
+		$sql .= " AND p.entity IN (".getEntity('product').")";
+		$sql .= " ORDER BY b.fk_product, b.entity, b.rowid";
+
+		$resql = $db->query($sql);
+		if (!$resql) {
+			self::addError('Error loading active manufacturing BOMs: '.$db->lasterror());
+			return self::$selectedManufacturingBomIds;
+		}
+
+		$bomsByParentAndEntity = array();
+		while ($obj = $db->fetch_object($resql)) {
+			$parentId = (int) $obj->fk_product;
+			$bomEntity = (int) $obj->entity;
+			if (!isset($bomsByParentAndEntity[$parentId])) {
+				$bomsByParentAndEntity[$parentId] = array();
+			}
+			if (!isset($bomsByParentAndEntity[$parentId][$bomEntity])) {
+				$bomsByParentAndEntity[$parentId][$bomEntity] = array();
+			}
+			$bomsByParentAndEntity[$parentId][$bomEntity][] = array(
+				'id' => (int) $obj->rowid,
+				'ref' => (string) $obj->ref,
+				'date_valid' => (string) $obj->date_valid,
+				'date_creation' => (string) $obj->date_creation,
+			);
+		}
+		$db->free($resql);
+
+		$effectiveCandidatesByParent = array();
+		$allCandidateIds = array();
+		foreach ($bomsByParentAndEntity as $parentId => $bomsByEntity) {
+			$candidates = !empty($bomsByEntity[$entity]) ? $bomsByEntity[$entity] : ($bomsByEntity[0] ?? array());
+			if (empty($candidates)) {
+				continue;
+			}
+			$effectiveCandidatesByParent[(int) $parentId] = $candidates;
+			foreach ($candidates as $candidate) {
+				$allCandidateIds[(int) $candidate['id']] = (int) $candidate['id'];
+			}
+		}
+
+		$latestProductionByBomId = array();
+		if (!empty($allCandidateIds)) {
+			$sql = "SELECT mo.fk_bom, COALESCE(mp.date_creation, mp.tms) AS production_date, mp.rowid";
+			$sql .= " FROM ".MAIN_DB_PREFIX."mrp_mo mo";
+			$sql .= " INNER JOIN ".MAIN_DB_PREFIX."mrp_production mp ON mp.fk_mo = mo.rowid";
+			$sql .= " WHERE mo.entity = ".$entity;
+			$sql .= " AND mo.status <> ".Mo::STATUS_CANCELED;
+			$sql .= " AND mp.role = 'produced' AND mp.qty <> 0";
+			$sql .= " AND mo.fk_bom IN (".implode(',', $allCandidateIds).")";
+			$sql .= " ORDER BY production_date DESC, mp.rowid DESC";
+
+			$resql = $db->query($sql);
+			if (!$resql) {
+				self::addError('Error loading manufacturing BOM production history: '.$db->lasterror());
+				return self::$selectedManufacturingBomIds;
+			}
+			while ($obj = $db->fetch_object($resql)) {
+				$bomId = (int) $obj->fk_bom;
+				if (isset($latestProductionByBomId[$bomId])) {
+					continue;
+				}
+				$latestProductionByBomId[$bomId] = array(
+					'date' => (string) $obj->production_date,
+					'rowid' => (int) $obj->rowid,
+				);
+			}
+			$db->free($resql);
+		}
+
+		foreach ($effectiveCandidatesByParent as $parentId => $candidates) {
+			$selectedBomId = KreaProductsBomCostCalculator::selectPreferredBomId($candidates, $latestProductionByBomId);
+			if ($selectedBomId <= 0) {
+				continue;
+			}
+			self::$selectedManufacturingBomIds[(int) $parentId] = $selectedBomId;
+			self::debug('Selected manufacturing BOM '.$selectedBomId.' automatically for product '.((int) $parentId));
+		}
+
+		return self::$selectedManufacturingBomIds;
+	}
+
     /**
-     * Load only the hierarchy needed to recalculate changed products and their parents.
+     * Load only the hierarchy needed to recalculate every dependent of the changed products.
      *
      * @param array<int, int> $productIds
      */
@@ -436,8 +653,8 @@ class ProductUpdater
                 break;
             }
 
-            self::loadProductAssociations(null, $lookupIds);
-            self::loadBOMRelationships(null, $lookupIds);
+			self::loadProductAssociations(null, $lookupIds, true);
+			self::loadBOMRelationships(null, $lookupIds);
 
             $frontier = [];
             foreach ($lookupIds as $childId) {
@@ -470,8 +687,8 @@ class ProductUpdater
                 break;
             }
 
-            self::loadProductAssociations($lookupIds, null);
-            self::loadBOMRelationships($lookupIds, null);
+			self::loadProductAssociations($lookupIds, null, true);
+			self::loadBOMRelationships($lookupIds, null);
 
             $frontier = [];
             foreach ($lookupIds as $parentId) {
@@ -484,9 +701,39 @@ class ProductUpdater
             }
         }
 
-        self::$mapLoaded = true;
-        self::debug("Impacted product map loaded with " . count(self::$productMap) . " products");
-    }
+		self::$mapLoaded = true;
+		self::debug("Impacted product map loaded with " . count(self::$productMap) . " products");
+	}
+
+	/**
+	 * Reject invalid cost graphs before any product cost write occurs.
+	 *
+	 * @return bool True when the loaded graph is acyclic
+	 */
+	private static function validateProductMapIsAcyclic(): bool
+	{
+		$childrenByProduct = array();
+		foreach (self::$productMap as $productId => $product) {
+			$childrenByProduct[(int) $productId] = array();
+			if (empty($product['children']) || !is_array($product['children'])) {
+				continue;
+			}
+			foreach ($product['children'] as $child) {
+				$childId = isset($child['id']) ? (int) $child['id'] : 0;
+				if ($childId > 0) {
+					$childrenByProduct[(int) $productId][] = $childId;
+				}
+			}
+		}
+
+		$cycle = KreaProductsBomCostCalculator::findCycle($childrenByProduct);
+		if (empty($cycle)) {
+			return true;
+		}
+
+		self::addError('Cyclic product cost graph detected: '.implode(' -> ', $cycle));
+		return false;
+	}
 
     /**
      * Reset product map
@@ -495,8 +742,12 @@ class ProductUpdater
     {
         self::$productMap = [];
         self::$mapLoaded = false;
-        self::$costCache = [];
-        self::$syncFlagsCache = [];
+		self::$costCache = [];
+		self::$syncFlagsCache = [];
+		self::$lastErrors = [];
+		self::$extraFieldColumnExistsCache = [];
+		self::$sourceProductIds = [];
+		self::$selectedManufacturingBomIds = null;
     }
 
     /**
@@ -551,8 +802,9 @@ class ProductUpdater
 
         // Load product and its extrafields
         $product = new Product($db);
-        if ($product->fetch($productId) <= 0) {
-            self::$syncFlagsCache[$productId] = false;
+		if ($product->fetch($productId) <= 0) {
+			self::addError("Unable to load product " . $productId . " while reading cost synchronization flags");
+			self::$syncFlagsCache[$productId] = false;
             return false;
         }
 
@@ -628,9 +880,9 @@ class ProductUpdater
         $sql .= " FROM " . MAIN_DB_PREFIX . "product_extrafields";
         $sql .= " WHERE fk_object IN (" . implode(',', $productIds) . ")";
 
-        $resql = $db->query($sql);
-        if (!$resql) {
-            self::debug("Error preloading cost sync flags: " . $db->lasterror());
+		$resql = $db->query($sql);
+		if (!$resql) {
+			self::addError("Error preloading cost sync flags: " . $db->lasterror());
             return;
         }
 
@@ -649,20 +901,20 @@ class ProductUpdater
     {
         global $db;
 
-        static $cache = [];
-
-        if (array_key_exists($columnName, $cache)) {
-            return $cache[$columnName];
+		if (array_key_exists($columnName, self::$extraFieldColumnExistsCache)) {
+			return self::$extraFieldColumnExistsCache[$columnName];
         }
 
         $exists = false;
-        $resql = $db->DDLDescTable(MAIN_DB_PREFIX . 'product_extrafields', $columnName);
-        if ($resql) {
-            $exists = ($db->num_rows($resql) > 0);
-            $db->free($resql);
-        }
+		$resql = $db->DDLDescTable(MAIN_DB_PREFIX . 'product_extrafields', $columnName);
+		if ($resql) {
+			$exists = ($db->num_rows($resql) > 0);
+			$db->free($resql);
+		} else {
+			self::addError('Unable to inspect product extrafield column ' . $columnName . ': ' . $db->lasterror());
+		}
 
-        $cache[$columnName] = $exists;
+		self::$extraFieldColumnExistsCache[$columnName] = $exists;
         return $exists;
     }
 
@@ -758,13 +1010,18 @@ class ProductUpdater
 
         // Load product from database
         $product = new Product($db);
-        if ($product->fetch($productId) <= 0) {
-            self::debug("Failed to load product: " . $productId);
+		if ($product->fetch($productId) <= 0) {
+			self::addError("Failed to load product: " . $productId);
             return false;
         }
 
-        // Calculate new cost price from children
-        $newCostPrice = self::calculateCostPriceFromChildren($productId);
+		// Calculate new cost price from children.
+		try {
+			$newCostPrice = self::calculateCostPriceFromChildren($productId);
+		} catch (Throwable $exception) {
+			self::addError($exception->getMessage());
+			return false;
+		}
 
         // Compare with current cost price (tolerance of 0.001 - matches original)
         if (abs($product->cost_price - $newCostPrice) < 0.001) {
@@ -776,8 +1033,21 @@ class ProductUpdater
         $oldCostPrice = $product->cost_price;
 
         // Update product cost price (matches original method)
+        self::prepareProductCostUpdate($product);
         $product->cost_price = $newCostPrice;
-        $result = $product->update($productId, $user);
+		$product->context = (array) $product->context;
+		$hadSkipRealtimeSync = array_key_exists('skip_kreawoo_realtime_sync', $product->context);
+		$previousSkipRealtimeSync = $hadSkipRealtimeSync ? $product->context['skip_kreawoo_realtime_sync'] : null;
+		$product->context['skip_kreawoo_realtime_sync'] = true;
+		try {
+			$result = $product->update($productId, $user);
+		} finally {
+			if ($hadSkipRealtimeSync) {
+				$product->context['skip_kreawoo_realtime_sync'] = $previousSkipRealtimeSync;
+			} else {
+				unset($product->context['skip_kreawoo_realtime_sync']);
+			}
+		}
 
         if ($result > 0) {
             self::debug("Updated cost price for product " . $product->ref . " from " .
@@ -793,7 +1063,7 @@ class ProductUpdater
             return true;
         }
 
-        self::debug("Failed to update product " . $product->ref . " - update() returned: " . $result);
+		self::addError("Failed to update product " . $product->ref . ": " . ($product->error ?: $db->lasterror()));
         return false;
     }
 
@@ -808,9 +1078,8 @@ class ProductUpdater
         if (isset(self::$costCache[$productId])) {
             return self::$costCache[$productId];
         }
-        if (in_array($productId, $path, true)) {
-            self::debug("Cycle detected in product hierarchy at product ID: " . $productId);
-            return 0.0;
+		if (in_array($productId, $path, true)) {
+			throw new RuntimeException('Cyclic product cost graph detected while calculating product '.$productId);
         }
         $path[] = $productId;
 
@@ -825,10 +1094,10 @@ class ProductUpdater
 
         self::debug("Calculating cost for {$parentRef} with " . count($children) . " children");
 
-        foreach ($children as $child) {
-            $childProduct = self::getProductFromMap($child['id']);
-            if (!$childProduct) {
-                continue;
+		foreach ($children as $child) {
+			$childProduct = self::getProductFromMap($child['id']);
+			if (!$childProduct) {
+				throw new RuntimeException('Unable to load BOM component '.((int) $child['id']).' while calculating product '.$productId);
             }
 
             $childCostPrice = 0.0;
@@ -839,8 +1108,15 @@ class ProductUpdater
                 $bomInfo = " (BOM: " . (isset($child['bom_ref']) ? $child['bom_ref'] : $child['bom_id']) . ")";
             }
 
-            // If child has its own children, calculate recursively
-            if (!empty($childProduct['children'])) {
+			// A product that initiated this batch remains an authoritative source,
+			// even when it also has its own recipe. This preserves manual and
+			// supplier-driven cost changes while propagating them downstream.
+			if (!empty(self::$sourceProductIds[(int) $child['id']])) {
+				$childCostPrice = (float) $childProduct['cost_price'];
+				self::debug("  Child {$childProduct['ref']}: authoritative source cost {$childCostPrice} * qty {$child['qty']} = ".
+					($childCostPrice * $child['qty'])." [source: {$source}]{$bomInfo}");
+			// If child has its own children, calculate recursively
+			} elseif (!empty($childProduct['children'])) {
                 $childCostPrice = self::calculateCostPriceFromChildren($child['id'], $path);
                 self::debug("  Child {$childProduct['ref']}: calculated cost {$childCostPrice} * qty {$child['qty']} = " .
                           ($childCostPrice * $child['qty']) . " [source: {$source}]{$bomInfo}");
@@ -969,12 +1245,15 @@ class ProductUpdater
      * @param mixed $user User performing the update
      * @return int 1 on success, 0 on failure or skip
      */
-    public static function updateProductAttributes($productId, $user)
-    {
-        // Call the new method and return simplified result
-        $results = self::updateProductCostPrice($productId, true);
+	public static function updateProductAttributes($productId, $user)
+	{
+		// Call the new method and return simplified result
+		$results = self::updateProductCostPrice($productId, true);
+		if (!empty(self::getLastErrors())) {
+			return -1;
+		}
 
-        // Return 1 if any products were updated, 0 otherwise
+		// Return 1 if any products were updated, 0 when no update was needed.
         foreach ($results as $result) {
             if ($result['updated']) {
                 return 1;

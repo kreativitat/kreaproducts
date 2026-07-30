@@ -134,7 +134,7 @@ $supportEmail = 'mail@kreativitat.com';
 $featureRows = array(
 	array('Product card workspace', 'Replaces the standard price, supplier, and subproduct tabs with KreaProducts selling prices, buying prices, technical sheet, nutrition, product tree, and labels tabs.'),
 	array('Product structure and recipes', 'Manages associations, BOM/MRP technical sheets, component quantities, source packages, nested BOMs, reverse where-used analysis, and recipe unit display scaling.'),
-	array('Prices updater', 'ProductUpdater recalculates cost prices from product associations and BOM technical sheets, loads only the impacted graph, batches parent cascades, and avoids repeated full-catalog recalculation.'),
+	array('Prices updater', 'ProductUpdater recalculates cost prices from one unambiguous active manufacturing BOM, rejects cyclic graphs, batches parent cascades, and avoids repeated full-catalog recalculation.'),
 	array('Supplier invoice cost sync', 'Supplier invoice validation can compute weighted HT purchase cost per product, update purchase cost data, then run one final cost cascade after all invoice lines are processed.'),
 	array('Automatic sell-price sync', 'Optional global and per-product controls update selling prices from the final cost using kreap_updatesellprice and kreap_updatesellpricepct markup.'),
 	array('Nutrition and allergens', 'Automatic nutrition and allergen calculation, parent/child and BOM propagation, threshold-based trace marking, copy tools, non-food exclusion, and user-facing compliance disclaimers.'),

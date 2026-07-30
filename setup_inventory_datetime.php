@@ -1,6 +1,21 @@
 <?php
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 /**
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * Setup script to convert inventory.date_inventory to DATETIME
  */
 
@@ -20,6 +35,15 @@ echo "<h1>" . $langs->trans('KreapInventoryDatetimeSetupTitle') . "</h1>\n";
 if (empty($user->admin)) {
 	echo "<p style='color:red;'><strong>" . $langs->trans('KreapInventoryDatetimeAdminRequired') . "</strong></p>";
 	exit;
+}
+
+$action = GETPOST('action', 'aZ09');
+$isPost = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST';
+if ($isPost && (empty(GETPOST('token', 'alphanohtml'))
+	|| (!hash_equals((string) currentToken(), (string) GETPOST('token', 'alphanohtml'))
+		&& !hash_equals((string) newToken(), (string) GETPOST('token', 'alphanohtml'))))
+) {
+	accessforbidden($langs->trans('ErrorBadToken'));
 }
 
 $table = MAIN_DB_PREFIX . "inventory";
@@ -43,12 +67,20 @@ echo "<h2>" . $langs->trans('KreapInventoryDatetimeConvert') . "</h2>\n";
 if (stripos($col->Type, 'datetime') !== false) {
 	echo "<p style='color:green;'>✓ " . $langs->trans('KreapInventoryDatetimeAlready') . "</p>";
 } else {
-	$sql = "ALTER TABLE " . $table . " MODIFY date_inventory DATETIME DEFAULT NULL";
-	$resql = $db->query($sql);
-	if ($resql) {
-		echo "<p style='color:green;'>✓ " . $langs->trans('KreapInventoryDatetimeConverted') . "</p>";
+	if ($isPost && $action === 'convert_inventory_datetime') {
+		$sql = "ALTER TABLE " . $table . " MODIFY date_inventory DATETIME DEFAULT NULL";
+		$resql = $db->query($sql);
+		if ($resql) {
+			echo "<p style='color:green;'>✓ " . $langs->trans('KreapInventoryDatetimeConverted') . "</p>";
+		} else {
+			echo "<p style='color:red;'>✗ " . $langs->trans('KreapInventoryDatetimeConvertFailed', dol_escape_htmltag($db->lasterror())) . "</p>";
+		}
 	} else {
-		echo "<p style='color:red;'>✗ " . $langs->trans('KreapInventoryDatetimeConvertFailed', dol_escape_htmltag($db->lasterror())) . "</p>";
+		echo '<form method="POST">';
+		echo '<input type="hidden" name="token" value="' . newToken() . '">';
+		echo '<input type="hidden" name="action" value="convert_inventory_datetime">';
+		echo '<button type="submit" class="button">' . $langs->trans('Modify') . '</button>';
+		echo '</form>';
 	}
 }
 

@@ -1,8 +1,7 @@
 <?php
 /* Copyright (C) 2017       Laurent Destailleur      <eldy@users.sourceforge.net>
  * Copyright (C) 2023-2024  Frédéric France          <frederic.france@free.fr>
- * Copyright (C) 2025		Kreativitat	<mail@kreativitat.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -229,6 +228,10 @@ class ProductAllergens extends CommonObject
 	 */
 	public function create(User $user, $notrigger = 0)
 	{
+		if (!$this->isProductInEntityScope((int) $this->fk_product)) {
+			$this->error = 'Product is outside the current entity scope';
+			return -1;
+		}
 		$resultcreate = $this->createCommon($user, $notrigger);
 
 		//$resultvalidate = $this->validate($user, $notrigger);
@@ -255,7 +258,7 @@ class ProductAllergens extends CommonObject
 		$this->db->begin();
 
 		// Load source object
-		$result = $object->fetchCommon($fromid);
+		$result = $object->fetch($fromid);
 		if ($result > 0 && !empty($object->table_element_line)) {
 			$object->fetchLines();
 		}
@@ -347,6 +350,11 @@ class ProductAllergens extends CommonObject
 	public function fetch($id, $ref = null, $noextrafields = 0, $nolines = 0)
 	{
 		$result = $this->fetchCommon($id, $ref, '', $noextrafields);
+		if ($result > 0 && !$this->isProductInEntityScope((int) $this->fk_product)) {
+			$this->id = 0;
+			$this->rowid = 0;
+			return 0;
+		}
 		if ($result > 0 && !empty($this->table_element_line) && empty($nolines)) {
 			$this->fetchLines($noextrafields);
 		}
@@ -391,6 +399,8 @@ class ProductAllergens extends CommonObject
 		$sql = "SELECT ";
 		$sql .= $this->getFieldList('t');
 		$sql .= " FROM " . $this->db->prefix() . $this->table_element . " as t";
+		$sql .= " INNER JOIN " . $this->db->prefix() . "product as p ON p.rowid = t.fk_product";
+		$sql .= " AND p.entity IN (" . getEntity('product') . ")";
 		if (isset($this->isextrafieldmanaged) && $this->isextrafieldmanaged == 1) {
 			$sql .= " LEFT JOIN " . $this->db->prefix() . $this->table_element . "_extrafields as te ON te.fk_object = t.rowid";
 		}
@@ -454,6 +464,10 @@ class ProductAllergens extends CommonObject
 	 */
 	public function update(User $user, $notrigger = 0)
 	{
+		if (!$this->isRecordInEntityScope((int) $this->id) || !$this->isProductInEntityScope((int) $this->fk_product)) {
+			$this->error = 'Product is outside the current entity scope';
+			return -1;
+		}
 		return $this->updateCommon($user, $notrigger);
 	}
 
@@ -466,6 +480,10 @@ class ProductAllergens extends CommonObject
 	 */
 	public function delete(User $user, $notrigger = 0)
 	{
+		if (!$this->isRecordInEntityScope((int) $this->id)) {
+			$this->error = 'Product is outside the current entity scope';
+			return -1;
+		}
 		return $this->deleteCommon($user, $notrigger);
 		//return $this->deleteCommon($user, $notrigger, 1);
 	}
@@ -1050,15 +1068,12 @@ class ProductAllergens extends CommonObject
 		global $langs, $conf;
 		$langs->load("kreaproducts@kreaproducts");
 
-		if (!getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')) {
-			$conf->global->KREAPRODUCTS_MYOBJECT_ADDON = 'mod_productallergens_standard';
-		}
-
-		if (getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON')) {
+		$numberingModule = getDolGlobalString('KREAPRODUCTS_PRODUCTALLERGENS_ADDON', 'mod_productallergens_standard');
+		if ($numberingModule !== '') {
 			$mybool = false;
 
-			$file = getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON') . ".php";
-			$classname = getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADDON');
+			$file = $numberingModule . ".php";
+			$classname = $numberingModule;
 
 			// Include file with class
 			$dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
@@ -1150,6 +1165,51 @@ class ProductAllergens extends CommonObject
 		// ...
 
 		return parent::validateField($fields, $fieldKey, $fieldValue);
+	}
+
+	/**
+	 * @param int $productId Product ID
+	 * @return bool
+	 */
+	private function isProductInEntityScope($productId)
+	{
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return false;
+		}
+		$sql = 'SELECT p.rowid FROM '.MAIN_DB_PREFIX.'product as p';
+		$sql .= ' WHERE p.rowid = '.$productId;
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return false;
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return (bool) $obj;
+	}
+
+	/**
+	 * @param int $recordId Product allergen record ID
+	 * @return bool
+	 */
+	private function isRecordInEntityScope($recordId)
+	{
+		$recordId = (int) $recordId;
+		if ($recordId <= 0) {
+			return false;
+		}
+		$sql = 'SELECT pa.rowid FROM '.MAIN_DB_PREFIX.$this->table_element.' as pa';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product as p ON p.rowid = pa.fk_product';
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' WHERE pa.rowid = '.$recordId;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return false;
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return (bool) $obj;
 	}
 
 	/**

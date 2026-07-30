@@ -18,6 +18,8 @@
  * Kreativität Works <mail@kreativitat.com>.
  */
 
+require_once __DIR__ . '/ProductUpdater.class.php';
+
 /**
  * Enhanced ProductHierarchyTree Class
  *
@@ -1882,6 +1884,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 return false;
             }
 
+            ProductUpdater::prepareProductCostUpdate($prod);
             $prod->cost_price = $newCost;
             $prod->buyprice = $newCost;
             

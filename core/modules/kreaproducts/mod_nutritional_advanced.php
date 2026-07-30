@@ -6,7 +6,7 @@
  * Copyright (C) 2019-2024	Frédéric France				<frederic.france@free.fr>
  * Copyright (C) 2024		MDW							<mdeweerd@users.noreply.github.com>
  * Copyright (C) 2025		Kreativität Works <mail@kreativitat.com>
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2026		Kreativität Works <mail@kreativitat.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ class mod_nutritional_advanced extends ModeleNumRefNutritional
 		$text .= '<form action="'.$_SERVER["PHP_SELF"].'" method="POST">';
 		$text .= '<input type="hidden" name="token" value="'.newToken().'">';
 		$text .= '<input type="hidden" name="action" value="updateMask">';
-		$text .= '<input type="hidden" name="maskconst" value="KREAPRODUCTS_MYOBJECT_ADVANCED_MASK">';
+		$text .= '<input type="hidden" name="maskconst" value="KREAPRODUCTS_NUTRITIONAL_ADVANCED_MASK">';
 		$text .= '<table class="nobordernopadding centpercent">';
 
 		$tooltip = $langs->trans("GenericMaskCodes", $langs->transnoentities("Nutritional"), $langs->transnoentities("Nutritional"));
@@ -84,7 +84,7 @@ class mod_nutritional_advanced extends ModeleNumRefNutritional
 
 		// prefix configuration
 		$text .= '<tr><td>'.$langs->trans("Mask").':</td>';
-		$text .= '<td class="right">'.$form->textwithpicto('<input type="text" class="flat minwidth175" name="maskvalue" value="'.getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADVANCED_MASK').'">', $tooltip, 1, 1).'</td>';
+		$text .= '<td class="right">'.$form->textwithpicto('<input type="text" class="flat minwidth175" name="maskvalue" value="'.getDolGlobalString('KREAPRODUCTS_NUTRITIONAL_ADVANCED_MASK', getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADVANCED_MASK')).'">', $tooltip, 1, 1).'</td>';
 		$text .= '<td class="left" rowspan="2">&nbsp; <input type="submit" class="button button-edit" value="'.$langs->trans("Modify").'" name="Button"></td>';
 		$text .= '</tr>';
 
@@ -135,7 +135,7 @@ class mod_nutritional_advanced extends ModeleNumRefNutritional
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/functions2.lib.php';
 
 		// We get cursor rule
-		$mask = getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADVANCED_MASK');
+		$mask = getDolGlobalString('KREAPRODUCTS_NUTRITIONAL_ADVANCED_MASK', getDolGlobalString('KREAPRODUCTS_MYOBJECT_ADVANCED_MASK'));
 
 		if (!$mask) {
 			$this->error = 'NotConfigured';

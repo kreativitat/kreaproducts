@@ -3,6 +3,10 @@
  * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  */
 
+if (!defined('CSRFCHECK_WITH_TOKEN')) {
+	define('CSRFCHECK_WITH_TOKEN', 1);
+}
+
 // Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
 $res = 0;
 if (!$res && file_exists(__DIR__ . '/../main.inc.php')) {
@@ -268,6 +272,15 @@ if (!$canManageProducts || !$canWriteBom) {
 }
 
 if ($action === 'copy_associations_to_bom') {
+	$isPost = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST';
+	$token = GETPOST('token', 'alphanohtml');
+	if (!$isPost) {
+		accessforbidden($langs->trans('ErrorBadMethod'));
+	}
+	if ($token === '' || (!hash_equals((string) currentToken(), (string) $token) && !hash_equals((string) newToken(), (string) $token))) {
+		accessforbidden($langs->trans('ErrorBadToken'));
+	}
+
 	$redirectUrl = $_SERVER["PHP_SELF"];
 	$query = array();
 	if ($sourceProductId > 0) {

@@ -23,6 +23,41 @@
 class KreaProductsLabelService
 {
 	/**
+	 * Default hard ceiling for a single label generation request.
+	 */
+	const DEFAULT_MAX_LABEL_COUNT = 1000;
+
+	/**
+	 * Return the configured label generation ceiling.
+	 *
+	 * @return int
+	 */
+	public static function getMaximumLabelCount()
+	{
+		$configured = function_exists('getDolGlobalInt')
+			? (int) getDolGlobalInt('KREAPRODUCTS_LABEL_MAX_COUNT')
+			: 0;
+
+		if ($configured <= 0) {
+			return self::DEFAULT_MAX_LABEL_COUNT;
+		}
+
+		return min($configured, self::DEFAULT_MAX_LABEL_COUNT);
+	}
+
+	/**
+	 * Validate a requested label quantity before allocating label records.
+	 *
+	 * @param int $quantity Requested number of labels
+	 * @return bool
+	 */
+	public static function isLabelQuantityAllowed($quantity)
+	{
+		$quantity = (int) $quantity;
+		return $quantity > 0 && $quantity <= self::getMaximumLabelCount();
+	}
+
+	/**
 	 * Return selectable label fields.
 	 *
 	 * @param Translate $langs Output language
@@ -2166,6 +2201,9 @@ class KreaProductsLabelService
 
 		try {
 			$quantity = max(1, (int) $quantity);
+			if (!self::isLabelQuantityAllowed($quantity)) {
+				return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_QUANTITY_LIMIT', self::getMaximumLabelCount()));
+			}
 			$useTemplateSize = (bool) $useTemplateSize;
 			$template = array();
 			if ($templateCode !== '') {
@@ -2251,6 +2289,9 @@ class KreaProductsLabelService
 
 		try {
 			$quantity = max(1, (int) $quantity);
+			if (!self::isLabelQuantityAllowed($quantity)) {
+				return array('error' => $langs->trans('KREAPRODUCTS_LABELS_ERROR_QUANTITY_LIMIT', self::getMaximumLabelCount()));
+			}
 			$template = array();
 			if ($templateCode !== '') {
 				$template = self::loadLabelTemplate($templateCode, $entityId);

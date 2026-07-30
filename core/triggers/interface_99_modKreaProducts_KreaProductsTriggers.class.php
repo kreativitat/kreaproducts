@@ -46,14 +46,18 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		switch ($action) {
 			case 'PRODUCT_PRICE_MODIFY':
 				if (self::$costAndSellSyncSuspended <= 0 && $this->hasCostPriceChanged($object)) {
-					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+					if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
+						return -1;
+					}
 					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
 				return 1;
 
 			case 'PRODUCT_MODIFY':
 				if (self::$costAndSellSyncSuspended <= 0 && $this->hasCostPriceChanged($object)) {
-					$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+					if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
+						return -1;
+					}
 					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
 				}
 				$this->syncAliasToDolizsynchShortDescription($object, $conf);
@@ -64,28 +68,40 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 			case 'PRODUCT_SUBPRODUCT_ADD':
 			case 'PRODUCT_SUBPRODUCT_DELETE':
-				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
+					return -1;
+				}
 				return 1;
 
 			case 'PRODUCT_SUBPRODUCT_UPDATE':
-				$this->syncCostPriceIfEnabled((int) $object->id, $user, $conf);
+				if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
+					return -1;
+				}
 				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
 					KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
 				}
 				return 1;
 
 			case 'STOCK_MOVEMENT':
-				// handleStockMovement() itself returns 1 or 0
+				if (!empty($object->context['kreaproducts_inventory_ledger'])) {
+					return 0;
+				}
 				$stockService = new KreaProductsStockMovementService();
 				return $stockService->handleStockMovement($object, $db, $conf, $user);
 
 			case 'INVENTORY_RECORDED':
 			case 'INVENTORY_MODIFY':
+				if (!empty($object->context['kreaproducts_mobile_inventory'])) {
+					return 1;
+				}
 				// run our post-save rename hook
 				$inventoryService = new KreaProductsInventoryService();
 				$inventoryService->renameInventoryHeaderRef($object, $db);
 				return 1;
 			case 'INVENTORY_CREATE':
+				if (!empty($object->context['kreaproducts_mobile_inventory'])) {
+					return 1;
+				}
 				$inventoryService = new KreaProductsInventoryService();
 				return $inventoryService->prefillInventoryLinesAtCreate($object, $db, $user);
 
@@ -93,33 +109,46 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				if (empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE)) {
 					return 1;
 				}
-				$supplierPriceSync = new KreaProductsSupplierPriceSyncService();
-				$supplierPriceSync->syncFromValidatedSupplierInvoice($object, $db, $user, $conf);
-				$this->syncCostAndSellPriceFromValidatedSupplierInvoice($object, $user, $conf);
-				return 1;
+				try {
+					$supplierPriceSync = new KreaProductsSupplierPriceSyncService();
+					$supplierPriceSync->syncFromValidatedSupplierInvoice($object, $db, $user, $conf);
+					$this->syncCostAndSellPriceFromValidatedSupplierInvoice($object, $user, $conf);
+					return 1;
+				} catch (Throwable $exception) {
+					$this->error = 'Supplier invoice synchronization failed: ' . $exception->getMessage();
+					dol_syslog(__METHOD__ . ' invoice=' . (int) $object->id . ' ' . $this->error, LOG_ERR);
+					return -1;
+				}
 
 			default:
 				return 0;
 		}
 	}
 
-	private function syncCostPriceIfEnabled(int $productId, User $user, Conf $conf): void
+	private function syncCostPriceIfEnabled(int $productId, User $user, Conf $conf): int
 	{
 		static $inProgress = false;
 
 		if ($productId <= 0 || $inProgress || empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
-			return;
+			return 1;
 		}
 
 		$inProgress = true;
 		try {
-			ProductHierarchy::updateProductAttributes($productId, $user);
+			$result = ProductHierarchy::updateProductAttributes($productId, $user);
+			if ($result < 0 || !empty(ProductUpdater::getLastErrors())) {
+				$this->error = 'Product cost cascade failed: '.implode('; ', ProductUpdater::getLastErrors());
+				dol_syslog(__METHOD__.' product='.(int) $productId.' '.$this->error, LOG_ERR);
+				return -1;
+			}
 		} finally {
 			$inProgress = false;
 		}
+
+		return 1;
 	}
 
-	private function syncSellPriceFromCostIfEnabled(int $productId, User $user, Conf $conf): void
+	private function syncSellPriceFromCostIfEnabled(int $productId, User $user, Conf $conf, bool $failOnError = false): void
 	{
 		static $inProgress = false;
 
@@ -133,9 +162,12 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		$product = new Product($this->db);
 		if ($product->fetch($productId) <= 0) {
+			if ($failOnError) {
+				throw new RuntimeException('Unable to load product ' . $productId . ' for selling-price synchronization');
+			}
 			return;
 		}
-		if (!$this->shouldSyncSellPriceForProduct($product)) {
+		if (!$this->shouldSyncSellPriceForProduct($product, $failOnError)) {
 			return;
 		}
 		$syncPercent = $this->getSellPriceSyncPercentForProduct($product);
@@ -201,10 +233,11 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		try {
 			$resUpdate = $product->updatePrice($targetPrice, $baseType, $user, $vatTx, $currentMinPrice, $priceLevel);
 			if ($resUpdate <= 0) {
-				dol_syslog(
-					__METHOD__ . ' failed for product=' . $productId . ' error=' . ($product->error ?: $this->db->lasterror()),
-					LOG_WARNING
-				);
+				$message = 'Unable to update the selling price for product ' . $productId . ': ' . ($product->error ?: $this->db->lasterror());
+				if ($failOnError) {
+					throw new RuntimeException($message);
+				}
+				dol_syslog(__METHOD__ . ' ' . $message, LOG_WARNING);
 			}
 		} finally {
 			$inProgress = false;
@@ -255,12 +288,12 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 				$product = new Product($this->db);
 				if ($product->fetch($productId) <= 0) {
-					continue;
+					throw new RuntimeException('Unable to load product ' . $productId . ' from supplier invoice ' . (int) $invoice->id);
 				}
 				if (!$this->isProductInCurrentEntityScope($product, $conf)) {
-					continue;
+					throw new RuntimeException('Product ' . $productId . ' is outside the active product entity scope');
 				}
-				if (!$this->shouldSyncCostPriceForProduct($product)) {
+				if (!$this->shouldSyncCostPriceForProduct($product, true)) {
 					continue;
 				}
 
@@ -269,15 +302,15 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 					continue;
 				}
 
+				ProductUpdater::prepareProductCostUpdate($product);
 				$product->cost_price = $newUnitCost;
 				$resUpdate = $product->update($product->id, $user);
 				if ($resUpdate <= 0) {
-					dol_syslog(
-						__METHOD__ . ' failed cost update for product=' . $productId . ' invoice=' . ((int) $invoice->id)
-						. ' error=' . ($product->error ?: $this->db->lasterror()),
-						LOG_WARNING
+					throw new RuntimeException(
+						'Unable to update the cost for product ' . $productId
+						. ' from supplier invoice ' . (int) $invoice->id
+						. ': ' . ($product->error ?: $this->db->lasterror())
 					);
-					continue;
 				}
 
 				$changedProductIds[$productId] = $productId;
@@ -285,6 +318,10 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 			if (!empty($changedProductIds) && !empty($conf->global->KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE)) {
 				$cascadeResults = ProductUpdater::batchUpdateCostPrices(array_values($changedProductIds), true);
+				$cascadeErrors = ProductUpdater::getLastErrors();
+				if (!empty($cascadeErrors)) {
+					throw new RuntimeException('Cost cascade failed: ' . implode('; ', $cascadeErrors));
+				}
 				foreach ($cascadeResults as $cascadeProductId => $cascadeResult) {
 					if (!empty($cascadeResult['updated'])) {
 						$changedProductIds[(int) $cascadeProductId] = (int) $cascadeProductId;
@@ -294,7 +331,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 			if (!empty($changedProductIds) && !empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST)) {
 				foreach (array_values($changedProductIds) as $changedProductId) {
-					$this->syncSellPriceFromCostIfEnabled((int) $changedProductId, $user, $conf);
+					$this->syncSellPriceFromCostIfEnabled((int) $changedProductId, $user, $conf, true);
 				}
 			}
 		} finally {
@@ -466,14 +503,20 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 	/**
 	 * Check per-product flag for cost sync from purchase flows.
 	 */
-	private function shouldSyncCostPriceForProduct(Product $product): bool
+	private function shouldSyncCostPriceForProduct(Product $product, bool $failOnError = false): bool
 	{
 		if (empty($product->id)) {
 			return false;
 		}
 
 		$extrafields = new ExtraFields($this->db);
-		$product->fetch_optionals((int) $product->id, $extrafields);
+		$result = $product->fetch_optionals((int) $product->id, $extrafields);
+		if ($result < 0) {
+			if ($failOnError) {
+				throw new RuntimeException('Unable to load cost synchronization settings for product ' . (int) $product->id);
+			}
+			return false;
+		}
 
 		if (!empty($product->array_options['options_kreap_updatebuyprice'])) {
 			return true;
@@ -529,14 +572,20 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		return (float) price2num($value, 'MU');
 	}
 
-	private function shouldSyncSellPriceForProduct(Product $product): bool
+	private function shouldSyncSellPriceForProduct(Product $product, bool $failOnError = false): bool
 	{
 		if (empty($product->id)) {
 			return false;
 		}
 
 		$extrafields = new ExtraFields($this->db);
-		$product->fetch_optionals((int) $product->id, $extrafields);
+		$result = $product->fetch_optionals((int) $product->id, $extrafields);
+		if ($result < 0) {
+			if ($failOnError) {
+				throw new RuntimeException('Unable to load selling-price synchronization settings for product ' . (int) $product->id);
+			}
+			return false;
+		}
 
 		return !empty($product->array_options['options_kreap_updatesellprice']);
 	}

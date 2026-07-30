@@ -1,5 +1,5 @@
 <?php
-/* Copyright (C) 2026       Kreativität Works       <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -89,7 +89,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading production categories: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load production categories', $this->db->lasterror());
 		}
 
 		$result = array();
@@ -153,7 +153,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading products for category: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load products for category', $this->db->lasterror());
 		}
 
 		$products = array();
@@ -279,7 +279,7 @@ class KreaProductsApi extends DolibarrApi
 		$this->assertMrpEnabled();
 		$this->assertProductionReadRights();
 
-		$this->ensureProductionTraceTables();
+		$this->assertProductionTraceSchemaReady();
 
 		$limit = (int) $limit;
 		if ($limit <= 0) {
@@ -321,7 +321,7 @@ class KreaProductsApi extends DolibarrApi
 		$sqlCount .= $whereSql;
 		$resCount = $this->db->query($sqlCount);
 		if (!$resCount) {
-			throw new RestException(503, 'Error when counting created MO history: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to count created MO history', $this->db->lasterror());
 		}
 		$objCount = $this->db->fetch_object($resCount);
 		$this->db->free($resCount);
@@ -341,7 +341,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading created MO history: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load created MO history', $this->db->lasterror());
 		}
 
 		$items = array();
@@ -415,7 +415,7 @@ class KreaProductsApi extends DolibarrApi
 		$this->assertMrpEnabled();
 		$this->assertProductionReadRights();
 
-		$this->ensureProductionTraceTables();
+		$this->assertProductionTraceSchemaReady();
 
 		$traceId = (int) $id;
 		if ($traceId <= 0) {
@@ -446,7 +446,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resHeader = $this->db->query($sqlHeader);
 		if (!$resHeader) {
-			throw new RestException(503, 'Error when loading created MO detail: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load created MO detail', $this->db->lasterror());
 		}
 		$objHeader = $this->db->fetch_object($resHeader);
 		$this->db->free($resHeader);
@@ -489,7 +489,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resLines = $this->db->query($sqlLines);
 		if (!$resLines) {
-			throw new RestException(503, 'Error when loading created MO lines: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load created MO lines', $this->db->lasterror());
 		}
 
 		$lines = array();
@@ -786,7 +786,8 @@ class KreaProductsApi extends DolibarrApi
 			);
 
 			if (!empty($generated['error'])) {
-				throw new RestException(500, 'Error generating labels PDF: ' . $generated['error']);
+				dol_syslog(__METHOD__ . ' generation failed: ' . $generated['error'], LOG_ERR);
+				throw new RestException(500, 'Failed to generate labels PDF');
 			}
 
 			$fullPath = (!empty($generated['fullpath']) ? (string) $generated['fullpath'] : '');
@@ -824,7 +825,7 @@ class KreaProductsApi extends DolibarrApi
 			throw $ex;
 		} catch (Throwable $ex) {
 			dol_syslog(__METHOD__ . ' failed: ' . $ex->getMessage(), LOG_ERR);
-			throw new RestException(500, 'Failed to generate labels PDF: ' . $ex->getMessage());
+			throw new RestException(500, 'Failed to generate labels PDF');
 		}
 	}
 
@@ -936,7 +937,8 @@ class KreaProductsApi extends DolibarrApi
 			);
 
 			if (!empty($generated['error'])) {
-				throw new RestException(500, 'Error generating labels TSPL: ' . $generated['error']);
+				dol_syslog(__METHOD__ . ' generation failed: ' . $generated['error'], LOG_ERR);
+				throw new RestException(500, 'Failed to generate labels TSPL');
 			}
 
 			$tsplContent = (!empty($generated['content']) ? (string) $generated['content'] : '');
@@ -961,7 +963,7 @@ class KreaProductsApi extends DolibarrApi
 			throw $ex;
 		} catch (Throwable $ex) {
 			dol_syslog(__METHOD__ . ' failed: ' . $ex->getMessage(), LOG_ERR);
-			throw new RestException(500, 'Failed to generate labels TSPL: ' . $ex->getMessage());
+			throw new RestException(500, 'Failed to generate labels TSPL');
 		}
 	}
 
@@ -1127,14 +1129,24 @@ class KreaProductsApi extends DolibarrApi
 		if ($moId <= 0 && $qty <= 0) {
 			throw new RestException(400, 'Production qty must be greater than 0');
 		}
+		$this->assertProductionThirdpartyAvailable($requestedThirdpartyId);
+		$this->assertProductionProjectAvailable($requestedProjectId);
+		$this->assertProductionTraceSchemaReady();
 
 		$mo = new Mo($this->db);
 		$product = null;
 		$bomIdUsed = 0;
 		$moWasCreated = false;
 		$warehouseId = 0;
+		$inventoryCode = '';
+		$traceSaved = false;
+		$traceError = '';
+		$labelPayload = array();
 
-		if ($moId > 0) {
+		$this->db->begin();
+		try {
+			if ($moId > 0) {
+				$this->lockMoForProduction($moId);
 			if ($mo->fetch($moId) <= 0) {
 				throw new RestException(404, 'MO not found');
 			}
@@ -1207,7 +1219,7 @@ class KreaProductsApi extends DolibarrApi
 				}
 
 				if ($shouldUpdateDraftMo && $mo->update(DolibarrApiAccess::$user) <= 0) {
-					throw new RestException(500, 'Error updating MO header: ' . $mo->error);
+					$this->failInternalRequest('Unable to update the manufacturing order', $mo->error, 500);
 				}
 				if ($shouldUpdateDraftMo) {
 					$mo->fetch($mo->id);
@@ -1215,7 +1227,7 @@ class KreaProductsApi extends DolibarrApi
 			}
 
 			$warehouseId = $this->resolveWarehouseIdForProduction($requestedWarehouseId, $product, $mo);
-		} else {
+			} else {
 			$product = $this->fetchProduct($productId);
 			if ($categoryId > 0) {
 				$this->assertProductInCategory((int) $product->id, $categoryId);
@@ -1247,11 +1259,11 @@ class KreaProductsApi extends DolibarrApi
 
 			$newId = $mo->create(DolibarrApiAccess::$user);
 			if ($newId <= 0) {
-				throw new RestException(500, 'Error creating MO: ' . $mo->error);
+				$this->failInternalRequest('Unable to create the manufacturing order', $mo->error, 500);
 			}
 			$moWasCreated = true;
 			$mo->fetch($newId);
-		}
+			}
 
 		if ($warehouseId <= 0) {
 			throw new RestException(400, 'Missing warehouse_id and no default warehouse is configured for current entity/product');
@@ -1260,17 +1272,17 @@ class KreaProductsApi extends DolibarrApi
 		if ((int) $mo->status === Mo::STATUS_DRAFT) {
 			$validateResult = $mo->validate(DolibarrApiAccess::$user);
 			if ($validateResult <= 0) {
-				throw new RestException(500, 'Error validating MO: ' . $mo->error);
+				$this->failInternalRequest('Unable to validate the manufacturing order', $mo->error, 500);
 			}
 			$mo->fetch($mo->id);
 		}
 
-		if ((int) $mo->status !== Mo::STATUS_VALIDATED && (int) $mo->status !== Mo::STATUS_INPROGRESS) {
-			throw new RestException(409, 'MO status does not allow production');
+		if ((int) $mo->status !== Mo::STATUS_VALIDATED) {
+			throw new RestException(409, 'Only a validated, unprocessed MO can be posted by this endpoint');
 		}
 
-			$mo->fetchLines();
-			$this->disableStockChangeForNonStockMoLines($mo);
+		$mo->fetchLines();
+		$this->disableStockChangeForNonStockMoLines($mo);
 		$mo->fetchLines();
 		$componentLotMaps = $this->indexComponentLotsByMoLine($componentLots);
 		$this->assertComponentLotsMatchMoLines($componentLots, $mo->lines);
@@ -1301,8 +1313,14 @@ class KreaProductsApi extends DolibarrApi
 			throw new RestException(409, 'MO has no line to produce');
 		}
 
-		$mosApi = new Mos();
-		try {
+			$mosApi = new Mos();
+			$this->lockMoForProduction((int) $mo->id);
+			if ($mo->fetch((int) $mo->id) <= 0 || (int) $mo->status !== Mo::STATUS_VALIDATED) {
+				throw new RestException(409, 'MO was already processed or its status changed');
+			}
+			if ($this->hasMoExecutionMovements((int) $mo->id)) {
+				throw new RestException(409, 'MO already has production stock movements');
+			}
 			$mosApi->produceAndConsume(
 				$mo->id,
 				array(
@@ -1314,26 +1332,42 @@ class KreaProductsApi extends DolibarrApi
 					'caller' => 'kreaproducts',
 				)
 			);
+			$mo->fetch($mo->id);
+			$this->saveProductionBatchTrace($mo, (float) $qty, $inventoryCode, $componentLotMaps);
+			$traceSaved = true;
+			$this->applyProductAliasToLabel($product);
+			$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
+			$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
+			$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
+			$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
+			if (!$this->db->commit()) {
+				throw new RuntimeException('Unable to commit production stock and trace transaction');
+			}
 		} catch (RestException $ex) {
 			// Core Mos::produceAndConsume may throw before rolling back its explicit transaction.
 			// Ensure we rollback current connection before any cleanup checks.
-			$this->db->rollback();
+			$this->rollbackProductionTransactions();
 
 			$httpCode = (int) $ex->getCode();
 			if ($httpCode < 400 || $httpCode > 599) {
 				$httpCode = 500;
 			}
 
-			$errorMessage = trim((string) $ex->getMessage());
+			$technicalMessage = trim((string) $ex->getMessage());
+			$errorMessage = $technicalMessage;
 			if ($errorMessage === '') {
 				$errorMessage = 'Failed to post production stock movements for inventorycode ' . $inventoryCode . '. Check Dolibarr logs for details.';
 			}
+			$exposeTechnicalMessage = ($httpCode < 500);
 
 			if ($httpCode >= 500) {
-				$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
+				$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines(
+					(isset($mo->lines) && is_array($mo->lines)) ? $mo->lines : array()
+				);
 				if (!empty($batchManagedSubproducts)) {
 					$httpCode = 409;
 					$errorMessage = $this->buildAssociatedBatchConflictMessage($batchManagedSubproducts);
+					$exposeTechnicalMessage = true;
 				}
 			}
 
@@ -1342,26 +1376,34 @@ class KreaProductsApi extends DolibarrApi
 				$cleanupNote = $this->cleanupAutoCreatedMoIfUnprocessed($mo);
 			}
 			if ($cleanupNote !== '') {
-				$errorMessage .= ' ' . $cleanupNote;
 				if ($httpCode >= 500) {
 					$httpCode = 409;
 				}
 			}
 
-			dol_syslog(__METHOD__ . ' produceAndConsume failed for MO ' . ((int) $mo->id) . ': ' . $errorMessage, LOG_ERR);
+			dol_syslog(__METHOD__ . ' produceAndConsume failed for MO ' . ((int) $mo->id) . ': ' . $technicalMessage, LOG_ERR);
+			if (!$exposeTechnicalMessage) {
+				$errorMessage = 'Production execution failed. Check Dolibarr logs for details.';
+			}
+			if ($cleanupNote !== '') {
+				$errorMessage .= ' ' . $cleanupNote;
+			}
 			throw new RestException($httpCode, $errorMessage);
 		} catch (Throwable $ex) {
 			// Ensure pending DB transaction from produceAndConsume is rolled back.
-			$this->db->rollback();
+			$this->rollbackProductionTransactions();
 
-			$errorMessage = trim((string) $ex->getMessage());
-			if ($errorMessage === '') {
-				$errorMessage = 'Unexpected production execution error for inventorycode ' . $inventoryCode . '. Check Dolibarr logs for details.';
-			}
+			$technicalMessage = trim((string) $ex->getMessage());
+			$errorMessage = 'Unexpected production execution error. Check Dolibarr logs for details.';
 
-			$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
+			$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines(
+				(isset($mo->lines) && is_array($mo->lines)) ? $mo->lines : array()
+			);
 			if (!empty($batchManagedSubproducts)) {
 				$errorMessage = $this->buildAssociatedBatchConflictMessage($batchManagedSubproducts);
+				$httpCode = 409;
+			} else {
+				$httpCode = 500;
 			}
 
 			$cleanupNote = '';
@@ -1372,24 +1414,8 @@ class KreaProductsApi extends DolibarrApi
 				$errorMessage .= ' ' . $cleanupNote;
 			}
 
-			dol_syslog(__METHOD__ . ' unexpected produceAndConsume error for MO ' . ((int) $mo->id) . ': ' . $errorMessage, LOG_ERR);
-			throw new RestException(($cleanupNote !== '' ? 409 : 500), $errorMessage);
-		}
-
-		$mo->fetch($mo->id);
-		$this->applyProductAliasToLabel($product);
-		$templateCode = $this->resolveLabelTemplateCode($product, $templateCode);
-		$templateValues = $this->resolveLabelTemplateValues($product, $templateCode, $templateValues);
-		$templateValues = $this->mergeProducedBatchIntoTemplateValues($templateValues, $producedBatch);
-		$labelPayload = $this->buildLabelPayload($product, $qty, $unitsPerLabel, $labelsCount, $templateCode, $templateValues, $langcode);
-		$traceSaved = false;
-		$traceError = '';
-		try {
-			$this->saveProductionBatchTrace($mo, (float) $qty, $inventoryCode, $componentLotMaps);
-			$traceSaved = true;
-		} catch (Throwable $traceEx) {
-			$traceError = $traceEx->getMessage();
-			dol_syslog(__METHOD__ . ' Failed to save production trace for MO ' . ((int) $mo->id) . ': ' . $traceError, LOG_WARNING);
+			dol_syslog(__METHOD__ . ' unexpected produceAndConsume error for MO ' . ((int) $mo->id) . ': ' . $technicalMessage, LOG_ERR);
+			throw new RestException(($cleanupNote !== '' ? 409 : $httpCode), $errorMessage);
 		}
 
 		return array(
@@ -1477,7 +1503,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading supplier purchase prices: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load supplier purchase prices', $this->db->lasterror());
 		}
 
 		$rows = array();
@@ -1772,6 +1798,21 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Log an internal failure without exposing database or object details to REST clients.
+	 *
+	 * @param string $publicMessage Public-safe response message
+	 * @param string $technicalMessage Technical detail for Dolibarr logs
+	 * @param int $httpCode HTTP status code
+	 * @return void
+	 * @throws RestException Always
+	 */
+	protected function failInternalRequest($publicMessage, $technicalMessage, $httpCode = 503)
+	{
+		dol_syslog(__METHOD__ . ' ' . trim((string) $technicalMessage), LOG_ERR);
+		throw new RestException((int) $httpCode, (string) $publicMessage);
+	}
+
+	/**
 	 * Assert MRP module is enabled.
 	 *
 	 * @return void
@@ -1874,12 +1915,14 @@ class KreaProductsApi extends DolibarrApi
 
 		$warehouseId = (int) $requestedWarehouseId;
 		if ($warehouseId > 0) {
+			$this->assertWarehouseAvailableForProduction($warehouseId);
 			return $warehouseId;
 		}
 
 		if (is_object($mo) && !empty($mo->fk_warehouse)) {
 			$warehouseId = (int) $mo->fk_warehouse;
 			if ($warehouseId > 0) {
+				$this->assertWarehouseAvailableForProduction($warehouseId);
 				return $warehouseId;
 			}
 		}
@@ -1887,16 +1930,96 @@ class KreaProductsApi extends DolibarrApi
 		if (is_object($product) && !empty($product->fk_default_warehouse)) {
 			$warehouseId = (int) $product->fk_default_warehouse;
 			if ($warehouseId > 0) {
+				$this->assertWarehouseAvailableForProduction($warehouseId);
 				return $warehouseId;
 			}
 		}
 
 		$entityDefaultWarehouseId = (int) ($conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
 		if ($entityDefaultWarehouseId > 0) {
+			$this->assertWarehouseAvailableForProduction($entityDefaultWarehouseId);
 			return $entityDefaultWarehouseId;
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Refuse inactive warehouses and warehouses outside the current stock entity scope.
+	 *
+	 * @param int $warehouseId Warehouse ID
+	 * @return void
+	 */
+	protected function assertWarehouseAvailableForProduction($warehouseId)
+	{
+		$warehouseId = (int) $warehouseId;
+		$sql = 'SELECT e.rowid FROM '.MAIN_DB_PREFIX.'entrepot as e';
+		$sql .= ' WHERE e.rowid = '.$warehouseId;
+		$sql .= ' AND e.entity IN ('.getEntity('stock').')';
+		$sql .= ' AND e.statut = 1';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to validate the production warehouse', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		if (!$obj) {
+			throw new RestException(403, 'Production warehouse is inactive or outside the current entity scope');
+		}
+	}
+
+	/**
+	 * Validate an optional production third party in the active sharing scope.
+	 *
+	 * @param int $thirdpartyId Third-party ID
+	 * @return void
+	 */
+	protected function assertProductionThirdpartyAvailable($thirdpartyId)
+	{
+		$thirdpartyId = (int) $thirdpartyId;
+		if ($thirdpartyId <= 0) {
+			return;
+		}
+
+		$sql = 'SELECT s.rowid FROM '.MAIN_DB_PREFIX.'societe as s';
+		$sql .= ' WHERE s.rowid = '.$thirdpartyId;
+		$sql .= ' AND s.entity IN ('.getEntity('societe').')';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to validate the production third party', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		if (!$obj || !DolibarrApi::_checkAccessToResource('societe', $thirdpartyId)) {
+			throw new RestException(403, 'Production third party is outside the current entity or user access scope');
+		}
+	}
+
+	/**
+	 * Validate an optional production project in the active sharing scope.
+	 *
+	 * @param int $projectId Project ID
+	 * @return void
+	 */
+	protected function assertProductionProjectAvailable($projectId)
+	{
+		$projectId = (int) $projectId;
+		if ($projectId <= 0) {
+			return;
+		}
+
+		$sql = 'SELECT p.rowid FROM '.MAIN_DB_PREFIX.'projet as p';
+		$sql .= ' WHERE p.rowid = '.$projectId;
+		$sql .= ' AND p.entity IN ('.getEntity('project').')';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to validate the production project', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		if (!$obj || !DolibarrApi::_checkAccessToResource('project', $projectId)) {
+			throw new RestException(403, 'Production project is outside the current entity or user access scope');
+		}
 	}
 
 	/**
@@ -1950,7 +2073,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error loading BOM for product: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load the product BOM', $this->db->lasterror());
 		}
 		$obj = $this->db->fetch_object($resql);
 		$this->db->free($resql);
@@ -2007,10 +2130,11 @@ class KreaProductsApi extends DolibarrApi
 				if ($warehouseId <= 0) {
 					$warehouseId = (int) $defaultWarehouseId;
 				}
-				if ($warehouseId <= 0) {
-					throw new RestException(409, 'MO line requires warehouse but none is available');
-				}
-				$entry['fk_warehouse'] = $warehouseId;
+					if ($warehouseId <= 0) {
+						throw new RestException(409, 'MO line requires warehouse but none is available');
+					}
+					$this->assertWarehouseAvailableForProduction($warehouseId);
+					$entry['fk_warehouse'] = $warehouseId;
 			}
 
 			if ($batch !== '') {
@@ -2262,7 +2386,7 @@ class KreaProductsApi extends DolibarrApi
 				if ($error === '') {
 					$error = $this->db->lasterror();
 				}
-					throw new RestException(500, 'Error disabling stock change for non-stock MO line: ' . $error);
+				$this->failInternalRequest('Unable to update manufacturing-order stock configuration', $error, 500);
 				}
 		}
 	}
@@ -2322,7 +2446,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error checking associated subproducts for batch compatibility: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to validate associated subproducts', $this->db->lasterror());
 		}
 
 		$found = array();
@@ -2446,8 +2570,6 @@ class KreaProductsApi extends DolibarrApi
 	{
 		global $conf;
 
-		$this->ensureProductionTraceTables();
-
 		$entityId = (int) $conf->entity;
 		$userId = (int) DolibarrApiAccess::$user->id;
 		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
@@ -2547,122 +2669,85 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
-	 * Ensure trace tables exist.
+	 * Serialize one production posting and validate the MO entity scope.
+	 *
+	 * @param int $moId Manufacturing order ID
+	 * @return void
+	 */
+	protected function lockMoForProduction($moId)
+	{
+		$sql = 'SELECT m.rowid FROM '.MAIN_DB_PREFIX.'mrp_mo as m';
+		$sql .= ' WHERE m.rowid = '.((int) $moId);
+		$sql .= ' AND m.entity IN ('.getEntity('mrp_mo').')';
+		$sql .= ' FOR UPDATE';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to lock the manufacturing order', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		if (!$obj) {
+			throw new RestException(403, 'MO is outside the current entity scope');
+		}
+	}
+
+	/**
+	 * Check whether an MO already has committed execution movements.
+	 *
+	 * @param int $moId Manufacturing order ID
+	 * @return bool
+	 */
+	protected function hasMoExecutionMovements($moId)
+	{
+		$sql = 'SELECT mp.rowid FROM '.MAIN_DB_PREFIX.'mrp_production as mp';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'stock_mouvement as sm ON sm.rowid = mp.fk_stock_movement';
+		$sql .= ' WHERE mp.fk_mo = '.((int) $moId);
+		$sql .= " AND mp.role IN ('consumed','produced')";
+		$sql .= $this->db->plimit(1);
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to verify previous manufacturing-order production', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return (bool) $obj;
+	}
+
+	/**
+	 * Fully unwind nested Dolibarr transactions after the core MRP API throws.
 	 *
 	 * @return void
 	 */
-	protected function ensureProductionTraceTables()
+	protected function rollbackProductionTransactions()
 	{
-		static $initialized = false;
-		if ($initialized) {
-			return;
+		$guard = 0;
+		while ((int) $this->db->transaction_opened > 0 && $guard < 10) {
+			$this->db->rollback();
+			$guard++;
 		}
+	}
 
-		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
-		$componentTable = MAIN_DB_PREFIX . 'kreaproducts_mo_component_batch';
-
-		$sqlTrace = "CREATE TABLE IF NOT EXISTS " . $traceTable . " (";
-		$sqlTrace .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
-		$sqlTrace .= " entity integer NOT NULL,";
-		$sqlTrace .= " fk_mo integer NOT NULL,";
-		$sqlTrace .= " production_qty double(24,8) NOT NULL DEFAULT 0,";
-		$sqlTrace .= " inventorycode varchar(128) NOT NULL,";
-		$sqlTrace .= " fk_user_creat integer NOT NULL,";
-		$sqlTrace .= " date_creation datetime NOT NULL,";
-		$sqlTrace .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
-		$sqlTrace .= " UNIQUE KEY uk_kreaproducts_mo_batch (entity, fk_mo, inventorycode),";
-		$sqlTrace .= " KEY idx_kreaproducts_mo_batch_mo (entity, fk_mo)";
-		$sqlTrace .= " ) ENGINE=innodb";
-
-		if (!$this->db->query($sqlTrace)) {
-			throw new Exception('Error creating table ' . $traceTable . ': ' . $this->db->lasterror());
-		}
-
-		// Keep inventorycode wide enough for legacy YYYYMMDDHH + fk_mo values.
-		if (!$this->db->query("ALTER TABLE " . $traceTable . " MODIFY COLUMN inventorycode varchar(128) NOT NULL")) {
-			throw new Exception('Error widening inventorycode column on ' . $traceTable . ': ' . $this->db->lasterror());
-		}
-
-		$sqlComponent = "CREATE TABLE IF NOT EXISTS " . $componentTable . " (";
-		$sqlComponent .= " rowid integer AUTO_INCREMENT PRIMARY KEY,";
-		$sqlComponent .= " entity integer NOT NULL,";
-		$sqlComponent .= " fk_trace integer NOT NULL,";
-		$sqlComponent .= " fk_bomline integer NOT NULL DEFAULT 0,";
-		$sqlComponent .= " fk_mo_line integer NOT NULL DEFAULT 0,";
-		$sqlComponent .= " position integer NOT NULL DEFAULT 0,";
-		$sqlComponent .= " fk_component_product integer NOT NULL DEFAULT 0,";
-		$sqlComponent .= " component_qty double(24,8) NOT NULL DEFAULT 0,";
-		$sqlComponent .= " component_batch varchar(128) NOT NULL DEFAULT '',";
-		$sqlComponent .= " fk_user_creat integer NOT NULL,";
-		$sqlComponent .= " date_creation datetime NOT NULL,";
-		$sqlComponent .= " tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,";
-		$sqlComponent .= " UNIQUE KEY uk_kreaproducts_mo_component (entity, fk_trace, fk_mo_line),";
-		$sqlComponent .= " KEY idx_kreaproducts_mo_component_bomline (entity, fk_bomline),";
-		$sqlComponent .= " KEY idx_kreaproducts_mo_component_product (entity, fk_component_product)";
-		$sqlComponent .= " ) ENGINE=innodb";
-
-		if (!$this->db->query($sqlComponent)) {
-			throw new Exception('Error creating table ' . $componentTable . ': ' . $this->db->lasterror());
-		}
-
-		// Data-minimization migration for early header trace schema versions.
-		// Keep only MO reference + transactional identifiers.
-		if (
-			$this->tableColumnExists($traceTable, 'fk_bom')
-			|| $this->tableColumnExists($traceTable, 'fk_product')
-			|| $this->tableColumnExists($traceTable, 'produced_batch')
-			|| $this->tableColumnExists($traceTable, 'inventorylabel')
-		) {
-			$this->db->query("ALTER TABLE " . $traceTable . " DROP INDEX IF EXISTS idx_kreaproducts_mo_batch_bom");
-		}
-		if ($this->tableColumnExists($traceTable, 'fk_bom')) {
-			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN fk_bom")) {
-				throw new Exception('Error dropping legacy column fk_bom from ' . $traceTable . ': ' . $this->db->lasterror());
+	/**
+	 * Refuse production when activation migrations were not installed.
+	 *
+	 * Production requests must never perform DDL because MySQL/MariaDB DDL may
+	 * implicitly commit an otherwise atomic stock transaction.
+	 *
+	 * @return void
+	 */
+	protected function assertProductionTraceSchemaReady()
+	{
+		$requiredColumns = array(
+			MAIN_DB_PREFIX.'kreaproducts_mo_batch' => array('rowid', 'entity', 'fk_mo', 'production_qty', 'inventorycode', 'fk_user_creat', 'date_creation'),
+			MAIN_DB_PREFIX.'kreaproducts_mo_component_batch' => array('rowid', 'entity', 'fk_trace', 'fk_bomline', 'fk_mo_line', 'position', 'fk_component_product', 'component_qty', 'component_batch', 'fk_user_creat', 'date_creation'),
+		);
+		foreach ($requiredColumns as $tableName => $columns) {
+			foreach ($columns as $columnName) {
+				if (!$this->tableColumnExists($tableName, $columnName)) {
+					throw new RestException(503, 'KreaProducts production trace schema is not installed. Reactivate the module before posting production.');
+				}
 			}
 		}
-		if ($this->tableColumnExists($traceTable, 'fk_product')) {
-			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN fk_product")) {
-				throw new Exception('Error dropping legacy column fk_product from ' . $traceTable . ': ' . $this->db->lasterror());
-			}
-		}
-		if ($this->tableColumnExists($traceTable, 'produced_batch')) {
-			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN produced_batch")) {
-				throw new Exception('Error dropping legacy column produced_batch from ' . $traceTable . ': ' . $this->db->lasterror());
-			}
-		}
-		if ($this->tableColumnExists($traceTable, 'inventorylabel')) {
-			if (!$this->db->query("ALTER TABLE " . $traceTable . " DROP COLUMN inventorylabel")) {
-				throw new Exception('Error dropping legacy column inventorylabel from ' . $traceTable . ': ' . $this->db->lasterror());
-			}
-		}
-
-		// Data-minimization migration for early trace schema versions.
-		// Keep only IDs/references that can be joined from core tables.
-		if ($this->tableColumnExists($componentTable, 'fk_mo') || $this->tableColumnExists($componentTable, 'fk_bom') || $this->tableColumnExists($componentTable, 'component_ref') || $this->tableColumnExists($componentTable, 'component_label')) {
-			$this->db->query("ALTER TABLE " . $componentTable . " DROP INDEX IF EXISTS idx_kreaproducts_mo_component_mo");
-		}
-		if ($this->tableColumnExists($componentTable, 'fk_mo')) {
-			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN fk_mo")) {
-				throw new Exception('Error dropping legacy column fk_mo from ' . $componentTable . ': ' . $this->db->lasterror());
-			}
-		}
-		if ($this->tableColumnExists($componentTable, 'fk_bom')) {
-			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN fk_bom")) {
-				throw new Exception('Error dropping legacy column fk_bom from ' . $componentTable . ': ' . $this->db->lasterror());
-			}
-		}
-		if ($this->tableColumnExists($componentTable, 'component_ref')) {
-			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN component_ref")) {
-				throw new Exception('Error dropping legacy column component_ref from ' . $componentTable . ': ' . $this->db->lasterror());
-			}
-		}
-		if ($this->tableColumnExists($componentTable, 'component_label')) {
-			if (!$this->db->query("ALTER TABLE " . $componentTable . " DROP COLUMN component_label")) {
-				throw new Exception('Error dropping legacy column component_label from ' . $componentTable . ': ' . $this->db->lasterror());
-			}
-		}
-
-		$initialized = true;
 	}
 
 	/**
@@ -2789,20 +2874,27 @@ class KreaProductsApi extends DolibarrApi
 	{
 		$explicit = (int) $labelsCount;
 		if ($explicit > 0) {
-			return $explicit;
+			$count = $explicit;
+		} else {
+			$qty = (float) price2num($productionQty, 'MS');
+			if ($qty <= 0) {
+				$qty = 1.0;
+			}
+
+			$perLabel = (float) price2num($unitsPerLabel, 'MS');
+			if ($perLabel <= 0) {
+				$perLabel = 1.0;
+			}
+
+			$count = max(1, (int) ceil($qty / $perLabel));
 		}
 
-		$qty = (float) price2num($productionQty, 'MS');
-		if ($qty <= 0) {
-			$qty = 1.0;
+		$maximum = KreaProductsLabelService::getMaximumLabelCount();
+		if ($count > $maximum) {
+			throw new RestException(422, 'Requested label count exceeds the configured maximum of ' . $maximum);
 		}
 
-		$perLabel = (float) price2num($unitsPerLabel, 'MS');
-		if ($perLabel <= 0) {
-			$perLabel = 1.0;
-		}
-
-		return max(1, (int) ceil($qty / $perLabel));
+		return $count;
 	}
 
 	/**
@@ -2826,7 +2918,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error while validating category/product link: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to validate the category/product link', $this->db->lasterror());
 		}
 		$exists = ($this->db->fetch_object($resql) ? true : false);
 		$this->db->free($resql);
@@ -2951,7 +3043,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading category tree: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load the category tree', $this->db->lasterror());
 		}
 
 		$list = array();
@@ -2997,7 +3089,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading category products: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load category products', $this->db->lasterror());
 		}
 
 		$productsByCategory = array();
@@ -3076,7 +3168,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading BOM recipe lines: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load BOM recipe lines', $this->db->lasterror());
 		}
 
 		$lines = array();
@@ -3179,7 +3271,7 @@ class KreaProductsApi extends DolibarrApi
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			throw new RestException(503, 'Error when loading association recipe lines: ' . $this->db->lasterror());
+			$this->failInternalRequest('Unable to load association recipe lines', $this->db->lasterror());
 		}
 
 		$lines = array();

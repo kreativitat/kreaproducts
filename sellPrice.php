@@ -90,7 +90,8 @@ $sellPriceMarkupRaw = null;
 $sellPriceAutoUpdateValue = '-';
 $sellPriceMarkupValue = '-';
 $hasSellPriceSyncExtrafields = false;
-$canEditSellPriceSyncFields = !empty($object->id) && (!empty($user->rights->produit->creer) || !empty($user->rights->service->creer));
+$usercancreate = (($object->type == Product::TYPE_PRODUCT && $user->hasRight('produit', 'creer')) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
+$canEditSellPriceSyncFields = !empty($object->id) && $usercancreate;
 
 if (!empty($object->id)) {
 	$tableName = MAIN_DB_PREFIX . 'product_extrafields';
@@ -155,6 +156,11 @@ $parameters = array('id' => $id, 'ref' => $ref);
 $reshook = $hookmanager->executeHooks('doActions', $parameters, $object, $action); // Note that $action and $object may have been modified by some hooks
 if ($reshook < 0) {
 	setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
+}
+
+$priceWriteActions = array('forceSync', 'activate_price_by_qty', 'disable_price_by_qty', 'update_price_by_qty', 'delete_price_by_qty', 'delete_all_price_by_qty');
+if (in_array($action, $priceWriteActions, true) && !$usercancreate) {
+	accessforbidden();
 }
 
 if (empty($reshook)) {
@@ -496,7 +502,7 @@ if (empty($reshook)) {
 
 		if ($updateResult < 0) {
 			$error++;
-			setEventMessages("Error updating variable prices: " . $zsProductSync->error, $zsProductSync->errors, 'errors');
+			setEventMessages($langs->trans('KREAPRODUCTS_ERROR_UPDATING_VARIABLE_PRICES', $zsProductSync->error), $zsProductSync->errors, 'errors');
 		}
 
 		if (isModEnabled('dynamicprices')) {
@@ -550,7 +556,7 @@ if (empty($reshook)) {
 
 						if ($ret < 0) {
 							$error++;
-							setEventMessages("Error setting variable price: " . $object->error, $object->errors, 'errors');
+							setEventMessages($langs->trans('KREAPRODUCTS_ERROR_SETTING_VARIABLE_PRICE', $object->error), $object->errors, 'errors');
 						}
 
 						// Force database row to -1 even if updatePrice refused negatives
@@ -781,7 +787,7 @@ if (empty($reshook)) {
 		}
 	}
 
-	if ($action == 'forceSync') {
+	if ($action == 'forceSync' && $usercancreate) {
 		dol_syslog("forceSync action triggered");
 
 		// Instantiate the synchronization class
@@ -848,7 +854,7 @@ if (empty($reshook)) {
 	}
 
 	// Set Price by quantity
-	if ($action == 'activate_price_by_qty') {
+	if ($action == 'activate_price_by_qty' && $usercancreate) {
 		// Activating product price by quantity add a new price line with price_by_qty set to 1
 		$level = GETPOST('level', 'int');
 		$ret = $object->updatePrice(0, $object->price_base_type, $user, $object->tva_tx, 0, $level, $object->tva_npr, 1);
@@ -858,7 +864,7 @@ if (empty($reshook)) {
 		}
 	}
 	// Unset Price by quantity
-	if ($action == 'disable_price_by_qty') {
+	if ($action == 'disable_price_by_qty' && $usercancreate) {
 		// Disabling product price by quantity add a new price line with price_by_qty set to 0
 		$level = GETPOST('level', 'int');
 		$ret = $object->updatePrice(0, $object->price_base_type, $user, $object->tva_tx, 0, $level, $object->tva_npr, 0);
@@ -873,7 +879,7 @@ if (empty($reshook)) {
 	}
 
 	// Add or update price by quantity
-	if ($action == 'update_price_by_qty') {
+	if ($action == 'update_price_by_qty' && $usercancreate) {
 		// Récupération des variables
 		$rowid = GETPOST('rowid', 'int');
 		$priceid = GETPOST('priceid', 'int');
@@ -930,7 +936,7 @@ if (empty($reshook)) {
 		}
 	}
 
-	if ($action == 'delete_price_by_qty') {
+	if ($action == 'delete_price_by_qty' && $usercancreate) {
 		$rowid = GETPOST('rowid', 'int');
 		if (!empty($rowid)) {
 			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "product_price_by_qty";
@@ -942,9 +948,9 @@ if (empty($reshook)) {
 		}
 	}
 
-	if ($action == 'delete_all_price_by_qty') {
+	if ($action == 'delete_all_price_by_qty' && $usercancreate) {
 		$priceid = GETPOST('priceid', 'int');
-		if (!empty($rowid)) {
+		if (!empty($priceid)) {
 			$sql = "DELETE FROM " . MAIN_DB_PREFIX . "product_price_by_qty";
 			$sql .= " WHERE fk_product_price = " . ((int) $priceid);
 
@@ -1208,7 +1214,8 @@ if (!empty($object->id) && $hasSellPriceSyncExtrafields) {
 	$sellPriceAutoUpdateValue = ($sellPriceAutoUpdateRaw ? $langs->trans("Yes") : $langs->trans("No"));
 	$sellPriceMarkupValue = price((float) $sellPriceMarkupRaw, 0, $langs, 0, 2, 2) . ' %';
 }
-$canEditSellPriceSyncFields = !empty($object->id) && (!empty($user->rights->produit->creer) || !empty($user->rights->service->creer));
+$usercancreate = (($object->type == Product::TYPE_PRODUCT && $user->hasRight('produit', 'creer')) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
+$canEditSellPriceSyncFields = !empty($object->id) && $usercancreate;
 
 $sellPriceSyncCompactRowHtml = '';
 if (!empty($object->id)) {
@@ -1652,9 +1659,9 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 	// Price by quantity
 	if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {    // TODO Fix the form inside tr instead of td
 		print '<tr><td>' . $langs->trans("PriceByQuantity");
-		if ($object->prices_by_qty[0] == 0) {
+		if ($object->prices_by_qty[0] == 0 && $usercancreate) {
 			print '&nbsp; <a href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=activate_price_by_qty&level=1&token=' . newToken() . '">(' . $langs->trans("Activate") . ')';
-		} else {
+		} elseif ($object->prices_by_qty[0] != 0 && $usercancreate) {
 			print '&nbsp; <a href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=disable_price_by_qty&level=1&token=' . newToken() . '">(' . $langs->trans("DisablePriceByQty") . ')';
 		}
 		print '</td><td>';
@@ -1670,7 +1677,7 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 			print '<td class="right">' . $langs->trans("Discount") . '</td>';
 			print '<td>&nbsp;</td>';
 			print '</tr>';
-			if ($action != 'edit_price_by_qty') {
+			if ($action != 'edit_price_by_qty' && $usercancreate) {
 				print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">'; // FIXME a form into a table is not allowed
 				print '<input type="hidden" name="token" value="' . newToken() . '">';
 				print '<input type="hidden" name="action" value="update_price_by_qty">';
@@ -1691,7 +1698,7 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 				print '</form>';
 			}
 			foreach ($object->prices_by_qty_list[0] as $ii => $prices) {
-				if ($action == 'edit_price_by_qty' && $rowid == $prices['rowid'] && ($user->rights->produit->creer || $user->rights->service->creer)) {
+				if ($action == 'edit_price_by_qty' && $rowid == $prices['rowid'] && $usercancreate) {
 					print '<form action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" method="POST">';
 					print '<input type="hidden" name="token" value="' . newToken() . '">';
 					print '<input type="hidden" name="action" value="update_price_by_qty">';
@@ -1720,7 +1727,7 @@ if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_
 					print '<td class="right">' . price($prices['unitprice']) . '</td>';
 					print '<td class="right">' . price($prices['remise_percent']) . ' %</td>';
 					print '<td class="center">';
-					if (($user->rights->produit->creer || $user->rights->service->creer)) {
+					if ($usercancreate) {
 						print '<a class="editfielda marginleftonly marginrightonly" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=edit_price_by_qty&token=' . newToken() . '&rowid=' . $prices["rowid"] . '">';
 						print img_edit() . '</a>';
 						print '<a class="marginleftonly marginrightonly" href="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '&action=delete_price_by_qty&token=' . newToken() . '&rowid=' . $prices["rowid"] . '">';
@@ -1782,7 +1789,7 @@ if (
 
 			if (!empty($conf->global->PRODUIT_MULTIPRICES) || !empty($conf->global->PRODUIT_CUSTOMER_PRICES_BY_QTY_MULTIPRICES)) {
 				if (isModEnabled("degema")) {
-					if ($user->rights->produit->creer || $user->rights->service->creer) {
+					if ($usercancreate) {
 						print '<div class="inline-block divButAction"><a class="butAction" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=forceSync&token=' . newToken() . '">' . $langs->trans("ForceSynchronization") . '</a></div>';
 					} else {
 						print '<div class="inline-block divButAction"><span class="butActionRefused classfortooltip" title="' . dol_escape_htmltag($langs->trans("NotEnoughPermissions")) . '">' . $langs->trans("ForceSynchronization") . '</span></div>';
@@ -3173,26 +3180,6 @@ if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES)) {
 		} else {
 			print $langs->trans('None');
 		}
-	} elseif ($action == 'forceSync') {
-		dol_syslog("forceSync action triggered");
-
-		// Instantiate the synchronization class
-		$conf->global->bypass_product_modify_trigger = 1;
-		dol_syslog("bypass_product_modify_trigger: " . $conf->global->bypass_product_modify_trigger);
-
-		require_once DOL_DOCUMENT_ROOT . '/custom/dolizsynch/class/zsprodsynch.class.php';
-		$zsProductSync = new ZSProductSynch($db);
-
-		// Get external product details
-		$externalProductDetails = $zsProductSync->getZoneSoftProductById($object->ref);
-
-		// Log the response for debugging
-		$responseJson = json_encode($externalProductDetails, JSON_PRETTY_PRINT);
-		dol_syslog("ZSProductSync::updateDolibarrProductFromZoneSoft: log curl: " . $responseJson);
-
-		$zsProductSync->insertProductToLocalTable($externalProductDetails);
-		$zsProductSync->updateDolibarrProductFromZoneSoft($externalProductDetails->product);
-		unset($conf->global->bypass_product_modify_trigger);
 	} elseif ($action != 'showlog_default_price' && $action != 'edit_price') {
 		// List of all prices by customers
 		print '<!-- list of all prices per customer -->' . "\n";

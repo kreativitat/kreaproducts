@@ -127,9 +127,6 @@ if ($object->id > 0) {
 	if ($object->type == $object::TYPE_SERVICE) {
 		restrictedArea($user, 'service', $object->id, 'product&product', '', '');
 	}
-	if (empty($object->status_buy)) {
-		accessforbidden();
-	}
 } else {
 	restrictedArea($user, 'produit|service', $fieldvalue, 'product&product', '', '', $fieldtype);
 }
@@ -149,119 +146,53 @@ if ($reshook < 0) {
 	setEventMessages($hookmanager->error, $hookmanager->errors, 'errors');
 }
 
-/**
- * Propagate cost-price updates down a dismantle BOM before running dismantle
- *
- * @param int  $productId
- * @param DoliDB $db
- * @param User $user
- */
-function kreaUpdateDismantleBomChildren($productId, $db, $user)
-{
-	dol_syslog(__FUNCTION__ . " start for productId={$productId}", LOG_DEBUG);
+$createActions = array('setcost_price', 'setpmp', 'confirm_remove_pf', 'save_price', 'updateProductAttributes');
+if (in_array($action, $createActions, true) && !$usercancreate) {
+	accessforbidden();
+}
 
-	$dismantle = new ProductDismantleController($db);
-
-	// Only run for products flagged for dismantle with a dismantle BOM
-	if (!$dismantle->productInDismantleCategory($productId)) {
-		return;
-	}
-
-	$bomId = $dismantle->findBom($productId);
-	if (!$bomId) {
-		return;
-	}
-
-	$sql = "SELECT DISTINCT COALESCE(bl.fk_product, cb.fk_product) AS child
-                   , bl.qty as line_qty
-            FROM " . MAIN_DB_PREFIX . "bom_bom b
-            JOIN " . MAIN_DB_PREFIX . "bom_bomline bl ON bl.fk_bom = b.rowid
-            LEFT JOIN " . MAIN_DB_PREFIX . "bom_bom cb ON cb.rowid = bl.fk_bom_child
-            WHERE b.rowid = " . ((int) $bomId) . "
-            AND b.entity IN (0," . getEntity('bom') . ")
-            AND (cb.rowid IS NULL OR cb.entity IN (0," . getEntity('bom') . "))";
-
-	$res = $db->query($sql);
-	if (!$res) {
-		dol_syslog(__FUNCTION__ . " error loading dismantle children: " . $db->lasterror(), LOG_ERR);
-		return;
-	}
-
-	$children = [];
-	while ($obj = $db->fetch_object($res)) {
-		if (!empty($obj->child)) {
-			$children[(int)$obj->child] = (float) $obj->line_qty;
-	}
-	}
-	$db->free($res);
-
-	// Fetch parent cost price once
-	$parentProduct = new Product($db);
-	if ($parentProduct->fetch($productId) > 0) {
-		$parentCost = (float) $parentProduct->cost_price;
-	} else {
-		$parentCost = 0;
-	}
-
-	foreach ($children as $childId => $lineQty) {
-		// Update child cost directly based on dismantle logic (avoid division by zero)
-		$qty = ($lineQty > 0 ? $lineQty : 1);
-		if ($parentCost > 0) {
-			$childProd = new Product($db);
-			if ($childProd->fetch($childId) > 0) {
-				$newCost = $parentCost / $qty;
-				$childProd->cost_price = $newCost;
-				$childProd->buyprice = $newCost;
-				$childProd->update($childProd->id, $user);
-			}
-		}
-	}
-
-	if (!empty($children)) {
-		// Also propagate through nested hierarchies for all children in one cascade.
-		ProductUpdater::batchUpdateCostPrices(array_keys($children), true);
-	}
-	}
-
-
-if ($action == 'setcost_price') {
+if ($action == 'setcost_price' && $usercancreate) {
 	if ($id) {
-		$result = $object->fetch($id);
-		$object->cost_price = price2num($cost_price);
-		$result = $object->update($object->id, $user);
-		if ($result > 0) {
-			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
-			$action = '';
-		} else {
-			$error++;
-			setEventMessages($object->error, $object->errors, 'errors');
-		}
-		$debugEnabled = !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
-		if ($debugEnabled) {
-			dol_syslog("KreaProducts: updateProductAttributes for product ID: " . $object->id, LOG_DEBUG);
-		}
-
-		if (!class_exists('ProductHierarchy')) {
-			dol_syslog("ERROR: ProductHierarchy class not found!", LOG_ERR);
-		} else {
-			ProductUpdater::setDebug($debugEnabled);
-			try {
-				$result = ProductHierarchy::updateProductAttributes($object->id, $user);
-				if ($debugEnabled) {
-					dol_syslog("KreaProducts: updateProductAttributes returned: " . $result, LOG_DEBUG);
-				}
-				// Also refresh dismantle BOM children cost trees
-				kreaUpdateDismantleBomChildren($object->id, $db, $user);
-			} catch (Exception $e) {
-				dol_syslog("ERROR: ProductHierarchy::updateProductAttributes failed: " . $e->getMessage(), LOG_ERR);
-			} catch (Error $e) {
-				dol_syslog("FATAL ERROR: " . $e->getMessage(), LOG_ERR);
+		$db->begin();
+		try {
+			if ($object->fetch($id) <= 0) {
+				throw new RuntimeException('Unable to load product for cost update');
 			}
+			ProductUpdater::prepareProductCostUpdate($object);
+			$object->cost_price = price2num($cost_price);
+			if ($object->update($object->id, $user) <= 0) {
+				throw new RuntimeException('Unable to update product cost price');
+			}
+
+			$debugEnabled = !empty($conf->global->KREAPRODUCTS_DEBUG_LOG);
+			ProductUpdater::setDebug($debugEnabled);
+			if (!class_exists('ProductHierarchy')) {
+				throw new RuntimeException('ProductHierarchy class is unavailable');
+			}
+			if (ProductHierarchy::updateProductAttributes($object->id, $user) < 0) {
+				throw new RuntimeException('Manufacturing BOM cost cascade failed');
+			}
+
+			$dismantle = new ProductDismantleController($db);
+			if ($dismantle->refreshDismantleOutputCostPrices($object->id, $user) < 0) {
+				throw new RuntimeException('Dismantle output cost update failed');
+			}
+
+			if (!$db->commit()) {
+				throw new RuntimeException('Unable to commit product cost update');
+			}
+			setEventMessages($langs->trans('RecordSaved'), null, 'mesgs');
+			$action = '';
+		} catch (Throwable $exception) {
+			$db->rollback();
+			$error++;
+			dol_syslog(__FILE__.' cost update failed for product '.(int) $id.': '.$exception->getMessage(), LOG_ERR);
+			setEventMessages($langs->trans('KreapCostPriceUpdateFailed'), null, 'errors');
 		}
 	}
 }
 
-if ($action == 'setpmp') {
+if ($action == 'setpmp' && $usercancreate) {
 	if ($id) {
 		$result = $object->fetch($id);
 		$object->pmp = price2num($pmp);
@@ -278,7 +209,7 @@ if ($action == 'setpmp') {
 	}
 }
 
-if ($action == 'confirm_remove_pf') {
+if ($action == 'confirm_remove_pf' && $usercancreate) {
 	if ($rowid) {	// id of product supplier price to remove
 		$action = '';
 		$result = $object->remove_product_fournisseur_price($rowid);
@@ -292,7 +223,7 @@ if ($action == 'confirm_remove_pf') {
 	}
 }
 
-if ($action == 'save_price') {
+if ($action == 'save_price' && $usercancreate) {
 	$id_fourn = GETPOST("id_fourn");
 	if (empty($id_fourn)) {
 		$id_fourn = GETPOST("search_id_fourn");
@@ -461,17 +392,31 @@ if ($action == 'save_price') {
 	}
 }
 
-if (!empty($_POST['action']) && $_POST['action'] == 'updateProductAttributes') {
+if ($action === 'updateProductAttributes' && $usercancreate) {
 	$token = GETPOST('token', 'alpha');
-	if (empty($token) || !hash_equals(currentToken(), $token)) {
+	if (empty($token) || (!hash_equals((string) currentToken(), (string) $token) && !hash_equals((string) newToken(), (string) $token))) {
 		setEventMessages($langs->trans("ErrorBadToken"), null, 'errors');
 	} else {
-		ProductHierarchy::updateProductAttributes($object->id, $user);
-		// Also propagate down dismantle BOM children so their nested cost trees are refreshed
-		kreaUpdateDismantleBomChildren($object->id, $db, $user);
-		setEventMessages($langs->trans('KreapCostPricesUpdated'), null, 'mesgs');
-		header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
-		exit;
+		$db->begin();
+		try {
+			if (ProductHierarchy::updateProductAttributes($object->id, $user) < 0) {
+				throw new RuntimeException('Manufacturing BOM cost cascade failed');
+			}
+			$dismantle = new ProductDismantleController($db);
+			if ($dismantle->refreshDismantleOutputCostPrices($object->id, $user) < 0) {
+				throw new RuntimeException('Dismantle output cost update failed');
+			}
+			if (!$db->commit()) {
+				throw new RuntimeException('Unable to commit product cost cascade');
+			}
+			setEventMessages($langs->trans('KreapCostPricesUpdated'), null, 'mesgs');
+			header("Location: " . $_SERVER["PHP_SELF"] . "?id=" . $object->id);
+			exit;
+		} catch (Throwable $exception) {
+			$db->rollback();
+			dol_syslog(__FILE__.' manual cascade failed for product '.(int) $object->id.': '.$exception->getMessage(), LOG_ERR);
+			setEventMessages($langs->trans('KreapCostPriceUpdateFailed'), null, 'errors');
+		}
 	}
 }
 
@@ -547,11 +492,13 @@ if ($id > 0 || $ref) {
 			print $form->editfieldval($text, 'cost_price', $object->cost_price, $object, $usercancreate, 'amount:6');
 			print '</td>';
 			print '<td align="right">';
-			print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block; margin-right: 5px;">';
-			print '<input type="hidden" name="token" value="' . newToken() . '">';
-			print '<input type="hidden" name="action" value="updateProductAttributes">';
-			print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
-			print '</form>';
+			if ($usercancreate) {
+				print '<form name="updateProductForm" method="post" action="' . $_SERVER["PHP_SELF"] . '?id=' . $object->id . '" style="display: inline-block; margin-right: 5px;">';
+				print '<input type="hidden" name="token" value="' . newToken() . '">';
+				print '<input type="hidden" name="action" value="updateProductAttributes">';
+				print '<input type="submit" class="button" value="' . $langs->trans("spreadCostPrice") . '">';
+				print '</form>';
+			}
 
 			// Check if product has BOMs and add BOM update button
 			if (!empty($conf->bom->enabled)) {

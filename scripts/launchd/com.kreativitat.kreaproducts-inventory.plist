@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.kreativitat.kreaproducts-inventory</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/docker</string>
+		<string>exec</string>
+		<string>lamp-php81</string>
+		<string>php</string>
+		<string>/var/www/html/custom/kreaproducts/scripts/run_inventory_auto_close.php</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartInterval</key>
+	<integer>60</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/marceloaraujo/Documents/Code/php/www/custom/kreaproducts</string>
+	<key>StandardOutPath</key>
+	<string>/Users/marceloaraujo/Documents/Code/php/logs/kreaproducts-inventory-cron.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/marceloaraujo/Documents/Code/php/logs/kreaproducts-inventory-cron-error.log</string>
+</dict>
+</plist>
+

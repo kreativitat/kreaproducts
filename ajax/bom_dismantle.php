@@ -1,12 +1,9 @@
 <?php
-/* Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation, either version 3 of the License,
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -16,12 +13,6 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
- *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
  */
 
 /**
@@ -64,7 +55,7 @@ require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 $langs->loadLangs(array('other', 'kreaproducts@kreaproducts'));
 
 $token = GETPOST('token', 'alpha');
-if (!empty($token) && !hash_equals(currentToken(), $token) && !hash_equals(newToken(), $token)) {
+if (empty($token) || (!hash_equals(currentToken(), $token) && !hash_equals(newToken(), $token))) {
 	top_httphead('application/json');
 	http_response_code(403);
 	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapInvalidCsrfToken')));

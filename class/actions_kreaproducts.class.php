@@ -27,6 +27,7 @@
 
 require_once DOL_DOCUMENT_ROOT . '/core/class/commonhookactions.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
+dol_include_once('/kreaproducts/lib/kreaproducts.lib.php');
 
 /**
  * Class ActionsKreaProducts
@@ -144,7 +145,7 @@ class ActionsKreaProducts extends CommonHookActions
 			if (!$inventorySubmenusInserted && $isInventoryRoot) {
 				$submenuPosition = isset($item['position']) ? (int) $item['position'] : 0;
 				$newmenu[] = array(
-					'url' => '/product/inventory/card.php?action=create&leftmenu=stock_inventories',
+					'url' => '/custom/kreaproducts/inventory.php?leftmenu=stock_inventories',
 					'titre' => $langs->trans('NewInventory'),
 					'level' => 1,
 					'enabled' => (int) $canCreateInventory,
@@ -228,7 +229,7 @@ class ActionsKreaProducts extends CommonHookActions
 	/**
 	 * Overload the doActions function.
 	 *
-	 * - On inventory pages (card.php and inventory.php): include custom KreaProducts versions and stop core.
+	 * - On managed inventory pages: redirect to the unified KreaProducts workflow.
 	 * - On product create/update: keep existing stockable_product logic.
 	 *
 	 * @param  array<string,mixed> $parameters  Hook metadata (context, etc...)
@@ -337,7 +338,10 @@ class ActionsKreaProducts extends CommonHookActions
 			exit;
 		}
 
-		if ($object->element === 'inventory' && $action === 'confirm_validate') {
+		if ($object->element === 'inventory'
+			&& $action === 'confirm_validate'
+			&& ((string) $object->import_key === 'KPS' || preg_match('/^(?:KPS|KS)-/', (string) $object->ref) === 1)
+		) {
 			if ((int) $object->status === Inventory::STATUS_RECORDED) {
 				$langs->load('kreaproducts@kreaproducts');
 				setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_CLOSED_LOCKED'), null, 'errors');
@@ -439,6 +443,12 @@ class ActionsKreaProducts extends CommonHookActions
 				$canEditFoodFlag
 			);
 			$this->resprints .= $this->buildProductCardDecimalStepperScriptRow('kreap_updatesellpricepct', '0.01', 2, '-99.99');
+			if (in_array($action, array('create', 'edit'), true)) {
+				$submittedWeightUnit = GETPOSTISSET('weight_units') ? GETPOST('weight_units', 'alphanohtml') : null;
+				$currentWeightUnit = isset($object->weight_units) ? $object->weight_units : 0;
+				$weightUnit = kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $currentWeightUnit);
+				$this->resprints .= $this->buildProductCardKilogramSelectionScriptRow($weightUnit);
+			}
 			return 0;
 		}
 
@@ -875,6 +885,45 @@ class ActionsKreaProducts extends CommonHookActions
 	}
 
 	/**
+	 * Build a hidden hook row that selects kilograms on native product forms.
+	 *
+	 * Dolibarr's CUnits::fetchAll() maps scale 0 to null, so the native
+	 * scale-based selector renders the kilogram option with an empty value.
+	 *
+	 * @param int $weightUnitScale Desired product weight-unit scale
+	 * @return string
+	 */
+	private function buildProductCardKilogramSelectionScriptRow($weightUnitScale)
+	{
+		if ((int) $weightUnitScale !== 0) {
+			return '';
+		}
+
+		$nonce = function_exists('getNonce') ? getNonce() : '';
+		$nonceAttr = $nonce !== '' ? ' nonce="' . dol_escape_htmltag($nonce) . '"' : '';
+		$script = '(function(){'
+			. 'function selectKilograms(){'
+			. 'var select=document.querySelector(\'select[name="weight_units"]\');'
+			. 'if(!select){return;}'
+			. 'var kilogramOption=null;'
+			. 'for(var i=0;i<select.options.length;i++){'
+			. 'var option=select.options[i];'
+			. 'var label=(option.textContent||"").replace(/\\s+/g,"").toLowerCase();'
+			. 'if(option.value==="0"||label==="kg"){kilogramOption=option;break;}'
+			. '}'
+			. 'if(!kilogramOption){return;}'
+			. 'select.value=kilogramOption.value;'
+			. 'kilogramOption.selected=true;'
+			. 'if(window.jQuery&&jQuery(select).data("select2")){jQuery(select).trigger("change.select2");}'
+			. '}'
+			. 'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",selectKilograms);}else{selectKilograms();}'
+			. 'setTimeout(selectKilograms,250);'
+			. '})();';
+
+		return '<tr class="kreaproducts-weight-unit-helper" style="display:none;"><td colspan="2"><script' . $nonceAttr . '>' . $script . '</script></td></tr>';
+	}
+
+	/**
 	 * Build a hidden hook row that forces a decimal stepper input on product card extrafields.
 	 *
 	 * @param string $fieldKey Extrafield key without "options_" prefix
@@ -1088,7 +1137,7 @@ class ActionsKreaProducts extends CommonHookActions
 	 */
 	private function redirectToCustomPages($parameters, &$object, &$action)
 	{
-		global $conf;
+		global $db, $conf;
 
 		$currentcontext = ! empty($parameters['currentcontext']) ? $parameters['currentcontext'] : '';
 		$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
@@ -1108,21 +1157,51 @@ class ActionsKreaProducts extends CommonHookActions
 
 		$isInventoryCard = (bool) preg_match('#/product/inventory/card\.php$#', $scriptPath);
 		$isInventorySheet = (bool) preg_match('#/product/inventory/inventory\.php$#', $scriptPath);
-		if ((strpos($currentcontext, 'inventorycard') !== false || $isInventoryCard || $isInventorySheet) && ! $isKreaCustomPage) {
-			$isPost = (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST');
-			if (! $isPost && ! defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
-				define('KREA_INVENTORY_PAGE_OVERRIDE', true);
-				$scriptName = basename($scriptPath);
-				$q = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? ('?' . $_SERVER['QUERY_STRING']) : '';
-				$target = '/kreaproducts/inventory.php';
-				if ($scriptName === 'card.php') {
-					$target = '/kreaproducts/inventory_card.php';
+		if ($isInventorySheet && !$isKreaCustomPage) {
+			$inventoryId = GETPOSTINT('id');
+			$isManagedInventory = false;
+			if ($inventoryId > 0) {
+				$sql = 'SELECT ref, import_key FROM '.MAIN_DB_PREFIX.'inventory';
+				$sql .= ' WHERE rowid='.$inventoryId.' AND entity='.((int) $conf->entity);
+				$resql = $db->query($sql);
+				$inventoryRow = $resql ? $db->fetch_object($resql) : false;
+				if ($resql) {
+					$db->free($resql);
 				}
-				header('Location: ' . dol_buildpath($target, 1) . $q);
+				$isManagedInventory = $inventoryRow
+					&& ((string) $inventoryRow->import_key === 'KPS' || preg_match('/^(?:KPS|KS)-/', (string) $inventoryRow->ref) === 1);
+			}
+			if ($isManagedInventory && !defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
+				define('KREA_INVENTORY_PAGE_OVERRIDE', true);
+				header('Location: '.dol_buildpath('/custom/kreaproducts/inventory.php', 1).'?id='.$inventoryId);
 				exit;
 			}
 
-			return true;
+			return false;
+		}
+		if ($isInventoryCard && !$isKreaCustomPage) {
+			$inventoryId = GETPOSTINT('id');
+			if ($inventoryId > 0) {
+				$sql = 'SELECT ref, import_key FROM '.MAIN_DB_PREFIX.'inventory';
+				$sql .= ' WHERE rowid='.$inventoryId.' AND entity='.((int) $conf->entity);
+				$resql = $db->query($sql);
+				$inventoryRow = $resql ? $db->fetch_object($resql) : false;
+				if ($resql) {
+					$db->free($resql);
+				}
+				if (!$inventoryRow || ((string) $inventoryRow->import_key !== 'KPS' && preg_match('/^(?:KPS|KS)-/', (string) $inventoryRow->ref) !== 1)) {
+					return false;
+				}
+			}
+			if (!defined('KREA_INVENTORY_PAGE_OVERRIDE')) {
+				define('KREA_INVENTORY_PAGE_OVERRIDE', true);
+				$target = dol_buildpath('/custom/kreaproducts/inventory.php', 1);
+				if ($inventoryId > 0) {
+					$target .= '?id='.$inventoryId;
+				}
+				header('Location: '.$target);
+				exit;
+			}
 		}
 
 		$isInventoryList = (bool) preg_match('#/product/inventory/list\.php$#', $scriptPath);
@@ -1195,7 +1274,7 @@ class ActionsKreaProducts extends CommonHookActions
 		$this->db->free($resql);
 
 		$out = '<div style="text-align: right; padding-right: 10px;">';
-		$out .= '<span class="bold">Stock total:</span> ';
+		$out .= '<span class="bold">' . $langs->trans('KREAPRODUCTS_TOTAL_STOCK') . ':</span> ';
 		$out .= '<span class="nowraponall">' . price($totalStock, 0, $langs, 0, -1, -1) . '</span>';
 		$out .= '</div>';
 

@@ -547,7 +547,7 @@ function kreaProductsEncodeLabelStoragePayload($storagePayload)
 }
 
 /**
- * Ensure label payload storage column supports JSON-length content.
+ * Verify that module activation installed label payload storage capacity.
  *
  * @param DoliDB    $db          Database handler
  * @param Translate $outputlangs Output language
@@ -568,17 +568,9 @@ function kreaProductsEnsureLabelStorageColumnCapacity($db, $outputlangs)
 		return array('error' => $lastError);
 	}
 
-	$tableName = str_replace('`', '', MAIN_DB_PREFIX . 'product_extrafields');
+	$tableName = MAIN_DB_PREFIX . 'product_extrafields';
 	$columnName = 'kreap_default_label_layout';
-
-	$sqlCheck = "SELECT DATA_TYPE";
-	$sqlCheck .= " FROM information_schema.COLUMNS";
-	$sqlCheck .= " WHERE TABLE_SCHEMA = DATABASE()";
-	$sqlCheck .= " AND TABLE_NAME = '" . $db->escape($tableName) . "'";
-	$sqlCheck .= " AND COLUMN_NAME = '" . $db->escape($columnName) . "'";
-	$sqlCheck .= " LIMIT 1";
-
-	$resql = $db->query($sqlCheck);
+	$resql = $db->DDLDescTable($tableName, $columnName);
 	if (!$resql) {
 		$isChecked = true;
 		$lastError = (!empty($db->lasterror()) ? $db->lasterror() : 'Failed to inspect label storage column');
@@ -586,39 +578,28 @@ function kreaProductsEnsureLabelStorageColumnCapacity($db, $outputlangs)
 		return array('error' => $lastError);
 	}
 
-	if ($db->num_rows($resql) <= 0) {
-		$db->free($resql);
+	$obj = $db->fetch_object($resql);
+	$db->free($resql);
+	if (!$obj) {
 		$isChecked = true;
-		$lastError = 'Missing label storage column: ' . $columnName;
+		$lastError = 'Missing label storage column. Reactivate KreaProducts before saving labels.';
 		dol_syslog(__FUNCTION__ . ' ' . $lastError, LOG_ERR);
 		return array('error' => $lastError);
 	}
 
-	$obj = $db->fetch_object($resql);
-	$db->free($resql);
-	$currentType = strtolower((!empty($obj->DATA_TYPE) ? (string) $obj->DATA_TYPE : ''));
+	$currentType = strtolower((!empty($obj->Type) ? (string) $obj->Type : ''));
 	$textTypes = array('text', 'mediumtext', 'longtext', 'json');
-	if (in_array($currentType, $textTypes, true)) {
-		$isChecked = true;
-		return array('success' => true);
+	foreach ($textTypes as $textType) {
+		if (strpos($currentType, $textType) === 0) {
+			$isChecked = true;
+			return array('success' => true);
+		}
 	}
-
-	$sqlAlter = "ALTER TABLE `" . $tableName . "` MODIFY `" . $columnName . "` LONGTEXT NULL";
-	if (!$db->query($sqlAlter)) {
-		$isChecked = true;
-		$lastError = (!empty($db->lasterror()) ? $db->lasterror() : 'Failed to alter label storage column');
-		dol_syslog(__FUNCTION__ . ' SQL alter failed: ' . $lastError, LOG_ERR);
-		return array('error' => $lastError);
-	}
-
-	$sqlUpdateExtrafieldDef = "UPDATE " . MAIN_DB_PREFIX . "extrafields";
-	$sqlUpdateExtrafieldDef .= " SET type = 'text', size = '65535'";
-	$sqlUpdateExtrafieldDef .= " WHERE elementtype = 'product'";
-	$sqlUpdateExtrafieldDef .= " AND name = '" . $db->escape($columnName) . "'";
-	$db->query($sqlUpdateExtrafieldDef);
 
 	$isChecked = true;
-	return array('success' => true);
+	$lastError = 'Label storage schema is outdated. Reactivate KreaProducts before saving labels.';
+	dol_syslog(__FUNCTION__ . ' ' . $lastError, LOG_ERR);
+	return array('error' => $lastError);
 }
 
 /**

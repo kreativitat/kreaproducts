@@ -199,7 +199,7 @@ class KreaProductsInventoryService
 			$sqlMoved .= " WHERE fk_product IN (" . implode(',', $productChunk) . ")";
 			$sqlMoved .= " AND fk_entrepot IN (" . implode(',', $warehouseIds) . ")";
 			$sqlMoved .= " AND datem > '" . $db->escape($inventoryAnchorDate) . "'";
-			$sqlMoved .= " AND origintype <> 'inventory'";
+			$sqlMoved .= " AND (origintype IS NULL OR origintype <> 'inventory')";
 			$sqlMoved .= " GROUP BY fk_product, fk_entrepot, COALESCE(batch, '')";
 
 			$resMoved = $db->query($sqlMoved);

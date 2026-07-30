@@ -1,4 +1,5 @@
 ChangeLog.md
+AGENTS.md
 
 # OS metadata
 .DS_Store
@@ -10,3 +11,5 @@ tmp/
 
 # Local build artifacts
 bin/
+stockapp/node_modules/
+stockapp/*.tsbuildinfo

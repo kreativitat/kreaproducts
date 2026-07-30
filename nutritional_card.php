@@ -1,6 +1,15 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 // Load Dolibarr environment (2 tries: module in htdocs/ OR in htdocs/custom/)
 $res = 0;
@@ -27,6 +36,7 @@ $langs->loadLangs(array('other', 'products', 'kreaproducts@kreaproducts'));
 
 // Retrieve GET parameters
 $id = GETPOST('id', 'int');
+$ref = GETPOST('ref', 'alphanohtml');
 $action = GETPOST('action');
 $sortfield = GETPOST('sortfield', 'aZ09comma');
 $sortorder = GETPOST('sortorder', 'aZ09comma');
@@ -35,6 +45,14 @@ $sortorder = GETPOST('sortorder', 'aZ09comma');
 $object = new Product($db);
 if ($id > 0 || !empty($ref)) {
 	$result = $object->fetch($id, $ref);
+	if ($result <= 0) {
+		accessforbidden($langs->trans('ErrorRecordNotFound'));
+	}
+	if ($object->type == Product::TYPE_PRODUCT) {
+		restrictedArea($user, 'produit', $object->id, 'product&product', '', '');
+	} else {
+		restrictedArea($user, 'service', $object->id, 'product&product', '', '');
+	}
 
 	if (isModEnabled("product")) {
 		$upload_dir = $conf->product->multidir_output[$object->entity] . '/' . get_exdir(0, 0, 0, 1, $object, 'product');

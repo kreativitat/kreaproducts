@@ -1,11 +1,6 @@
 <?php
-/* Copyright (C) 2024-2026	Kreativitat	<mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
-Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
- *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -19,11 +14,8 @@ Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativitat at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 /**
@@ -85,4 +77,46 @@ function kreaproductsAdminPrepareHead()
 	complete_head_from_modules($conf, $langs, null, $head, $h, 'kreaproducts@kreaproducts', 'remove');
 
 	return $head;
+}
+
+/**
+ * Normalize a Dolibarr product weight-unit scale.
+ *
+ * Dolibarr stores weight units as powers around kilograms, so scale 0 is a
+ * valid kilogram value. The native measuring-unit selector currently submits
+ * an empty value for kilograms because CUnits::fetchAll() maps scale 0 to null.
+ *
+ * @param mixed $weightUnit    Submitted or stored unit scale
+ * @param mixed $fallbackScale Unit scale used when the value is missing or invalid
+ * @return int
+ */
+function kreaproducts_normalize_weight_unit_scale($weightUnit, $fallbackScale = 0)
+{
+	$fallbackScale = is_numeric($fallbackScale) ? (int) $fallbackScale : 0;
+	if (!is_scalar($weightUnit)) {
+		return $fallbackScale;
+	}
+
+	$weightUnit = trim((string) $weightUnit);
+	if ($weightUnit === '') {
+		return 0;
+	}
+	if (!preg_match('/^-?\d+$/D', $weightUnit)) {
+		return $fallbackScale;
+	}
+
+	return (int) $weightUnit;
+}
+
+/**
+ * Resolve the value expected by Dolibarr's scale-based weight selector.
+ *
+ * @param mixed $weightUnit Stored or submitted unit scale
+ * @return string
+ */
+function kreaproducts_weight_unit_select_value($weightUnit)
+{
+	$weightUnit = kreaproducts_normalize_weight_unit_scale($weightUnit);
+
+	return $weightUnit === 0 ? '' : (string) $weightUnit;
 }

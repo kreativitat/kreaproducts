@@ -1,6 +1,6 @@
 <?php
 /*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+ * Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  */
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';

@@ -2,9 +2,6 @@
 /* Copyright (C) 2004-2017 Laurent Destailleur  <eldy@users.sourceforge.net>
  * Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com>
  *
- * This program is dual-licensed under the GNU General Public License (GPL) v3.0 and a proprietary license.
- *
- * GPL-3.0 License:
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -18,11 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
- * Proprietary License:
- * For commercial use, support, or if you prefer not to disclose your source code modifications,
- * please contact Kreativität Works at <mail@kreativitat.com> for information on purchasing a proprietary license.
- *
- * For more information, visit <https://www.kreativitat.com>.
+ * Commercial support and integration services are available from
+ * Kreativität Works <mail@kreativitat.com>.
  */
 
 /**
@@ -80,6 +74,29 @@ $hookmanager->initHooks(array('kreaproductssetup', 'globalsetup'));
 // Access control
 if (!$user->admin) {
 	accessforbidden();
+}
+
+// One-time migration of settings from the former standalone KreaStock module.
+if (!getDolGlobalInt('KREAPRODUCTS_KREASTOCK_SETTINGS_MIGRATED')) {
+	$legacySettingMap = array(
+		'KREASTOCK_DEFAULT_WAREHOUSE_ID' => 'KREAPRODUCTS_STOCK_DEFAULT_WAREHOUSE_ID',
+		'KREASTOCK_ENABLE_INVENTORY_HISTORY' => 'KREAPRODUCTS_STOCK_INVENTORY_HISTORY_ENABLED',
+		'KREASTOCK_INVENTORY_LIST_LIMIT' => 'KREAPRODUCTS_STOCK_INVENTORY_LIST_LIMIT',
+		'KREASTOCK_SEND_INVENTORY_EMAIL' => 'KREAPRODUCTS_STOCK_INVENTORY_EMAIL_ENABLED',
+		'KREASTOCK_INVENTORY_EMAIL_TO' => 'KREAPRODUCTS_STOCK_INVENTORY_EMAIL_TO',
+	);
+	foreach ($legacySettingMap as $legacyName => $newName) {
+		if (isset($conf->global->{$legacyName})) {
+			dolibarr_set_const($db, $newName, (string) $conf->global->{$legacyName}, 'chaine', 0, '', $conf->entity);
+			$conf->global->{$newName} = (string) $conf->global->{$legacyName};
+		}
+	}
+	if (empty($conf->global->KREAPRODUCTS_INVENTORY_CATEGORY_ROOT) && !empty($conf->global->KREASTOCK_INVENTORY_ROOT_CATEGORY_ID)) {
+		dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_CATEGORY_ROOT', (string) $conf->global->KREASTOCK_INVENTORY_ROOT_CATEGORY_ID, 'chaine', 0, '', $conf->entity);
+		$conf->global->KREAPRODUCTS_INVENTORY_CATEGORY_ROOT = (string) $conf->global->KREASTOCK_INVENTORY_ROOT_CATEGORY_ID;
+	}
+	dolibarr_set_const($db, 'KREAPRODUCTS_KREASTOCK_SETTINGS_MIGRATED', '1', 'yesno', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_KREASTOCK_SETTINGS_MIGRATED = '1';
 }
 
 // Parameters
@@ -380,7 +397,7 @@ if (is_array($categoryTree)) {
 // Warehouses list (for dismantle moves)
 $TWarehouses = array('' => $langs->trans('None'));
 $sql = "SELECT rowid, ref, lieu FROM " . MAIN_DB_PREFIX . "entrepot
-        WHERE entity IN (0," . ((int) $conf->entity) . ")
+        WHERE entity IN (" . getEntity('stock') . ")
         ORDER BY ref";
 $resql = $db->query($sql);
 if ($resql) {
@@ -411,15 +428,15 @@ $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP');
 $item = $formSetup->newItem('KREAPRODUCTS_PRODUCT_REF_SUFFIXES');
-$item->nameText = 'Product suffix filters';
+$item->nameText = $langs->transnoentities('KREAPRODUCTS_PRODUCT_REF_SUFFIXES');
 $item->defaultFieldValue = '';
-$item->helpText = 'Comma-separated suffix list shown as checkboxes on the product list. Matching is applied to the last characters of the product label (example: RV,CF,IL). Leave empty to hide suffix filters.';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_PRODUCT_REF_SUFFIXES_HELP');
 $item->fieldAttr = array('placeholder' => 'RV,CF,IL');
 $item = $formSetup->newItem('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED');
-$item->nameText = 'Show product margin column';
+$item->nameText = $langs->transnoentities('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED');
 $item->setAsYesNo();
 $item->defaultFieldValue = '0';
-$item->helpText = 'Show margin percentage on the product list using (selling price excl. VAT minus cost excl. VAT) divided by selling price excl. VAT.';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED_HELP');
 
 // Nutrição e alergénios
 $formSetup->newItem('KREAPRODUCTS_NUTRITION_SETTINGS_TITLE')->setAsTitle();
@@ -450,9 +467,22 @@ $item->setAsYesNo();
 $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_SERVICE_CATEGORIES_LINK_ENABLED_HELP');
 
-// Movimentos de stock
+// Labels
+$formSetup->newItem('KREAPRODUCTS_LABELS_SETTINGS_TITLE')->setAsTitle();
+$item = $formSetup->newItem('KREAPRODUCTS_LABELS_TAB_ENABLED');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LABELS_TAB_ENABLED_HELP');
+$item = $formSetup->newItem('KREAPRODUCTS_LABEL_MAX_COUNT');
+$item->setAsNumber(1, 1000, 1);
+$item->defaultFieldValue = '1000';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LABEL_MAX_COUNT_HELP');
+
+// Stock movements
 $formSetup->newItem('KREAPRODUCTS_STOCK_SETTINGS_TITLE')->setAsTitle();
-$formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA')->setAsYesNo();
+$item = $formSetup->newItem('KREAPRODUCTS_STOCK_MOVEMENT_DATA');
+$item->setAsYesNo();
+$item->defaultFieldValue = '1';
 $item = $formSetup->newItem('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE');
 $item->setAsYesNo();
 $item->defaultFieldValue = '1';
@@ -479,6 +509,38 @@ $item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT');
 $item->setAsSelect($TInventoryCategoryRoots);
 $item->defaultFieldValue = '';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_STOCK_DEFAULT_WAREHOUSE_ID');
+$item->setAsSelect($TWarehouses);
+$item->defaultFieldValue = '';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_STOCK_DEFAULT_WAREHOUSE_ID_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME');
+$item->defaultFieldValue = '06:00';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '60');
+
+$item = $formSetup->newItem('KREAPRODUCTS_BUSINESS_TIMEZONE');
+$item->defaultFieldValue = 'Europe/Lisbon';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_BUSINESS_TIMEZONE_HELP');
+$item->fieldAttr = array('placeholder' => 'Europe/Lisbon');
+
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME');
+$item->defaultFieldValue = '20:00';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '60');
+
+$item = $formSetup->newItem('KREAPRODUCTS_STOCK_INVENTORY_LIST_LIMIT');
+$item->setAsNumber(1, 200, 1);
+$item->defaultFieldValue = '30';
+
+$item = $formSetup->newItem('KREAPRODUCTS_STOCK_INVENTORY_EMAIL_ENABLED');
+$item->setAsYesNo();
+$item->defaultFieldValue = '0';
+
+$item = $formSetup->newItem('KREAPRODUCTS_STOCK_INVENTORY_EMAIL_TO');
+$item->setAsEmail();
+$item->defaultFieldValue = '';
 
 // Desmontagem
 $formSetup->newItem('KREAPRODUCTS_DISMANTLE_SETTINGS_TITLE')->setAsTitle();

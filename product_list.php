@@ -370,7 +370,7 @@ if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
 if (!empty($availableProductSuffixes)) {
 	$moreforfilter .= '<div class="divsearchfield">';
 	$moreforfilter .= img_picto($langs->transnoentitiesnoconv('Label'), 'filter', 'class="pictofixedwidth"');
-	$moreforfilter .= '<span class="opacitymedium marginrightonly">Product suffix</span>';
+	$moreforfilter .= '<span class="opacitymedium marginrightonly">' . $langs->trans('KREAPRODUCTS_PRODUCT_SUFFIX') . '</span>';
 	foreach ($availableProductSuffixes as $suffix) {
 		$inputId = 'search_product_suffix_' . preg_replace('/[^a-z0-9_]/', '_', $suffix);
 		$checked = in_array($suffix, $selectedProductSuffixes, true) ? ' checked' : '';
@@ -555,7 +555,7 @@ while ($i < min($num, $limit)) {
 				break;
 			case 'margin_without_vat':
 				$marginRateDisplay = ($marginRateExclVat !== null) ? price($marginRateExclVat, '', '', 0, 2, 2) . '%' : '-';
-				$marginTitle = 'Margin % = (Price excl. VAT - Cost excl. VAT) / Price excl. VAT';
+				$marginTitle = $langs->transnoentitiesnoconv('KREAPRODUCTS_PRODUCT_MARGIN_FORMULA');
 				print '<td class="right nowrap" title="' . dol_escape_htmltag($marginTitle) . '">' . $marginRateDisplay . '</td>';
 				break;
 		case 'p.entity':

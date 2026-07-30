@@ -1,6 +1,15 @@
 <?php
-/*
- * Copyright (C) 2024-2026       Kreativitat             <mail@kreativitat.com>
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License,
+ * or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/class/commonobject.class.php';
@@ -9,6 +18,7 @@ require_once DOL_DOCUMENT_ROOT . '/product/stock/class/mouvementstock.class.php'
 require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/lib/mrp_mo.lib.php';
+require_once __DIR__ . '/ProductUpdater.class.php';
 
 
 class ProductDismantleController extends CommonObject
@@ -20,10 +30,9 @@ class ProductDismantleController extends CommonObject
      */
     public $mo;
 
-    public function __construct($db)
-    {
-        global $db, $conf;
-        $this->db = $db;
+	public function __construct($db)
+	{
+		$this->db = $db;
         $this->mo = new Mo($this->db);
     }
 
@@ -31,7 +40,7 @@ class ProductDismantleController extends CommonObject
      * Find BOM ID associated with a product ID.
      *
      * @param int $productId The ID of the product to find the BOM for.
-     * @return int|false The BOM ID if found, false otherwise.
+	 * @return int|false|null The BOM ID if found, false when absent, null on query failure.
      */
     public function findBom($productId)
     {
@@ -48,9 +57,9 @@ class ProductDismantleController extends CommonObject
             LIMIT 2";
 
         $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
-            return false;
+		if (!$resql) {
+			dol_syslog("findBom query failed for product ID " . $productId, LOG_ERR);
+			return null;
         }
 
         $rows = $this->db->num_rows($resql);
@@ -71,23 +80,23 @@ class ProductDismantleController extends CommonObject
         return false;
     }
 
-    public function productInDismantleCategory($productId)
+	public function productInDismantleCategory($productId)
     {
         dol_syslog(__METHOD__, LOG_DEBUG);
 
         $productId = (int) $productId;
         if ($productId <= 0) {
-            return false;
-        }
+		return false;
+	}
 
-        $sql = "SELECT pe.kreap_dismantle"
+		$sql = "SELECT pe.kreap_dismantle"
             . " FROM " . MAIN_DB_PREFIX . "product_extrafields pe"
             . " WHERE pe.fk_object = " . $productId
             . " LIMIT 1";
         $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog("Error checking dismantle flag: " . $this->db->lasterror(), LOG_ERR);
-            return false;
+		if (!$resql) {
+			dol_syslog("Error checking dismantle flag: " . $this->db->lasterror(), LOG_ERR);
+			return null;
         }
 
         $obj = $this->db->fetch_object($resql);
@@ -96,9 +105,83 @@ class ProductDismantleController extends CommonObject
             return true;
         }
 
-        dol_syslog("Product ID " . $productId . " not flagged for dismantle", LOG_DEBUG);
-        return false;
-    }
+		dol_syslog("Product ID " . $productId . " not flagged for dismantle", LOG_DEBUG);
+		return false;
+	}
+
+	/**
+	 * Recalculate all dismantle output costs from one shared source value.
+	 *
+	 * This is the manual counterpart of supplier-invoice dismantling valuation.
+	 * The caller must own the surrounding transaction so every output and the
+	 * subsequent manufacturing-BOM cascade commit or roll back together.
+	 *
+	 * @param int  $productId Dismantled parent product ID
+	 * @param User $user      User performing the update
+	 * @return int 1 when updated, 0 when not applicable, -1 on failure
+	 */
+	public function refreshDismantleOutputCostPrices($productId, $user)
+	{
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return 0;
+		}
+		$isDismantleProduct = $this->productInDismantleCategory($productId);
+		if ($isDismantleProduct === null) {
+			return -1;
+		}
+		if (!$isDismantleProduct) {
+			return 0;
+		}
+		if (!$this->isProductAvailable($productId)) {
+			dol_syslog(__METHOD__.' parent product is outside the active product entity scope: '.$productId, LOG_ERR);
+			return -1;
+		}
+
+		$bomId = $this->findBom($productId);
+		if ($bomId === null) {
+			return -1;
+		}
+		if (empty($bomId)) {
+			return 0;
+		}
+		$bomData = $this->loadDismantleBom((int) $bomId);
+		if (empty($bomData) || (int) $bomData['fk_product'] !== $productId) {
+			dol_syslog(__METHOD__.' unable to load the entity-scoped dismantle BOM for product '.$productId, LOG_ERR);
+			return -1;
+		}
+
+		$parentProduct = new Product($this->db);
+		if ($parentProduct->fetch($productId) <= 0) {
+			dol_syslog(__METHOD__.' unable to load dismantle parent product '.$productId, LOG_ERR);
+			return -1;
+		}
+		$baseCostPrice = is_numeric($parentProduct->cost_price) ? (float) $parentProduct->cost_price : 0.0;
+		if ($baseCostPrice <= 0) {
+			return 0;
+		}
+		if (!$this->updateProducedCostPrices($bomData, $baseCostPrice, $user)) {
+			return -1;
+		}
+
+		$outputProductIds = array();
+		foreach ($bomData['lines'] as $line) {
+			$outputProductId = (int) ($line->fk_product ?? 0);
+			if ($outputProductId > 0) {
+				$outputProductIds[$outputProductId] = $outputProductId;
+			}
+		}
+		if (!empty($outputProductIds)) {
+			ProductUpdater::batchUpdateCostPrices(array_values($outputProductIds), true);
+			$cascadeErrors = ProductUpdater::getLastErrors();
+			if (!empty($cascadeErrors)) {
+				dol_syslog(__METHOD__.' output cascade failed: '.implode('; ', $cascadeErrors), LOG_ERR);
+				return -1;
+			}
+		}
+
+		return 1;
+	}
 
     public function produceAndConsume($bomId, $qtyMovement, $priceMovement, $originRef, $originId, $originType, $movementDate = null, $userContext = null, $originMovementId = 0)
     {
@@ -108,9 +191,13 @@ class ProductDismantleController extends CommonObject
         $user = $userContext ?: ($GLOBALS['user'] ?? null);
         $applyValuationUpdates = $this->shouldApplyValuationUpdates($originType);
 
-        $movementDate = $movementDate ?: dol_now();
-        $warehouseId  = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_WAREHOUSE ?? $conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
-        $error = 0;
+		$movementDate = $movementDate ?: dol_now();
+		$warehouseId  = (int) ($conf->global->KREAPRODUCTS_DISMANTLE_WAREHOUSE ?? $conf->global->MAIN_DEFAULT_WAREHOUSE ?? 0);
+		$error = 0;
+		if (!$this->isWarehouseAvailable($warehouseId)) {
+			dol_syslog(__METHOD__." invalid or out-of-entity dismantle warehouse #".$warehouseId, LOG_ERR);
+			return -1;
+		}
 
         // Load BOM header + lines with entity=0 support
         $bomData = $this->loadDismantleBom((int) $bomId);
@@ -119,8 +206,12 @@ class ProductDismantleController extends CommonObject
             return -1;
         }
 
-        $baseCostPrice = null;
-        if ($applyValuationUpdates) {
+		$baseCostPrice = null;
+		if (!$this->isProductAvailable((int) $bomData['fk_product'])) {
+			dol_syslog(__METHOD__." dismantle parent product is outside the current entity scope", LOG_ERR);
+			return -1;
+		}
+		if ($applyValuationUpdates) {
             $productToConsume = new Product($this->db);
             $currentPmp = null;
             if ($productToConsume->fetch($bomData['fk_product']) > 0) {
@@ -163,13 +254,7 @@ class ProductDismantleController extends CommonObject
         $arraytoconsume = [];
         $arraytoproduce = [];
 
-        $headerQty = (float) $bomData['qty'];
-        if ($headerQty <= 0) {
-            dol_syslog("Invalid BOM header qty for bomId=" . (int) $bomId . ", defaulting to 1", LOG_WARNING);
-            $headerQty = 1.0;
-        }
-
-        // Add main product to consume
+		// Add main product to consume
         $arraytoconsume[] = [
             'objectid'    => $bomData['fk_product'],
             'qty'         => 1,
@@ -178,18 +263,25 @@ class ProductDismantleController extends CommonObject
         dol_syslog("arraytoconsume: " . json_encode($arraytoconsume, JSON_PRETTY_PRINT), LOG_DEBUG);
 
         // Add BOM components to produce
-        foreach ($bomData['lines'] as $line) {
-            $normalizedQty = ((float) $line->qty) / $headerQty;
-            $arraytoproduce[] = [
-                'objectid'    => $line->fk_product,
-                'qty'         => $normalizedQty,
+		foreach ($bomData['lines'] as $line) {
+			$arraytoproduce[] = [
+				'objectid'    => $line->fk_product,
+				'qty'         => (float) $line->qty,
                 'fk_warehouse' => $warehouseId,
             ];
-        }
-        dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
+		}
+		dol_syslog("arraytoproduce: " . json_encode($arraytoproduce, JSON_PRETTY_PRINT), LOG_DEBUG);
+		$totalProducedQtyPerPackage = 0.0;
+		foreach ($arraytoproduce as $producedItem) {
+			$totalProducedQtyPerPackage += max(0.0, (float) $producedItem['qty']);
+		}
+		if ($totalProducedQtyPerPackage <= 0) {
+			dol_syslog(__METHOD__." dismantle BOM has no positive output quantity", LOG_ERR);
+			return -1;
+		}
 
         // Create or reuse MO so generated stock movements are linked to MRP and visible on movement tabs.
-        $registeredMoId = $this->registerDismantleMo(
+		$registeredMoId = $this->registerDismantleMo(
             (int) $bomId,
             $bomData,
             (float) $qtyMovement,
@@ -199,19 +291,32 @@ class ProductDismantleController extends CommonObject
             (string) $originType,
             $movementDate,
             $user,
-            (int) $originMovementId
-        );
-        $plannedLineMap = [];
-        if ($registeredMoId > 0) {
-            if ($this->hasMoExecutionLines((int) $registeredMoId)) {
-                dol_syslog(__METHOD__ . " movement already processed for MO #" . (int) $registeredMoId, LOG_DEBUG);
-                return 0;
-            }
-            // Remove any orphaned execution lines (fk_stock_movement NULL or pointing to a
-            // deleted movement) left by a previous failed attempt before writing new ones.
-            $this->purgeOrphanedExecutionLinesForMo((int) $registeredMoId);
-            $plannedLineMap = $this->buildMoPlannedLineMap((int) $registeredMoId);
-        }
+			(int) $originMovementId
+		);
+		if ((int) $registeredMoId <= 0) {
+			dol_syslog(__METHOD__." unable to create or reuse dismantle MO", LOG_ERR);
+			return -1;
+		}
+		$plannedLineMap = [];
+		$hasExecutionLines = $this->hasMoExecutionLines((int) $registeredMoId);
+		if ($hasExecutionLines === null) {
+			dol_syslog(__METHOD__." unable to verify dismantle idempotency for MO #".(int) $registeredMoId, LOG_ERR);
+			return -1;
+		}
+		if ($hasExecutionLines) {
+			dol_syslog(__METHOD__ . " movement already processed for MO #" . (int) $registeredMoId, LOG_DEBUG);
+			return 0;
+		}
+		if (!$this->isMoValidated((int) $registeredMoId)) {
+			dol_syslog(__METHOD__." dismantle MO is not validated: #".(int) $registeredMoId, LOG_ERR);
+			return -1;
+		}
+		// Remove any orphaned execution lines (fk_stock_movement NULL or pointing to a
+		// deleted movement) left by a previous failed attempt before writing new ones.
+		if (!$this->purgeOrphanedExecutionLinesForMo((int) $registeredMoId)) {
+			return -1;
+		}
+		$plannedLineMap = $this->buildMoPlannedLineMap((int) $registeredMoId);
 
         $movementRows = [];
         $movementPosition = 0;
@@ -221,8 +326,13 @@ class ProductDismantleController extends CommonObject
 
         // Process consumption and production arrays
         foreach (['arraytoconsume', 'arraytoproduce'] as $arrayname) {
-            foreach (${$arrayname} as $item) {
-                $product = new Product($this->db);
+			foreach (${$arrayname} as $item) {
+				if (!$this->isProductAvailable((int) $item['objectid'])) {
+					dol_syslog(__METHOD__." dismantle product is outside the current entity scope: ".(int) $item['objectid'], LOG_ERR);
+					$error++;
+					break;
+				}
+				$product = new Product($this->db);
                 if ($product->fetch($item['objectid']) <= 0) {
                     dol_syslog("Failed to fetch product with ID " . $item['objectid'], LOG_ERR);
                     $error++;
@@ -237,7 +347,7 @@ class ProductDismantleController extends CommonObject
                 $movementPrice = is_numeric($product->cost_price) ? (float) $product->cost_price : 0.0;
                 $shouldUpdateCost = false;
                 if ($applyValuationUpdates) {
-                    if ($arrayname === 'arraytoconsume') {
+					if ($arrayname === 'arraytoconsume') {
                         $movementPrice = is_numeric($priceMovement) ? (float) $priceMovement : 0.0;
                         if ($movementPrice > 0) {
                             $shouldUpdateCost = true;
@@ -246,8 +356,8 @@ class ProductDismantleController extends CommonObject
                             dol_syslog("Skipping cost update for consumed product ID " . $item['objectid'] . " (missing priceMovement)", LOG_DEBUG);
                         }
                     } else {
-                        if (!empty($item['qty']) && is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
-                            $movementPrice = (float) $baseCostPrice / $item['qty'];
+						if (!empty($item['qty']) && is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
+							$movementPrice = (float) $baseCostPrice / $totalProducedQtyPerPackage;
                             if ($movementPrice > 0) {
                                 $shouldUpdateCost = true;
                             }
@@ -260,8 +370,10 @@ class ProductDismantleController extends CommonObject
                             dol_syslog("Skipping cost update for produced product ID " . $item['objectid'] . " (missing current cost price)", LOG_WARNING);
                         }
                     }
-                    if ($shouldUpdateCost) {
-                        $this->persistCostPrice($product, $movementPrice, $user, $arrayname);
+					if ($shouldUpdateCost && !$this->persistCostPrice($product, $movementPrice, $user, $arrayname)) {
+						dol_syslog(__METHOD__." failed to persist cost price for product #".(int) $product->id, LOG_ERR);
+						$error++;
+						break;
                     }
                 }
 
@@ -361,14 +473,17 @@ class ProductDismantleController extends CommonObject
 
         if ((int) $registeredMoId > 0 && !empty($movementRows)) {
             $lineResult = $this->recordMoExecutionLines((int) $registeredMoId, $movementRows, $plannedLineMap, $user);
-            if ($lineResult) {
-                $this->setMoProducedStatus((int) $registeredMoId);
-            }
+			if (!$lineResult || !$this->setMoProducedStatus((int) $registeredMoId)) {
+				dol_syslog(__METHOD__." failed to finalize dismantle MO #".(int) $registeredMoId, LOG_ERR);
+				return -1;
+			}
         }
 
         if ($applyValuationUpdates) {
             if (is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
-                $this->updateProducedCostPrices($bomData, (float) $baseCostPrice, $user);
+				if (!$this->updateProducedCostPrices($bomData, (float) $baseCostPrice, $user)) {
+					return -1;
+				}
             } else {
                 dol_syslog("Skipping produced cost price update (missing base cost price)", LOG_DEBUG);
             }
@@ -406,17 +521,24 @@ class ProductDismantleController extends CommonObject
             return 0;
         }
 
-        $importKey = $this->buildDismantleImportKey((int) $originMovementId, (string) $originType, (int) $originId, (int) $bomId, $movementDate);
-        $existingMoId = $this->findMoIdByImportKey($importKey);
-        if ($existingMoId > 0) {
-            $existingMo = new Mo($this->db);
-            if ($existingMo->fetch((int) $existingMoId) > 0 && (int) $existingMo->status === (int) Mo::STATUS_DRAFT) {
-                $validateResult = $existingMo->validate($user);
-                if ($validateResult <= 0) {
-                    dol_syslog(__METHOD__ . " failed to validate existing MO #" . (int) $existingMoId . " error=" . $existingMo->error, LOG_WARNING);
-                }
-            }
-            return $existingMoId;
+		$importKey = $this->buildDismantleImportKey((int) $originMovementId, (string) $originType, (int) $originId, (int) $bomId, $movementDate);
+		$existingMoId = $this->findMoIdByImportKey($importKey);
+		if ($existingMoId < 0) {
+			return -1;
+		}
+		if ($existingMoId > 0) {
+			$existingMo = new Mo($this->db);
+			if ($existingMo->fetch((int) $existingMoId) <= 0) {
+				return -1;
+			}
+			if ((int) $existingMo->status === (int) Mo::STATUS_DRAFT) {
+				$validateResult = $existingMo->validate($user);
+				if ($validateResult <= 0) {
+					dol_syslog(__METHOD__ . " failed to validate existing MO #" . (int) $existingMoId . " error=" . $existingMo->error, LOG_ERR);
+					return -1;
+				}
+			}
+			return $existingMoId;
         }
 
         $mo = new Mo($this->db);
@@ -447,22 +569,25 @@ class ProductDismantleController extends CommonObject
             $mo->add_object_linked((string) $originType, (int) $originId, $user, 1);
         }
 
-        if ($mo->fetch($moId) > 0 && (int) $mo->status === (int) Mo::STATUS_DRAFT) {
-            $validateResult = $mo->validate($user);
-            if ($validateResult <= 0) {
-                dol_syslog(__METHOD__ . " failed to validate MO #" . (int) $moId . " error=" . $mo->error, LOG_WARNING);
-                return (int) $moId;
-            }
-        }
+		if ($mo->fetch($moId) <= 0) {
+			return -1;
+		}
+		if ((int) $mo->status === (int) Mo::STATUS_DRAFT) {
+			$validateResult = $mo->validate($user);
+			if ($validateResult <= 0) {
+				dol_syslog(__METHOD__ . " failed to validate MO #" . (int) $moId . " error=" . $mo->error, LOG_ERR);
+				return -1;
+			}
+		}
 
         return (int) $moId;
     }
 
-    private function hasMoExecutionLines($moId)
-    {
-        $moId = (int) $moId;
-        if ($moId <= 0) {
-            return false;
+	private function hasMoExecutionLines($moId)
+	{
+		$moId = (int) $moId;
+		if ($moId <= 0) {
+			return null;
         }
 
         // JOIN with stock_mouvement so that orphaned execution lines (fk_stock_movement NULL
@@ -474,20 +599,20 @@ class ProductDismantleController extends CommonObject
             . " WHERE mp.fk_mo = " . $moId
             . " AND mp.role IN ('consumed','produced')";
         $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog(__METHOD__ . " failed to verify execution lines: " . $this->db->lasterror(), LOG_WARNING);
-            return false;
+		if (!$resql) {
+			dol_syslog(__METHOD__ . " failed to verify execution lines: " . $this->db->lasterror(), LOG_ERR);
+			return null;
         }
 
         $obj = $this->db->fetch_object($resql);
         return (is_object($obj) && ((int) $obj->nb > 0));
     }
 
-    private function purgeOrphanedExecutionLinesForMo($moId)
-    {
-        $moId = (int) $moId;
-        if ($moId <= 0) {
-            return;
+	private function purgeOrphanedExecutionLinesForMo($moId)
+	{
+		$moId = (int) $moId;
+		if ($moId <= 0) {
+			return false;
         }
 
         $findSql = "SELECT mp.rowid"
@@ -497,9 +622,9 @@ class ProductDismantleController extends CommonObject
             . " AND mp.role IN ('consumed','produced')"
             . " AND (mp.fk_stock_movement IS NULL OR sm.rowid IS NULL)";
         $resql = $this->db->query($findSql);
-        if (!$resql) {
-            dol_syslog(__METHOD__ . " failed to identify orphaned lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_WARNING);
-            return;
+		if (!$resql) {
+			dol_syslog(__METHOD__ . " failed to identify orphaned lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_ERR);
+			return false;
         }
 
         $ids = [];
@@ -508,19 +633,26 @@ class ProductDismantleController extends CommonObject
         }
         $this->db->free($resql);
 
-        if (empty($ids)) {
-            return;
+		if (empty($ids)) {
+			return true;
         }
 
         $delSql = "DELETE FROM " . MAIN_DB_PREFIX . "mrp_production"
             . " WHERE rowid IN (" . implode(',', $ids) . ")";
-        if (!$this->db->query($delSql)) {
-            dol_syslog(__METHOD__ . " failed to delete orphaned execution lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_WARNING);
-            return;
+		if (!$this->db->query($delSql)) {
+			dol_syslog(__METHOD__ . " failed to delete orphaned execution lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_ERR);
+			return false;
         }
 
-        dol_syslog(__METHOD__ . " purged " . count($ids) . " orphaned execution line(s) for MO #" . $moId, LOG_INFO);
-    }
+		dol_syslog(__METHOD__ . " purged " . count($ids) . " orphaned execution line(s) for MO #" . $moId, LOG_INFO);
+		return true;
+	}
+
+	private function isMoValidated($moId): bool
+	{
+		$mo = new Mo($this->db);
+		return $mo->fetch((int) $moId) > 0 && (int) $mo->status === (int) Mo::STATUS_VALIDATED;
+	}
 
     private function buildMoPlannedLineMap($moId)
     {
@@ -571,8 +703,13 @@ class ProductDismantleController extends CommonObject
             return false;
         }
 
-        foreach ($movementRows as $row) {
-            $executionLine = new MoLine($this->db);
+		foreach ($movementRows as $row) {
+			$plannedLineId = $this->popPlannedLineId($plannedLineMap, (string) ($row['planned_role'] ?? ''), (int) ($row['product_id'] ?? 0));
+			if ($plannedLineId <= 0) {
+				dol_syslog(__METHOD__." missing planned MO line for product #".(int) ($row['product_id'] ?? 0), LOG_ERR);
+				return false;
+			}
+			$executionLine = new MoLine($this->db);
             $executionLine->fk_mo = $moId;
             $executionLine->position = (int) ($row['position'] ?? 0);
             $executionLine->fk_product = (int) ($row['product_id'] ?? 0);
@@ -580,7 +717,7 @@ class ProductDismantleController extends CommonObject
             $executionLine->qty = (float) ($row['qty'] ?? 0);
             $executionLine->batch = '';
             $executionLine->role = (string) ($row['execution_role'] ?? '');
-            $executionLine->fk_mrp_production = $this->popPlannedLineId($plannedLineMap, (string) ($row['planned_role'] ?? ''), (int) ($row['product_id'] ?? 0));
+			$executionLine->fk_mrp_production = $plannedLineId;
             $executionLine->fk_stock_movement = ((int) ($row['fk_stock_movement'] ?? 0) > 0 ? (int) $row['fk_stock_movement'] : null);
             $executionLine->fk_user_creat = (int) $user->id;
 
@@ -594,26 +731,28 @@ class ProductDismantleController extends CommonObject
         return true;
     }
 
-    private function setMoProducedStatus($moId)
-    {
-        $moId = (int) $moId;
-        if ($moId <= 0) {
-            return;
+	private function setMoProducedStatus($moId)
+	{
+		$moId = (int) $moId;
+		if ($moId <= 0) {
+			return false;
         }
 
         $mo = new Mo($this->db);
-        if ($mo->fetch($moId) <= 0) {
-            return;
+		if ($mo->fetch($moId) <= 0) {
+			return false;
         }
-        if ((int) $mo->status === (int) Mo::STATUS_PRODUCED) {
-            return;
+		if ((int) $mo->status === (int) Mo::STATUS_PRODUCED) {
+			return true;
         }
 
         $statusResult = $mo->setStatut(Mo::STATUS_PRODUCED, 0, '', 'MRP_MO_PRODUCED');
-        if ($statusResult <= 0) {
-            dol_syslog(__METHOD__ . " failed to close MO #" . $moId . " as produced", LOG_WARNING);
-        }
-    }
+		if ($statusResult <= 0) {
+			dol_syslog(__METHOD__ . " failed to close MO #" . $moId . " as produced", LOG_WARNING);
+			return false;
+		}
+		return true;
+	}
 
     private function findMoIdByImportKey($importKey)
     {
@@ -628,10 +767,10 @@ class ProductDismantleController extends CommonObject
             . " AND entity IN (" . getEntity('mo') . ")"
             . " ORDER BY rowid DESC"
             . " LIMIT 1";
-        $resql = $this->db->query($sql);
-        if (!$resql) {
-            dol_syslog(__METHOD__ . " failed to query existing MO by import key: " . $this->db->lasterror(), LOG_WARNING);
-            return 0;
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . " failed to query existing MO by import key: " . $this->db->lasterror(), LOG_ERR);
+			return -1;
         }
 
         $obj = $this->db->fetch_object($resql);
@@ -741,87 +880,146 @@ class ProductDismantleController extends CommonObject
         return $lines;
     }
 
-    private function persistCostPrice(Product $product, float $costPrice, $user, string $context): bool
+	private function persistCostPrice(Product $product, float $costPrice, $user, string $context): bool
     {
         $productId = (int) $product->id;
         if ($productId <= 0 || $costPrice <= 0) {
             return false;
         }
 
+		ProductUpdater::prepareProductCostUpdate($product);
         $product->cost_price = $costPrice;
 
-        if (!empty($user)) {
-            $updateRes = $product->update($productId, $user);
-            if ($updateRes > 0) {
-                $verify = new Product($this->db);
-                if ($verify->fetch($productId) > 0 && is_numeric($verify->cost_price)
-                    && abs(((float) $verify->cost_price) - $costPrice) < 0.0001) {
-                    dol_syslog(__METHOD__ . " updated cost_price for product #" . $productId . " to " . $costPrice . " (" . $context . ")", LOG_DEBUG);
-                    return true;
-                }
-                dol_syslog(__METHOD__ . " cost_price mismatch after update for product #" . $productId . " (" . $context . "), forcing SQL", LOG_WARNING);
-            } else {
-                $detail = !empty($product->error) ? $product->error : 'unknown error';
-                dol_syslog(__METHOD__ . " failed to update cost_price for product #" . $productId . " (" . $context . "): " . $detail, LOG_WARNING);
-            }
-        } else {
-            dol_syslog(__METHOD__ . " missing user context for product #" . $productId . " (" . $context . "), forcing SQL", LOG_WARNING);
-        }
+		if (empty($user) || empty($user->id)) {
+			dol_syslog(__METHOD__." missing user context for product #".$productId." (".$context.")", LOG_ERR);
+			return false;
+		}
 
-        $sql = "UPDATE " . MAIN_DB_PREFIX . "product"
-            . " SET cost_price = " . ((float) $costPrice)
-            . ", fk_user_modif = " . (!empty($user) && !empty($user->id) ? (int) $user->id : "NULL")
-            . " WHERE rowid = " . $productId;
-        if ($this->db->query($sql)) {
-            dol_syslog(__METHOD__ . " forced cost_price update for product #" . $productId . " to " . $costPrice . " (" . $context . ")", LOG_DEBUG);
-            return true;
-        }
+		$product->context = (array) $product->context;
+		$hadSkipRealtimeSync = array_key_exists('skip_kreawoo_realtime_sync', $product->context);
+		$previousSkipRealtimeSync = $hadSkipRealtimeSync ? $product->context['skip_kreawoo_realtime_sync'] : null;
+		$product->context['skip_kreawoo_realtime_sync'] = true;
+		try {
+			$updateRes = $product->update($productId, $user);
+		} finally {
+			if ($hadSkipRealtimeSync) {
+				$product->context['skip_kreawoo_realtime_sync'] = $previousSkipRealtimeSync;
+			} else {
+				unset($product->context['skip_kreawoo_realtime_sync']);
+			}
+		}
+		if ($updateRes <= 0) {
+			$detail = !empty($product->error) ? $product->error : 'unknown error';
+			dol_syslog(__METHOD__." failed to update cost_price for product #".$productId." (".$context."): ".$detail, LOG_ERR);
+			return false;
+		}
 
-        dol_syslog(__METHOD__ . " SQL update failed for product #" . $productId . " (" . $context . "): " . $this->db->lasterror(), LOG_WARNING);
-        return false;
+		$verify = new Product($this->db);
+		if ($verify->fetch($productId) <= 0 || !is_numeric($verify->cost_price)
+			|| abs(((float) $verify->cost_price) - $costPrice) >= 0.0001
+		) {
+			dol_syslog(__METHOD__." cost_price verification failed for product #".$productId." (".$context.")", LOG_ERR);
+			return false;
+		}
+
+		dol_syslog(__METHOD__." updated cost_price for product #".$productId." to ".$costPrice." (".$context.")", LOG_DEBUG);
+		return true;
     }
 
-    private function updateProducedCostPrices(array $bomData, float $baseCostPrice, $user): void
-    {
-        if (empty($bomData['lines']) || !is_array($bomData['lines'])) {
-            return;
+	private function updateProducedCostPrices(array $bomData, float $baseCostPrice, $user): bool
+	{
+		if (empty($bomData['lines']) || !is_array($bomData['lines'])) {
+			return false;
         }
 
-        $headerQty = (float) ($bomData['qty'] ?? 0);
-        if ($headerQty <= 0) {
-            $headerQty = 1.0;
-        }
-
-        $qtyPerProduct = [];
+		$qtyPerProduct = [];
         foreach ($bomData['lines'] as $line) {
             $productId = (int) ($line->fk_product ?? 0);
             if ($productId <= 0) {
                 continue;
             }
-            $normalizedQty = ((float) $line->qty) / $headerQty;
-            if ($normalizedQty <= 0) {
-                continue;
+			$outputQty = (float) $line->qty;
+			if ($outputQty <= 0) {
+				continue;
             }
             if (!isset($qtyPerProduct[$productId])) {
                 $qtyPerProduct[$productId] = 0.0;
             }
-            $qtyPerProduct[$productId] += $normalizedQty;
+			$qtyPerProduct[$productId] += $outputQty;
         }
 
-        foreach ($qtyPerProduct as $productId => $qty) {
-            if ($qty <= 0) {
-                continue;
+		$totalProducedQty = array_sum($qtyPerProduct);
+		if ($totalProducedQty <= 0) {
+			return false;
+		}
+
+		$unitCost = $baseCostPrice / $totalProducedQty;
+		foreach ($qtyPerProduct as $productId => $qty) {
+			if ($qty <= 0) {
+				continue;
+			}
+			if ($unitCost <= 0) {
+				return false;
             }
-            $unitCost = $baseCostPrice / $qty;
-            if ($unitCost <= 0) {
-                continue;
-            }
-            $product = new Product($this->db);
-            if ($product->fetch($productId) <= 0) {
-                dol_syslog(__METHOD__ . " failed to load product #" . (int) $productId . " for cost update", LOG_WARNING);
-                continue;
-            }
-            $this->persistCostPrice($product, $unitCost, $user, 'post-dismantle');
-        }
-    }
+			if (!$this->isProductAvailable((int) $productId)) {
+				dol_syslog(__METHOD__." dismantle output is outside the active product entity scope: ".(int) $productId, LOG_ERR);
+				return false;
+			}
+			$product = new Product($this->db);
+			if ($product->fetch($productId) <= 0) {
+				dol_syslog(__METHOD__ . " failed to load product #" . (int) $productId . " for cost update", LOG_WARNING);
+				return false;
+			}
+			if (!$this->persistCostPrice($product, $unitCost, $user, 'post-dismantle')) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * @param int $warehouseId Warehouse ID
+	 * @return bool
+	 */
+	private function isWarehouseAvailable($warehouseId): bool
+	{
+		$warehouseId = (int) $warehouseId;
+		if ($warehouseId <= 0) {
+			return false;
+		}
+		$sql = 'SELECT e.rowid FROM '.MAIN_DB_PREFIX.'entrepot as e';
+		$sql .= ' WHERE e.rowid = '.$warehouseId;
+		$sql .= ' AND e.entity IN ('.getEntity('stock').')';
+		$sql .= ' AND e.statut = 1';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return false;
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return (bool) $obj;
+	}
+
+	/**
+	 * @param int $productId Product ID
+	 * @return bool
+	 */
+	private function isProductAvailable($productId): bool
+	{
+		$productId = (int) $productId;
+		if ($productId <= 0) {
+			return false;
+		}
+		$sql = 'SELECT p.rowid FROM '.MAIN_DB_PREFIX.'product as p';
+		$sql .= ' WHERE p.rowid = '.$productId;
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			return false;
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		return (bool) $obj;
+	}
 }

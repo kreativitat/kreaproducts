@@ -1,10 +1,18 @@
 <?php
-/* Copyright (C) 2026 Kreativitat
+/* Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation, either version 3 of the License,
  * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 /**
@@ -45,16 +53,19 @@ if (!$res) {
 
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 
+$langs->load('kreaproducts@kreaproducts');
+
 $action = GETPOST('action', 'aZ09');
 $id = GETPOSTINT('id');
 $value = GETPOSTINT('value');
-$backtopage = GETPOST('backtopage');
+$backtopage = dol_sanitizeUrl(GETPOST('backtopage', 'alphanohtml'), 1);
+$backtopage = ($backtopage !== '' && strpos($backtopage, '/') === 0) ? $backtopage : '';
 $token = GETPOST('token', 'alpha');
 
 if (empty($token) || (!hash_equals(currentToken(), $token) && !hash_equals(newToken(), $token))) {
 	top_httphead('application/json');
 	http_response_code(403);
-	print json_encode(array('status' => 'error', 'message' => 'Invalid token'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('ErrorBadOrExpiredToken')));
 	$db->close();
 	exit;
 }
@@ -62,7 +73,7 @@ if (empty($token) || (!hash_equals(currentToken(), $token) && !hash_equals(newTo
 if ($action !== 'set' || $id <= 0 || ($value !== 0 && $value !== 1)) {
 	top_httphead('application/json');
 	http_response_code(400);
-	print json_encode(array('status' => 'error', 'message' => 'Bad parameters'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('ErrorBadParameters')));
 	$db->close();
 	exit;
 }
@@ -72,7 +83,7 @@ $fetchRes = $product->fetch($id);
 if ($fetchRes <= 0) {
 	top_httphead('application/json');
 	http_response_code(404);
-	print json_encode(array('status' => 'error', 'message' => 'Product not found'));
+	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapProductNotFound', $id)));
 	$db->close();
 	exit;
 }
