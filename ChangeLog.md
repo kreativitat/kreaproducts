@@ -1,6 +1,13 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.10] - 2026-07-31
+
+### Fixed
+
+- Created automatic dismantling MO movements directly on declared products without triggering a second kit-child stock cascade.
+- Allowed declared kit-parent outputs to receive their MO stock movement without changing the global composed-product configuration.
+
 ## [4.5.9] - 2026-07-31
 
 ### Fixed

@@ -384,62 +384,20 @@ class ProductDismantleController extends CommonObject
                     $stockmove->setOrigin($originType, $originId);
                 }
 
-                // Perform the correct stock movement:
-                if ($arrayname === 'arraytoconsume') {
-                    if ($rawQty >= 0) {
-                        // Normal consumption: stock -> out
-                        $result = $stockmove->livraison(
-                            $user,
-                            $item['objectid'],
-                            $item['fk_warehouse'],
-                            $qty,
-                            $movementPrice,
-                            "Consume for MO ($originRef)",
-                            $movementDate
-                        );
-                    } else {
-                        // Reverse consumption: stock <- in
-                        $result = $stockmove->reception(
-                            $user,
-                            $item['objectid'],
-                            $item['fk_warehouse'],
-                            $qty,
-                            $movementPrice,
-                            "Reverse consume for MO ($originRef)",
-                            '',
-                            '',
-                            '',
-                            $movementDate
-                        );
-                    }
-                } else {
-                    if ($rawQty >= 0) {
-                        // Normal production: stock <- in
-                        $result = $stockmove->reception(
-                            $user,
-                            $item['objectid'],
-                            $item['fk_warehouse'],
-                            $qty,
-                            $movementPrice,
-                            "Produce for MO ($originRef)",
-                            '',
-                            '',
-                            '',
-                            $movementDate
-                        );
-                    } else {
-                        // Reverse production: stock -> out
-                        $result = $stockmove->livraison(
-                            $user,
-                            $item['objectid'],
-                            $item['fk_warehouse'],
-                            $qty,
-                            $movementPrice,
-                            "Reverse produce for MO ($originRef)",
-                            $movementDate
-                        );
-                    }
-                }
+				$movementQty = ($arrayname === 'arraytoconsume' ? -$rawQty : $rawQty);
+				$movementLabel = ($arrayname === 'arraytoconsume'
+					? ($rawQty >= 0 ? 'Consume' : 'Reverse consume')
+					: ($rawQty >= 0 ? 'Produce' : 'Reverse produce'));
+				$result = $this->createDismantleStockMovement(
+					$stockmove,
+					$product,
+					$user,
+					(int) $item['fk_warehouse'],
+					(float) $movementQty,
+					(float) $movementPrice,
+					$movementLabel." for MO ($originRef)",
+					$movementDate
+				);
 
                 // Check for errors
                 if ($result <= 0) {
@@ -497,6 +455,61 @@ class ProductDismantleController extends CommonObject
         dol_syslog("Dismantle processed successfully.", LOG_DEBUG);
         return 0;
     }
+
+	/**
+	 * Create one MO movement without invoking Dolibarr's separate kit-child cascade.
+	 *
+	 * @param MouvementStock $stockmove    Stock movement object
+	 * @param Product        $product      Product being moved
+	 * @param User           $user         Movement author
+	 * @param int            $warehouseId  Warehouse ID
+	 * @param float          $quantity     Signed quantity
+	 * @param float          $price        Unit cost
+	 * @param string         $label        Movement label
+	 * @param int|string     $movementDate Value date
+	 * @return int
+	 */
+	private function createDismantleStockMovement($stockmove, $product, $user, $warehouseId, $quantity, $price, $label, $movementDate)
+	{
+		global $conf;
+
+		$isKitParent = getDolGlobalInt('PRODUIT_SOUSPRODUITS') && (int) $product->hasFatherOrChild(1) > 0;
+		$restoreParentSetting = false;
+		$parentSettingExisted = isset($conf->global->PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE);
+		$parentSettingValue = $parentSettingExisted ? $conf->global->PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE : null;
+		if ($isKitParent && !getDolGlobalInt('PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE')) {
+			$conf->global->PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE = 1;
+			$restoreParentSetting = true;
+		}
+
+		try {
+			return $stockmove->_create(
+				$user,
+				(int) $product->id,
+				(int) $warehouseId,
+				(float) $quantity,
+				($quantity < 0 ? 2 : 3),
+				(float) $price,
+				(string) $label,
+				'',
+				$movementDate,
+				'',
+				'',
+				'',
+				!isModEnabled('productbatch'),
+				0,
+				1
+			);
+		} finally {
+			if ($restoreParentSetting) {
+				if ($parentSettingExisted) {
+					$conf->global->PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE = $parentSettingValue;
+				} else {
+					unset($conf->global->PRODUIT_SOUSPRODUITS_ALSO_ENABLE_PARENT_STOCK_MOVE);
+				}
+			}
+		}
+	}
 
     private function shouldApplyValuationUpdates($originType): bool
     {
