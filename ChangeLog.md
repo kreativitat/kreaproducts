@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.12] - 2026-07-31
+
+### Changed
+
+- Made every product participating in an automatic dismantling MO stock-managed before execution.
+
+### Fixed
+
+- Restored mandatory stock movements for all automatic dismantling MO execution lines.
+
 ## [4.5.11] - 2026-07-31
 
 ### Fixed

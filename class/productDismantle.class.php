@@ -338,6 +338,10 @@ class ProductDismantleController extends CommonObject
                     $error++;
                     break;
                 }
+				if (!$product->isStockManaged() && !$this->ensureProductStockManagedForMo($product, $user, $arrayname)) {
+					$error++;
+					break;
+				}
 
                 // Calculate signed and absolute quantities
                 $rawQty = $item['qty'] * $qtyMovement;
@@ -384,29 +388,23 @@ class ProductDismantleController extends CommonObject
                     $stockmove->setOrigin($originType, $originId);
                 }
 
-				$isStockManaged = $product->isStockManaged();
-				$result = 0;
-				if ($isStockManaged) {
-					$movementQty = ($arrayname === 'arraytoconsume' ? -$rawQty : $rawQty);
-					$movementLabel = ($arrayname === 'arraytoconsume'
-						? ($rawQty >= 0 ? 'Consume' : 'Reverse consume')
-						: ($rawQty >= 0 ? 'Produce' : 'Reverse produce'));
-					$result = $this->createDismantleStockMovement(
-						$stockmove,
-						$product,
-						$user,
-						(int) $item['fk_warehouse'],
-						(float) $movementQty,
-						(float) $movementPrice,
-						$movementLabel." for MO ($originRef)",
-						$movementDate
-					);
-				} else {
-					dol_syslog(__METHOD__." recorded MO execution without stock movement for non-stock-managed product #".(int) $product->id, LOG_INFO);
-				}
+				$movementQty = ($arrayname === 'arraytoconsume' ? -$rawQty : $rawQty);
+				$movementLabel = ($arrayname === 'arraytoconsume'
+					? ($rawQty >= 0 ? 'Consume' : 'Reverse consume')
+					: ($rawQty >= 0 ? 'Produce' : 'Reverse produce'));
+				$result = $this->createDismantleStockMovement(
+					$stockmove,
+					$product,
+					$user,
+					(int) $item['fk_warehouse'],
+					(float) $movementQty,
+					(float) $movementPrice,
+					$movementLabel." for MO ($originRef)",
+					$movementDate
+				);
 
                 // Check for errors
-                if ($isStockManaged && $result <= 0) {
+                if ($result <= 0) {
                     dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
                     $error++;
                     break;
@@ -418,7 +416,7 @@ class ProductDismantleController extends CommonObject
                         'execution_role' => ($arrayname === 'arraytoconsume' ? 'consumed' : 'produced'),
                         'product_id' => (int) $item['objectid'],
                         'qty' => (float) $rawQty,
-                        'fk_warehouse' => ($isStockManaged ? (int) $item['fk_warehouse'] : null),
+                        'fk_warehouse' => (int) $item['fk_warehouse'],
                         'fk_stock_movement' => (int) $result,
                         'position' => (int) $movementPosition,
                     ];
@@ -614,10 +612,9 @@ class ProductDismantleController extends CommonObject
         // dedupe guard from blocking re-execution when secondary movements were never committed.
         $sql = "SELECT COUNT(mp.rowid) AS nb"
             . " FROM " . MAIN_DB_PREFIX . "mrp_production AS mp"
-            . " LEFT JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
+            . " INNER JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
             . " WHERE mp.fk_mo = " . $moId
-            . " AND mp.role IN ('consumed','produced')"
-			. " AND (sm.rowid IS NOT NULL OR (mp.fk_stock_movement IS NULL AND mp.fk_warehouse IS NULL))";
+            . " AND mp.role IN ('consumed','produced')";
         $resql = $this->db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . " failed to verify execution lines: " . $this->db->lasterror(), LOG_ERR);
@@ -640,8 +637,7 @@ class ProductDismantleController extends CommonObject
             . " LEFT JOIN " . MAIN_DB_PREFIX . "stock_mouvement AS sm ON sm.rowid = mp.fk_stock_movement"
             . " WHERE mp.fk_mo = " . $moId
             . " AND mp.role IN ('consumed','produced')"
-            . " AND ((mp.fk_stock_movement IS NOT NULL AND sm.rowid IS NULL)"
-			. " OR (mp.fk_stock_movement IS NULL AND mp.fk_warehouse IS NOT NULL))";
+            . " AND (mp.fk_stock_movement IS NULL OR sm.rowid IS NULL)";
         $resql = $this->db->query($findSql);
 		if (!$resql) {
 			dol_syslog(__METHOD__ . " failed to identify orphaned lines for MO #" . $moId . ": " . $this->db->lasterror(), LOG_ERR);
@@ -946,6 +942,51 @@ class ProductDismantleController extends CommonObject
 		dol_syslog(__METHOD__." updated cost_price for product #".$productId." to ".$costPrice." (".$context.")", LOG_DEBUG);
 		return true;
     }
+
+	/**
+	 * Make every automatic-dismantling MO product stock-managed before execution.
+	 *
+	 * @param Product $product Product participating in the MO
+	 * @param User    $user    Update author
+	 * @param string  $context Execution role
+	 * @return bool
+	 */
+	private function ensureProductStockManagedForMo(Product $product, $user, string $context): bool
+	{
+		$productId = (int) $product->id;
+		if ($productId <= 0 || empty($user) || empty($user->id)) {
+			dol_syslog(__METHOD__." missing product or user context (".$context.")", LOG_ERR);
+			return false;
+		}
+
+		$product->context = (array) $product->context;
+		$hadSkipRealtimeSync = array_key_exists('skip_kreawoo_realtime_sync', $product->context);
+		$previousSkipRealtimeSync = $hadSkipRealtimeSync ? $product->context['skip_kreawoo_realtime_sync'] : null;
+		$product->context['skip_kreawoo_realtime_sync'] = true;
+		$product->stockable_product = Product::ENABLED_STOCK;
+		try {
+			$updateResult = $product->update($productId, $user);
+		} finally {
+			if ($hadSkipRealtimeSync) {
+				$product->context['skip_kreawoo_realtime_sync'] = $previousSkipRealtimeSync;
+			} else {
+				unset($product->context['skip_kreawoo_realtime_sync']);
+			}
+		}
+		if ($updateResult <= 0) {
+			dol_syslog(__METHOD__." failed to enable stock management for product #".$productId." (".$context."): ".($product->error ?: $this->db->lasterror()), LOG_ERR);
+			return false;
+		}
+
+		$verify = new Product($this->db);
+		if ($verify->fetch($productId) <= 0 || !$verify->isStockManaged()) {
+			dol_syslog(__METHOD__." stock-management verification failed for product #".$productId." (".$context.")", LOG_ERR);
+			return false;
+		}
+		$product->stockable_product = Product::ENABLED_STOCK;
+		dol_syslog(__METHOD__." enabled stock management for MO product #".$productId." (".$context.")", LOG_INFO);
+		return true;
+	}
 
 	private function updateProducedCostPrices(array $bomData, float $baseCostPrice, $user): bool
 	{

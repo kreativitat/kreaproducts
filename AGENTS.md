@@ -41,7 +41,7 @@ Example style:
 
 ## Architecture Decisions
 
-- 2026-07-31: A declared automatic-dismantling product with `stockable_product=0` receives an MO execution line but no stock movement. The execution line persists with both `fk_stock_movement` and `fk_warehouse` null, which is the durable marker distinguishing an intentional non-stock execution from an orphaned stock execution.
+- 2026-07-31: Every product participating in an automatic dismantling MO must be stock-managed. Before execution, KreaProducts permanently changes `stockable_product` to `Product::ENABLED_STOCK` inside the caller's transaction, verifies the persisted state, and then requires a real stock movement for every consume/produce execution line.
 - 2026-07-31: Automatic dismantling owns the exact MO consume/produce movement set. Each generated movement disables Dolibarr's separate composed-product child propagation. When a declared MO product is itself a kit parent and global parent movements are disabled, the operation temporarily enables the parent movement only for that call and restores the entity configuration immediately afterward.
 - 2026-07-31: `STOCK_MOVEMENT` returns `0` after successful processing and a negative value on failure, following Dolibarr's trigger contract. Module-managed transactional cost updates mark their internal `Product::update()` calls with `skip_kreawoo_realtime_sync` so irreversible WooCommerce requests cannot execute before the local stock and valuation transaction commits.
 - 2026-07-17: A product cost change is an authoritative cascade input and is never recalculated during the batch it initiated. Every transitive dependent is recalculated. An active manufacturing BOM is the authoritative recipe for its parent; when several exist in the effective entity scope, the BOM with the latest non-cancelled `mrp_production` `produced` line is selected automatically. If none has production history, the newest validated active BOM is selected automatically. Entity-local BOMs take precedence over global BOMs. Product associations are used only when no active manufacturing BOM exists. Dismantling BOMs remain excluded, and any cycle in the selected association/BOM cost graph aborts before the first write.
@@ -209,6 +209,7 @@ Example style:
 
 ## Deprecated Knowledge
 
+- 2026-07-31: The 4.5.11 design that allowed non-stock-managed MO products to create execution lines without stock movements is obsolete as of 4.5.12. MO participation now makes stock management mandatory and updates the product accordingly.
 - 2026-07-17: The version 4.5.4 rule that treated multiple active manufacturing BOMs as unresolved became obsolete in version 4.5.8. Selection is now automatic: latest completed production first, then newest validation when production history is absent.
 - 2026-07-17: The version 4.5.4 rule excluding all product associations from cost valuation became obsolete in version 4.5.8. Associations are again supported as the recipe fallback when a dependent product has no active manufacturing BOM.
 - 2026-07-16: The version 4.5.6 defect that skipped selling-price markup updates after module-managed cost changes became obsolete in version 4.5.7 when every cost writer began preserving Dolibarr's pre-update `oldcopy`.
