@@ -41,6 +41,9 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-07: Customer invoice datetimes may be ahead of the server clock by `KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES`, defaulting to 30 minutes and constrained to 0-1440 in setup. Values beyond the configured tolerance fail closed before movement retiming or inventory reconciliation.
+
+- 2026-08-07: Customer `facture` movements use the authoritative invoice datetime. KreaProducts prefers the entity-scoped DoliZSynch `datahora_zs`, falls back to core `facture.datec`, and refuses datetimes more than five minutes in the future. It never moves a sale to the following day's business-close marker. Historical retiming continues through append-only inventory rebases.
 - 2026-08-06: Stock reconstruction uses the latest active `kreaproducts_inventory_correction.corrected_counted_qty` as the inventory anchor when one exists. Count-correction movements remain excluded from operational movement sums, preventing both double counting and loss of append-only corrections. Automatic dismantling parses the source `stock_mouvement.datem` through `DoliDB::jdate()` because core SQL DATETIME values are server-local, not GMT.
 
 - 2026-07-31: Every product participating in an automatic dismantling MO must be stock-managed. Before execution, KreaProducts permanently changes `stockable_product` to `Product::ENABLED_STOCK` inside the caller's transaction, verifies the persisted state, and then requires a real stock movement for every consume/produce execution line.
@@ -79,7 +82,6 @@ Example style:
 - 2026-07-11: A recorded inventory remains correctable until the configured 20:00 counting cutoff. Corrections update the displayed physical count but preserve prior values in an append-only correction audit and create only delta stock movements; blank correction fields leave the prior count unchanged.
 - 2026-07-11: An initiated inventory remains editable and closable even when its value date is outside the current counting window. Authorized users may change its calendar value date; the service stores that date at the configured close plus one minute.
 - 2026-07-11: Every editable mobile inventory has a bottom save action. It displays `Guardar` for initiated inventories and `Guardar correções` for recorded inventories in correction mode.
-- 2026-07-11: Customer invoice movements for invoice day D are value-dated at the configured business close on D+1, one minute before the inventory anchor. Late customer movements are reconciled through append-only rebases without changing `facture.datef` or movement quantities.
 - 2026-07-11: Module activation no longer enables `PRODUIT_SOUSPRODUITS`; composed-product stock behavior remains an explicit Dolibarr administrator setting.
 - 2026-07-11: The former KreaStock mobile workflow is integrated under `/kreaproducts/stock_mobile.php`. New initiated inventories use padded `(PROV000000)` references and receive `YYYYMMDD_CATEGORY` only inside the recording transaction before stock movements are created. Ownership is marked with core `inventory.import_key='KPS'`; legacy technical `KPS-*` and `KS-*` references remain readable and closable.
 - 2026-07-11: Opening a pre-3.1 initiated technical `KPS-*` inventory performs a locked one-time normalization to `(PROV000000)` and sets `inventory.import_key='KPS'`. Recorded references and legacy `KS-*` references are never changed by this compatibility path.
@@ -131,7 +133,7 @@ Example style:
 
 ## Hooks & Triggers
 
-- 2026-07-11: `STOCK_MOVEMENT` handles customer `facture` movements as business-close sales, supplier `invoice_supplier` movements at the configured supplier time, and inventory-ledger reconciliation through append-only rebases.
+- 2026-07-11: `STOCK_MOVEMENT` handles customer `facture` movements at their authoritative invoice datetime, supplier `invoice_supplier` movements at the configured supplier time, and inventory-ledger reconciliation through append-only rebases.
 - 2026-07-11: Relevant trigger actions are `STOCK_MOVEMENT`, `INVENTORY_CREATE`, `INVENTORY_MODIFY`, `INVENTORY_RECORDED`, and `BILL_SUPPLIER_VALIDATE` in `core/triggers/interface_99_modKreaProducts_KreaProductsTriggers.class.php`.
 - 2026-07-11: Inventory card/list hooks redirect native pages to the custom inventory implementations and override the Validated status label to Started.
 - 2026-07-11: The native inventory-sheet hook redirects import-key-managed inventories and legacy `KPS-*`/`KS-*` references to the dedicated page. Ordinary inventory references remain on Dolibarr core, and the custom inventory list links each type to its owning page.
@@ -212,6 +214,7 @@ Example style:
 
 ## Deprecated Knowledge
 
+- 2026-08-07: The 2026-07-11 rule that moved customer invoice day D to the configured close on D+1 is obsolete as of 4.5.15. Customer movements now retain their authoritative invoice datetime.
 - 2026-07-31: The 4.5.11 design that allowed non-stock-managed MO products to create execution lines without stock movements is obsolete as of 4.5.12. MO participation now makes stock management mandatory and updates the product accordingly.
 - 2026-07-17: The version 4.5.4 rule that treated multiple active manufacturing BOMs as unresolved became obsolete in version 4.5.8. Selection is now automatic: latest completed production first, then newest validation when production history is absent.
 - 2026-07-17: The version 4.5.4 rule excluding all product associations from cost valuation became obsolete in version 4.5.8. Associations are again supported as the recipe fallback when a dependent product has no active manufacturing BOM.

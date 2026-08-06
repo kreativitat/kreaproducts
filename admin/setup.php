@@ -498,6 +498,11 @@ $item->defaultFieldValue = '10:00';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
 $item->fieldAttr = array('type' => 'time', 'step' => '1');
 
+$item = $formSetup->newItem('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES');
+$item->setAsNumber(0, 1440, 1);
+$item->defaultFieldValue = '30';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES_HELP');
+
 // Inventário
 $formSetup->newItem('KREAPRODUCTS_INVENTORY_SETTINGS_TITLE')->setAsTitle();
 $item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_DEFAULT_TIME');

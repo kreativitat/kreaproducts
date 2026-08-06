@@ -64,6 +64,8 @@ KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = Converter automaticamente as unidades da 
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP = Para visualização da receita/componentes, mantém quantidades >= 1 em kg/l e converte quantidades < 1 para g/ml. As quantidades base usadas em produção/stock não são alteradas.
 KREAPRODUCTS_SUPPLIER_MOVE_TIME = Hora para movimentos de fatura de fornecedor
 KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Hora (HH:MM ou HH:MM:SS) aplicada aos movimentos de stock vindos de faturas de fornecedor
+KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES = Tolerância futura da data/hora da fatura (minutos)
+KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES_HELP = Número máximo de minutos que a data/hora oficial da fatura pode estar adiantada em relação ao relógio do servidor. Use 0 para rejeitar qualquer data/hora futura.
 KREAPRODUCTS_INVENTORY_DEFAULT_TIME = Hora por defeito no inventário
 KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP = Hora (HH:MM ou HH:MM:SS) usada como valor por defeito na criação do inventário
 KREAPRODUCTS_INVENTORY_CATEGORY_ROOT = Categoria raiz para o inventário

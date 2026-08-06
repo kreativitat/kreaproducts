@@ -44,7 +44,7 @@ class KreaProductsStockMovementService
 		// First: align timestamps (optional)
 		if ($applyMovementDates) {
 			if ($move->origintype === 'facture') {
-				if (!$this->shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)) {
+				if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf)) {
 					return -1;
 				}
 			}
@@ -104,22 +104,30 @@ class KreaProductsStockMovementService
 	}
 
 	/**
-	 * Put customer sales for invoice day D at the business close on D+1.
+	 * Align a customer movement with the authoritative invoice datetime.
 	 *
 	 * @param MouvementStock $move Customer invoice stock movement
 	 * @param DoliDB         $db   Database handler
 	 * @param Conf           $conf Dolibarr configuration
 	 * @return bool
 	 */
-	protected function shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)
+	protected function shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf)
 	{
 		if (empty($move->origin_id)) {
 			return true;
 		}
 
-		$sql = 'SELECT datef FROM '.MAIN_DB_PREFIX.'facture';
-		$sql .= ' WHERE rowid='.(int) $move->origin_id;
-		$sql .= ' AND entity='.(int) $conf->entity;
+		$sql = 'SELECT f.datef, f.datec';
+		if (isModEnabled('dolizsynch')) {
+			$sql .= ', (SELECT zs.datahora_zs FROM '.MAIN_DB_PREFIX.'dolizsynch_zsinvoicesynch zs';
+			$sql .= ' WHERE zs.fk_facture=f.rowid AND zs.entity=f.entity AND zs.datahora_zs IS NOT NULL';
+			$sql .= ' ORDER BY zs.rowid DESC LIMIT 1) AS source_datetime';
+		} else {
+			$sql .= ', NULL AS source_datetime';
+		}
+		$sql .= ' FROM '.MAIN_DB_PREFIX.'facture f';
+		$sql .= ' WHERE f.rowid='.(int) $move->origin_id;
+		$sql .= ' AND f.entity='.(int) $conf->entity;
 		$resql = $db->query($sql);
 		if (!$resql) {
 			dol_syslog(__METHOD__.' Error querying customer invoice date: '.$db->lasterror(), LOG_ERR);
@@ -132,8 +140,18 @@ class KreaProductsStockMovementService
 		}
 
 		try {
-			$invoiceDate = is_numeric($row->datef) ? $db->idate($row->datef) : (string) $row->datef;
-			$new = $db->idate($this->resolveCustomerInvoiceValueTimestamp($invoiceDate, $conf));
+			$invoiceDateTime = !empty($row->source_datetime) ? $row->source_datetime : $row->datec;
+			if (empty($invoiceDateTime)) {
+				$current = is_numeric($move->datem) ? $db->idate($move->datem) : (string) $move->datem;
+				$invoiceDateTime = substr((string) $row->datef, 0, 10).' '.substr($current, 11, 8);
+			}
+			$invoiceTimestamp = $this->resolveCustomerInvoiceDateTimeTimestamp($invoiceDateTime, $conf);
+			$futureToleranceMinutes = min(1440, max(0, getDolGlobalInt('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 30)));
+			if ($invoiceTimestamp > dol_now() + ($futureToleranceMinutes * 60)) {
+				dol_syslog(__METHOD__.' Refusing future customer invoice datetime '.(string) $invoiceDateTime, LOG_ERR);
+				return false;
+			}
+			$new = $db->idate($invoiceTimestamp);
 		} catch (InvalidArgumentException $exception) {
 			dol_syslog(__METHOD__.' '.$exception->getMessage(), LOG_ERR);
 			return false;
@@ -175,7 +193,7 @@ class KreaProductsStockMovementService
 	{
 		$timezone = $this->getBusinessTimezone($conf);
 		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone);
-		$minimumInvoiceDate = $valueDate->modify('-1 day')->format('Y-m-d');
+		$minimumInvoiceDate = $valueDate->format('Y-m-d');
 
 		$sql = 'SELECT sm.rowid, sm.fk_origin, sm.fk_product, sm.fk_entrepot, sm.batch, sm.datem, sm.value, f.datef';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement sm';
@@ -209,7 +227,7 @@ class KreaProductsStockMovementService
 			$move->fk_entrepot = (int) $row->fk_entrepot;
 			$move->batch = (string) $row->batch;
 			$move->datem = (string) $row->datem;
-			if (!$this->shiftCustomerInvoiceMoveToBusinessClose($move, $db, $conf)) {
+			if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf)) {
 				return false;
 			}
 			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {
@@ -283,18 +301,14 @@ class KreaProductsStockMovementService
 	}
 
 	/**
-	 * @param string $invoiceDate Customer invoice date
+	 * @param string $invoiceDateTime Customer invoice datetime
 	 * @param Conf   $conf        Dolibarr configuration
 	 * @return int
 	 */
-	protected function resolveCustomerInvoiceValueTimestamp($invoiceDate, $conf)
+	protected function resolveCustomerInvoiceDateTimeTimestamp($invoiceDateTime, $conf)
 	{
 		$businessDay = new KreaProductsBusinessDayService();
-		return $businessDay->resolveCustomerInvoiceValueTimestamp(
-			substr((string) $invoiceDate, 0, 10),
-			$this->getBusinessTimezone($conf),
-			trim((string) ($conf->global->KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME ?? '06:00'))
-		);
+		return $businessDay->resolveInvoiceDateTimeTimestamp((string) $invoiceDateTime, $this->getBusinessTimezone($conf));
 	}
 
 	/**

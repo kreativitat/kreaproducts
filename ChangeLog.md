@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.16] - 2026-08-07
+
+### Changed
+
+- Made the future invoice datetime tolerance configurable with a 30-minute default.
+
+## [4.5.15] - 2026-08-07
+
+### Changed
+
+- Dated customer stock movements at the authoritative invoice datetime.
+
+### Fixed
+
+- Rejected future customer invoice datetimes before stock reconciliation.
+
 ## [4.5.14] - 2026-08-06
 
 ### Fixed

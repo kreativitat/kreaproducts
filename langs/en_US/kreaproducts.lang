@@ -556,6 +556,8 @@ KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = Auto-scale recipe units (kg/l <-> g/ml)
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP = For recipe/component display, keep quantities >= 1 in kg/l and convert quantities < 1 to g/ml. Base quantities used in production/stock remain unchanged.
 KREAPRODUCTS_SUPPLIER_MOVE_TIME = Time for supplier invoice movements
 KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP = Time (HH:MM or HH:MM:SS) applied to stock movements from supplier invoices
+KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES = Invoice future tolerance (minutes)
+KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES_HELP = Maximum number of minutes an authoritative invoice datetime may be ahead of the server clock. Use 0 to reject every future datetime.
 KREAPRODUCTS_DISMANTLE_BOMTYPE = Dismantle BOM type
 KREAPRODUCTS_DISMANTLE_BOMTYPE_HELP = Value of bom_bom.bomtype that identifies the dismantle BOM (default 1)
 KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION1 = Type 1 (Standard dismantling)

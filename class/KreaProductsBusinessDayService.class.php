@@ -65,27 +65,23 @@ class KreaProductsBusinessDayService
 	}
 
 	/**
-	 * Resolve a customer-invoice movement immediately before the following day's inventory anchor.
+	 * Resolve an authoritative invoice datetime in the business timezone.
 	 *
-	 * A customer invoice dated on business day D is value-dated at the configured close on D+1.
-	 * The physical inventory for that business day is then placed one minute later.
-	 *
-	 * @param string       $invoiceDate Invoice date in YYYY-MM-DD format
-	 * @param DateTimeZone $timezone    Business timezone
-	 * @param string       $closingTime Configured business-day close
+	 * @param string       $invoiceDateTime Invoice datetime in YYYY-MM-DD HH:MM:SS format
+	 * @param DateTimeZone $timezone        Business timezone
 	 * @return int
 	 * @throws InvalidArgumentException
 	 */
-	public function resolveCustomerInvoiceValueTimestamp($invoiceDate, DateTimeZone $timezone, $closingTime = '06:00')
+	public function resolveInvoiceDateTimeTimestamp($invoiceDateTime, DateTimeZone $timezone)
 	{
-		$invoiceDate = trim((string) $invoiceDate);
-		$date = DateTimeImmutable::createFromFormat('!Y-m-d', $invoiceDate, $timezone);
+		$invoiceDateTime = trim((string) $invoiceDateTime);
+		$date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $invoiceDateTime, $timezone);
 		$dateErrors = DateTimeImmutable::getLastErrors();
 		if ($date === false || (is_array($dateErrors) && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))) {
-			throw new InvalidArgumentException('Invalid invoice date. Expected YYYY-MM-DD.');
+			throw new InvalidArgumentException('Invalid invoice datetime. Expected YYYY-MM-DD HH:MM:SS.');
 		}
 
-		return $this->resolveDateTimestamp($date->modify('+1 day')->format('Y-m-d'), $timezone, $closingTime);
+		return $date->getTimestamp();
 	}
 
 	/**
