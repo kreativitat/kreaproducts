@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.13] - 2026-08-06
+
+### Fixed
+
+- Loaded Dolibarr from both standard and custom module locations in the inventory auto-close runner.
+
 ## [4.5.12] - 2026-07-31
 
 ### Changed

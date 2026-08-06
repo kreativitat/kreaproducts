@@ -33,7 +33,10 @@ define('NOREQUIREAJAX', '1');
 define('NOTOKENRENEWAL', '1');
 define('USESUFFIXINLOG', '_kreaproducts_inventory_cron');
 
-$res = @include __DIR__.'/../../../main.inc.php';
+$res = @include __DIR__.'/../../main.inc.php';
+if (!$res) {
+	$res = @include __DIR__.'/../../../main.inc.php';
+}
 if (!$res) {
 	fwrite(STDERR, "Não foi possível carregar o Dolibarr.\n");
 	exit(1);

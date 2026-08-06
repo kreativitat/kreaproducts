@@ -137,6 +137,7 @@ Example style:
 
 ## Integration Points
 
+- 2026-08-06: The standalone inventory auto-close runner tries `../../main.inc.php` first for a module installed directly under the Dolibarr document root, then `../../../main.inc.php` for an installation under `custom`, as required by Dolistore package validation.
 - 2026-07-12: Production releases are built with `build/build-release.sh`. The release archive includes runtime module files and compiled `stock_frontend` assets while excluding `AGENTS.md`, `ChangeLog.md`, `bin`, `build`, `stockapp`, tests, local launchd files, and workspace metadata.
 - 2026-07-12: `/kreaproducts/inventory_stock_overview.php` displays one table per direct child of the configured inventory root category. It lists the same countable products as the inventory templates and obtains current virtual stock through Dolibarr `Product::load_stock('nobatch')`. The page and its Products/Stock left-menu entry require stock read plus inventory analysis permission.
 - 2026-07-12: Inventory statistics graph each product independently over 15 daily intake and consumption buckets selected from a product dropdown. Quantities from different products are never added together because their units may not be comparable.
