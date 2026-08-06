@@ -1,6 +1,13 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.5.14] - 2026-08-06
+
+### Fixed
+
+- Preserved active inventory count corrections during stock reconstruction.
+- Kept automatic dismantling movements on the supplier movement server time.
+
 ## [4.5.13] - 2026-08-06
 
 ### Fixed

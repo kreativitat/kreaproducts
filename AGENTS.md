@@ -41,6 +41,8 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-06: Stock reconstruction uses the latest active `kreaproducts_inventory_correction.corrected_counted_qty` as the inventory anchor when one exists. Count-correction movements remain excluded from operational movement sums, preventing both double counting and loss of append-only corrections. Automatic dismantling parses the source `stock_mouvement.datem` through `DoliDB::jdate()` because core SQL DATETIME values are server-local, not GMT.
+
 - 2026-07-31: Every product participating in an automatic dismantling MO must be stock-managed. Before execution, KreaProducts permanently changes `stockable_product` to `Product::ENABLED_STOCK` inside the caller's transaction, verifies the persisted state, and then requires a real stock movement for every consume/produce execution line.
 - 2026-07-31: Automatic dismantling owns the exact MO consume/produce movement set. Each generated movement disables Dolibarr's separate composed-product child propagation. When a declared MO product is itself a kit parent and global parent movements are disabled, the operation temporarily enables the parent movement only for that call and restores the entity configuration immediately afterward.
 - 2026-07-31: `STOCK_MOVEMENT` returns `0` after successful processing and a negative value on failure, following Dolibarr's trigger contract. Module-managed transactional cost updates mark their internal `Product::update()` calls with `skip_kreawoo_realtime_sync` so irreversible WooCommerce requests cannot execute before the local stock and valuation transaction commits.

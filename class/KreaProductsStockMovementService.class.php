@@ -510,7 +510,7 @@ class KreaProductsStockMovementService
 			$move->label,
 			$move->origin_id,
 			$move->origintype,
-			dol_stringtotime($move->datem),
+			$db->jdate($move->datem),
 			$user,
 			(int) $move->id
 		);
@@ -741,6 +741,9 @@ class KreaProductsStockMovementService
 		if (!is_array($anchor) || empty($anchor['found'])) {
 			return 0.0;
 		}
+		if (array_key_exists('corrected_counted_qty', $anchor) && $anchor['corrected_counted_qty'] !== null && $anchor['corrected_counted_qty'] !== '') {
+			return (float) $anchor['corrected_counted_qty'];
+		}
 		if (array_key_exists('qty_view', $anchor) && $anchor['qty_view'] !== null && $anchor['qty_view'] !== '') {
 			return (float) $anchor['qty_view'];
 		}
@@ -794,7 +797,9 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch'
+		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
+			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
@@ -822,6 +827,7 @@ class KreaProductsStockMovementService
 			'date_inventory' => $row->date_inventory,
 			'qty_view' => (float) $row->qty_view,
 			'qty_stock' => $row->qty_stock,
+			'corrected_counted_qty' => $row->corrected_counted_qty,
 			'batch' => $row->batch,
 		);
 	}
@@ -841,7 +847,9 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch'
+		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
+			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
@@ -870,6 +878,7 @@ class KreaProductsStockMovementService
 			'date_inventory' => $row->date_inventory,
 			'qty_view' => (float) $row->qty_view,
 			'qty_stock' => $row->qty_stock,
+			'corrected_counted_qty' => $row->corrected_counted_qty,
 			'batch' => $row->batch,
 		);
 	}
@@ -919,6 +928,8 @@ class KreaProductsStockMovementService
 		$condSm = $this->batchCondSm($db, $batch);
 
 		$sql = 'SELECT i.rowid AS inv_id, i.ref, i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
+			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty,'
 			. ' sm.rowid AS fk_movement, a.rowid AS fk_adjustment'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
@@ -950,6 +961,7 @@ class KreaProductsStockMovementService
 			'date_inventory' => $row->date_inventory,
 			'qty_view' => (float) $row->qty_view,
 			'qty_stock' => $row->qty_stock,
+			'corrected_counted_qty' => $row->corrected_counted_qty,
 			'batch' => $row->batch,
 			'fk_movement' => (int) $row->fk_movement,
 			'ledger_managed' => !empty($row->fk_adjustment),

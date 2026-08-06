@@ -121,9 +121,13 @@ assertSameValue(true, strpos((string) $stockMovementSource, "origintype === 'fac
 assertSameValue(true, substr_count((string) $stockMovementSource, 'OR sm.datem >') >= 2, 'Delayed customer and supplier movements must also be selected by actual movement position.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'ProductUpdater::getLastErrors()') !== false, 'Supplier stock processing must abort on cost-cascade errors.');
 assertSameValue(true, strpos((string) $stockMovementSource, "\t\treturn 0;\n\t}") !== false, 'Successful stock movement processing must use Dolibarr trigger success code zero.');
+assertSameValue(true, strpos((string) $stockMovementSource, "'corrected_counted_qty' => \$row->corrected_counted_qty") !== false, 'Inventory reconstruction must carry the latest active corrected count into its anchor.');
+assertSameValue(true, strpos((string) $stockMovementSource, "array_key_exists('corrected_counted_qty', \$anchor)") !== false, 'Corrected counts must take precedence over the original inventory quantity.');
+assertSameValue(true, strpos((string) $stockMovementSource, '$db->jdate($move->datem)') !== false, 'Dismantling must parse movement SQL datetimes in the server timezone.');
+assertSameValue(false, strpos((string) $stockMovementSource, 'dol_stringtotime($move->datem)') !== false, 'Dismantling must not reinterpret server SQL datetimes as GMT.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.5.13'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.5.14'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
 assertSameValue(true, strpos((string) $moduleSource, '/kreaproducts/inventory_stock_overview.php?leftmenu=stock_inventories') !== false, 'The inventory stock overview must be registered in the stock inventory left menu.');
