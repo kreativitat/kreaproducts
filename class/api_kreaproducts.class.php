@@ -21,6 +21,8 @@ use Luracast\Restler\RestException;
 
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
+require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.class.php';
+require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT . '/bom/class/bom.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/class/mo.class.php';
 require_once DOL_DOCUMENT_ROOT . '/mrp/class/moline.class.php';
@@ -1346,7 +1348,7 @@ class KreaProductsApi extends DolibarrApi
 		} catch (RestException $ex) {
 			// Core Mos::produceAndConsume may throw before rolling back its explicit transaction.
 			// Ensure we rollback current connection before any cleanup checks.
-			$this->rollbackProductionTransactions();
+			$this->rollbackOpenTransactions();
 
 			$httpCode = (int) $ex->getCode();
 			if ($httpCode < 400 || $httpCode > 599) {
@@ -1391,7 +1393,7 @@ class KreaProductsApi extends DolibarrApi
 			throw new RestException($httpCode, $errorMessage);
 		} catch (Throwable $ex) {
 			// Ensure pending DB transaction from produceAndConsume is rolled back.
-			$this->rollbackProductionTransactions();
+			$this->rollbackOpenTransactions();
 
 			$technicalMessage = trim((string) $ex->getMessage());
 			$errorMessage = 'Unexpected production execution error. Check Dolibarr logs for details.';
@@ -1436,6 +1438,213 @@ class KreaProductsApi extends DolibarrApi
 			'trace_error' => $traceError,
 			'stock_updated' => true,
 			'label_payload' => $labelPayload,
+		);
+	}
+
+	/**
+	 * Validate a supplier invoice through Dolibarr's complete business lifecycle.
+	 *
+	 * This endpoint mirrors the supplier-invoice card validation contract: it
+	 * uses the current entity's default warehouse when supplier-bill stock
+	 * posting applies and no warehouse is supplied. It always calls
+	 * FactureFournisseur::validate() with trigger execution enabled. Trigger
+	 * suppression is intentionally not supported.
+	 *
+	 * Request example:
+	 * {
+	 *   "warehouse_id": 12
+	 * }
+	 *
+	 * @param int   $id Supplier invoice ID
+	 * @param array $request_data Request body
+	 * @return array
+	 *
+	 * @url POST supplier-invoices/{id}/validate
+	 */
+	public function postSupplierInvoiceValidate($id, $request_data = null)
+	{
+		$invoiceId = (int) $id;
+		if ($invoiceId <= 0) {
+			throw new RestException(400, 'Invalid supplier invoice id');
+		}
+		$this->assertSupplierInvoiceValidationRights();
+
+		if (!DolibarrApi::_checkAccessToResource('fournisseur', $invoiceId, 'facture_fourn', 'facture')) {
+			throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
+		}
+		if ($request_data !== null && !is_array($request_data)) {
+			throw new RestException(400, 'Invalid request body');
+		}
+		$request_data = (is_array($request_data) ? $request_data : array());
+
+		if (array_key_exists('notrigger', $request_data)) {
+			throw new RestException(400, 'Trigger suppression is not supported by this endpoint');
+		}
+
+		$requestedWarehouseId = (int) (isset($request_data['warehouse_id']) ? $request_data['warehouse_id'] : (isset($request_data['idwarehouse']) ? $request_data['idwarehouse'] : 0));
+		if (isset($request_data['warehouse_id']) && isset($request_data['idwarehouse']) && (int) $request_data['warehouse_id'] !== (int) $request_data['idwarehouse']) {
+			throw new RestException(400, 'warehouse_id and idwarehouse must identify the same warehouse');
+		}
+
+		$invoice = new FactureFournisseur($this->db);
+		$fetchResult = $invoice->fetch($invoiceId);
+		if ($fetchResult === 0) {
+			throw new RestException(404, 'Supplier invoice not found');
+		}
+		if ($fetchResult < 0) {
+			$this->failInternalRequest('Unable to load supplier invoice', $invoice->error);
+		}
+		if ((int) $invoice->status !== FactureFournisseur::STATUS_DRAFT) {
+			throw new RestException(409, 'Supplier invoice is not in draft status');
+		}
+
+		$requiresStockWarehouse = $this->supplierInvoiceRequiresStockWarehouse($invoice);
+		$warehouseId = $this->resolveSupplierInvoiceWarehouseId($requestedWarehouseId, $requiresStockWarehouse);
+		$warehouseSource = ($warehouseId <= 0 ? 'not_required' : ($requestedWarehouseId > 0 ? 'request' : 'entity_default'));
+
+		if (!$this->db->begin()) {
+			$this->failInternalRequest('Unable to start supplier invoice validation transaction', $this->db->lasterror(), 500);
+		}
+		try {
+			$this->lockSupplierInvoiceForValidation($invoiceId);
+			$fetchResult = $invoice->fetch($invoiceId);
+			if ($fetchResult === 0) {
+				throw new RestException(404, 'Supplier invoice not found');
+			}
+			if ($fetchResult < 0) {
+				$this->failInternalRequest('Unable to reload supplier invoice for validation', $invoice->error);
+			}
+			if (!DolibarrApi::_checkAccessToResource('fournisseur', $invoiceId, 'facture_fourn', 'facture')) {
+				throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
+			}
+			if ((int) $invoice->status !== FactureFournisseur::STATUS_DRAFT) {
+				throw new RestException(409, 'Supplier invoice was already validated or changed');
+			}
+
+			$requiresStockWarehouse = $this->supplierInvoiceRequiresStockWarehouse($invoice);
+			$warehouseId = $this->resolveSupplierInvoiceWarehouseId($requestedWarehouseId, $requiresStockWarehouse);
+			$warehouseSource = ($warehouseId <= 0 ? 'not_required' : ($requestedWarehouseId > 0 ? 'request' : 'entity_default'));
+
+			// The literal 0 is mandatory: all core and module business triggers must run.
+			$validateResult = $invoice->validate(DolibarrApiAccess::$user, '', $warehouseId, 0);
+			if ($validateResult === 0) {
+				throw new RestException(409, 'Supplier invoice was already validated or changed');
+			}
+			if ($validateResult < 0) {
+				$technicalError = trim((string) $invoice->error);
+				if (!empty($invoice->errors)) {
+					$technicalError .= ' ' . implode(' | ', array_map('strval', $invoice->errors));
+				}
+				$this->failInternalRequest('Unable to validate supplier invoice', $technicalError, 500);
+			}
+
+			if (!$this->db->commit()) {
+				$this->failInternalRequest('Unable to commit supplier invoice validation', $this->db->lasterror(), 500);
+			}
+		} catch (RestException $exception) {
+			$this->rollbackOpenTransactions();
+			throw $exception;
+		} catch (Throwable $exception) {
+			$this->rollbackOpenTransactions();
+			$this->failInternalRequest('Unable to validate supplier invoice', $exception->getMessage(), 500);
+		}
+
+		return array(
+			'id' => (int) $invoice->id,
+			'ref' => (string) $invoice->ref,
+			'status' => (int) $invoice->status,
+			'warehouse_id' => $warehouseId,
+			'warehouse_source' => $warehouseSource,
+			'stock_validation_path' => ($requiresStockWarehouse ? 1 : 0),
+			'triggers_suppressed' => 0,
+		);
+	}
+
+	/**
+	 * Validate every draft supplier invoice belonging to one supplier.
+	 *
+	 * Each invoice uses the same trigger-safe lifecycle as the single-invoice
+	 * endpoint. Validations are isolated so one invalid invoice is reported as
+	 * failed without hiding or rolling back invoices already validated safely.
+	 *
+	 * @param int   $supplier_id Supplier third-party ID
+	 * @param array $request_data Request body
+	 * @return array
+	 *
+	 * @url POST suppliers/{supplier_id}/invoices/validate
+	 */
+	public function postSupplierInvoicesValidateBySupplier($supplier_id, $request_data = null)
+	{
+		$supplierId = (int) $supplier_id;
+		if ($supplierId <= 0) {
+			throw new RestException(400, 'Invalid supplier id');
+		}
+		$this->assertSupplierInvoiceValidationRights();
+
+		if ($request_data !== null && !is_array($request_data)) {
+			throw new RestException(400, 'Invalid request body');
+		}
+		$request_data = (is_array($request_data) ? $request_data : array());
+		if (array_key_exists('notrigger', $request_data)) {
+			throw new RestException(400, 'Trigger suppression is not supported by this endpoint');
+		}
+		if (isset($request_data['warehouse_id']) && isset($request_data['idwarehouse']) && (int) $request_data['warehouse_id'] !== (int) $request_data['idwarehouse']) {
+			throw new RestException(400, 'warehouse_id and idwarehouse must identify the same warehouse');
+		}
+
+		$supplier = new Fournisseur($this->db);
+		$fetchResult = $supplier->fetch($supplierId);
+		if ($fetchResult === 0 || empty($supplier->fournisseur)) {
+			throw new RestException(404, 'Supplier not found');
+		}
+		if ($fetchResult < 0) {
+			$this->failInternalRequest('Unable to load supplier', $supplier->error);
+		}
+		if (!DolibarrApi::_checkAccessToResource('societe', $supplierId, 'societe')) {
+			throw new RestException(403, 'Access not allowed for login ' . DolibarrApiAccess::$user->login);
+		}
+
+		$invoiceIds = $this->loadDraftSupplierInvoiceIds($supplierId);
+		$results = array();
+		$validatedCount = 0;
+		$failedCount = 0;
+
+		foreach ($invoiceIds as $invoiceId) {
+			try {
+				$validatedInvoice = $this->postSupplierInvoiceValidate($invoiceId, $request_data);
+				$validatedInvoice['result'] = 'validated';
+				$results[] = $validatedInvoice;
+				$validatedCount++;
+			} catch (RestException $exception) {
+				$httpCode = (int) $exception->getCode();
+				if ($httpCode < 400 || $httpCode > 599) {
+					$httpCode = 500;
+				}
+				$results[] = array(
+					'id' => (int) $invoiceId,
+					'result' => 'failed',
+					'http_code' => $httpCode,
+					'message' => (string) $exception->getMessage(),
+				);
+				$failedCount++;
+			} catch (Throwable $exception) {
+				dol_syslog(__METHOD__ . ' invoice=' . ((int) $invoiceId) . ' ' . $exception->getMessage(), LOG_ERR);
+				$results[] = array(
+					'id' => (int) $invoiceId,
+					'result' => 'failed',
+					'http_code' => 500,
+					'message' => 'Unable to validate supplier invoice',
+				);
+				$failedCount++;
+			}
+		}
+
+		return array(
+			'supplier_id' => $supplierId,
+			'draft_invoices_found' => count($invoiceIds),
+			'validated_count' => $validatedCount,
+			'failed_count' => $failedCount,
+			'invoices' => $results,
 		);
 	}
 
@@ -1798,6 +2007,117 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Assert the same supplier-invoice validation right used by the web card.
+	 *
+	 * @return void
+	 */
+	protected function assertSupplierInvoiceValidationRights()
+	{
+		$canCreate = (
+			DolibarrApiAccess::$user->hasRight('fournisseur', 'facture', 'creer')
+			|| DolibarrApiAccess::$user->hasRight('supplier_invoice', 'creer')
+		);
+		$canValidate = (
+			(!getDolGlobalString('MAIN_USE_ADVANCED_PERMS') && $canCreate)
+			|| (getDolGlobalString('MAIN_USE_ADVANCED_PERMS') && DolibarrApiAccess::$user->hasRight('fournisseur', 'supplier_invoice_advance', 'validate'))
+		);
+		if (!$canValidate) {
+			throw new RestException(403, 'Missing supplier invoice validation right');
+		}
+	}
+
+	/**
+	 * Return whether the native supplier-invoice validation path needs a warehouse.
+	 *
+	 * @param FactureFournisseur $invoice Supplier invoice
+	 * @return bool
+	 */
+	protected function supplierInvoiceRequiresStockWarehouse(FactureFournisseur $invoice)
+	{
+		if (!isModEnabled('stock') || !getDolGlobalString('STOCK_CALCULATE_ON_SUPPLIER_BILL')) {
+			return false;
+		}
+
+		$lineType = (getDolGlobalString('STOCK_SUPPORTS_SERVICES') ? 1 : 2);
+		return ($invoice->hasProductsOrServices($lineType) > 0);
+	}
+
+	/**
+	 * Resolve the supplier-invoice warehouse from the request or entity default.
+	 *
+	 * @param int  $requestedWarehouseId Requested warehouse ID
+	 * @param bool $required Whether stock posting requires a warehouse
+	 * @return int
+	 */
+	protected function resolveSupplierInvoiceWarehouseId($requestedWarehouseId, $required)
+	{
+		$warehouseId = (int) $requestedWarehouseId;
+		if ($warehouseId > 0) {
+			$this->assertWarehouseAvailableForSupplierInvoice($warehouseId);
+			return $warehouseId;
+		}
+		if (!$required) {
+			return 0;
+		}
+
+		$warehouseId = getDolGlobalInt('MAIN_DEFAULT_WAREHOUSE');
+		if ($warehouseId <= 0) {
+			throw new RestException(400, 'No warehouse was supplied and no default warehouse is configured for the current entity');
+		}
+		$this->assertWarehouseAvailableForSupplierInvoice($warehouseId);
+		return $warehouseId;
+	}
+
+	/**
+	 * Lock one entity-scoped supplier invoice before validation.
+	 *
+	 * @param int $invoiceId Supplier invoice ID
+	 * @return void
+	 */
+	protected function lockSupplierInvoiceForValidation($invoiceId)
+	{
+		$sql = 'SELECT f.rowid FROM ' . MAIN_DB_PREFIX . 'facture_fourn AS f';
+		$sql .= ' WHERE f.rowid = ' . ((int) $invoiceId);
+		$sql .= ' AND f.entity IN (' . getEntity('supplier_invoice') . ')';
+		$sql .= ' FOR UPDATE';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to lock supplier invoice for validation', $this->db->lasterror());
+		}
+		$obj = $this->db->fetch_object($resql);
+		$this->db->free($resql);
+		if (!$obj) {
+			throw new RestException(404, 'Supplier invoice not found');
+		}
+	}
+
+	/**
+	 * Load draft supplier invoice IDs in the active supplier-invoice scope.
+	 *
+	 * @param int $supplierId Supplier third-party ID
+	 * @return int[]
+	 */
+	protected function loadDraftSupplierInvoiceIds($supplierId)
+	{
+		$sql = 'SELECT f.rowid FROM ' . MAIN_DB_PREFIX . 'facture_fourn AS f';
+		$sql .= ' WHERE f.fk_soc = ' . ((int) $supplierId);
+		$sql .= ' AND f.fk_statut = ' . FactureFournisseur::STATUS_DRAFT;
+		$sql .= ' AND f.entity IN (' . getEntity('supplier_invoice') . ')';
+		$sql .= ' ORDER BY f.datef ASC, f.rowid ASC';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->failInternalRequest('Unable to load draft supplier invoices', $this->db->lasterror());
+		}
+
+		$invoiceIds = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$invoiceIds[] = (int) $obj->rowid;
+		}
+		$this->db->free($resql);
+		return $invoiceIds;
+	}
+
+	/**
 	 * Log an internal failure without exposing database or object details to REST clients.
 	 *
 	 * @param string $publicMessage Public-safe response message
@@ -1952,6 +2272,29 @@ class KreaProductsApi extends DolibarrApi
 	 */
 	protected function assertWarehouseAvailableForProduction($warehouseId)
 	{
+		$this->assertWarehouseAvailableInStockScope($warehouseId, 'production');
+	}
+
+	/**
+	 * Refuse a supplier-invoice warehouse outside the active stock scope.
+	 *
+	 * @param int $warehouseId Warehouse ID
+	 * @return void
+	 */
+	protected function assertWarehouseAvailableForSupplierInvoice($warehouseId)
+	{
+		$this->assertWarehouseAvailableInStockScope($warehouseId, 'supplier invoice');
+	}
+
+	/**
+	 * Refuse inactive warehouses and warehouses outside the current stock entity scope.
+	 *
+	 * @param int    $warehouseId Warehouse ID
+	 * @param string $purpose Fixed operation name for public-safe errors
+	 * @return void
+	 */
+	protected function assertWarehouseAvailableInStockScope($warehouseId, $purpose)
+	{
 		$warehouseId = (int) $warehouseId;
 		$sql = 'SELECT e.rowid FROM '.MAIN_DB_PREFIX.'entrepot as e';
 		$sql .= ' WHERE e.rowid = '.$warehouseId;
@@ -1959,12 +2302,12 @@ class KreaProductsApi extends DolibarrApi
 		$sql .= ' AND e.statut = 1';
 		$resql = $this->db->query($sql);
 		if (!$resql) {
-			$this->failInternalRequest('Unable to validate the production warehouse', $this->db->lasterror());
+			$this->failInternalRequest('Unable to validate the ' . $purpose . ' warehouse', $this->db->lasterror());
 		}
 		$obj = $this->db->fetch_object($resql);
 		$this->db->free($resql);
 		if (!$obj) {
-			throw new RestException(403, 'Production warehouse is inactive or outside the current entity scope');
+			throw new RestException(403, ucfirst($purpose) . ' warehouse is inactive or outside the current entity scope');
 		}
 	}
 
@@ -2714,11 +3057,11 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
-	 * Fully unwind nested Dolibarr transactions after the core MRP API throws.
+	 * Fully unwind nested Dolibarr transactions after a core lifecycle throws.
 	 *
 	 * @return void
 	 */
-	protected function rollbackProductionTransactions()
+	protected function rollbackOpenTransactions()
 	{
 		$guard = 0;
 		while ((int) $this->db->transaction_opened > 0 && $guard < 10) {

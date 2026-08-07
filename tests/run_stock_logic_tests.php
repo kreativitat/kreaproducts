@@ -132,7 +132,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.5.16'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.0'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -273,6 +273,31 @@ assertSameValue(true, strpos((string) $mobileAppSource, 'inventory.can_edit_valu
 assertSameValue(true, strpos((string) $mobileAppSource, 'JSON.stringify({ counts, valueDate })') !== false, 'Offline drafts must preserve the selected value date with counts.');
 
 $productionApiSource = file_get_contents(__DIR__.'/../class/api_kreaproducts.class.php');
+$supplierValidationStart = strpos((string) $productionApiSource, 'public function postSupplierInvoiceValidate');
+$supplierValidationEnd = strpos((string) $productionApiSource, 'public function getPurchasePrices', $supplierValidationStart);
+assertSameValue(true, $supplierValidationStart !== false && $supplierValidationEnd !== false, 'Supplier invoice validation API test scope could not be resolved.');
+$supplierValidationSource = substr((string) $productionApiSource, $supplierValidationStart, $supplierValidationEnd - $supplierValidationStart);
+assertSameValue(true, strpos((string) $productionApiSource, '@url POST supplier-invoices/{id}/validate') !== false, 'Supplier invoice validation must expose the dedicated KreaProducts endpoint.');
+assertSameValue(true, strpos((string) $supplierValidationSource, "array_key_exists('notrigger', \$request_data)") !== false, 'Supplier invoice validation must reject trigger suppression.');
+assertSameValue(true, strpos((string) $supplierValidationSource, "\$invoice->validate(DolibarrApiAccess::\$user, '', \$warehouseId, 0)") !== false, 'Supplier invoice validation must call the native lifecycle with triggers enabled.');
+assertSameValue(true, strpos((string) $supplierValidationSource, '$this->db->begin()') < strpos((string) $supplierValidationSource, '$invoice->validate('), 'Supplier invoice validation must open an outer transaction before the native lifecycle call.');
+assertSameValue(true, strpos((string) $supplierValidationSource, "if (!\$this->db->commit())") > strpos((string) $supplierValidationSource, '$invoice->validate('), 'Supplier invoice validation must verify the outer transaction commit.');
+assertSameValue(true, strpos((string) $supplierValidationSource, 'lockSupplierInvoiceForValidation($invoiceId)') < strpos((string) $supplierValidationSource, '$invoice->validate('), 'Supplier invoice validation must lock the invoice before running the native lifecycle.');
+assertSameValue(true, strpos((string) $supplierValidationSource, 'supplierInvoiceRequiresStockWarehouse($invoice)') !== false, 'Supplier invoice validation must enforce the native web-interface warehouse requirement.');
+assertSameValue(true, strpos((string) $productionApiSource, "getDolGlobalInt('MAIN_DEFAULT_WAREHOUSE')") !== false, 'Supplier invoice validation must fall back to the current entity default warehouse.');
+assertSameValue(true, strpos((string) $supplierValidationSource, 'resolveSupplierInvoiceWarehouseId($requestedWarehouseId, $requiresStockWarehouse)') !== false, 'Supplier invoice validation must resolve its warehouse before calling the native lifecycle.');
+assertSameValue(true, strpos((string) $productionApiSource, "hasRight('fournisseur', 'supplier_invoice_advance', 'validate')") !== false, 'Supplier invoice validation must enforce Dolibarr advanced validation rights.');
+assertSameValue(true, strpos((string) $productionApiSource, "getEntity('supplier_invoice')") !== false, 'Supplier invoice validation locking must respect the invoice entity scope.');
+$supplierBatchStart = strpos((string) $productionApiSource, 'public function postSupplierInvoicesValidateBySupplier');
+$supplierBatchEnd = strpos((string) $productionApiSource, 'public function getPurchasePrices', $supplierBatchStart);
+assertSameValue(true, $supplierBatchStart !== false && $supplierBatchEnd !== false, 'Supplier-wide invoice validation API test scope could not be resolved.');
+$supplierBatchSource = substr((string) $productionApiSource, $supplierBatchStart, $supplierBatchEnd - $supplierBatchStart);
+assertSameValue(true, strpos((string) $productionApiSource, '@url POST suppliers/{supplier_id}/invoices/validate') !== false, 'Supplier-wide validation must expose the dedicated batch endpoint.');
+assertSameValue(true, strpos((string) $supplierBatchSource, '$this->postSupplierInvoiceValidate($invoiceId, $request_data)') !== false, 'Supplier-wide validation must reuse the trigger-safe single-invoice lifecycle.');
+assertSameValue(true, strpos((string) $supplierBatchSource, "'validated_count' => \$validatedCount") !== false, 'Supplier-wide validation must report validated invoices.');
+assertSameValue(true, strpos((string) $supplierBatchSource, "'failed_count' => \$failedCount") !== false, 'Supplier-wide validation must report failed invoices.');
+assertSameValue(true, strpos((string) $productionApiSource, "f.fk_statut = ' . FactureFournisseur::STATUS_DRAFT") !== false, 'Supplier-wide validation must select draft invoices only.');
+assertSameValue(true, strpos((string) $productionApiSource, "f.entity IN (' . getEntity('supplier_invoice')") !== false, 'Supplier-wide validation must isolate invoice selection by entity scope.');
 $productionRunStart = strpos((string) $productionApiSource, 'public function postProductionRun');
 $productionRunEnd = strpos((string) $productionApiSource, 'public function getPurchasePrices', $productionRunStart);
 assertSameValue(true, $productionRunStart !== false && $productionRunEnd !== false, 'Production API test scope could not be resolved.');
@@ -406,9 +431,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.5.16', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.5.16', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.5.16', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.7.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.7.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.7.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

@@ -1,6 +1,22 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.7.0] - 2026-08-07
+
+### Added
+
+- Added supplier-wide validation for all draft supplier invoices.
+
+## [4.6.0] - 2026-08-07
+
+### Added
+
+- Added trigger-safe supplier invoice validation with entity-default warehouse fallback through the KreaProducts API.
+
+### Security
+
+- Enforced supplier validation rights, warehouse scope, and invoice entity isolation.
+
 ## [4.5.16] - 2026-08-07
 
 ### Changed

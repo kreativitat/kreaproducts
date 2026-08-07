@@ -41,6 +41,10 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-07: `POST /api/index.php/kreaproducts/suppliers/{supplier_id}/invoices/validate` selects all draft invoices for one supplier in the active supplier-invoice entity scope and validates each through the trigger-safe single-invoice endpoint. Each invoice commits or rolls back independently; the response reports every validated and failed invoice so one business failure does not conceal prior successful stock postings.
+
+- 2026-08-07: `POST /api/index.php/kreaproducts/supplier-invoices/{id}/validate` is the trigger-safe supplier-invoice validation boundary. It mirrors the native supplier-invoice card's validation right and warehouse preconditions, falls back to the current entity's `MAIN_DEFAULT_WAREHOUSE` when no warehouse is supplied, locks the entity-scoped draft invoice, wraps `FactureFournisseur::validate()` in an outer transaction, and always passes `notrigger=0`. API callers cannot suppress `STOCK_MOVEMENT`, `BILL_SUPPLIER_VALIDATE`, or other enabled business triggers.
+
 - 2026-08-07: Customer invoice datetimes may be ahead of the server clock by `KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES`, defaulting to 30 minutes and constrained to 0-1440 in setup. Values beyond the configured tolerance fail closed before movement retiming or inventory reconciliation.
 
 - 2026-08-07: Customer `facture` movements use the authoritative invoice datetime. KreaProducts prefers the entity-scoped DoliZSynch `datahora_zs`, falls back to core `facture.datec`, and refuses datetimes more than five minutes in the future. It never moves a sale to the following day's business-close marker. Historical retiming continues through append-only inventory rebases.
@@ -158,6 +162,9 @@ Example style:
 
 ## Multicompany Notes
 
+- 2026-08-07: Supplier-wide invoice validation requires access to the supplier in the active third-party scope and selects draft `facture_fourn` rows only from `getEntity('supplier_invoice')`; every selected invoice is re-authorized by the single-invoice boundary before validation.
+- 2026-08-07: Supplier-invoice API validation checks Dolibarr resource access, locks `facture_fourn` within `getEntity('supplier_invoice')`, and accepts only active warehouses within `getEntity('stock')`.
+
 - 2026-07-12: The inventory stock overview filters categories through `getEntity('category')`, products through `getEntity('product')`, and relies on core `Product::load_stock()` to apply the active stock-sharing scope.
 - 2026-07-12: Optional production third-party and project references are accepted only when the record is in the active sharing scope and the API user can access it.
 - 2026-07-11: The merged mobile workflow resolves products, categories, warehouses, inventories, configuration, and adjustment-ledger rows within the active entity or the corresponding Dolibarr sharing scope.
@@ -183,6 +190,10 @@ Example style:
 - 2026-07-12: Automatic inventory closure requires the Dolibarr Scheduled Jobs module and an operational cron runner. Module version 4.0.0 declares `modCron` as a dependency and enables the closure job at one-minute frequency.
 
 ## Environment & Configuration
+
+- 2026-08-07: Version 4.7.0 passed the focused stock/API suite and all 65 source PHP lint checks on PHP 8.1.20 and 8.4.5. An unauthenticated HTTP probe reached the registered KreaProducts batch API class without executing validation. The final rebuilt 179-entry release ZIP includes the supplier-wide validation route, excludes internal maintainer/test files, and has SHA-256 `324e0e3f8998d77ad0eca007143bd70483f30fb9e827fb360af721d2622efd35`.
+- 2026-08-07: A read-only live database check found active `MAIN_DEFAULT_WAREHOUSE` targets for entities 1-11 (entity 8 resolves to warehouse 49, `DG99`). Entities 12 and 13 currently have value `0`; supplier-invoice API validation that requires stock will fail closed for those entities unless a warehouse is supplied or their entity default is configured.
+- 2026-08-07: Version 4.6.0 passed the focused stock/API suite and all 65 source PHP lint checks on PHP 8.1.20 and 8.4.5. The 179-entry release ZIP includes the trigger-safe supplier-invoice validation endpoint and entity-default warehouse fallback, excludes internal maintainer/test files, and has SHA-256 `fe02ad2c2d697e69be040201fd0800fad4830ed759c08d221d3933f8e9296d1a`.
 
 - 2026-07-17: Version 4.5.8 passed the focused suite and all 65 source PHP lint checks on PHP 7.3.33, 8.1.20, and 8.4.5. Entity-8 live resolution selected one automatic manufacturing BOM for each of 22 active BOM parents without errors. Rollback-only product-update probes propagated source 2308 to dependents 2775, 4154, 4155, 4156, 4157, and 9788; preserved recipe-owning source 7855 while updating dependent 4154; and recalculated product 10830 from cost 7.00 to selling price 8.05 at 15 percent markup. The 179-entry release ZIP contains 64 PHP files linted on all three PHP versions and has SHA-256 `f689f0c53bf413579621731dabb3000349e4af02c28493cf342fb17008b60934`.
 - 2026-07-16: Version 4.5.7 passed the focused suite and all 65 source PHP lint checks on PHP 7.3, 8.1.20, and 8.4.5. A read-only entity-8 probe on product `8497` verified that `prepareProductCostUpdate()` retains the original cost `6.00`, does not replace an existing snapshot, and makes a simulated cost `7.00` detectable by `hasCostPriceChanged()`. The rebuilt 179-entry release ZIP contains 64 PHP files that passed lint on all three PHP versions.

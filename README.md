@@ -124,6 +124,34 @@ KreaProducts can also update **selling price automatically** when the product **
 
 Note: allergen thresholds are percentages of the total recipe weight of the final product.
 
+## Supplier invoice validation API
+
+Validate draft supplier invoices through the KreaProducts lifecycle endpoint instead of changing the invoice status directly:
+
+```http
+POST /api/index.php/kreaproducts/supplier-invoices/{invoice_id}/validate
+DOLAPIKEY: your-api-key
+Content-Type: application/json
+
+{
+  "warehouse_id": 12
+}
+```
+
+When Dolibarr is configured to add supplier-bill products to stock, the endpoint uses `warehouse_id` when supplied and otherwise falls back to the current entity's `MAIN_DEFAULT_WAREHOUSE`. The selected warehouse must be active and inside the active stock entity scope. The endpoint applies the same validation and advanced-permission checks as the supplier invoice card and calls `FactureFournisseur::validate()` with trigger execution enabled. It rejects `notrigger`; stock movements, `STOCK_MOVEMENT`, `BILL_SUPPLIER_VALIDATE`, and all other enabled business triggers remain inside the validation lifecycle and database transaction.
+
+To validate every draft invoice currently belonging to one supplier, use:
+
+```http
+POST /api/index.php/kreaproducts/suppliers/{supplier_id}/invoices/validate
+DOLAPIKEY: your-api-key
+Content-Type: application/json
+
+{}
+```
+
+The batch endpoint accepts the same optional `warehouse_id`. It validates each invoice through the single-invoice lifecycle in invoice-date order. Each invoice has its own transaction, and the response includes `draft_invoices_found`, `validated_count`, `failed_count`, and one result per invoice. A failed invoice does not roll back an earlier invoice that was validated successfully.
+
 ## Permissions
 
 - Nutrition: read, write, delete.
