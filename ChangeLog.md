@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.7.1] - 2026-08-08
+
+### Fixed
+
+- Restored every KreaProducts API route after supplier-invoice validation route registration failed.
+
 ## [4.7.0] - 2026-08-07
 
 ### Added

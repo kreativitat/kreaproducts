@@ -132,7 +132,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.0'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.1'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -284,6 +284,8 @@ assertSameValue(true, strpos((string) $supplierValidationSource, '$this->db->beg
 assertSameValue(true, strpos((string) $supplierValidationSource, "if (!\$this->db->commit())") > strpos((string) $supplierValidationSource, '$invoice->validate('), 'Supplier invoice validation must verify the outer transaction commit.');
 assertSameValue(true, strpos((string) $supplierValidationSource, 'lockSupplierInvoiceForValidation($invoiceId)') < strpos((string) $supplierValidationSource, '$invoice->validate('), 'Supplier invoice validation must lock the invoice before running the native lifecycle.');
 assertSameValue(true, strpos((string) $supplierValidationSource, 'supplierInvoiceRequiresStockWarehouse($invoice)') !== false, 'Supplier invoice validation must enforce the native web-interface warehouse requirement.');
+assertSameValue(true, strpos((string) $productionApiSource, 'protected function supplierInvoiceRequiresStockWarehouse($invoice)') !== false, 'Supplier invoice API helpers must remain compatible with Restler route reflection.');
+assertSameValue(false, strpos((string) $productionApiSource, 'supplierInvoiceRequiresStockWarehouse(FactureFournisseur $invoice)') !== false, 'Supplier invoice API helpers must not expose constructor-dependent object type hints to Restler.');
 assertSameValue(true, strpos((string) $productionApiSource, "getDolGlobalInt('MAIN_DEFAULT_WAREHOUSE')") !== false, 'Supplier invoice validation must fall back to the current entity default warehouse.');
 assertSameValue(true, strpos((string) $supplierValidationSource, 'resolveSupplierInvoiceWarehouseId($requestedWarehouseId, $requiresStockWarehouse)') !== false, 'Supplier invoice validation must resolve its warehouse before calling the native lifecycle.');
 assertSameValue(true, strpos((string) $productionApiSource, "hasRight('fournisseur', 'supplier_invoice_advance', 'validate')") !== false, 'Supplier invoice validation must enforce Dolibarr advanced validation rights.');
@@ -431,9 +433,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.7.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.7.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.7.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.7.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.7.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.7.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

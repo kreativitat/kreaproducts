@@ -2029,10 +2029,10 @@ class KreaProductsApi extends DolibarrApi
 	/**
 	 * Return whether the native supplier-invoice validation path needs a warehouse.
 	 *
-	 * @param FactureFournisseur $invoice Supplier invoice
+	 * @param object $invoice Supplier invoice
 	 * @return bool
 	 */
-	protected function supplierInvoiceRequiresStockWarehouse(FactureFournisseur $invoice)
+	protected function supplierInvoiceRequiresStockWarehouse($invoice)
 	{
 		if (!isModEnabled('stock') || !getDolGlobalString('STOCK_CALCULATE_ON_SUPPLIER_BILL')) {
 			return false;

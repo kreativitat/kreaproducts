@@ -172,6 +172,7 @@ Example style:
 
 ## Known Pitfalls & Gotchas
 
+- 2026-08-08: Restler reflects protected methods while registering a Dolibarr API class. API helper parameters must not use constructor-dependent object type hints such as `FactureFournisseur`; Restler tries to instantiate the type without the required database argument and terminates every route for that API door with an empty HTTP 500 response.
 - 2026-07-17: The local entity-8 runtime has a separate KreaWoo schema drift: `llx_kreawoo_product_site_data` lacks `wc_stock_status`, while the installed KreaWoo trigger writes that column. A normal cross-module `Product::update()` can therefore fail until KreaWoo's idempotent activation migration is applied. KreaProducts correctly treats that trigger failure as transactional and rolls back its cost cascade; KreaWoo schema changes remain outside this repository.
 - 2026-07-12: KreaProducts supports MySQL and MariaDB only. Module activation rejects other Dolibarr database drivers before running module SQL.
 - 2026-07-12: The KreaProducts inventory analysis permission hides analysis from this module and its mobile API. Users who retain broader Dolibarr product/stock permissions may still access stock information through other core pages; fully blind counting also requires reviewing those core rights.
