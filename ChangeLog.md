@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.11.11] - 2026-08-10
+
+### Fixed
+
+- Fixed calculated nutrition and allergen rendering after loading recursive product costs.
+
 ## [4.11.10] - 2026-08-10
 
 ### Fixed

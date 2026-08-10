@@ -294,7 +294,7 @@ class ProductHierarchyTree
             if (!isset(self::$productMap[$startId])) {
                 $rootProd = self::loadAndValidateProduct($startId);
                 if ($rootProd) {
-                    self::$productMap[$startId] = new EnhancedLocalProduct(
+                    self::$productMap[$startId] = new KreaProductsHierarchyProductNode(
                         $startId,
                         $rootProd->label,
                         $rootProd->ref,
@@ -632,7 +632,7 @@ class ProductHierarchyTree
 
             // Ensure father object exists
             if (!isset(self::$productMap[$obj->father])) {
-                self::$productMap[$obj->father] = new EnhancedLocalProduct(
+                self::$productMap[$obj->father] = new KreaProductsHierarchyProductNode(
                     $obj->father,
                     $obj->fatherLabel,
                     $obj->fatherRef,
@@ -643,7 +643,7 @@ class ProductHierarchyTree
             
             // Ensure child object exists
             if (!isset(self::$productMap[$obj->child])) {
-                self::$productMap[$obj->child] = new EnhancedLocalProduct(
+                self::$productMap[$obj->child] = new KreaProductsHierarchyProductNode(
                     $obj->child,
                     $obj->childLabel,
                     $obj->childRef,
@@ -1979,9 +1979,13 @@ document.addEventListener("DOMContentLoaded", function () {
 }
 
 /**
- * Enhanced LocalProduct class with better data management
+ * Internal hierarchy product node.
+ *
+ * The class name is intentionally module-specific because the nutrition
+ * calculator is loaded in the same product-page request and owns a different
+ * internal product-node implementation.
  */
-class EnhancedLocalProduct
+class KreaProductsHierarchyProductNode
 {
     public $id;
     public $label;
@@ -2039,14 +2043,5 @@ class EnhancedLocalProduct
     public function hasParents()
     {
         return !empty($this->parents);
-    }
-}
-
-// Backward compatibility
-class LocalProduct extends EnhancedLocalProduct
-{
-    public function __construct($id, $label, $ref, $price, $buyprice)
-    {
-        parent::__construct($id, $label, $ref, $price, $buyprice);
     }
 }

@@ -176,7 +176,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.10'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.11'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -557,6 +557,14 @@ assertSameValue(true, strpos((string) $dismantleSource, 'ProductUpdater::prepare
 
 $productViewerSource = file_get_contents(__DIR__.'/../class/ProductViewer.class.php');
 assertSameValue(true, strpos((string) $productViewerSource, 'ProductUpdater::prepareProductCostUpdate($prod);') !== false, 'Legacy product hierarchy cost persistence must preserve oldcopy before changing cost_price.');
+assertSameValue(true, strpos((string) $productViewerSource, 'class KreaProductsHierarchyProductNode') !== false, 'The product hierarchy must use a module-specific internal node class.');
+preg_match_all('/\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)/', (string) $productViewerSource, $productViewerClasses);
+preg_match_all('/\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)/', (string) $nutritionalCalculatorSource, $nutritionCalculatorClasses);
+assertSameValue(
+	array(),
+	array_values(array_intersect($productViewerClasses[1], $nutritionCalculatorClasses[1])),
+	'The hierarchy and nutrition calculators must be loadable in the same product-page request without duplicate class declarations.'
+);
 assertSameValue(true, strpos((string) $productViewerSource, 'public static function getRecursiveComponentCost($productId)') !== false, 'The technical-sheet recursive calculation must be reusable by the associated-products page.');
 assertSameValue(true, strpos((string) $productViewerSource, 'const PRICE_COMPARISON_DELTA = 0.0001;') !== false, 'Recursive cost comparison must match the four displayed decimal places.');
 assertSameValue(false, strpos((string) $productViewerSource, "trans(\"FichaTecnica\")") !== false, 'The redundant technical-sheet table must not render on the hierarchy page.');
@@ -631,9 +639,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.11.10', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.11.10', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.11.10', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.11.11', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.11.11', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.11.11', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');
