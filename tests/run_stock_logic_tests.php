@@ -132,7 +132,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.1'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.2'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -148,6 +148,8 @@ assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_w
 $actionsSource = file_get_contents(__DIR__.'/../class/actions_kreaproducts.class.php');
 assertSameValue(true, strpos((string) $actionsSource, 'buildProductCardKilogramSelectionScriptRow') !== false, 'Native product forms must apply the kilogram selector workaround.');
 assertSameValue(true, strpos((string) $actionsSource, 'option.value==="0"||label==="kg"') !== false, 'The kilogram selector workaround must support current and corrected Dolibarr unit values.');
+assertSameValue(false, strpos((string) $actionsSource, 'SET stockable_product =') !== false, 'KreaProducts must not bypass the native Product lifecycle when saving stock management.');
+assertSameValue(false, strpos((string) $actionsSource, "GETPOST('stockable_product', 'int')") !== false, 'KreaProducts must not parse the native HTML checkbox value as an integer.');
 
 $mobileInventorySource = file_get_contents(__DIR__.'/../class/KreaProductsMobileInventoryService.class.php');
 assertSameValue(true, strpos((string) $mobileInventorySource, "i.date_inventory >= '") !== false, 'Equal-time inventory anchors must be rejected.');
@@ -433,9 +435,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.7.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.7.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.7.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.7.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.7.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.7.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

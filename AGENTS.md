@@ -41,6 +41,8 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-10: Native product-card creation and updates leave `stockable_product` entirely to Dolibarr's `Product::create()` and `Product::update()` lifecycle. KreaProducts must not parse the checkbox value with `GETPOST(..., 'int')` or issue a parallel direct SQL update; an enabled HTML checkbox submits `on`, and integer parsing can incorrectly convert it to disabled stock management.
+
 - 2026-08-07: `POST /api/index.php/kreaproducts/suppliers/{supplier_id}/invoices/validate` selects all draft invoices for one supplier in the active supplier-invoice entity scope and validates each through the trigger-safe single-invoice endpoint. Each invoice commits or rolls back independently; the response reports every validated and failed invoice so one business failure does not conceal prior successful stock postings.
 
 - 2026-08-07: `POST /api/index.php/kreaproducts/supplier-invoices/{id}/validate` is the trigger-safe supplier-invoice validation boundary. It mirrors the native supplier-invoice card's validation right and warehouse preconditions, falls back to the current entity's `MAIN_DEFAULT_WAREHOUSE` when no warehouse is supplied, locks the entity-scoped draft invoice, wraps `FactureFournisseur::validate()` in an outer transaction, and always passes `notrigger=0`. API callers cannot suppress `STOCK_MOVEMENT`, `BILL_SUPPLIER_VALIDATE`, or other enabled business triggers.
@@ -191,6 +193,8 @@ Example style:
 - 2026-07-12: Automatic inventory closure requires the Dolibarr Scheduled Jobs module and an operational cron runner. Module version 4.0.0 declares `modCron` as a dependency and enables the closure job at one-minute frequency.
 
 ## Environment & Configuration
+
+- 2026-08-10: Version 4.7.2 passed the focused stock suite on PHP 7.3, 8.1, and 8.4, plus all 65 source PHP lint checks on each available runtime. The 179-entry release ZIP contains 64 lint-clean PHP files, excludes internal maintainer/test files, and has SHA-256 `dcde4010c4247ed5dfcc531e1c9d5eb8f529f62412599e7458f897e87ca541f8`. Live installation remained pending because the browser session was unauthenticated and SSH had no available identity.
 
 - 2026-08-07: Version 4.7.0 passed the focused stock/API suite and all 65 source PHP lint checks on PHP 8.1.20 and 8.4.5. An unauthenticated HTTP probe reached the registered KreaProducts batch API class without executing validation. The final rebuilt 179-entry release ZIP includes the supplier-wide validation route, excludes internal maintainer/test files, and has SHA-256 `324e0e3f8998d77ad0eca007143bd70483f30fb9e827fb360af721d2622efd35`.
 - 2026-08-07: A read-only live database check found active `MAIN_DEFAULT_WAREHOUSE` targets for entities 1-11 (entity 8 resolves to warehouse 49, `DG99`). Entities 12 and 13 currently have value `0`; supplier-invoice API validation that requires stock will fail closed for those entities unless a warehouse is supplied or their entity default is configured.

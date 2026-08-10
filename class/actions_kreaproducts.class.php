@@ -230,7 +230,7 @@ class ActionsKreaProducts extends CommonHookActions
 	 * Overload the doActions function.
 	 *
 	 * - On managed inventory pages: redirect to the unified KreaProducts workflow.
-	 * - On product create/update: keep existing stockable_product logic.
+	 * - On product create/update: let Dolibarr's Product lifecycle persist core fields.
 	 *
 	 * @param  array<string,mixed> $parameters  Hook metadata (context, etc...)
 	 * @param  CommonObject        $object      The object to process
@@ -368,28 +368,6 @@ class ActionsKreaProducts extends CommonHookActions
 					$this->errors[] = $db->lasterror();
 					return -1;
 				}
-			}
-		}
-
-		// 3) Existing logic: update stockable_product on product create/update
-		if (
-			($action === 'create' || $action === 'update')
-			&& $object->element === 'product'
-			&& ! empty($object->id)
-			&& isModEnabled('stock')
-			&& ! $object->hasbatch()
-			&& ($object->isProduct()
-				|| ($object->isService() && ! empty($conf->global->STOCK_SUPPORTS_SERVICES)))
-		) {
-			$val = GETPOST('stockable_product', 'int') ? 1 : 0;
-
-			$sql  = "UPDATE " . MAIN_DB_PREFIX . "product";
-			$sql .= " SET stockable_product = " . $val;
-			$sql .= " WHERE rowid = " . ((int) $object->id);
-			$resql = $db->query($sql);
-			if (! $resql) {
-				$this->errors[] = $db->lasterror();
-				$error++;
 			}
 		}
 

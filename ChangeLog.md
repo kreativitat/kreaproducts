@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.7.2] - 2026-08-10
+
+### Fixed
+
+- Preserved native stock management when creating or updating products.
+
 ## [4.7.1] - 2026-08-08
 
 ### Fixed
