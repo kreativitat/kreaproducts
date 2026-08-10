@@ -414,6 +414,14 @@ $TBomTypes = array(
 	'0' => $langs->trans('KREAPRODUCTS_DISMANTLE_BOMTYPE_OPTION0'),
 );
 
+$TLlmProviders = array(
+	'' => $langs->trans('None'),
+	'openai' => 'OpenAI',
+	'anthropic' => 'Claude (Anthropic)',
+	'openrouter' => 'OpenRouter',
+	'ollama' => 'Ollama',
+);
+
 // Sincronização de produtos
 $formSetup->newItem('ZS_SYNC_PRODUCTS_TITLE')->setAsTitle();
 $formSetup->newItem('KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE')->setAsYesNo();
@@ -447,6 +455,27 @@ $item->helpText = $langs->transnoentities('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODU
 $item = $formSetup->newItem('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT');
 $item->setAsYesNo();
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_LLM_PROVIDER');
+$item->setAsSelect($TLlmProviders);
+$item->defaultFieldValue = '';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LLM_PROVIDER_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_LLM_MODEL');
+$item->defaultFieldValue = '';
+$item->fieldAttr = array('placeholder' => $langs->transnoentities('KREAPRODUCTS_LLM_MODEL_PLACEHOLDER'));
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LLM_MODEL_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_LLM_API_KEY')->setAsSecureKey();
+$item->defaultFieldValue = '';
+$item->fieldParams['hideGenerateButton'] = 1;
+$item->cssClass = 'minwidth500';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LLM_API_KEY_HELP');
+
+$item = $formSetup->newItem('KREAPRODUCTS_LLM_OLLAMA_URL');
+$item->defaultFieldValue = 'http://localhost:11434';
+$item->fieldAttr = array('placeholder' => 'http://localhost:11434');
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_LLM_OLLAMA_URL_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_DEFAULT_WEIGHT_LABEL');
 $item->setAsSelect($TField);

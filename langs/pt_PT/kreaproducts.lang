@@ -53,6 +53,15 @@ KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT = Ativar cópia de valores médios para 
 KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT_HELP = Mostrar o seletor e botão para copiar valores médios por 100g para outro produto
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT = Ativar cópia de alergénios para produto
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP = Mostrar o seletor e botão para copiar alergénios para outro produto
+KREAPRODUCTS_LLM_PROVIDER = Fornecedor de IA para nutrição e alergénios
+KREAPRODUCTS_LLM_PROVIDER_HELP = Fornecedor usado para gerar sugestões de nutrição e alergénios, sujeitas a revisão, em produtos no modo manual
+KREAPRODUCTS_LLM_MODEL = Modelo de IA
+KREAPRODUCTS_LLM_MODEL_HELP = Identificador exato do modelo aceite pelo fornecedor selecionado
+KREAPRODUCTS_LLM_MODEL_PLACEHOLDER = Identificador do modelo do fornecedor
+KREAPRODUCTS_LLM_API_KEY = Chave API do fornecedor de IA
+KREAPRODUCTS_LLM_API_KEY_HELP = Constante Dolibarr cifrada usada pelo OpenAI, Claude ou OpenRouter; deixar vazia para Ollama
+KREAPRODUCTS_LLM_OLLAMA_URL = URL do Ollama
+KREAPRODUCTS_LLM_OLLAMA_URL_HELP = URL base local ou privada do Ollama; as regras anti-SSRF do Dolibarr rejeitam endereços públicos para este fornecedor
 KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE = Propagar automaticamente o preço de custo
 KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST = Atualizar automaticamente preço de venda a partir do custo
 KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP = Recalcular o preço de venda quando o custo do produto muda (requer ativação no produto)
@@ -686,6 +695,69 @@ KREAPRODUCTS_PERMISSION_LABELS_WRITE = Gerar e eliminar etiquetas de produtos
 KREAPRODUCTS_PERMISSION_STOCK_MOBILE_READ = Abrir a aplicação móvel de contagem de stock
 KREAPRODUCTS_PERMISSION_INVENTORY_WRITE = Criar inventários e registar contagens físicas
 KREAPRODUCTS_PERMISSION_INVENTORY_CLOSE = Fechar e reverter correções de inventário físico
+
+#
+# Editor unificado de nutrição e alergénios
+#
+KREAPRODUCTS_NUTRITION_ALLERGENS_TITLE = Nutrição e alergénios
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE = Origem dos dados
+KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED = Tabela nutricional/alergénios inserida
+KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED = Tabela nutricional/alergénios calculada
+KREAPRODUCTS_NUTRITION_ALLERGENS_NOT_FOOD_HELP = Este produto não apresenta dados nutricionais nem alergénios porque está definido como não alimentar. Os valores anteriormente guardados são preservados.
+KREAPRODUCTS_NUTRITION_ALLERGENS_PERMISSION_REQUIRED = São necessárias permissões de escrita de nutrição e alergénios.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_SAVED = O modo de nutrição e alergénios foi guardado.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_ERROR = Não foi possível guardar o modo de nutrição e alergénios.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MANUAL_REQUIRED = Selecione a tabela nutricional/alergénios inserida antes de editar os valores.
+KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED_REQUIRED = Selecione a tabela nutricional/alergénios calculada antes de recalcular os valores.
+KREAPRODUCTS_NUTRITION_ALLERGENS_SAVED = A nutrição e os alergénios foram guardados.
+KREAPRODUCTS_NUTRITION_ALLERGENS_SAVE_ERROR = Não foi possível guardar a nutrição e os alergénios; nenhuma alteração parcial foi confirmada.
+KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATED = A nutrição e os alergénios foram recalculados.
+KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR = Não foi possível recalcular a nutrição e os alergénios; nenhuma alteração parcial foi confirmada.
+KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE = Recalcular
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPY = Copiar nutrição e alergénios
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP = Selecione o produto de destino. A nutrição e os alergénios atuais substituirão os dados existentes nesse produto.
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED = A nutrição e os alergénios foram copiados.
+KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER = Os dados não estão verificados. Confirme sempre o rótulo e a legislação aplicável antes de os utilizar.
+
+#
+# IA para nutrição e alergénios
+#
+KREAPRODUCTS_LLM_PRODUCT_DATA_TITLE = Nutrição e alergénios por IA
+KREAPRODUCTS_LLM_OPEN = Sugestão por IA
+KREAPRODUCTS_LLM_PRODUCT_DATA_HELP = Fornecedor: %s. Modelo: %s. Rever todos os valores antes de guardar.
+KREAPRODUCTS_LLM_SOURCE_TEXT = Ingredientes, texto do rótulo ou outra evidência do produto
+KREAPRODUCTS_LLM_GENERATE = Gerar sugestão
+KREAPRODUCTS_LLM_APPLY = Aplicar valores revistos
+KREAPRODUCTS_LLM_APPLY_SUCCESS = A nutrição e os alergénios revistos foram guardados.
+KREAPRODUCTS_LLM_MANUAL_MODE_REQUIRED = Defina as tabelas de nutrição e alergénios no modo manual antes de usar sugestões de IA.
+KREAPRODUCTS_LLM_REVIEW_WARNING = Aplicar esta sugestão substitui os dados atuais de nutrição e alergénios do produto. Confirme primeiro o rótulo e a legislação aplicável.
+KREAPRODUCTS_LLM_NUTRIENT = Nutriente
+KREAPRODUCTS_LLM_VALUE_PER_100G = Valor por 100 g
+KREAPRODUCTS_LLM_CONTAINS = Contém
+KREAPRODUCTS_LLM_CONFIDENCE = Confiança do modelo
+KREAPRODUCTS_LLM_CONFIDENCE_LOW = Baixa
+KREAPRODUCTS_LLM_CONFIDENCE_MEDIUM = Média
+KREAPRODUCTS_LLM_CONFIDENCE_HIGH = Alta
+KREAPRODUCTS_LLM_DISCLAIMER = A nutrição por IA pode ser estimada a partir de conhecimento geral de composição alimentar quando não existem valores exatos do rótulo. O resultado não está verificado e não constitui aconselhamento médico, dietético ou regulamentar. Reveja todos os valores com o rótulo e a legislação aplicável antes de guardar.
+KREAPRODUCTS_LLM_ERROR_NOT_CONFIGURED = Configure primeiro um fornecedor de IA no KreaProducts.
+KREAPRODUCTS_LLM_ERROR_MODEL = Configure primeiro o identificador exato do modelo de IA.
+KREAPRODUCTS_LLM_ERROR_API_KEY = Configure primeiro a chave API do fornecedor de IA.
+KREAPRODUCTS_LLM_ERROR_PROVIDER = O fornecedor de IA selecionado não é suportado.
+KREAPRODUCTS_LLM_ERROR_SOURCE_REQUIRED = Adicione ingredientes, texto do rótulo ou outra evidência fiável do produto.
+KREAPRODUCTS_LLM_ERROR_OLLAMA_URL = Configure uma URL local ou privada válida do Ollama.
+KREAPRODUCTS_LLM_ERROR_REQUEST = O pedido ao fornecedor de IA falhou. Verifique a configuração e os registos.
+KREAPRODUCTS_LLM_ERROR_AUTH = O fornecedor de IA rejeitou as credenciais.
+KREAPRODUCTS_LLM_ERROR_RATE_LIMIT = Foi atingido o limite ou a quota do fornecedor de IA.
+KREAPRODUCTS_LLM_ERROR_TIMEOUT = A ligação ao fornecedor de IA expirou. Tente novamente.
+KREAPRODUCTS_LLM_ERROR_RESPONSE = O fornecedor de IA não devolveu uma resposta estruturada utilizável.
+KREAPRODUCTS_LLM_ERROR_INVALID_DATA = Os valores sugeridos falharam a validação nutricional ou de alergénios.
+KREAPRODUCTS_LLM_ERROR_INSUFFICIENT_EVIDENCE = O fornecedor de IA encontrou evidência insuficiente para uma sugestão útil.
+KREAPRODUCTS_LLM_ERROR_PERMISSION = São necessárias permissões de escrita de nutrição e alergénios.
+KREAPRODUCTS_LLM_ERROR_PRODUCT_SCOPE = O produto está fora do âmbito da entidade ativa.
+KREAPRODUCTS_LLM_ERROR_ALLERGEN_DICTIONARY = O dicionário de alergénios ativo não contém todos os códigos sugeridos.
+KREAPRODUCTS_LLM_ERROR_SAVE = Não foi possível guardar a nutrição e os alergénios; nenhuma alteração parcial foi confirmada.
+KREAPRODUCTS_LLM_ERROR_POST_REQUIRED = Esta ação exige um pedido POST.
+KREAPRODUCTS_LLM_ERROR_MANUAL_MODE = As tabelas de nutrição e alergénios têm de estar no modo manual.
 
 #
 # Stock móvel e erros de inventário

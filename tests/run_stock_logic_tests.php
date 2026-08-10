@@ -132,7 +132,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.7.2'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.10.5'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -144,6 +144,63 @@ $associatedProductsSource = file_get_contents(__DIR__.'/../associatedProducts.ph
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $object->weight_units)') !== false, 'Parent-product weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $childProduct->weight_units)') !== false, 'Component weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_weight_unit_select_value') !== false, 'The KreaProducts product form must use Dolibarr\'s empty kilogram selector value.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'name="nutrition_allergen_mode"') !== false, 'Nutrition and allergens must use one shared mode selector.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "0 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED'") !== false, 'The shared selector must expose entered data mode.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "1 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED'") !== false, 'The shared selector must expose calculated data mode.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "2 => 'NaoEUmAlimento'") !== false, 'The shared selector must expose non-food mode.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'name="action" value="save_nutrition_allergens"') !== false, 'Manual nutrition and allergens must use one common Save action.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "'save_nutrition_allergens_mode'") !== false, 'Shared mode changes must use the unified write boundary.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '<div class="tabsAction">') !== false, 'Nutrition and allergen record actions must use the native Dolibarr action bar.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'dolGetButtonAction($editLabel') !== false, 'Nutrition and allergen record actions must use Dolibarr button rendering.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id, true)') !== false, 'Calculated mode must render detailed component rows inside the unified table.');
+assertSameValue(false, strpos((string) $associatedProductsSource, 'class="nobordernopadding"') !== false, 'Calculated mode must not nest its nutritional table inside a parent cell.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'class="button button-save"') !== false, 'Nutrition and allergen form submissions must use the native Save button class.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'class="button button-cancel"') !== false, 'Nutrition and allergen editing must use the native Cancel button class.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'class="badge badge-pill kreaproducts-allergen-pill marginrightonly"') !== false, 'Displayed allergens must retain compact pill styling.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'background:var(--butactionbg, #555);color:var(--textbutaction, #fff)') !== false, 'Allergen pills must use the active Dolibarr action-button colors.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'class="valignmiddle kreaproducts-allergen-pill-icon" style="filter:brightness(0) invert(1);"') !== false, 'Allergen icons inside grey pills must render white without changing the source assets.');
+assertSameValue(false, strpos((string) $associatedProductsSource, 'class="button small" name="action" value="save_nutrition_allergens_mode"') !== false, 'The unified mode control must not use the legacy compact generic action button.');
+assertSameValue(false, strpos((string) $associatedProductsSource, "if (\$action == 'saveAllergens'") !== false, 'The legacy standalone allergen save boundary must be removed.');
+assertSameValue(false, strpos((string) $associatedProductsSource, "if (\$action == 'save_kreaproducts_nutrition'") !== false, 'The legacy standalone nutrition save boundary must be removed.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'id="kreaproducts-copy-product-data-modal" style="display:none;"') !== false, 'Nutrition and allergen copying must remain hidden in a modal.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'value="copy_nutrition_allergens_to_product"') !== false, 'The copy modal must use the unified nutrition and allergen boundary.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'copyDialog.dialog("open")') !== false, 'The copy action must open the Dolibarr modal.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "array('generate_llm_product_data', 'apply_llm_product_data')") !== false, 'LLM generation and application must remain explicit write actions.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "REQUEST_METHOD'] ?? 'GET'") !== false, 'LLM product-data actions must remain POST-only.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'hash_equals((string) currentToken()') !== false, 'LLM product-data actions must validate the submitted CSRF token explicitly.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '$llmManualDataMode') !== false, 'LLM suggestions must remain restricted to manual nutrition and allergen modes.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "'kreaproducts-open-llm-modal'") !== false, 'The LLM workflow must expose a dedicated native action launcher.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'id="kreaproducts-llm-modal" style="display:none;"') !== false, 'The LLM workflow must remain hidden until its modal is opened.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'llmDialog.dialog("open")') !== false, 'The LLM launcher must open the Dolibarr modal.');
+assertSameValue(false, strpos((string) $associatedProductsSource, "load_fiche_titre(\$langs->trans('KREAPRODUCTS_LLM_PRODUCT_DATA_TITLE')") !== false, 'The LLM workflow must not render as a standalone product-page section.');
+assertSameValue(false, strpos((string) $associatedProductsSource, "print '<script type=\"text/javascript\">\\n';") !== false, 'Inline modal JavaScript must not emit a literal newline escape outside JavaScript strings.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "print '<script type=\"text/javascript\">'.\"\\n\";") !== false, 'Inline modal JavaScript must emit a real line break after the script tag.');
+
+$nutritionalCalculatorSource = file_get_contents(__DIR__.'/../class/KreaProductsNutritionalCalculator.class.php');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, "displaySubproductRows(\$productId, \$subList, \$calculationResult['details'])") !== false, 'The calculated nutrition table must render one detail row per component.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'KreaProductsTableProductQuantity') !== false, 'The calculated nutrition table must display component quantities.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, "\$contrib = \$detail['contributions']") !== false, 'The calculated nutrition table must display nutrient contributions per component.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'computeAndDisplayNutritional($productId, $embedded = false)') !== false, 'The nutritional renderer must support backward-compatible embedded-row output.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'self::displayTableHeader($langs, !$embedded)') !== false, 'Embedded calculated mode must reuse the native component header without opening another table.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'border-collapse: collapse !important') !== false, 'The unified calculated table must have square collapsed borders.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'select[name="weight_units"]') !== false, 'Compact selector styling must remain scoped to component weight units.');
+
+$llmServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsLlmProductDataService.class.php');
+assertSameValue(true, strpos((string) $llmServiceSource, "'https://api.openai.com/v1/chat/completions'") !== false, 'Hosted OpenAI credentials must use a fixed endpoint.');
+assertSameValue(true, strpos((string) $llmServiceSource, "'https://api.anthropic.com/v1/messages'") !== false, 'Hosted Anthropic credentials must use a fixed endpoint.');
+assertSameValue(true, strpos((string) $llmServiceSource, "'https://openrouter.ai/api/v1/chat/completions'") !== false, 'Hosted OpenRouter credentials must use a fixed endpoint.');
+assertSameValue(true, strpos((string) $llmServiceSource, '$localUrlMode = ($provider === self::PROVIDER_OLLAMA ? 1 : 0)') !== false, 'Ollama must use Dolibarr local-address enforcement.');
+assertSameValue(true, strpos((string) $llmServiceSource, 'isAllowedPrivateOllamaHost') !== false, 'Ollama must reject public and metadata-service address ranges.');
+assertSameValue(true, strpos((string) $llmServiceSource, '$this->db->begin()') !== false, 'Reviewed nutrition and allergen replacement must be transactional.');
+assertSameValue(true, strpos((string) $llmServiceSource, 'every nutrient is null and the allergen list is empty, usable MUST be false') !== false, 'The LLM prompt must explicitly classify empty output as insufficient evidence.');
+assertSameValue(true, strpos((string) $llmServiceSource, 'array(CURLINFO_HEADER_OUT => false)') !== false, 'Provider credentials must not be included in Dolibarr outbound-header logs.');
+assertSameValue(true, strpos((string) $llmServiceSource, '$localUrlMode, -1, 15, 60, $curlOptions') !== false, 'Provider requests must allow enough time for DNS and connection establishment.');
+assertSameValue(true, strpos((string) $llmServiceSource, "array(6, 28)") !== false, 'Provider DNS and timeout failures must have a dedicated user-facing error.');
+assertSameValue(true, strpos((string) $llmServiceSource, 'general food-composition knowledge to estimate typical values') !== false, 'LLM nutrition generation must support estimates when exact label values are absent.');
+assertSameValue(true, strpos((string) $llmServiceSource, 'For allergens, use only explicit product evidence') !== false, 'LLM allergen generation must remain evidence-based.');
+
+$setupSource = file_get_contents(__DIR__.'/../admin/setup.php');
+assertSameValue(true, strpos((string) $setupSource, "newItem('KREAPRODUCTS_LLM_API_KEY')->setAsSecureKey()") !== false, 'The LLM API key must use Dolibarr encrypted secure-key storage.');
 
 $actionsSource = file_get_contents(__DIR__.'/../class/actions_kreaproducts.class.php');
 assertSameValue(true, strpos((string) $actionsSource, 'buildProductCardKilogramSelectionScriptRow') !== false, 'Native product forms must apply the kilogram selector workaround.');
@@ -426,6 +483,7 @@ $allergenNumberingSource = file_get_contents(__DIR__.'/../class/productallergens
 $nutritionalNumberingSource = file_get_contents(__DIR__.'/../class/nutritional.class.php');
 assertSameValue(true, strpos((string) $allergenNumberingSource, 'KREAPRODUCTS_PRODUCTALLERGENS_ADDON') !== false, 'Allergen numbering must use its dedicated module constant.');
 assertSameValue(true, strpos((string) $nutritionalNumberingSource, 'KREAPRODUCTS_NUTRITIONAL_ADDON') !== false, 'Nutritional numbering must use its dedicated module constant.');
+assertSameValue(true, strpos((string) $nutritionalNumberingSource, '$this->date_creation = !empty($this->tms) ? $this->tms : dol_now();') !== false, 'Nutritional updates must repair legacy zero creation dates before the native update lifecycle.');
 
 $allergenIndexMigration = file_get_contents(__DIR__.'/../sql/llx_kreaproducts_productallergens_upgrade.sql');
 assertSameValue(true, strpos((string) $allergenIndexMigration, 'idx_kreaproducts_productallergens_fk_product') !== false, 'The allergen product lookup index migration must be installed.');
@@ -435,9 +493,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.7.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.7.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.7.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.10.5', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.10.5', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.10.5', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

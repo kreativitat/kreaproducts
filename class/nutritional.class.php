@@ -634,6 +634,13 @@ class Nutritional extends CommonObject
         }
 
         $this->normalizeNutritionalValues();
+
+        // Legacy rows may contain a zero SQL creation date. Dolibarr normalizes
+        // that value to empty on fetch, while updateCommon() writes it as NULL.
+        // Repair it from the existing modification timestamp before updating.
+        if (empty($this->date_creation)) {
+            $this->date_creation = !empty($this->tms) ? $this->tms : dol_now();
+        }
         
         return $this->updateCommon($user, $notrigger);
     }

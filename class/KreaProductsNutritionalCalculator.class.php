@@ -73,9 +73,10 @@ class KreaProductsNutritionalCalculator
      * Main entry point for computing and displaying nutritional information
      *
      * @param int $productId The parent product rowid
+     * @param bool $embedded True to render rows inside an existing 14-column table
      * @return bool True on success, false on failure
      */
-    public static function computeAndDisplayNutritional($productId)
+    public static function computeAndDisplayNutritional($productId, $embedded = false)
     {
         global $langs, $conf, $db;
 
@@ -96,7 +97,7 @@ class KreaProductsNutritionalCalculator
             $lp = self::getLocalProduct($productId);
             if (!$lp) {
                 self::addError("Could not find local product map for product #$productId");
-                self::displayError("Error: Could not find local product map for #$productId");
+                self::displayError("Error: Could not find local product map for #$productId", $embedded);
                 return false;
             }
 
@@ -107,7 +108,7 @@ class KreaProductsNutritionalCalculator
             }
 
             // Display the nutritional table
-            self::displayNutritionalTable($productId, $subList, $langs);
+            self::displayNutritionalTable($productId, $subList, $langs, $embedded);
             
             self::logProcessingStats($productId, count($subList));
             return true;
@@ -115,7 +116,7 @@ class KreaProductsNutritionalCalculator
         } catch (Exception $e) {
             self::addError("Processing failed: " . $e->getMessage());
             dol_syslog(__METHOD__ . " Error: " . $e->getMessage(), LOG_ERR);
-            self::displayError("An error occurred while processing nutritional data.");
+            self::displayError("An error occurred while processing nutritional data.", $embedded);
             return false;
         }
     }
@@ -566,21 +567,23 @@ class KreaProductsNutritionalCalculator
     /**
      * Display enhanced nutritional table
      */
-    private static function displayNutritionalTable($productId, $subList, $langs)
+    private static function displayNutritionalTable($productId, $subList, $langs, $embedded = false)
     {
         // Calculate and display nutritional data
         $calculationResult = self::calculateNutritionalTotals($subList);
         
         if (!$calculationResult['success']) {
-            self::displayError("Error calculating nutritional totals: " . $calculationResult['error']);
+            self::displayError("Error calculating nutritional totals: " . $calculationResult['error'], $embedded);
             return;
         }
 
         self::printNutritionalTableStyles();
-        print '<div class="krea-nutrition-table-wrap">';
+        if (!$embedded) {
+            print '<div class="krea-nutrition-table-wrap">';
+        }
 
         // Display table header and keep an empty row if there are no subproducts
-        self::displayTableHeader($langs);
+        self::displayTableHeader($langs, !$embedded);
 
         if (empty($subList)) {
             print '<tr><td colspan="14" class="opacitymedium">' . $langs->trans("NoSubproductsFound") . '</td></tr>';
@@ -592,16 +595,17 @@ class KreaProductsNutritionalCalculator
         // Display totals and normalized values
         self::displayTotalRows($calculationResult, $langs, $productId);
 
-        print '</table>';
-        print '</div>';
-
-        print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
+        if (!$embedded) {
+            print '</table>';
+            print '</div>';
+            print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
+        }
     }
 
     /**
      * Print nutritional table styles once
      */
-    private static function printNutritionalTableStyles()
+    public static function printNutritionalTableStyles()
     {
         if (!empty($GLOBALS['KREAPRODUCTS_NUTRITION_TABLE_STYLE_PRINTED'])) {
             return;
@@ -609,11 +613,18 @@ class KreaProductsNutritionalCalculator
 
         print '<style>
             .krea-nutrition-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            .krea-nutrition-table { width: auto; min-width: 920px; table-layout: fixed; font-size: 0.86em; line-height: 1.2; }
+            .krea-nutrition-table { width: 100%; min-width: 920px; table-layout: fixed; border-collapse: collapse !important; border-spacing: 0; border-radius: 0 !important; font-size: 0.86em; line-height: 1.2; }
+            .krea-nutrition-table > tbody > tr:first-child > td:first-child,
+            .krea-nutrition-table > tbody > tr:first-child > td:last-child,
+            .krea-nutrition-table > tbody > tr:last-child > td:first-child,
+            .krea-nutrition-table > tbody > tr:last-child > td:last-child { border-radius: 0 !important; }
             .krea-nutrition-table td { padding: 3px 4px; vertical-align: top; }
+            .krea-nutrition-table .krea-mode-row td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
+            .krea-nutrition-table .krea-section-title td { padding-top: 7px; padding-bottom: 7px; }
+            .krea-nutrition-table .krea-allergen-row td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
             .krea-nutrition-table .krea-col-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .krea-nutrition-table input.width150 { max-width: 66px; }
-            .krea-nutrition-table select { max-width: 58px; }
+            .krea-nutrition-table select[name="weight_units"] { max-width: 58px; }
             @media (max-width: 768px) {
                 .krea-nutrition-table { table-layout: auto !important; }
                 .krea-nutrition-table .krea-col-name { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
@@ -649,11 +660,13 @@ class KreaProductsNutritionalCalculator
     /**
      * Display table header
      */
-    private static function displayTableHeader($langs)
+    private static function displayTableHeader($langs, $openTable = true)
     {
         $widths = self::getNutritionalTableWidths();
 
-        print '<table class="noborder krea-nutrition-table">';
+        if ($openTable) {
+            print '<table class="liste krea-nutrition-table">';
+        }
         print '<tr class="liste_titre">';
         print '<td style="width:' . $widths['ref'] . ';">' . $langs->trans("KreaProductsTableProductRef") . '</td>';
         print '<td class="krea-col-name" style="width:' . $widths['name'] . ';">' . $langs->trans("KreaProductsTableProductName") . '</td>';
@@ -1403,9 +1416,13 @@ class KreaProductsNutritionalCalculator
     /**
      * Display error message
      */
-    private static function displayError($message)
+    private static function displayError($message, $embedded = false)
     {
-        print '<p style="color:red; font-weight:bold;">' . htmlspecialchars($message, ENT_QUOTES) . '</p>';
+        if ($embedded) {
+            print '<tr><td colspan="14" class="error">' . htmlspecialchars($message, ENT_QUOTES) . '</td></tr>';
+        } else {
+            print '<p class="error">' . htmlspecialchars($message, ENT_QUOTES) . '</p>';
+        }
     }
 
     /**

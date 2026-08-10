@@ -92,6 +92,10 @@ This feature is especially relevant in operations with many recipes and frequent
 | `KREAPRODUCTS_NUTRITIONAL_TABLE_TAB` | Show the nutritional table in the technical sheet tab. |
 | `KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT` | Show the selector and button to copy average values per 100g. |
 | `KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT` | Show the selector and button to copy allergens to another product. |
+| `KREAPRODUCTS_LLM_PROVIDER` | AI provider for reviewable nutrition and allergen suggestions: OpenAI, Claude, OpenRouter, or Ollama. |
+| `KREAPRODUCTS_LLM_MODEL` | Exact model identifier for the selected provider. |
+| `KREAPRODUCTS_LLM_API_KEY` | Encrypted provider API key; not required for Ollama. |
+| `KREAPRODUCTS_LLM_OLLAMA_URL` | Local/private Ollama base URL (default `http://localhost:11434`). |
 | `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE` | Automatically propagate cost price (cascade recalculation). |
 | `KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT` | Percentage of total weight to consider allergens present. |
 | `KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT` | Percentage of total weight to mark allergens as traces. |
@@ -107,6 +111,8 @@ This feature is especially relevant in operations with many recipes and frequent
 | `KREAPRODUCTS_DEBUG_LOG` | Enable KreaProducts debug logs. |
 
 Note: allergen thresholds are percentages of the total recipe weight of the final product.
+
+AI suggestions are available only when both product nutrition and allergen modes are manual. Use the **AI suggestion** button beside the nutrition **Save** button to open the modal. The product page preloads existing ingredients and descriptions. When exact label values are absent, the provider may estimate typical nutrition per 100 g from general food-composition knowledge and must mark the result as low confidence with its assumptions. Allergen suggestions remain limited to explicit ingredient and trace evidence. Structured output is validated and requires explicit review before atomically replacing nutrition and allergens. Ollama endpoints are restricted to loopback or private network addresses.
 
 ## Permissions
 

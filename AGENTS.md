@@ -41,6 +41,17 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-10: Calculated nutrition and allergens render as one continuous 14-column table. `KreaProductsNutritionalCalculator` embedded mode emits only header, component, total, and normalized `<tr>` rows into the unified parent table; it must not open a nested table or a second rounded visual container. The standalone renderer remains backward compatible.
+- 2026-08-10: Product nutrition and allergens use one product-card workspace and one three-state selector. Mode `0` synchronizes both legacy calculation extrafields to entered/manual data, mode `1` synchronizes both to calculated data, and mode `2` also sets `kreaproducts_nutritional.is_food=0`. Returning to a food mode sets `is_food=1`; non-food mode hides but does not erase saved nutrition or allergens. Manual nutrition and allergen edits share one transactional Save boundary, calculated data shares one recalculation action, and copying both datasets is available only through a modal.
+
+- 2026-08-10: When exact label nutrition is absent but the product or ingredients identify a recognizable food, the LLM may estimate typical nutrition per 100 g from general food-composition knowledge. Estimated nutrition must be marked low confidence and disclose assumptions in notes. Allergen presence and traces remain evidence-only: the model may never infer undeclared allergens or traces from general knowledge.
+
+- 2026-08-10: The LLM nutrition/allergen interface is a modal launched by one button beside the manual nutrition Save action. It must not render as a separate product-page section. Generation or validation failure reopens the modal after the POST response so the review-first workflow remains continuous.
+
+- 2026-08-10: LLM-generated nutrition and allergens are available only when both product calculation modes are manual. Generation and application are separate CSRF-protected POST actions: the provider returns a structured suggestion, the user reviews or edits it, and only explicit confirmation replaces both datasets atomically. LLM output never writes directly and remains unverified labeling evidence.
+- 2026-08-10: KreaProducts uses isolated provider adapters for OpenAI Chat Completions, Anthropic Messages, OpenRouter Chat Completions, and Ollama Chat. Every adapter requests the same strict JSON schema, limits allergens to the module's EU allergen dictionary codes, validates nutrition relationships and bounds, and rejects insufficient or malformed output before display.
+- 2026-08-10: Hosted-provider endpoints are fixed in code so an administrator cannot redirect encrypted credentials to an arbitrary host. Ollama has no required API key and accepts only loopback, RFC1918, or IPv6 ULA targets through Dolibarr's HTTP client with redirects disabled; public, link-local, and metadata-service addresses fail closed.
+
 - 2026-08-10: Native product-card creation and updates leave `stockable_product` entirely to Dolibarr's `Product::create()` and `Product::update()` lifecycle. KreaProducts must not parse the checkbox value with `GETPOST(..., 'int')` or issue a parallel direct SQL update; an enabled HTML checkbox submits `on`, and integer parsing can incorrectly convert it to disabled stock management.
 
 - 2026-08-07: `POST /api/index.php/kreaproducts/suppliers/{supplier_id}/invoices/validate` selects all draft invoices for one supplier in the active supplier-invoice entity scope and validates each through the trigger-safe single-invoice endpoint. Each invoice commits or rolls back independently; the response reports every validated and failed invoice so one business failure does not conceal prior successful stock postings.
@@ -127,6 +138,8 @@ Example style:
 
 ## Database & Schema Notes
 
+- 2026-08-10: LLM suggestions add no schema. Confirmed nutrition replaces the entity-validated product row in `kreaproducts_nutritional`, and confirmed allergens replace `kreaproducts_productallergens` rows only after validating the linked product through `getEntity('product')`; both replacements share one transaction.
+
 - 2026-07-17: `product_association` has no entity column. Cost-cascade association queries isolate both `fk_product_pere` and `fk_product_fils` through the active `getEntity('product')` scope. Association recipes are excluded for parents with an applicable active manufacturing BOM.
 - 2026-07-12: `kreaproducts_productallergens` is scoped through its product parent and has `idx_kreaproducts_productallergens_fk_product` installed idempotently for cascade and display lookups.
 - 2026-07-12: `llx_kreaproducts_mo_batchtrace_upgrade.sql` idempotently widens the production inventory code and removes legacy trace columns during activation; production requests require the installed current schema.
@@ -146,6 +159,8 @@ Example style:
 - 2026-07-11: New-inventory menu and list actions open the unified category page. `inventory_card.php` is only a compatibility redirect; existing ordinary inventories remain owned by Dolibarr core.
 
 ## Integration Points
+
+- 2026-08-10: Entity-scoped setup constants `KREAPRODUCTS_LLM_PROVIDER`, `KREAPRODUCTS_LLM_MODEL`, encrypted `KREAPRODUCTS_LLM_API_KEY`, and `KREAPRODUCTS_LLM_OLLAMA_URL` configure product-label suggestions. Product ingredients and descriptions are preloaded as editable evidence; provider credentials and raw responses are never rendered.
 
 - 2026-08-06: The standalone inventory auto-close runner tries `../../main.inc.php` first for a module installed directly under the Dolibarr document root, then `../../../main.inc.php` for an installation under `custom`, as required by Dolistore package validation.
 - 2026-07-12: Production releases are built with `build/build-release.sh`. The release archive includes runtime module files and compiled `stock_frontend` assets while excluding `AGENTS.md`, `ChangeLog.md`, `bin`, `build`, `stockapp`, tests, local launchd files, and workspace metadata.
@@ -174,6 +189,16 @@ Example style:
 
 ## Known Pitfalls & Gotchas
 
+- 2026-08-10: Legacy `kreaproducts_nutritional.date_creation='0000-00-00 00:00:00'` is normalized by `CommonObject::fetchCommon()` to an empty value; `updateCommon()` then writes `NULL` and fails under strict SQL mode. `Nutritional::update()` repairs an empty creation date from the existing `tms`, falling back to `dol_now()`, before the native update lifecycle.
+
+- 2026-08-10: Dolibarr 23 `getURLContent()` enables `CURLINFO_HEADER_OUT` and logs the complete outbound request header at the normal log level. Every KreaProducts request carrying an LLM authorization header must override `CURLINFO_HEADER_OUT=false`; otherwise provider credentials are written to `dolibarr.log`. Provider connections use a 15-second connection timeout because the core five-second default can fail during transient DNS resolution.
+
+- 2026-08-10: A structured-output provider can return `usable=true` while every nutrient is `null` and the allergen list is empty. Normalize that contradiction to `usable=false` and report insufficient evidence; never reinterpret an empty response as valid product labeling data.
+
+- 2026-08-10: PHP single-quoted strings do not translate `\n` or `\t`. Inline JavaScript emitted from PHP must concatenate real double-quoted line breaks; literal escape sequences outside a JavaScript string cause a page-level syntax error and prevent modal event handlers from registering.
+
+- 2026-08-10: From a containerized PHP runtime, `http://localhost:11434` targets that PHP container, not necessarily the Docker host. Configure `KREAPRODUCTS_LLM_OLLAMA_URL` with a resolvable private Ollama address; public relay URLs are intentionally rejected for the Ollama provider.
+
 - 2026-08-08: Restler reflects protected methods while registering a Dolibarr API class. API helper parameters must not use constructor-dependent object type hints such as `FactureFournisseur`; Restler tries to instantiate the type without the required database argument and terminates every route for that API door with an empty HTTP 500 response.
 - 2026-07-17: The local entity-8 runtime has a separate KreaWoo schema drift: `llx_kreawoo_product_site_data` lacks `wc_stock_status`, while the installed KreaWoo trigger writes that column. A normal cross-module `Product::update()` can therefore fail until KreaWoo's idempotent activation migration is applied. KreaProducts correctly treats that trigger failure as transactional and rolls back its cost cascade; KreaWoo schema changes remain outside this repository.
 - 2026-07-12: KreaProducts supports MySQL and MariaDB only. Module activation rejects other Dolibarr database drivers before running module SQL.
@@ -193,6 +218,8 @@ Example style:
 - 2026-07-12: Automatic inventory closure requires the Dolibarr Scheduled Jobs module and an operational cron runner. Module version 4.0.0 declares `modCron` as a dependency and enables the closure job at one-minute frequency.
 
 ## Environment & Configuration
+
+- 2026-08-10: Version 4.9.1 passed both focused suites and all 67 source PHP lint checks on PHP 8.1.20 and 8.4.5. A live save from active entity 2 updated shared product 7110, repaired nutritional row 53 from a zero creation date to its existing `tms`, committed all nine reviewed nutrition values, and left zero allergen rows. The 180-entry release ZIP contains 65 lint-clean PHP files, excludes internal maintainer/test files, and has SHA-256 `c0e2ab94a84eaf78d339a3ce49dde92065b5fc4e1c328a8529921214818a0b13`.
 
 - 2026-08-10: Version 4.7.2 passed the focused stock suite on PHP 7.3, 8.1, and 8.4, plus all 65 source PHP lint checks on each available runtime. The 179-entry release ZIP contains 64 lint-clean PHP files, excludes internal maintainer/test files, and has SHA-256 `dcde4010c4247ed5dfcc531e1c9d5eb8f529f62412599e7458f897e87ca541f8`. Live installation remained pending because the browser session was unauthenticated and SSH had no available identity.
 
@@ -224,12 +251,16 @@ Example style:
 
 ## Conventions
 
+- 2026-08-10: Allergen icons are rendered white only inside read-only grey allergen pills by applying a scoped CSS filter to the displayed image. The shared source icon assets remain unchanged for other module contexts.
+- 2026-08-10: Read-only allergen pills use Dolibarr's `--butactionbg` and `--textbutaction` theme variables with safe fallbacks, keeping their compact `badge-pill` shape while matching the native action-button grey across themes.
+- 2026-08-10: Nutrition and allergen record actions use `dolGetButtonAction()` inside a native `tabsAction` bar. Selector, edit, and modal form submissions use Dolibarr `button-save` and `button-cancel` controls; generic page-level `.button` links must not replace record action buttons.
 - 2026-07-12: Module descriptor tab definitions use only Dolibarr-native labels, constants, and permission expressions. Dynamic helper callbacks are not allowed in descriptor tab strings.
 - 2026-07-12: `langs/en_US/kreaproducts.lang` is the canonical module catalog. `langs/pt_PT/kreaproducts.lang` must preserve exact key and placeholder parity with it; the Portuguese completion release validated 689 unique keys with no missing, extra, duplicate, or placeholder-mismatched entries. Other locale catalogs remain unchanged until they are translated explicitly.
 - 2026-07-12: User-facing setup labels, permission descriptions, AJAX responses, and mobile inventory errors must use Dolibarr translation keys. Framework-neutral calculation classes may retain English exception text only when the localized boundary translates it before display.
 
 ## Deprecated Knowledge
 
+- 2026-08-10: The 4.10.2 nested calculated-nutrition table integration became obsolete in 4.10.3. The same component reference, name, unit weight, quantity, total weight, nutrient contribution, total, and normalized data now render as rows in the single unified 14-column table.
 - 2026-08-07: The 2026-07-11 rule that moved customer invoice day D to the configured close on D+1 is obsolete as of 4.5.15. Customer movements now retain their authoritative invoice datetime.
 - 2026-07-31: The 4.5.11 design that allowed non-stock-managed MO products to create execution lines without stock movements is obsolete as of 4.5.12. MO participation now makes stock management mandatory and updates the product accordingly.
 - 2026-07-17: The version 4.5.4 rule that treated multiple active manufacturing BOMs as unresolved became obsolete in version 4.5.8. Selection is now automatic: latest completed production first, then newest validation when production history is absent.

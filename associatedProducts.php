@@ -38,6 +38,7 @@ require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 dol_include_once('/kreaproducts/class/KreaProductsNutrientUpdater.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsAllergenUpdater.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsLlmProductDataService.class.php');
 dol_include_once('/kreaproducts/lib/kreaproducts.lib.php');
 
 // Load translation files required by the page
@@ -554,13 +555,13 @@ if (!empty($object->id)) {
 		|| $object->array_options['options_kreap_calc_allergens'] === ''
 		|| $object->array_options['options_kreap_calc_allergens'] === null;
 	if ($needsNut) {
-		$valNut = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $conf->entity);
+		$valNut = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $object->entity);
 		if ($valNut !== null) {
 			$object->array_options['options_kreap_calc_nut'] = $valNut;
 		}
 	}
 	if ($needsAllergens) {
-		$valAll = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $conf->entity);
+		$valAll = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $object->entity);
 		if ($valAll !== null) {
 			$object->array_options['options_kreap_calc_allergens'] = $valAll;
 		}
@@ -582,6 +583,17 @@ if ($object->id > 0) {
 $usercanread   = (($object->type == Product::TYPE_PRODUCT && $user->rights->produit->lire) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'lire')));
 $usercancreate = (($object->type == Product::TYPE_PRODUCT && $user->rights->produit->creer) || ($object->type == Product::TYPE_SERVICE && $user->hasRight('service', 'creer')));
 $usercandelete = (($object->type == Product::TYPE_PRODUCT && $user->rights->produit->supprimer) || ($object->type == Product::TYPE_SERVICE && $user->rights->service->supprimer));
+$canUseLlmProductData = $usercancreate
+	&& $user->hasRight('kreaproducts', 'nutritional', 'write')
+	&& $user->hasRight('kreaproducts', 'productallergens', 'write');
+$canManageNutritionAllergens = $usercancreate
+	&& $user->hasRight('kreaproducts', 'nutritional', 'write')
+	&& $user->hasRight('kreaproducts', 'productallergens', 'write');
+$llmManualDataMode = isset($object->array_options['options_kreap_calc_nut'], $object->array_options['options_kreap_calc_allergens'])
+	&& (string) $object->array_options['options_kreap_calc_nut'] === '0'
+	&& (string) $object->array_options['options_kreap_calc_allergens'] === '0';
+$llmSuggestion = null;
+$llmSourceText = '';
 
 /*
  * Actions
@@ -591,9 +603,56 @@ if ($cancel) {
 	$action = '';
 }
 
-$productWriteActions = array('save_kreaproducts_nutrition', 'updateAllergens', 'saveAllergens');
+$productWriteActions = array(
+	'save_nutrition_allergens_mode',
+	'save_nutrition_allergens',
+	'update_nutrition_allergens',
+	'copy_nutrition_allergens_to_product',
+	'generate_llm_product_data',
+	'apply_llm_product_data',
+);
 if (in_array($action, $productWriteActions, true) && !$usercancreate) {
 	accessforbidden();
+}
+
+$unifiedProductDataActions = array(
+	'save_nutrition_allergens_mode',
+	'save_nutrition_allergens',
+	'update_nutrition_allergens',
+	'copy_nutrition_allergens_to_product',
+);
+if (in_array($action, $unifiedProductDataActions, true)) {
+	if (!$canManageNutritionAllergens) {
+		accessforbidden($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_PERMISSION_REQUIRED'));
+	}
+	if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_POST_REQUIRED'));
+	}
+	$submittedToken = GETPOST('token', 'alphanohtml');
+	if ($submittedToken === ''
+		|| (!hash_equals((string) currentToken(), (string) $submittedToken)
+			&& !hash_equals((string) newToken(), (string) $submittedToken))) {
+		accessforbidden($langs->trans('KreapInvalidCsrfToken'));
+	}
+}
+
+$llmWriteActions = array('generate_llm_product_data', 'apply_llm_product_data');
+if (in_array($action, $llmWriteActions, true)) {
+	if (!$canUseLlmProductData) {
+		accessforbidden();
+	}
+	if (!$llmManualDataMode) {
+		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_MANUAL_MODE'));
+	}
+	if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_POST_REQUIRED'));
+	}
+	$submittedToken = GETPOST('token', 'alphanohtml');
+	if ($submittedToken === ''
+		|| (!hash_equals((string) currentToken(), (string) $submittedToken)
+			&& !hash_equals((string) newToken(), (string) $submittedToken))) {
+		accessforbidden($langs->trans('KreapInvalidCsrfToken'));
+	}
 }
 
 $inlineOptionAction = '';
@@ -655,6 +714,233 @@ if ($reshook < 0) {
 if ($inlineOptionAction === 'editoptions') {
 	// Refresh extra–fields in case hooks touched array_options.
 	$object->fetch_optionals();
+}
+
+if ($action === 'generate_llm_product_data') {
+	$llmSourceText = GETPOST('llm_source_text', 'restricthtml');
+	$llmService = new KreaProductsLlmProductDataService($db);
+	$llmSuggestion = $llmService->generateSuggestion($object, $llmSourceText);
+	if ($llmSuggestion === null) {
+		setEventMessages($langs->trans($llmService->getLastErrorKey()), null, 'errors');
+	}
+}
+
+if ($action === 'apply_llm_product_data') {
+	$nutrition = array();
+	foreach (KreaProductsLlmProductDataService::getNutritionFields() as $field) {
+		$rawValue = trim((string) GETPOST('llm_nutrition_'.$field, 'alphanohtml'));
+		$nutrition[$field] = ($rawValue === '' ? null : price2num($rawValue, 'MU'));
+	}
+	try {
+		$reviewedSuggestion = KreaProductsLlmProductDataService::buildSubmittedSuggestion(
+			$nutrition,
+			(array) GETPOST('llm_allergens_contains', 'array'),
+			(array) GETPOST('llm_allergens_traces', 'array'),
+			GETPOST('llm_confidence', 'alpha'),
+			GETPOST('llm_notes', 'restricthtml')
+		);
+		$llmService = new KreaProductsLlmProductDataService($db);
+		if ($llmService->applySuggestion($object->id, $reviewedSuggestion, $user) > 0) {
+			setEventMessages($langs->trans('KREAPRODUCTS_LLM_APPLY_SUCCESS'), null, 'mesgs');
+			header('Location: '.$_SERVER['PHP_SELF'].'?id='.$object->id);
+			exit;
+		}
+		setEventMessages($langs->trans($llmService->getLastErrorKey()), null, 'errors');
+	} catch (InvalidArgumentException $exception) {
+		dol_syslog('Invalid reviewed LLM product data for product '.(int) $object->id.': '.$exception->getMessage(), LOG_ERR);
+		setEventMessages($langs->trans('KREAPRODUCTS_LLM_ERROR_INVALID_DATA'), null, 'errors');
+	}
+}
+
+if ($action === 'save_nutrition_allergens_mode') {
+	$mode = GETPOSTISSET('nutrition_allergen_mode') ? GETPOSTINT('nutrition_allergen_mode') : -1;
+	if (!in_array($mode, array(0, 1, 2), true)) {
+		setEventMessages($langs->trans('ErrorBadValueForParameter'), null, 'errors');
+	} else {
+		$error = 0;
+		$db->begin();
+		if (kreaproducts_set_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $mode) <= 0
+			|| kreaproducts_set_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $mode) <= 0) {
+			$error++;
+		}
+
+		if (!$error) {
+			$isFood = ($mode === 2 ? 0 : 1);
+			$sql = 'SELECT n.rowid FROM '.MAIN_DB_PREFIX.'kreaproducts_nutritional AS n';
+			$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = n.fk_product';
+			$sql .= ' AND p.entity IN ('.getEntity('product').')';
+			$sql .= ' WHERE n.fk_product = '.(int) $object->id.' LIMIT 1 FOR UPDATE';
+			$resql = $db->query($sql);
+			if (!$resql) {
+				$error++;
+			} elseif ($db->num_rows($resql) > 0) {
+				$row = $db->fetch_object($resql);
+				$sql = 'UPDATE '.MAIN_DB_PREFIX.'kreaproducts_nutritional';
+				$sql .= ' SET is_food = '.$isFood.', fk_user_modif = '.(int) $user->id;
+				$sql .= ' WHERE rowid = '.(int) $row->rowid;
+				if (!$db->query($sql)) {
+					$error++;
+				}
+			} else {
+				$sql = 'INSERT INTO '.MAIN_DB_PREFIX.'kreaproducts_nutritional';
+				$sql .= ' (fk_product, date_creation, fk_user_creat, is_food) VALUES (';
+				$sql .= (int) $object->id.", '".$db->idate(dol_now())."', ".(int) $user->id.', '.$isFood.')';
+				if (!$db->query($sql)) {
+					$error++;
+				}
+			}
+			if ($resql) {
+				$db->free($resql);
+			}
+		}
+		if (!$error && $mode === 1) {
+			dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+			if (KreaProductsNutritionalCalculator::saveCalculation($object->id, $user) <= 0
+				|| !KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0)
+				|| KreaProductsAllergenUpdater::hasErrors()) {
+				$error++;
+			}
+		}
+
+		if ($error) {
+			$db->rollback();
+			dol_syslog('Unable to save the unified nutrition/allergen mode for product #'.(int) $object->id.': '.$db->lasterror(), LOG_ERR);
+			setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_ERROR'), null, 'errors');
+		} else {
+			$db->commit();
+			setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_SAVED'), null, 'mesgs');
+		}
+	}
+	header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens');
+	exit;
+}
+
+if ($action === 'save_nutrition_allergens') {
+	$currentNutritionMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $object->entity);
+	$currentAllergenMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $object->entity);
+	if ((string) $currentNutritionMode !== '0' || (string) $currentAllergenMode !== '0') {
+		accessforbidden($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MANUAL_REQUIRED'));
+	}
+
+	$nutritionFields = array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber');
+	$nutrition = array();
+	foreach ($nutritionFields as $field) {
+		$rawValue = trim((string) GETPOST('nutritional_'.$field, 'alphanohtml'));
+		$nutrition[$field] = ($rawValue === '' ? null : price2num($rawValue, 'MU'));
+	}
+	$contains = array_values(array_unique(array_filter(array_map('intval', (array) GETPOST('KREAPRODUCTS_ALLERGENS', 'array')))));
+	$traces = array_values(array_unique(array_filter(array_map('intval', (array) GETPOST('KREAPRODUCTS_ALLERGENS_TRACES', 'array')))));
+	$traces = array_values(array_diff($traces, $contains));
+	$submittedAllergenIds = array_values(array_unique(array_merge($contains, $traces)));
+
+	$error = 0;
+	if (!empty($submittedAllergenIds)) {
+		$sql = 'SELECT rowid FROM '.MAIN_DB_PREFIX.'c_kreaproducts';
+		$sql .= ' WHERE active = 1 AND rowid IN ('.implode(',', $submittedAllergenIds).')';
+		$resql = $db->query($sql);
+		$validAllergenIds = array();
+		if ($resql) {
+			while ($row = $db->fetch_object($resql)) {
+				$validAllergenIds[] = (int) $row->rowid;
+			}
+			$db->free($resql);
+		}
+		if (!$resql || count($validAllergenIds) !== count($submittedAllergenIds)) {
+			$error++;
+		}
+	}
+
+	if (!$error) {
+		dol_include_once('/kreaproducts/class/nutritional.class.php');
+		dol_include_once('/kreaproducts/class/productallergens.class.php');
+		$db->begin();
+		try {
+			$nutritional = new Nutritional($db);
+			$fetchResult = $nutritional->fetchByProduct($object->id);
+			if ($fetchResult < 0) {
+				throw new RuntimeException('Unable to load the nutritional record');
+			}
+			$nutritional->fk_product = (int) $object->id;
+			$nutritional->is_food = 1;
+			foreach ($nutrition as $field => $value) {
+				$nutritional->{$field} = $value;
+			}
+			if ($fetchResult > 0) {
+				$nutritional->fk_user_modif = (int) $user->id;
+				$result = $nutritional->update($user);
+			} else {
+				$nutritional->fk_user_creat = (int) $user->id;
+				$result = $nutritional->create($user);
+			}
+			if ($result <= 0) {
+				throw new RuntimeException($nutritional->error ?: 'Unable to save nutritional values');
+			}
+
+			$sql = 'DELETE pa FROM '.MAIN_DB_PREFIX.'kreaproducts_productallergens AS pa';
+			$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = pa.fk_product';
+			$sql .= ' AND p.entity IN ('.getEntity('product').')';
+			$sql .= ' WHERE pa.fk_product = '.(int) $object->id;
+			if (!$db->query($sql)) {
+				throw new RuntimeException('Unable to replace product allergens');
+			}
+
+			foreach (array(0 => $contains, 1 => $traces) as $isTrace => $allergenIds) {
+				foreach ($allergenIds as $allergenId) {
+					$productAllergen = new ProductAllergens($db);
+					$productAllergen->fk_product = (int) $object->id;
+					$productAllergen->fk_allergen = (int) $allergenId;
+					$productAllergen->traces = (int) $isTrace;
+					if ($productAllergen->create($user) <= 0) {
+						throw new RuntimeException($productAllergen->error ?: 'Unable to save a product allergen');
+					}
+				}
+			}
+			$db->commit();
+		} catch (Throwable $exception) {
+			$db->rollback();
+			$error++;
+			dol_syslog('Unable to save unified nutrition/allergen data for product #'.(int) $object->id.': '.$exception->getMessage(), LOG_ERR);
+		}
+	}
+
+	if ($error) {
+		setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_SAVE_ERROR'), null, 'errors');
+	} else {
+		if (!KreaProductsNutrientUpdater::updateNutrientAttributes($object->id, $user)) {
+			dol_syslog('Nutrition/allergen values were saved, but the nutrient cascade reported an error for product #'.(int) $object->id, LOG_ERR);
+		}
+		setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_SAVED'), null, 'mesgs');
+	}
+	header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens');
+	exit;
+}
+
+if ($action === 'update_nutrition_allergens') {
+	$currentNutritionMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $object->entity);
+	$currentAllergenMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $object->entity);
+	if ((string) $currentNutritionMode !== '1' || (string) $currentAllergenMode !== '1') {
+		accessforbidden($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED_REQUIRED'));
+	}
+
+	dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+	$error = 0;
+	$db->begin();
+	if (KreaProductsNutritionalCalculator::saveCalculation($object->id, $user) <= 0) {
+		$error++;
+	}
+	if (!$error && (!KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0) || KreaProductsAllergenUpdater::hasErrors())) {
+		$error++;
+	}
+	if ($error) {
+		$db->rollback();
+		$errors = array_merge(KreaProductsNutritionalCalculator::getAllErrors(), KreaProductsAllergenUpdater::getAllErrors());
+		setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR'), $errors, 'errors');
+	} else {
+		$db->commit();
+		setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATED'), null, 'mesgs');
+	}
+	header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens');
+	exit;
 }
 
 if (empty($reshook)) {
@@ -797,204 +1083,7 @@ if (empty($reshook)) {
 	}
 }
 
-if ($action == 'save_kreaproducts_nutrition' && $usercancreate) {
-	kreaproducts_debug_log("Starting save_kreaproducts_nutrition action for product ID: " . (int) $object->id);
-
-	// Check if a nutritional record already exists for this product.
-	$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
-	$resql = $db->query($sql);
-
-	$existing_rowid = null;
-	if ($resql && $db->num_rows($resql) > 0) {
-		$obj = $db->fetch_object($resql);
-		$existing_rowid = $obj->rowid;
-		kreaproducts_debug_log("Existing nutrition record found: " . $existing_rowid);
-	}
-	$db->free($resql);
-
-	// Mandatory fields only for initial insertion.
-	$mandatoryData = [
-		'fk_product'    => (int) $object->id,
-		'date_creation' => date('Y-m-d H:i:s'),
-		'fk_user_creat' => $user->id,
-	];
-
-	// If no record exists, create one with just the mandatory fields.
-	if (!$existing_rowid) {
-		$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (";
-		$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
-		$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
-		kreaproducts_debug_log("Executing INSERT SQL: " . $sql);
-		$res = $db->query($sql);
-		if ($res) {
-			$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
-			kreaproducts_debug_log("Nutritional record created with mandatory fields (Row ID: " . $existing_rowid . ")");
-		} else {
-			dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
-			setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
-			return;
-		}
-	}
-
-	// Prepare additional nutritional data from the POST values.
-	$normalizeDecimalInput = function ($value) {
-		if ($value === null) {
-			return null;
-		}
-		$value = trim((string) $value);
-		if ($value === '') {
-			return null;
-		}
-		$commaPos = strrpos($value, ',');
-		$dotPos = strrpos($value, '.');
-		if ($commaPos !== false && $dotPos !== false) {
-			if ($commaPos > $dotPos) {
-				$value = str_replace('.', '', $value);
-				$value = str_replace(',', '.', $value);
-			} else {
-				$value = str_replace(',', '', $value);
-			}
-		} elseif ($commaPos !== false) {
-			$value = str_replace(',', '.', $value);
-		}
-		$value = preg_replace('/[^0-9\.\-]/', '', $value);
-		if ($value === '' || $value === '-' || $value === '.' || $value === '-.') {
-			return null;
-		}
-		if (!is_numeric($value)) {
-			return null;
-		}
-		return (float) $value;
-	};
-
-	$updateData = [
-		'energy_kcal'   => $normalizeDecimalInput($_POST['nutritional_energy_kcal'] ?? null),
-		'energy_kj'     => $normalizeDecimalInput($_POST['nutritional_energy_kj'] ?? null),
-		'fat'           => $normalizeDecimalInput($_POST['nutritional_fat'] ?? null),
-		'saturates'     => $normalizeDecimalInput($_POST['nutritional_saturates'] ?? null),
-		'carbohydrates' => $normalizeDecimalInput($_POST['nutritional_carbohydrates'] ?? null),
-		'sugars'        => $normalizeDecimalInput($_POST['nutritional_sugars'] ?? null),
-		'protein'       => $normalizeDecimalInput($_POST['nutritional_protein'] ?? null),
-		'salt'          => $normalizeDecimalInput($_POST['nutritional_salt'] ?? null),
-		'fiber'         => $normalizeDecimalInput($_POST['nutritional_fiber'] ?? null),
-	];
-
-	// Build and execute the UPDATE SQL query.
-	$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET ";
-	$setClauses = [];
-	foreach ($updateData as $field => $value) {
-		// If value is null, we explicitly set it to NULL, otherwise use the escaped value.
-		$setClauses[] = ($value === null) ? "$field = NULL" : "$field = " . $db->escape($value);
-	}
-	$updateSQL .= implode(", ", $setClauses);
-	$updateSQL .= " WHERE rowid = " . (int)$existing_rowid;
-
-	kreaproducts_debug_log("Executing UPDATE SQL: " . $updateSQL);
-	$resUpdate = $db->query($updateSQL);
-	if ($resUpdate) {
-		kreaproducts_debug_log("Nutritional data successfully updated (Row ID: " . $existing_rowid . ")");
-		setEventMessages($langs->trans("NutritionalDataUpdated"), null, 'mesgs');
-	} else {
-		dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
-		setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
-	}
-
-	// Call the updater method; $user is provided by the Dolibarr environment.
-	$result = KreaProductsNutrientUpdater::updateNutrientAttributes($object->id, $user);
-	if ($result < 0) {
-		$message = "Error updating nutritional attributes for product ID $object->id.";
-	} else {
-		$message = "Nutritional attributes updated successfully for product ID $object->id.";
-	}
-}
-
-if ($action === 'copy_nutrition_to_product' && $usercancreate && $enableCopyAvgToProduct) {
-	$targetProductId = GETPOSTINT('target_product_id');
-	if ($targetProductId > 0) {
-		$sqlTarget = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product";
-		$sqlTarget .= " WHERE rowid = " . (int) $targetProductId;
-		$sqlTarget .= " AND entity IN (" . getEntity('product') . ")";
-		$sqlTarget .= " LIMIT 1";
-		$resTarget = $db->query($sqlTarget);
-		if (!$resTarget || $db->num_rows($resTarget) <= 0) {
-			if ($resTarget) {
-				$db->free($resTarget);
-			}
-			dol_syslog("Blocked nutritional copy to inaccessible product ID " . $targetProductId, LOG_WARNING);
-			setEventMessages($langs->trans("Error"), null, 'errors');
-			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
-			exit;
-		}
-		$db->free($resTarget);
-
-		$sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $targetProductId;
-		$resql = $db->query($sql);
-		$existing_rowid = null;
-		if ($resql && $db->num_rows($resql) > 0) {
-			$obj = $db->fetch_object($resql);
-			$existing_rowid = $obj->rowid;
-		}
-		if ($resql) {
-			$db->free($resql);
-		}
-
-		if (!$existing_rowid) {
-			$mandatoryData = [
-				'fk_product'    => (int) $targetProductId,
-				'date_creation' => date('Y-m-d H:i:s'),
-				'fk_user_creat' => $user->id,
-			];
-			$sql = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (";
-			$sql .= implode(", ", array_keys($mandatoryData)) . ") VALUES ('";
-			$sql .= implode("', '", array_map([$db, 'escape'], array_values($mandatoryData))) . "')";
-			$res = $db->query($sql);
-			if ($res) {
-				$existing_rowid = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
-			} else {
-				dol_syslog("Error inserting mandatory nutritional data: " . $db->lasterror(), LOG_ERR);
-				setEventMessages($langs->trans("ErrorSavingData") . ": " . $db->lasterror(), null, 'errors');
-				header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
-				exit;
-			}
-		}
-
-		$fields = array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber');
-		$updateData = array();
-		foreach ($fields as $field) {
-			$rawValue = GETPOST('avg_' . $field, 'alpha');
-			$val = price2num($rawValue, 'MS');
-			$updateData[$field] = ($rawValue !== '' && $val !== '') ? (float) $val : null;
-		}
-
-		$updateSQL = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET ";
-		$setClauses = [];
-		foreach ($updateData as $field => $value) {
-			$setClauses[] = ($value === null) ? "$field = NULL" : "$field = " . $db->escape($value);
-		}
-		$updateSQL .= implode(", ", $setClauses);
-		$updateSQL .= " WHERE rowid = " . (int) $existing_rowid;
-
-		$resUpdate = $db->query($updateSQL);
-		if ($resUpdate) {
-			setEventMessages($langs->trans("KreaProductsCopyAvgSuccess"), null, 'mesgs');
-		} else {
-			dol_syslog("Error updating nutritional data: " . $db->lasterror(), LOG_ERR);
-			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
-		}
-
-		$result = KreaProductsNutrientUpdater::updateNutrientAttributes($targetProductId, $user);
-		if ($result < 0) {
-			kreaproducts_debug_log("Error updating nutritional attributes for product ID " . $targetProductId);
-		}
-	} else {
-		setEventMessages($langs->trans("Error"), null, 'errors');
-	}
-
-	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
-	exit;
-}
-
-if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAllergensToProduct) {
+if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAllergens && ($enableCopyAllergensToProduct || $enableCopyAvgToProduct)) {
 	$targetProductId = GETPOSTINT('target_product_id_allergens');
 	if ($targetProductId <= 0) {
 		$targetProductId = GETPOSTINT('target_product_id');
@@ -1042,7 +1131,7 @@ if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAlle
 		$db->free($resTarget);
 
 		$error = 0;
-		$messages = array($langs->trans("KreaProductsCopyAllergensSuccess"));
+		$messages = array($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED'));
 		$nutritionCopyResult = 0;
 		$db->begin();
 
@@ -1080,10 +1169,9 @@ if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAlle
 			$db->commit();
 			if ($nutritionCopyResult > 0) {
 				$result = KreaProductsNutrientUpdater::updateNutrientAttributes($targetProductId, $user);
-				if ($result < 0) {
+				if (!$result) {
 					kreaproducts_debug_log("Error updating nutritional attributes for product ID " . $targetProductId);
 				}
-				$messages[] = $langs->trans("KreaProductsCopyAvgSuccess");
 			}
 			setEventMessages('', $messages, 'mesgs');
 		} else {
@@ -1096,24 +1184,6 @@ if ($action === 'copy_allergens_to_product' && $usercancreate && $enableCopyAlle
 
 	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 	exit;
-}
-
-if ($action == 'updateAllergens' && $usercancreate) {
-	$result = KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0);
-	if (!$result || KreaProductsAllergenUpdater::hasErrors()) {
-		$errors = KreaProductsAllergenUpdater::getAllErrors();
-		if (empty($errors)) {
-			$errors = array($langs->trans("Error"));
-		}
-		setEventMessages($langs->trans("Error"), $errors, 'errors');
-	} else {
-		$stats = KreaProductsAllergenUpdater::getProcessingStats();
-		if (!empty($stats) && isset($stats['allergens_updated']) && (int) $stats['allergens_updated'] === 0) {
-			setEventMessages($langs->trans("KREAPRODUCTS_ALLERGENS_UPDATE_EMPTY"), null, 'warnings');
-		} else {
-			setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
-		}
-	}
 }
 
 if ($action === 'setweight' && $usercancreate) {
@@ -1148,42 +1218,6 @@ if ($usercancreate && preg_match('/^setweight_(\d+)$/', $action, $matches)) {
 	} else {
 		setEventMessages($langs->trans("Error"), null, 'errors');
 	}
-	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
-	exit;
-}
-
-// Toggle food/non-food flag for nutritional handling
-if ($action === 'toggle_is_food' && $usercancreate) {
-	$newValue = GETPOST('value', 'int') ? 1 : 0;
-
-	// Ensure a record exists
-	$sqlCheck = "SELECT rowid FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $object->id;
-	$resCheck = $db->query($sqlCheck);
-	$rowId = null;
-	if ($resCheck && $db->num_rows($resCheck) > 0) {
-		$objCheck = $db->fetch_object($resCheck);
-		$rowId = (int) $objCheck->rowid;
-	}
-	if ($resCheck) $db->free($resCheck);
-
-	if (!$rowId) {
-		$sqlInsert = "INSERT INTO " . MAIN_DB_PREFIX . "kreaproducts_nutritional (fk_product, date_creation, fk_user_creat, is_food) VALUES ("
-			. (int) $object->id . ", '" . $db->escape(date('Y-m-d H:i:s')) . "', " . (int) $user->id . ", " . (int) $newValue . ")";
-		$db->query($sqlInsert);
-		$rowId = $db->last_insert_id(MAIN_DB_PREFIX . "kreaproducts_nutritional");
-	} else {
-		$setParts = array("is_food = " . (int) $newValue);
-		if ($newValue === 0) {
-			// Reset nutritional fields when marking as non-food
-			$zeroFields = array('energy_kcal', 'energy_kj', 'fat', 'saturates', 'carbohydrates', 'sugars', 'protein', 'salt', 'fiber');
-			foreach ($zeroFields as $zf) {
-				$setParts[] = $zf . " = 0";
-			}
-		}
-		$sqlUpdate = "UPDATE " . MAIN_DB_PREFIX . "kreaproducts_nutritional SET " . implode(', ', $setParts) . " WHERE rowid = " . (int) $rowId;
-		$db->query($sqlUpdate);
-	}
-
 	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 	exit;
 }
@@ -1237,79 +1271,6 @@ if ($action === 'toggle_component_kreap_lot' && $usercancreate && !empty($conf->
 
 	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 	exit;
-}
-
-if ($action == 'saveAllergens' && $usercancreate) {
-	// Retrieve submitted allergens (non-traces and traces)
-	$selectedAllergens       = (array) GETPOST('KREAPRODUCTS_ALLERGENS', 'array');
-	$selectedAllergensTraces = (array) GETPOST('KREAPRODUCTS_ALLERGENS_TRACES', 'array');
-
-	// Example: merge arrays and adjust if "Sem alergenios" (id 1) is selected along with others
-	$mergedAllergens = array_unique(array_merge($selectedAllergens, $selectedAllergensTraces));
-	if (count($mergedAllergens) > 1 && in_array(1, $mergedAllergens)) {
-		$selectedAllergens = array_diff($selectedAllergens, array(1));
-		$selectedAllergensTraces = array_diff($selectedAllergensTraces, array(1));
-	}
-
-	$errors = array();
-	$db->begin();
-
-	// Remove previous allergen associations for this product
-	$sql = "DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-	$resql = $db->query($sql);
-	if (!$resql) {
-		$errors[] = $db->lasterror();
-	}
-
-	// Insert new associations (non-traces)
-	if (empty($errors) && !empty($selectedAllergens) && is_array($selectedAllergens)) {
-		dol_include_once('/kreaproducts/class/productallergens.class.php');
-		foreach ($selectedAllergens as $allergenId) {
-			$allergenId = (int)$allergenId;
-			if ($allergenId > 0) {
-				$prodAllergen = new ProductAllergens($db);
-				$prodAllergen->fk_product = $object->id;
-				$prodAllergen->fk_allergen  = $allergenId;
-				$prodAllergen->traces       = 0;
-				$res = $prodAllergen->create($user);
-				if ($res < 0) {
-					$errors[] = $prodAllergen->error;
-					break;
-				}
-			}
-		}
-	}
-
-	// Insert associations for allergens with traces (skip duplicates)
-	if (empty($errors) && !empty($selectedAllergensTraces) && is_array($selectedAllergensTraces)) {
-		dol_include_once('/kreaproducts/class/productallergens.class.php');
-		foreach ($selectedAllergensTraces as $allergenId) {
-			$allergenId = (int)$allergenId;
-			if (!empty($selectedAllergens) && in_array($allergenId, $selectedAllergens)) {
-				continue;
-			}
-			if ($allergenId > 0) {
-				$prodAllergenTraces = new ProductAllergens($db);
-				$prodAllergenTraces->fk_product = $object->id;
-				$prodAllergenTraces->fk_allergen  = $allergenId;
-				$prodAllergenTraces->traces       = 1;
-				$res = $prodAllergenTraces->create($user);
-				if ($res < 0) {
-					$errors[] = $prodAllergenTraces->error;
-					break;
-				}
-			}
-		}
-	}
-	if (empty($errors)) {
-		$db->commit();
-		setEventMessages($langs->trans("AllergenUpdateFired"), null, 'mesgs');
-	} else {
-		$db->rollback();
-		setEventMessages($langs->trans("ErrorUpdatingData"), $errors, 'errors');
-	}
-	// After saving, you might want to switch back to view mode.
-	$action = '';
 }
 
 /*
@@ -1417,14 +1378,6 @@ if ($id > 0 || !empty($ref)) {
 				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, $usercancreate, $typeformat);
 				print '</td></tr>';
 			}
-			// Food/non-food toggle on left column
-			print '<tr><td class="titlefield">' . $langs->trans("KreaFoodProduct") . '</td><td>';
-			$foodIcon = $productIsFood ? 'fa-toggle-on font-status4' : 'fa-toggle-off opacitymedium';
-			$toggleUrl = $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=toggle_is_food&value=' . ($productIsFood ? 0 : 1);
-			print '<a class="linkobject" href="' . $toggleUrl . '" title="' . ($productIsFood ? $langs->trans('KreaFoodProduct') : $langs->trans('KreaNonFoodProduct')) . '">';
-			print '<span class="fas ' . $foodIcon . '"></span>';
-			print '</a>';
-			print '</td></tr>';
 			// Dismantle toggle (only if product has a BOM)
 			if ($productHasBom) {
 				$dismantleFieldName = 'options_kreap_dismantle';
@@ -2728,325 +2681,383 @@ if ($id > 0 || !empty($ref)) {
 		}
 
 
-		if ($productIsFood) {
-			// Nutritional table
-			// Reusable spacing to keep titles and tables visually consistent.
-			$sectionMarginStyle = $sectionSpacingStyle;
-			$sectionMarginStyleLarge = 'margin-top: 32px;';
-			$tableMarginStyle = 'margin-top: 10px;';
+		// Unified nutrition and allergen workspace.
+		$sectionMarginStyle = $sectionSpacingStyle;
+		$sectionMarginStyleLarge = 'margin-top: 32px;';
+		$tableMarginStyle = 'margin-top: 10px;';
+		$nutritionAllergenMode = 0;
+		if (!$productIsFood) {
+			$nutritionAllergenMode = 2;
+		} elseif ((string) ($object->array_options['options_kreap_calc_nut'] ?? '') === '1'
+			&& (string) ($object->array_options['options_kreap_calc_allergens'] ?? '') === '1') {
+			$nutritionAllergenMode = 1;
+		}
+		$isEditingNutritionAllergens = ($action === 'edit_nutrition_allergens' && $nutritionAllergenMode === 0 && $canManageNutritionAllergens);
+		$llmProvider = strtolower(trim((string) getDolGlobalString('KREAPRODUCTS_LLM_PROVIDER')));
+		$showLlmProductDataModal = $canUseLlmProductData && $nutritionAllergenMode === 0 && $llmProvider !== '';
+		$openLlmProductDataModal = in_array($action, array('generate_llm_product_data', 'apply_llm_product_data'), true);
+		$showCopyProductDataModal = $canManageNutritionAllergens
+			&& $nutritionAllergenMode !== 2
+			&& ($enableCopyAllergensToProduct || $enableCopyAvgToProduct);
 
-			print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-			print load_fiche_titre($langs->trans("KreaProductsProductAssociations"), '', '');
-			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
-			$key = 'kreap_calc_nut';
-			$fieldName = 'options_' . $key;
-			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
-			kreaproducts_debug_log('label: ' . $label);
-			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
-			$rawOptions = kreaproducts_normalize_extrafield_options($rawOptions);
-			$options = array('' => '') + $rawOptions;
-			$editorType = 'select;' . implode(',', array_map(
-				function ($k, $v) {
-					global $langs;
-					$langs->load("kreaproducts@kreaproducts");
-					return "$k:" . $langs->trans($v);
-				},
-				array_keys($options),
-				$options
-			));
-
-			$displayLabels = array();
-			foreach ($rawOptions as $optKey => $optLabel) {
-				$displayLabels[(string) $optKey] = $langs->trans($optLabel);
+		$nutritionalFields = array(
+			'KreaProducts_Energy_kcal' => 'energy_kcal',
+			'KreaProducts_Energy_kj' => 'energy_kj',
+			'KreaProducts_Fat' => 'fat',
+			'KreaProducts_Saturates' => 'saturates',
+			'KreaProducts_Carbohydrates' => 'carbohydrates',
+			'KreaProducts_Sugars' => 'sugars',
+			'KreaProducts_Protein' => 'protein',
+			'KreaProducts_Salt' => 'salt',
+			'KreaProducts_Fiber' => 'fiber',
+		);
+		$nutritionalData = array_fill_keys(array_values($nutritionalFields), null);
+		$sql = 'SELECT n.'.implode(', n.', array_values($nutritionalFields));
+		$sql .= ' FROM '.MAIN_DB_PREFIX.'kreaproducts_nutritional AS n';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = n.fk_product';
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' WHERE n.fk_product = '.(int) $object->id.' ORDER BY n.rowid ASC LIMIT 1';
+		$resql = $db->query($sql);
+		if ($resql && ($row = $db->fetch_object($resql))) {
+			foreach ($nutritionalData as $field => $unused) {
+				$nutritionalData[$field] = $row->{$field};
 			}
-			$currentValue = array_key_exists($fieldName, $object->array_options) ? $object->array_options[$fieldName] : '';
-			if ($currentValue === null || $currentValue === '') {
-				$dbValue = kreaproducts_get_product_extrafield_value($db, $object->id, $key, $conf->entity);
-				if ($dbValue !== null) {
-					$currentValue = $dbValue;
-					$object->array_options[$fieldName] = $dbValue;
-				}
-			}
-			$currentKey = ($currentValue === null) ? '' : (string) $currentValue;
-			$isEditingField = ($inlineOptionAction === 'editoptions' && $inlineOptionKey === $key);
-			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
-			print '</td><td>';
-			if ($isEditingField) {
-				print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
-			} else {
-				if ($currentKey !== '' && array_key_exists($currentKey, $displayLabels)) {
-					print dol_escape_htmltag($displayLabels[$currentKey]);
-				} elseif ($currentKey !== '') {
-					print dol_escape_htmltag($currentKey);
-				}
-			}
-			print '</td></tr>';
-			print '</table>';
-			print '</div>';
+		}
+		if ($resql) {
+			$db->free($resql);
+		}
 
-			if ($conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB == 1 && $object->array_options['options_kreap_calc_nut'] == 1) {
-
-
-				dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
-				if ($usercancreate) {
-					$saveCalculationResult = KreaProductsNutritionalCalculator::saveCalculation($object->id, $user);
-					if ($saveCalculationResult < 0) {
-						dol_syslog('Failed to persist calculated nutritional values for product #' . (int) $object->id, LOG_ERR);
-						setEventMessages($langs->trans("ErrorUpdatingData"), null, 'errors');
-					}
-				}
-				KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id);
-			}
-
-			if ($object->array_options['options_kreap_calc_nut'] == 0) {
-				print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-				print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-				print '<input type="hidden" name="action" value="save_kreaproducts_nutrition">';
-				print '<input type="hidden" name="token" value="' . newToken() . '">';
-				print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
-
-				$nutritionalFields = array(
-					'KreaProducts_Energy_kcal'   => 'energy_kcal',
-					'KreaProducts_Energy_kj'     => 'energy_kj',
-					'KreaProducts_Fat'           => 'fat',
-					'KreaProducts_Saturates'     => 'saturates',
-					'KreaProducts_Carbohydrates' => 'carbohydrates',
-					'KreaProducts_Sugars'        => 'sugars',
-					'KreaProducts_Protein'       => 'protein',
-					'KreaProducts_Salt'          => 'salt',
-					'KreaProducts_Fiber'         => 'fiber',
+		$allergenDictionary = array();
+		$sql = 'SELECT rowid, code, icon FROM '.MAIN_DB_PREFIX.'c_kreaproducts WHERE active = 1 ORDER BY label';
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($row = $db->fetch_object($resql)) {
+				$allergenDictionary[(int) $row->rowid] = array(
+					'label' => $langs->trans($row->code),
+					'icon' => (string) $row->icon,
 				);
-
-				$sqlColumns = implode(', ', $nutritionalFields);
-				$sql = "SELECT $sqlColumns FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int)$object->id;
-				$resql = $db->query($sql);
-
-				$nutritionalData = new stdClass();
-				foreach ($nutritionalFields as $dbField) {
-					$nutritionalData->$dbField = '';
-				}
-
-				if ($resql && $db->num_rows($resql) > 0) {
-					$obj = $db->fetch_object($resql);
-					foreach ($nutritionalFields as $dbField) {
-						$nutritionalData->$dbField = isset($obj->$dbField) ? $obj->$dbField : '';
-					}
-				}
-
-				foreach ($nutritionalFields as $label => $dbField) {
-					$fieldName = 'nutritional_' . $dbField;
-					$object->array_options[$fieldName] = $nutritionalData->$dbField;
-					print '<tr><td class="titlefield">';
-					print '<label for="' . $fieldName . '">' . $langs->trans($label) . '</label>';
-					print '</td><td>';
-					if ($usercancreate) {
-						print '<input type="text" name="' . $fieldName . '" value="' . dol_escape_htmltag($object->array_options[$fieldName]) . '">';
-					} else {
-						print dol_escape_htmltag($object->array_options[$fieldName]);
-					}
-					print '</td></tr>';
-				}
-
-				print '</table>';
-				print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsNutritionDisclaimer") . '</div>';
-				if ($usercancreate) {
-					print '<div class="center" style="margin-top: 12px;"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
-				}
-				print '</form>';
-				print '</div>';
 			}
+			$db->free($resql);
+		} else {
+			dol_syslog('Unable to load the allergen dictionary: '.$db->lasterror(), LOG_ERR);
+		}
+		$allergenSelectOptions = array();
+		foreach ($allergenDictionary as $allergenId => $allergen) {
+			$allergenSelectOptions[$allergenId] = $allergen['label'];
+		}
 
-			// Allergens table
-			// Load available allergens from dictionary
-			$TAllergens = array();
-			$sql = "SELECT rowid, code, label, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE active = 1 ORDER BY label";
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					// Use the code translation as the display value
-					$TAllergens[$obj->rowid] = $langs->trans($obj->code);
-				}
-			} else {
-				dol_syslog("Error loading allergens dictionary: " . $db->error(), LOG_ERR);
-			}
-
-			// Reload saved allergen associations for current product
-			$savedAllergensArray = array();
-			$savedAllergensTracesArray = array();
-			$sql = "SELECT fk_allergen, traces FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens WHERE fk_product = " . (int)$object->id;
-			$resql = $db->query($sql);
-			if ($resql) {
-				while ($obj = $db->fetch_object($resql)) {
-					if ($obj->traces == 1) {
-						$savedAllergensTracesArray[] = $obj->fk_allergen;
-					} else {
-						$savedAllergensArray[] = $obj->fk_allergen;
-					}
-				}
-			} else {
-				dol_syslog("Error retrieving saved allergens: " . $db->error(), LOG_ERR);
-			}
-
-			print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-			print load_fiche_titre($langs->trans("KreaProductAllergensTableTitle"), '', '');
-			print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
-			$key = 'kreap_calc_allergens';
-			$fieldName = 'options_' . $key;
-			$label = $extrafields->attributes['product']['label'][$key] ?? $langs->trans($key);
-			kreaproducts_debug_log('label: ' . $label);
-			$rawOptions = $extrafields->attributes['product']['param'][$key]['options'] ?? array();
-			$rawOptions = kreaproducts_normalize_extrafield_options($rawOptions);
-			$options = array('' => '') + $rawOptions;
-			$editorType = 'select;' . implode(',', array_map(
-				function ($k, $v) {
-					global $langs;
-					$langs->load("kreaproducts@kreaproducts");
-					return "$k:" . $langs->trans($v);
-				},
-				array_keys($options),
-				$options
-			));
-
-			$displayLabels = array();
-			foreach ($rawOptions as $optKey => $optLabel) {
-				$displayLabels[(string) $optKey] = $langs->trans($optLabel);
-			}
-			$currentValue = array_key_exists($fieldName, $object->array_options) ? $object->array_options[$fieldName] : '';
-			if ($currentValue === null || $currentValue === '') {
-				$dbValue = kreaproducts_get_product_extrafield_value($db, $object->id, $key, $conf->entity);
-				if ($dbValue !== null) {
-					$currentValue = $dbValue;
-					$object->array_options[$fieldName] = $dbValue;
-				}
-			}
-			$currentKey = ($currentValue === null) ? '' : (string) $currentValue;
-			$isEditingField = ($inlineOptionAction === 'editoptions' && $inlineOptionKey === $key);
-			print '<tr><td class="titlefield">';
-			print $form->editfieldkey($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
-			print '</td><td>';
-			if ($isEditingField) {
-				print $form->editfieldval($label, $fieldName, $currentValue, $object, $usercancreate, $editorType);
-			} else {
-				if ($currentKey !== '' && array_key_exists($currentKey, $displayLabels)) {
-					print dol_escape_htmltag($displayLabels[$currentKey]);
-				} elseif ($currentKey !== '') {
-					print dol_escape_htmltag($currentKey);
-				}
-			}
-			print '</td></tr>';
-			print '</table>';
-			print '</div>';
-
-			if ($object->array_options['options_kreap_calc_allergens'] != 2) {
-				// Check if we are in edit mode and the user has rights to edit
-				if ($usercancreate && $action == 'edit_allergens') {
-
-					// Start the form
-					print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-					print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-					print '<input type="hidden" name="action" value="saveAllergens">';
-					print '<input type="hidden" name="token" value="' . newToken() . '">';
-
-					// Multiselect for allergens
-					print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
-					print '<tr><td>' . $langs->trans("Krea_Products_Allergens") . '</td><td colspan="3">';
-					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS', $TAllergens, $savedAllergensArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS"');
-					print '</td></tr>';
-
-					// Multiselect for allergens traces
-					print '<tr><td>' . $langs->trans("Krea_Products_AllergensTraces") . '</td><td colspan="3">';
-					print $form->multiselectarray('KREAPRODUCTS_ALLERGENS_TRACES', $TAllergens, $savedAllergensTracesArray, 0, 0, 'minwidth500', 0, '100%', '', 'id="KREAPRODUCTS_ALLERGENS_TRACES"');
-					print '</td></tr>';
-
-					print '<tr><td colspan="4" class="maxwidthonsmartphone" style="height: 10px;"></td></tr>';
-					print '</table>';
-
-					// Save button
-					print '<div class="center" style="margin-top: 12px;"><input type="submit" class="button" value="' . $langs->trans("Save") . '"></div>';
-					print '</form>';
-					print '</div>';
+		$savedAllergensArray = array();
+		$savedAllergensTracesArray = array();
+		$sql = 'SELECT pa.fk_allergen, pa.traces';
+		$sql .= ' FROM '.MAIN_DB_PREFIX.'kreaproducts_productallergens AS pa';
+		$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = pa.fk_product';
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' WHERE pa.fk_product = '.(int) $object->id;
+		$resql = $db->query($sql);
+		if ($resql) {
+			while ($row = $db->fetch_object($resql)) {
+				if ((int) $row->traces === 1) {
+					$savedAllergensTracesArray[] = (int) $row->fk_allergen;
 				} else {
-					// View mode (read-only display)
-					print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-					print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
-					print '<tr><td>' . $langs->trans("Allergens") . '</td><td colspan="3">';
-					if (!empty($savedAllergensArray)) {
-						foreach ($savedAllergensArray as $allergenId) {
-							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-							$resql = $db->query($sql);
-							if ($resql && $obj = $db->fetch_object($resql)) {
-								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-								print '</div>';
-							}
-						}
+					$savedAllergensArray[] = (int) $row->fk_allergen;
+				}
+			}
+			$db->free($resql);
+		} else {
+			dol_syslog('Unable to load saved product allergens: '.$db->lasterror(), LOG_ERR);
+		}
+
+		print '<div class="fichecenter" id="kreaproducts-nutrition-allergens" style="'.$sectionMarginStyle.'">';
+		print load_fiche_titre($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_TITLE'), '', '');
+		if ($isEditingNutritionAllergens) {
+			print '<form method="post" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens">';
+			print '<input type="hidden" name="action" value="save_nutrition_allergens">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+		}
+		$isCalculatedNutritionMode = ($nutritionAllergenMode === 1);
+		$nutritionAllergenColumnCount = $isCalculatedNutritionMode ? 14 : 2;
+		$nutritionAllergenLabelColspan = $isCalculatedNutritionMode ? 3 : 1;
+		$nutritionAllergenValueColspan = $isCalculatedNutritionMode ? 11 : 1;
+		if ($isCalculatedNutritionMode) {
+			dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+			KreaProductsNutritionalCalculator::printNutritionalTableStyles();
+			print '<div class="krea-nutrition-table-wrap" style="'.$tableMarginStyle.'">';
+		}
+		print '<table class="liste centpercent kreaproducts-nutrition-allergens-table'.($isCalculatedNutritionMode ? ' krea-nutrition-table' : '').'"'.($isCalculatedNutritionMode ? '' : ' style="'.$tableMarginStyle.'"').'>';
+		print '<tr'.($isCalculatedNutritionMode ? ' class="krea-mode-row"' : '').'><td class="titlefield" colspan="'.$nutritionAllergenLabelColspan.'">'.$langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MODE').'</td><td colspan="'.$nutritionAllergenValueColspan.'">';
+		if ($canManageNutritionAllergens && !$isEditingNutritionAllergens) {
+			print '<form method="post" class="inline-block" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens">';
+			print '<input type="hidden" name="action" value="save_nutrition_allergens_mode">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+			print '<select name="nutrition_allergen_mode" class="minwidth300">';
+			foreach (array(
+				0 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED',
+				1 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED',
+				2 => 'NaoEUmAlimento',
+			) as $modeValue => $modeLabel) {
+				print '<option value="'.$modeValue.'"'.($nutritionAllergenMode === $modeValue ? ' selected' : '').'>';
+				print dol_escape_htmltag($langs->trans($modeLabel)).'</option>';
+			}
+			print '</select> ';
+			print '<input type="submit" class="button button-save" value="'.dol_escape_htmltag($langs->trans('Save')).'">';
+			print '</form>';
+		} else {
+			$modeLabels = array(
+				0 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED',
+				1 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED',
+				2 => 'NaoEUmAlimento',
+			);
+			print dol_escape_htmltag($langs->trans($modeLabels[$nutritionAllergenMode]));
+		}
+		print '</td></tr>';
+
+		if ($nutritionAllergenMode === 2) {
+			print '<tr><td colspan="'.$nutritionAllergenColumnCount.'"><span class="opacitymedium">';
+			print $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_NOT_FOOD_HELP');
+			print '</span></td></tr>';
+		} else {
+			print '<tr class="liste_titre krea-section-title"><td colspan="'.$nutritionAllergenColumnCount.'">'.$langs->trans('KreaProductsProductAssociations').'</td></tr>';
+			if ($nutritionAllergenMode === 1) {
+				KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id, true);
+			} else {
+				foreach ($nutritionalFields as $labelKey => $field) {
+					print '<tr><td class="titlefield" colspan="'.$nutritionAllergenLabelColspan.'"><label for="nutritional_'.$field.'">'.$langs->trans($labelKey).'</label></td><td colspan="'.$nutritionAllergenValueColspan.'">';
+					if ($isEditingNutritionAllergens) {
+						print '<input type="number" min="0" step="0.0001" class="maxwidth100" id="nutritional_'.$field.'" name="nutritional_'.$field.'" value="';
+						print dol_escape_htmltag($nutritionalData[$field] === null ? '' : $nutritionalData[$field]).'">';
 					} else {
-						print $langs->trans("NoneSelected");
+						print ($nutritionalData[$field] === null || $nutritionalData[$field] === '')
+							? '<span class="opacitymedium">'.$langs->trans('NotAvailable').'</span>'
+							: dol_escape_htmltag($nutritionalData[$field]);
 					}
 					print '</td></tr>';
-
-					print '<tr><td>' . $langs->trans("AllergensTraces") . '</td><td colspan="3">';
-					if (!empty($savedAllergensTracesArray)) {
-						foreach ($savedAllergensTracesArray as $allergenId) {
-							$sql = "SELECT code, icon FROM " . MAIN_DB_PREFIX . "c_kreaproducts WHERE rowid = " . (int)$allergenId;
-							$resql = $db->query($sql);
-							if ($resql && $obj = $db->fetch_object($resql)) {
-								$iconPath = DOL_URL_ROOT . '/custom/kreaproducts/img/' . $obj->icon;
-								print '<div class="refidno multicompany-entity-card-container" style="margin-bottom:5px; display: flex; align-items: center;">';
-								print '<img src="' . $iconPath . '" alt="' . htmlspecialchars($obj->code) . '" class="allergen-icon" style="width:16px; height:16px; margin-right:5px;" />';
-								print '<span class="multiselect-selected-title-text">' . $langs->trans($obj->code) . '</span>';
-								print '</div>';
-							}
-						}
-					} else {
-						print $langs->trans("NoneSelected");
-					}
-					print '</td></tr>';
-					print '</table>';
-					print '</div>';
-
-					if ($usercancreate && $object->array_options['options_kreap_calc_allergens'] != 1) {
-						print '<div class="center" style="margin-top: 12px;">';
-						print '<a class="button" href="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '&action=edit_allergens#myAllergenButtons">' . $langs->trans("Edit") . '</a>';
-						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-						print '<input type="hidden" name="action" value="updateAllergens">';
-						print '<input type="hidden" name="token" value="' . newToken() . '">';
-						print '</form>';
-						print '</div>';
-					} elseif ($usercancreate) {
-						print '<div class="center" style="margin-top: 12px;">';
-						print '<a class="button" href="#" onclick="document.getElementById(\'formUpdateAllergens\').submit(); return false;">' . $langs->trans("updateAllergens") . '</a>';
-						print '<form id="formUpdateAllergens" method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '#myAllergenButtons" style="display:none;">';
-						print '<input type="hidden" name="action" value="updateAllergens">';
-						print '<input type="hidden" name="token" value="' . newToken() . '">';
-						print '</form>';
-						print '</div>';
-					}
 				}
-
-				// Copy allergens to another product
-				if ($usercancreate && $action != 'edit_allergens' && $enableCopyAllergensToProduct) {
-					$targetFieldName = 'target_product_id_allergens';
-					$entityList = kreaproducts_get_accessible_entities();
-					$selectHtml = kreaproducts_select_produits_with_entities($form, 0, $targetFieldName, $entityList, $langs, 'minwidth300');
-					print '<div class="fichecenter" style="' . $sectionMarginStyle . '">';
-					print '<form method="post" action="' . $_SERVER['PHP_SELF'] . '?id=' . $object->id . '">';
-					print '<input type="hidden" name="action" value="copy_allergens_to_product">';
-					print '<input type="hidden" name="token" value="' . newToken() . '">';
-					print '<input type="hidden" name="id" value="' . $object->id . '">';
-					print '<span class="inline-block" style="margin-right: 8px;">' . $langs->trans("KreaProductsCopyAllergensToProduct") . '</span>';
-					print $selectHtml;
-					print ' <input type="submit" class="button" value="' . $langs->trans("KreaProductsCopyAllergensButton") . '">';
-					print '</form>';
-					print '</div>';
-				}
-				print '<div class="opacitymedium" style="margin-top: 8px;">' . $langs->trans("KreaProductsAllergensDisclaimer") . '</div>';
 			}
 
+			print '<tr class="liste_titre krea-section-title"><td colspan="'.$nutritionAllergenColumnCount.'">'.$langs->trans('KreaProductAllergensTableTitle').'</td></tr>';
+			foreach (array(
+				array('label' => 'Krea_Products_Allergens', 'name' => 'KREAPRODUCTS_ALLERGENS', 'selected' => $savedAllergensArray),
+				array('label' => 'Krea_Products_AllergensTraces', 'name' => 'KREAPRODUCTS_ALLERGENS_TRACES', 'selected' => $savedAllergensTracesArray),
+			) as $allergenRow) {
+				print '<tr class="krea-allergen-row"><td class="titlefield" colspan="'.$nutritionAllergenLabelColspan.'">'.$langs->trans($allergenRow['label']).'</td><td colspan="'.$nutritionAllergenValueColspan.'">';
+				if ($isEditingNutritionAllergens) {
+					print $form->multiselectarray(
+						$allergenRow['name'],
+						$allergenSelectOptions,
+						$allergenRow['selected'],
+						0,
+						0,
+						'minwidth500',
+						0,
+						'100%',
+						'',
+						'id="'.$allergenRow['name'].'"'
+					);
+				} elseif (empty($allergenRow['selected'])) {
+					print '<span class="opacitymedium">'.$langs->trans('NoneSelected').'</span>';
+				} else {
+					foreach ($allergenRow['selected'] as $allergenId) {
+						if (!isset($allergenDictionary[$allergenId])) {
+							continue;
+						}
+						$allergen = $allergenDictionary[$allergenId];
+						print '<span class="badge badge-pill kreaproducts-allergen-pill marginrightonly" style="background:var(--butactionbg, #555);color:var(--textbutaction, #fff);border-color:transparent;">';
+						if ($allergen['icon'] !== '') {
+							print '<img src="'.DOL_URL_ROOT.'/custom/kreaproducts/img/'.dol_escape_htmltag($allergen['icon']).'" alt="" width="16" height="16" class="valignmiddle kreaproducts-allergen-pill-icon" style="filter:brightness(0) invert(1);"> ';
+						}
+						print dol_escape_htmltag($allergen['label']).'</span>';
+					}
+				}
+				print '</td></tr>';
+			}
+		}
+		print '</table>';
+		if ($isCalculatedNutritionMode) {
+			print '</div>';
+		}
+
+		if ($isEditingNutritionAllergens) {
+			print '<div class="center" style="margin-top:12px;">';
+			print '<input type="submit" class="button button-save" value="'.dol_escape_htmltag($langs->trans('Save')).'"> ';
+			print '<input type="submit" class="button button-cancel" name="cancel" value="'.dol_escape_htmltag($langs->trans('Cancel')).'">';
+			print '</div>';
+			print '</form>';
+		} elseif ($nutritionAllergenMode !== 2 && ($canManageNutritionAllergens || $showCopyProductDataModal || $showLlmProductDataModal)) {
+			if ($canManageNutritionAllergens && $nutritionAllergenMode === 1) {
+				print '<form id="kreaproducts-recalculate-nutrition-allergens-form" method="post" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-nutrition-allergens" style="display:none;">';
+				print '<input type="hidden" name="action" value="update_nutrition_allergens">';
+				print '<input type="hidden" name="token" value="'.newToken().'">';
+				print '</form>';
+			}
+			print '<div class="tabsAction">';
+			if ($canManageNutritionAllergens && $nutritionAllergenMode === 0) {
+				$editLabel = $langs->trans('Edit');
+				$editHtml = '<span class="fas fa-pencil-alt paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($editLabel);
+				$editUrl = $_SERVER['PHP_SELF'].'?id='.(int) $object->id.'&action=edit_nutrition_allergens#kreaproducts-nutrition-allergens';
+				print dolGetButtonAction($editLabel, $editHtml, 'edit', $editUrl, 'kreaproducts-edit-nutrition-allergens', 1);
+			} elseif ($canManageNutritionAllergens && $nutritionAllergenMode === 1) {
+				$recalculateLabel = $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE');
+				$recalculateHtml = '<span class="fas fa-sync-alt paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($recalculateLabel);
+				print dolGetButtonAction(
+					$recalculateLabel,
+					$recalculateHtml,
+					'default',
+					'#',
+					'kreaproducts-recalculate-nutrition-allergens',
+					1,
+					array('attr' => array('onclick' => 'document.getElementById(\'kreaproducts-recalculate-nutrition-allergens-form\').submit(); return false;'))
+				);
+			}
+			if ($showCopyProductDataModal) {
+				$copyLabel = $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY');
+				$copyHtml = '<span class="fas fa-copy paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($copyLabel);
+				print dolGetButtonAction($copyLabel, $copyHtml, 'default', '#', 'kreaproducts-open-copy-product-data-modal', 1);
+			}
+			if ($showLlmProductDataModal) {
+				$llmLabel = $langs->trans('KREAPRODUCTS_LLM_OPEN');
+				$llmHtml = '<span class="fas fa-wand-magic-sparkles paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($llmLabel);
+				print dolGetButtonAction($llmLabel, $llmHtml, 'default', '#', 'kreaproducts-open-llm-modal', 1);
+			}
+			print '</div>';
+		}
+		if ($nutritionAllergenMode !== 2) {
+			print '<div class="opacitymedium" style="margin-top:8px;">'.$langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER').'</div>';
+		}
+		print '</div>';
+
+		if ($showCopyProductDataModal) {
+			$targetFieldName = 'target_product_id_allergens';
+			$entityList = kreaproducts_get_accessible_entities();
+			$selectHtml = kreaproducts_select_produits_with_entities($form, 0, $targetFieldName, $entityList, $langs, 'minwidth300');
+			print '<div id="kreaproducts-copy-product-data-modal" style="display:none;">';
+			print '<p>'.$langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP').'</p>';
+			print '<form method="post" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'">';
+			print '<input type="hidden" name="action" value="copy_nutrition_allergens_to_product">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+			print '<input type="hidden" name="id" value="'.(int) $object->id.'">';
+			print '<div class="center">'.$selectHtml.'</div>';
+			print '<div class="center" style="margin-top:12px;"><input type="submit" class="button button-save" value="';
+			print dol_escape_htmltag($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY')).'"></div>';
+			print '</form>';
+			print '</div>';
+		}
+
+		if ($showLlmProductDataModal) {
+			if ($llmSourceText === '') {
+				$sourceParts = array();
+				$ingredients = trim((string) ($object->array_options['options_kreap_ingredients'] ?? ''));
+				$kreaDescription = trim((string) ($object->array_options['options_kreap_description'] ?? ''));
+				$coreDescription = trim((string) ($object->description ?? ''));
+				if ($ingredients !== '') {
+					$sourceParts[] = $langs->trans('kreap_ingredients_Inline').":\n".html_entity_decode(strip_tags($ingredients), ENT_QUOTES, 'UTF-8');
+				}
+				if ($kreaDescription !== '') {
+					$sourceParts[] = $langs->trans('kreap_description_Inline').":\n".html_entity_decode(strip_tags($kreaDescription), ENT_QUOTES, 'UTF-8');
+				}
+				if ($coreDescription !== '' && $coreDescription !== $kreaDescription) {
+					$sourceParts[] = $langs->trans('Description').":\n".html_entity_decode(strip_tags($coreDescription), ENT_QUOTES, 'UTF-8');
+				}
+				$llmSourceText = implode("\n\n", $sourceParts);
+			}
+
+			print '<div id="kreaproducts-llm-modal" style="display:none;">';
+			print '<div class="opacitymedium">'.$langs->trans(
+				'KREAPRODUCTS_LLM_PRODUCT_DATA_HELP',
+				dol_escape_htmltag($llmProvider),
+				dol_escape_htmltag(getDolGlobalString('KREAPRODUCTS_LLM_MODEL'))
+			).'</div>';
+			print '<form method="post" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'" style="margin-top:10px;">';
+			print '<input type="hidden" name="action" value="generate_llm_product_data">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+			print '<label for="llm_source_text"><strong>'.$langs->trans('KREAPRODUCTS_LLM_SOURCE_TEXT').'</strong></label>';
+			print '<textarea id="llm_source_text" name="llm_source_text" rows="7" class="centpercent" maxlength="12000" style="margin-top:6px;">'.dol_escape_htmltag($llmSourceText).'</textarea>';
+			print '<div class="center" style="margin-top:10px;"><input type="submit" class="button button-save" value="'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_LLM_GENERATE')).'"></div>';
+			print '</form>';
+
+			if (is_array($llmSuggestion)) {
+				$nutritionLabels = array(
+					'energy_kcal' => 'KreaProducts_Energy_kcal',
+					'energy_kj' => 'KreaProducts_Energy_kj',
+					'fat' => 'KreaProducts_Fat',
+					'saturates' => 'KreaProducts_Saturates',
+					'carbohydrates' => 'KreaProducts_Carbohydrates',
+					'sugars' => 'KreaProducts_Sugars',
+					'protein' => 'KreaProducts_Protein',
+					'salt' => 'KreaProducts_Salt',
+					'fiber' => 'KreaProducts_Fiber',
+				);
+				$contains = array();
+				$traces = array();
+				foreach ($llmSuggestion['allergens'] as $suggestedAllergen) {
+					if ($suggestedAllergen['presence'] === 'contains') {
+						$contains[] = $suggestedAllergen['code'];
+					} else {
+						$traces[] = $suggestedAllergen['code'];
+					}
+				}
+
+				print '<form method="post" action="'.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'" style="margin-top:18px;">';
+				print '<input type="hidden" name="action" value="apply_llm_product_data">';
+				print '<input type="hidden" name="token" value="'.newToken().'">';
+				print '<input type="hidden" name="llm_confidence" value="'.dol_escape_htmltag($llmSuggestion['confidence']).'">';
+				print '<input type="hidden" name="llm_notes" value="'.dol_escape_htmltag($llmSuggestion['notes']).'">';
+				print '<div class="warning">'.$langs->trans('KREAPRODUCTS_LLM_REVIEW_WARNING').'</div>';
+				print '<table class="border centpercent" style="margin-top:10px;">';
+				print '<tr class="liste_titre"><td>'.$langs->trans('KREAPRODUCTS_LLM_NUTRIENT').'</td><td>'.$langs->trans('KREAPRODUCTS_LLM_VALUE_PER_100G').'</td></tr>';
+				foreach ($nutritionLabels as $field => $labelKey) {
+					$value = $llmSuggestion['nutrition_per_100g'][$field];
+					print '<tr><td>'.$langs->trans($labelKey).'</td><td>';
+					print '<input type="number" min="0" step="0.0001" name="llm_nutrition_'.$field.'" value="'.dol_escape_htmltag($value === null ? '' : $value).'">';
+					print '</td></tr>';
+				}
+				print '</table>';
+				print '<table class="border centpercent" style="margin-top:10px;">';
+				print '<tr class="liste_titre"><td>'.$langs->trans('Allergens').'</td><td class="center">'.$langs->trans('KREAPRODUCTS_LLM_CONTAINS').'</td><td class="center">'.$langs->trans('AllergensTraces').'</td></tr>';
+				foreach (KreaProductsLlmProductDataService::getAllergenCodes() as $allergenCode) {
+					print '<tr><td>'.$langs->trans($allergenCode).'</td>';
+					print '<td class="center"><input type="checkbox" name="llm_allergens_contains[]" value="'.$allergenCode.'"'.(in_array($allergenCode, $contains, true) ? ' checked' : '').'></td>';
+					print '<td class="center"><input type="checkbox" name="llm_allergens_traces[]" value="'.$allergenCode.'"'.(in_array($allergenCode, $traces, true) ? ' checked' : '').'></td></tr>';
+				}
+				print '</table>';
+				print '<div style="margin-top:10px;"><strong>'.$langs->trans('KREAPRODUCTS_LLM_CONFIDENCE').':</strong> '.$langs->trans('KREAPRODUCTS_LLM_CONFIDENCE_'.strtoupper($llmSuggestion['confidence'])).'</div>';
+				if ($llmSuggestion['notes'] !== '') {
+					print '<div style="margin-top:6px;"><strong>'.$langs->trans('Notes').':</strong> '.dol_escape_htmltag($llmSuggestion['notes']).'</div>';
+				}
+				print '<div class="center" style="margin-top:12px;"><input type="submit" class="button button-save" value="'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_LLM_APPLY')).'"></div>';
+				print '</form>';
+			}
+			print '<div class="opacitymedium" style="margin-top:8px;">'.$langs->trans('KREAPRODUCTS_LLM_DISCLAIMER').'</div>';
+			print '</div>';
+		}
+
+		if ($showCopyProductDataModal || $showLlmProductDataModal) {
+			print '<script type="text/javascript">'."\n";
+			print 'jQuery(document).ready(function () {'."\n";
+			if ($showCopyProductDataModal) {
+				print '    var copyDialog = jQuery("#kreaproducts-copy-product-data-modal").dialog({'."\n";
+				print '        autoOpen: false, modal: true, width: Math.min(620, Math.max(320, window.innerWidth - 40)),'."\n";
+				print '        title: "'.dol_escape_js($langs->transnoentitiesnoconv('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY')).'"'."\n";
+				print '    });'."\n";
+				print '    jQuery("#kreaproducts-open-copy-product-data-modal").on("click", function (event) {'."\n";
+				print '        event.preventDefault(); copyDialog.dialog("open");'."\n";
+				print '    });'."\n";
+			}
+			if ($showLlmProductDataModal) {
+				print '    var llmDialog = jQuery("#kreaproducts-llm-modal").dialog({'."\n";
+				print '        autoOpen: '.($openLlmProductDataModal ? 'true' : 'false').', modal: true,'."\n";
+				print '        width: Math.min(900, Math.max(320, window.innerWidth - 40)),'."\n";
+				print '        maxHeight: Math.max(400, window.innerHeight - 80),'."\n";
+				print '        title: "'.dol_escape_js($langs->transnoentitiesnoconv('KREAPRODUCTS_LLM_PRODUCT_DATA_TITLE')).'"'."\n";
+				print '    });'."\n";
+				print '    jQuery("#kreaproducts-open-llm-modal").on("click", function (event) {'."\n";
+				print '        event.preventDefault(); llmDialog.dialog("open");'."\n";
+				print '    });'."\n";
+			}
+			print '});'."\n";
+			print '</script>'."\n";
+		}
+
+		if ($productIsFood) {
 			if (isset($object->array_options)) {
 
 				// Keep displayed values in sync with the posted data

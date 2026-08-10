@@ -90,6 +90,10 @@ Esta funcionalidade é especialmente relevante em operações com muitas receita
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | `KREAPRODUCTS_DEFAULT_WEIGHT_LABEL`         | Classe de unidades para peso.                                        |
 | `KREAPRODUCTS_NUTRITIONAL_TABLE_TAB`        | Mostrar tabela nutricional na ficha técnica.                         |
+| `KREAPRODUCTS_LLM_PROVIDER`                 | Fornecedor de IA para sugestões de nutrição e alergénios: OpenAI, Claude, OpenRouter ou Ollama. |
+| `KREAPRODUCTS_LLM_MODEL`                    | Identificador exato do modelo do fornecedor selecionado.               |
+| `KREAPRODUCTS_LLM_API_KEY`                  | Chave API cifrada do fornecedor; não é necessária para Ollama.   |
+| `KREAPRODUCTS_LLM_OLLAMA_URL`               | URL base local/privada do Ollama (por defeito `http://localhost:11434`). |
 | `KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT`   | Mostrar o seletor e botão para copiar valores médios por 100 g.       |
 | `KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT` | Mostrar o seletor e botão para copiar alergénios para outro produto. |
 | `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE`         | Propagar automaticamente o preço de custo (recálculo em cascata).    |
@@ -107,6 +111,8 @@ Esta funcionalidade é especialmente relevante em operações com muitas receita
 | `KREAPRODUCTS_DEBUG_LOG`                    | Ativar registos de diagnóstico do KreaProducts.                      |
 
 Nota: os limiares de alergénios são percentagens do peso total da receita do produto final.
+
+As sugestões de IA ficam disponíveis apenas quando a nutrição e os alergénios do produto estão no modo manual. Use o botão **Sugestão por IA** ao lado de **Guardar** na tabela nutricional para abrir o modal. A página do produto carrega os ingredientes e descrições existentes. Quando não existem valores exatos do rótulo, o fornecedor pode estimar a nutrição típica por 100 g a partir de conhecimento geral de composição alimentar e deve indicar confiança baixa e as respetivas premissas. Os alergénios continuam limitados a ingredientes e vestígios explicitamente declarados. A resposta estruturada é validada e exige revisão explícita antes de substituir os dados numa única transação. Os endereços Ollama estão limitados à máquina local ou à rede privada.
 
 ## Permissões
 

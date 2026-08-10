@@ -1,6 +1,99 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.10.5] - 2026-08-10
+
+### Changed
+
+- Rendered allergen icons in white inside the grey pills.
+
+## [4.10.4] - 2026-08-10
+
+### Changed
+
+- Matched allergen pills to the Dolibarr action-button colors.
+
+## [4.10.3] - 2026-08-10
+
+### Changed
+
+- Flattened calculated nutrition and allergens into one square-edged table.
+
+## [4.10.2] - 2026-08-10
+
+### Fixed
+
+- Restored the detailed component nutrition table in calculated mode.
+
+## [4.10.1] - 2026-08-10
+
+### Fixed
+
+- Aligned nutrition and allergen actions with native Dolibarr buttons.
+
+## [4.10.0] - 2026-08-10
+
+### Changed
+
+- Unified nutrition and allergens in one table with one mode selector and common actions.
+- Moved nutrition and allergen copying into a modal.
+- Preserved saved food data when a product is marked as non-food.
+
+### Security
+
+- Enforced POST, CSRF, product rights, and both data-write permissions on unified mutations.
+
+## [4.9.1] - 2026-08-10
+
+### Fixed
+
+- Repaired invalid legacy nutritional creation dates before updating reviewed AI values.
+
+## [4.9.0] - 2026-08-10
+
+### Changed
+
+- Generated low-confidence nutrition estimates from general food-composition knowledge when exact label values are unavailable.
+- Kept allergen and trace suggestions limited to explicit product evidence.
+
+## [4.8.4] - 2026-08-10
+
+### Fixed
+
+- Increased the AI provider connection timeout and reported DNS or timeout failures clearly.
+
+### Security
+
+- Prevented provider authorization headers from being written to Dolibarr logs.
+
+## [4.8.3] - 2026-08-10
+
+### Fixed
+
+- Reported empty provider suggestions as insufficient evidence instead of invalid nutrition or allergen data.
+
+## [4.8.2] - 2026-08-10
+
+### Fixed
+
+- Fixed the AI modal launcher JavaScript failing to parse on the product page.
+
+## [4.8.1] - 2026-08-10
+
+### Changed
+
+- Moved the AI nutrition and allergen workflow into a modal opened beside the nutrition Save action.
+
+## [4.8.0] - 2026-08-10
+
+### Added
+
+- Added review-first AI suggestions for manual product nutrition and allergens through OpenAI, Claude, OpenRouter, or Ollama.
+
+### Security
+
+- Enforced encrypted credentials, structured-output validation, CSRF, write permissions, product entity scope, atomic replacement, and private-only Ollama endpoints.
+
 ## [4.7.2] - 2026-08-10
 
 ### Fixed

@@ -57,6 +57,15 @@ KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT = Enable copying average values to produ
 KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT_HELP = Show the selector and button to copy average values per 100g to another product
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT = Enable copying allergens to product
 KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT_HELP = Show the selector and button to copy allergens to another product
+KREAPRODUCTS_LLM_PROVIDER = Nutrition and allergen AI provider
+KREAPRODUCTS_LLM_PROVIDER_HELP = Provider used to generate reviewable nutrition and allergen suggestions for products in manual mode
+KREAPRODUCTS_LLM_MODEL = AI model
+KREAPRODUCTS_LLM_MODEL_HELP = Exact model identifier accepted by the selected provider
+KREAPRODUCTS_LLM_MODEL_PLACEHOLDER = Provider model identifier
+KREAPRODUCTS_LLM_API_KEY = AI provider API key
+KREAPRODUCTS_LLM_API_KEY_HELP = Encrypted Dolibarr constant used by OpenAI, Claude, or OpenRouter; leave empty for Ollama
+KREAPRODUCTS_LLM_OLLAMA_URL = Ollama URL
+KREAPRODUCTS_LLM_OLLAMA_URL_HELP = Local or private Ollama base URL; Dolibarr anti-SSRF rules reject public addresses for this provider
 KREAPRODUCTS_ALLERGENS_UPDATE_EMPTY = No allergens were calculated. Check base product allergens, weights, and thresholds.
 KREAPRODUCTS_INVENTORY_DEFAULT_TIME = Default inventory time
 KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP = Time (HH:MM or HH:MM:SS) used as default when creating an inventory
@@ -675,6 +684,69 @@ KREAPRODUCTS_PERMISSION_LABELS_WRITE = Generate and delete product labels
 KREAPRODUCTS_PERMISSION_STOCK_MOBILE_READ = Open the mobile stock-counting application
 KREAPRODUCTS_PERMISSION_INVENTORY_WRITE = Create inventories and record physical counts
 KREAPRODUCTS_PERMISSION_INVENTORY_CLOSE = Close and reverse physical inventory corrections
+
+#
+# Unified nutrition and allergen editor
+#
+KREAPRODUCTS_NUTRITION_ALLERGENS_TITLE = Nutrition and allergens
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE = Data source
+KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED = Nutrition/allergen table entered
+KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED = Nutrition/allergen table calculated
+KREAPRODUCTS_NUTRITION_ALLERGENS_NOT_FOOD_HELP = This product shows no nutrition or allergen data because it is marked as non-food. Previously saved values are preserved.
+KREAPRODUCTS_NUTRITION_ALLERGENS_PERMISSION_REQUIRED = Nutrition and allergen write permissions are required.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_SAVED = The nutrition and allergen mode was saved.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MODE_ERROR = The nutrition and allergen mode could not be saved.
+KREAPRODUCTS_NUTRITION_ALLERGENS_MANUAL_REQUIRED = Select the entered nutrition/allergen table before editing values.
+KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED_REQUIRED = Select the calculated nutrition/allergen table before recalculating values.
+KREAPRODUCTS_NUTRITION_ALLERGENS_SAVED = Nutrition and allergens were saved.
+KREAPRODUCTS_NUTRITION_ALLERGENS_SAVE_ERROR = Nutrition and allergens could not be saved; no partial change was committed.
+KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATED = Nutrition and allergens were recalculated.
+KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR = Nutrition and allergens could not be recalculated; no partial change was committed.
+KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE = Recalculate
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPY = Copy nutrition and allergens
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP = Select the target product. The current nutrition and allergens will replace its existing data.
+KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED = Nutrition and allergens were copied.
+KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER = This data is unverified. Always check the product label and applicable law before using it.
+
+#
+# AI nutrition and allergens
+#
+KREAPRODUCTS_LLM_PRODUCT_DATA_TITLE = AI nutrition and allergens
+KREAPRODUCTS_LLM_OPEN = AI suggestion
+KREAPRODUCTS_LLM_PRODUCT_DATA_HELP = Provider: %s. Model: %s. Review every value before saving.
+KREAPRODUCTS_LLM_SOURCE_TEXT = Product ingredients, label text, or other evidence
+KREAPRODUCTS_LLM_GENERATE = Generate suggestion
+KREAPRODUCTS_LLM_APPLY = Apply reviewed values
+KREAPRODUCTS_LLM_APPLY_SUCCESS = Reviewed nutrition and allergens were saved.
+KREAPRODUCTS_LLM_MANUAL_MODE_REQUIRED = Set both nutrition and allergen tables to manual mode before using AI suggestions.
+KREAPRODUCTS_LLM_REVIEW_WARNING = Applying this suggestion replaces the product's current nutrition and allergen data. Check the package label and applicable law first.
+KREAPRODUCTS_LLM_NUTRIENT = Nutrient
+KREAPRODUCTS_LLM_VALUE_PER_100G = Value per 100 g
+KREAPRODUCTS_LLM_CONTAINS = Contains
+KREAPRODUCTS_LLM_CONFIDENCE = Model confidence
+KREAPRODUCTS_LLM_CONFIDENCE_LOW = Low
+KREAPRODUCTS_LLM_CONFIDENCE_MEDIUM = Medium
+KREAPRODUCTS_LLM_CONFIDENCE_HIGH = High
+KREAPRODUCTS_LLM_DISCLAIMER = AI nutrition may be estimated from general food-composition knowledge when exact label values are absent. The result is unverified and is not medical, dietary, or regulatory advice. Review every value against the product label and applicable law before saving.
+KREAPRODUCTS_LLM_ERROR_NOT_CONFIGURED = Configure an AI provider in KreaProducts setup first.
+KREAPRODUCTS_LLM_ERROR_MODEL = Configure the exact AI model identifier first.
+KREAPRODUCTS_LLM_ERROR_API_KEY = Configure the AI provider API key first.
+KREAPRODUCTS_LLM_ERROR_PROVIDER = The selected AI provider is not supported.
+KREAPRODUCTS_LLM_ERROR_SOURCE_REQUIRED = Add ingredients, package label text, or other reliable product evidence.
+KREAPRODUCTS_LLM_ERROR_OLLAMA_URL = Configure a valid local or private Ollama URL.
+KREAPRODUCTS_LLM_ERROR_REQUEST = The AI provider request failed. Check the provider configuration and logs.
+KREAPRODUCTS_LLM_ERROR_AUTH = The AI provider rejected its credentials.
+KREAPRODUCTS_LLM_ERROR_RATE_LIMIT = The AI provider rate limit or quota was reached.
+KREAPRODUCTS_LLM_ERROR_TIMEOUT = The AI provider connection timed out. Please try again.
+KREAPRODUCTS_LLM_ERROR_RESPONSE = The AI provider returned no usable structured response.
+KREAPRODUCTS_LLM_ERROR_INVALID_DATA = The suggested values failed nutrition or allergen validation.
+KREAPRODUCTS_LLM_ERROR_INSUFFICIENT_EVIDENCE = The AI provider found insufficient evidence for a useful suggestion.
+KREAPRODUCTS_LLM_ERROR_PERMISSION = Nutrition and allergen write permissions are required.
+KREAPRODUCTS_LLM_ERROR_PRODUCT_SCOPE = The product is outside the active entity scope.
+KREAPRODUCTS_LLM_ERROR_ALLERGEN_DICTIONARY = The active allergen dictionary does not contain every suggested code.
+KREAPRODUCTS_LLM_ERROR_SAVE = Nutrition and allergens could not be saved; no partial change was committed.
+KREAPRODUCTS_LLM_ERROR_POST_REQUIRED = This action requires a POST request.
+KREAPRODUCTS_LLM_ERROR_MANUAL_MODE = Both nutrition and allergen tables must be in manual mode.
 
 #
 # Mobile stock and inventory errors
