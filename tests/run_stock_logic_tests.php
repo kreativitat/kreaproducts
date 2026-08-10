@@ -176,7 +176,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.7'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.10'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -557,6 +557,20 @@ assertSameValue(true, strpos((string) $dismantleSource, 'ProductUpdater::prepare
 
 $productViewerSource = file_get_contents(__DIR__.'/../class/ProductViewer.class.php');
 assertSameValue(true, strpos((string) $productViewerSource, 'ProductUpdater::prepareProductCostUpdate($prod);') !== false, 'Legacy product hierarchy cost persistence must preserve oldcopy before changing cost_price.');
+assertSameValue(true, strpos((string) $productViewerSource, 'public static function getRecursiveComponentCost($productId)') !== false, 'The technical-sheet recursive calculation must be reusable by the associated-products page.');
+assertSameValue(true, strpos((string) $productViewerSource, 'const PRICE_COMPARISON_DELTA = 0.0001;') !== false, 'Recursive cost comparison must match the four displayed decimal places.');
+assertSameValue(false, strpos((string) $productViewerSource, "trans(\"FichaTecnica\")") !== false, 'The redundant technical-sheet table must not render on the hierarchy page.');
+assertSameValue(true, strpos((string) $productViewerSource, '/theme/eldy/img/error.png') !== false, 'Recursive cost mismatches must retain the hierarchy warning icon.');
+assertSameValue(true, strpos((string) $productViewerSource, 'Cyclic product hierarchy detected while calculating product') !== false, 'Recursive display calculations must fail safely on cyclic hierarchies.');
+
+$associatedProductsSource = file_get_contents(__DIR__.'/../associatedProducts.php');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'ProductHierarchyTree::getRecursiveComponentCost($id)') !== false, 'The associated-products table must display the hierarchy recursive cost.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "trans('KreapRecursiveCost')") !== false, 'The recursive total must be identified below the direct component total.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'ProductHierarchyTree::getCostDifferenceIcon($recursiveBuyingPrice, $total)') !== false, 'The recursive total must be compared with the direct component total.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '$total +=  $totalline;') !== false, 'The direct component total must remain the primary associated-products calculation.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "print \$langs->trans(\"TotalBuyingPriceMinShort\");\n\t\t\t\tif (\$recursiveDifferenceIcon !== '')") !== false, 'The recursive total must render below the direct-total label only when the values differ.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'opacitymedium krea-recursive-cost') !== false, 'The recursive amount and mismatch icon must share one aligned inline row.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'print $recursiveDifferenceIcon;') < strpos((string) $associatedProductsSource, "print ')</span>';") , 'The mismatch icon must render inside the recursive-cost parentheses.');
 
 $triggerSource = file_get_contents(__DIR__.'/../core/triggers/interface_99_modKreaProducts_KreaProductsTriggers.class.php');
 assertSameValue(true, strpos((string) $triggerSource, 'ProductUpdater::prepareProductCostUpdate($product);') !== false, 'Supplier-invoice cost persistence must preserve oldcopy before changing cost_price.');
@@ -617,9 +631,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.11.7', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.11.7', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.11.7', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.11.10', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.11.10', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.11.10', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

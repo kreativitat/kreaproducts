@@ -40,6 +40,7 @@ require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 dol_include_once('/kreaproducts/class/KreaProductsNutrientUpdater.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsAllergenUpdater.class.php');
 dol_include_once('/kreaproducts/class/KreaProductsLlmProductDataService.class.php');
+dol_include_once('/kreaproducts/class/ProductViewer.class.php');
 dol_include_once('/kreaproducts/lib/kreaproducts.lib.php');
 
 // Load translation files required by the page
@@ -1970,10 +1971,13 @@ if ($id > 0 || !empty($ref)) {
 		if (!$hideChildList) {
 			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			$atleastonenotdefined = 0;
+			$recursiveBuyingPrice = $nbofsubproducts > 0 ? ProductHierarchyTree::getRecursiveComponentCost($id) : false;
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
 			print '<style>
 				#tablelines .krea-label-col.tdoverflowmax150 { max-width: 560px; }
 				#tablelines .krea-kreaplot-cell { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+				#tablelines .krea-recursive-cost { display: inline-flex; align-items: center; gap: 3px; }
+				#tablelines .krea-recursive-cost img { display: block; }
 				@media (max-width: 768px) {
 					.krea-tablelines-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 					#tablelines { table-layout: auto !important; }
@@ -2175,7 +2179,18 @@ if ($id > 0 || !empty($ref)) {
 				}
 				$colspanBeforeAmount += $hookColumnCount;
 				$colspanBeforeAmount += 1; // Qty col
-				print '<td class="liste_total right" colspan="' . $colspanBeforeAmount . '">' . $langs->trans("TotalBuyingPriceMinShort") . '</td>';
+				$recursiveDifferenceIcon = $recursiveBuyingPrice !== false
+					? ProductHierarchyTree::getCostDifferenceIcon($recursiveBuyingPrice, $total)
+					: '';
+				print '<td class="liste_total right" colspan="' . $colspanBeforeAmount . '">';
+				print $langs->trans("TotalBuyingPriceMinShort");
+				if ($recursiveDifferenceIcon !== '') {
+					print '<br><span class="opacitymedium krea-recursive-cost">(' . $langs->trans('KreapRecursiveCost') . ': '
+						. price($recursiveBuyingPrice, '', '', 0, 0, 4, $conf->currency);
+					print $recursiveDifferenceIcon;
+					print ')</span>';
+				}
+				print '</td>';
 				print '<td class="liste_total right" style="white-space: nowrap;">' . number_format((float) $totalWeightKg, 3, '.', '') . ' kg</td>';
 				print '<td class="liste_total right" style="white-space: nowrap;">';
 				if ($atleastonenotdefined) {

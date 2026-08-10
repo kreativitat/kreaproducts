@@ -34,7 +34,7 @@ class ProductHierarchyTree
     const MAX_HIERARCHY_DEPTH = 50;
     const MAX_PRODUCTS_PER_LEVEL = 5000;
     const BATCH_SIZE = 100;
-    const PRICE_COMPARISON_DELTA = 0.01;
+    const PRICE_COMPARISON_DELTA = 0.0001;
     
     // Constants for display modes
     const MODE_CHILD = 'child';
@@ -104,7 +104,6 @@ class ProductHierarchyTree
                 self::generateHeaderSection($prod, $productId, $langs);
                 self::generateChildrenSection($productId, $langs);
                 self::generateParentsSection($productId, $langs);
-                self::generateTechnicalSheet($productId, $langs, $conf);
                 
                 $output = ob_get_clean();
                 
@@ -174,6 +173,54 @@ class ProductHierarchyTree
             dol_syslog(__METHOD__ . " Error: " . $e->getMessage(), LOG_ERR);
             return false;
         }
+    }
+
+    /**
+     * Calculate the full recursive component cost used by the technical sheet.
+     *
+     * @param int $productId Product ID
+     * @return float|false Recursive cost, or false when the hierarchy cannot be loaded
+     */
+    public static function getRecursiveComponentCost($productId)
+    {
+        try {
+            self::initializeProcessing($productId);
+            self::$productCache = array();
+            self::$priceCache = array();
+
+            if (!self::validateInputs($productId) || !self::buildEnhancedMapBFS($productId)) {
+                return false;
+            }
+
+            $product = self::getLocalProduct($productId);
+            if (!$product) {
+                return false;
+            }
+
+            return (float) self::computeRecursivePriceEnhanced($product, self::FIELD_BUYPRICE);
+        } catch (Throwable $exception) {
+            self::addError('Failed to calculate recursive component cost: ' . $exception->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Render the technical-sheet warning when calculated and stored costs differ.
+     *
+     * @param float $calculatedCost Recursive component cost
+     * @param float $storedCost     Stored product cost
+     * @return string HTML warning icon, or an empty string when the values match
+     */
+    public static function getCostDifferenceIcon($calculatedCost, $storedCost)
+    {
+        global $langs;
+
+        if (abs((float) $calculatedCost - (float) $storedCost) < self::PRICE_COMPARISON_DELTA) {
+            return '';
+        }
+
+        $diffLabel = $langs->trans('KreapValuesDiffer');
+        return ' <img class="krea-cost-difference-icon" src="' . DOL_URL_ROOT . '/theme/eldy/img/error.png" alt="' . dol_escape_htmltag($diffLabel) . '" title="' . dol_escape_htmltag($diffLabel) . '">';
     }
 
     /**
@@ -1410,116 +1457,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     /**
-     * Generate technical sheet with enhanced calculations
-     */
-    private static function generateTechnicalSheet($productId, $langs, $conf)
-    {
-        try {
-            print '<p><strong>' . $langs->trans("FichaTecnica") . '</strong></p>';
-            print '<table class="noborder" width="100%">';
-            print '<tr class="liste_titre">';
-            print '<td width="10%">' . $langs->trans("Reference") . '</td>';
-            print '<td width="50%">' . $langs->trans("Label") . '</td>';
-            print '<td width="20%">' . $langs->trans('Qty') . '</td>';
-            print '<td width="20%">' . $langs->trans('Type') . '</td>';
-            print '<td width="10%">' . $langs->trans('CostPrice') . '</td>';
-            print '<td width="10%">' . $langs->trans('SubTotal') . '</td>';
-            print '</tr>';
-
-            $lp = self::getLocalProduct($productId);
-            if (!$lp) {
-                print '<tr><td colspan="6">' . $langs->trans('KreapNoProductData') . '</td></tr>';
-                print '</table>';
-                return;
-            }
-
-            $totalCost = 0;
-            
-            // Process children
-            foreach ($lp->children as $childId => $qty) {
-                if (!self::generateChildTechnicalRow($childId, $qty, $langs, $conf, $totalCost)) {
-                    self::addWarning("Failed to generate technical row for child $childId");
-                }
-            }
-
-            // Calculate and display totals
-            $sumBuy = self::computeRecursivePriceEnhanced($lp, self::FIELD_BUYPRICE);
-            
-            self::generateTotalRows($lp, $sumBuy, $langs, $conf);
-            
-            print '</table>';
-            
-        } catch (Exception $e) {
-            self::addError("Failed to generate technical sheet: " . $e->getMessage());
-            print '<p style="color:red;">' . $langs->trans('KreapErrorTechnicalSheet') . '</p>';
-        }
-    }
-
-    /**
-     * Generate child technical row
-     */
-    private static function generateChildTechnicalRow($childId, $qty, $langs, $conf, &$totalCost)
-    {
-        try {
-            $childLP = self::getLocalProduct($childId);
-            if (!$childLP) {
-                return false;
-            }
-            
-            $ref = self::loadAndValidateProduct($childId);
-            if (!$ref) {
-                return false;
-            }
-            
-            $linkRef = method_exists($ref, 'getNomUrl') ? $ref->getNomUrl(1) : htmlspecialchars($ref->ref, ENT_QUOTES);
-
-            print '<tr style="font-style: italic;">';
-            print '<td>' . $linkRef . '</td>';
-            print '<td>' . htmlspecialchars($childLP->label, ENT_QUOTES) . '</td>';
-            print '<td>x ' . number_format($qty, 3, '.', '') . '</td>';
-            print '<td>' . $langs->trans('Subprodutos') . '</td>';
-            
-            $buyVal = self::formatPrice($childLP->buyprice, $conf);
-            print '<td>' . $buyVal . '</td>';
-            
-            $subTotal = $qty * $childLP->buyprice;
-            $totalCost += $subTotal;
-            $subTotalFormatted = self::formatPrice($subTotal, $conf);
-            print '<td>' . $subTotalFormatted . '</td>';
-            print '</tr>';
-            
-            return true;
-            
-        } catch (Exception $e) {
-            self::addError("Failed to generate child technical row: " . $e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Generate total rows for technical sheet
-     */
-    private static function generateTotalRows($lp, $sumBuy, $langs, $conf)
-    {
-        try {
-            print '<tr style="font-style: italic;">';
-            print '<td colspan="5">' . $langs->trans('TotaisEstimadosDoProduto') . '</td>';
-            print '<td>' . self::formatPrice($sumBuy, $conf) . '</td>';
-            print '</tr>';
-
-            print '<tr style="font-weight: bold;font-size:1.1em;">';
-            print '<td colspan="5">' . $langs->trans('PrecoCusto') . '</td>';
-            print '<td>' . self::formatPrice($lp->buyprice, $conf);
-            print self::compareIconEnhanced($sumBuy, $lp->buyprice);
-            print '</td>';
-            print '</tr>';
-            
-        } catch (Exception $e) {
-            self::addError("Failed to generate total rows: " . $e->getMessage());
-        }
-    }
-
-    /**
      * Enhanced price formatting
      */
     private static function formatPrice($price, $conf)
@@ -1800,7 +1737,7 @@ document.addEventListener("DOMContentLoaded", function () {
     /**
      * Enhanced recursive price computation with caching
      */
-    private static function computeRecursivePriceEnhanced($lp, $field)
+    private static function computeRecursivePriceEnhanced($lp, $field, $path = array())
     {
         $cacheKey = $lp->id . '_' . $field;
         
@@ -1809,6 +1746,11 @@ document.addEventListener("DOMContentLoaded", function () {
             return self::$priceCache[$cacheKey];
         }
 
+        if (!empty($path[$lp->id])) {
+            throw new RuntimeException('Cyclic product hierarchy detected while calculating product ' . ((int) $lp->id));
+        }
+        $path[$lp->id] = true;
+
         if (empty($lp->children)) {
             $result = ($field === self::FIELD_PRICE) ? $lp->price : $lp->buyprice;
         } else {
@@ -1816,7 +1758,7 @@ document.addEventListener("DOMContentLoaded", function () {
             foreach ($lp->children as $childId => $qty) {
                 $child = self::getLocalProduct($childId);
                 if ($child) {
-                    $sum += $qty * self::computeRecursivePriceEnhanced($child, $field);
+                    $sum += $qty * self::computeRecursivePriceEnhanced($child, $field, $path);
                 }
             }
             $result = $sum;
@@ -1826,21 +1768,6 @@ document.addEventListener("DOMContentLoaded", function () {
         self::$priceCache[$cacheKey] = $result;
         
         return $result;
-    }
-
-    /**
-     * Enhanced compare icon with better validation
-     */
-    private static function compareIconEnhanced($val1, $val2)
-    {
-        global $langs;
-        if (abs($val1 - $val2) < self::PRICE_COMPARISON_DELTA) {
-            $matchLabel = $langs->trans('KreapValuesMatch');
-            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/tick.png" alt="' . dol_escape_htmltag($matchLabel) . '" title="' . dol_escape_htmltag($matchLabel) . '">';
-        } else {
-            $diffLabel = $langs->trans('KreapValuesDiffer');
-            return ' <img src="' . DOL_URL_ROOT . '/theme/eldy/img/error.png" alt="' . dol_escape_htmltag($diffLabel) . '" title="' . dol_escape_htmltag($diffLabel) . '">';
-        }
     }
 
     /**
@@ -2043,11 +1970,6 @@ document.addEventListener("DOMContentLoaded", function () {
     private static function computeRecursivePrice($lp, $key)
     {
         return self::computeRecursivePriceEnhanced($lp, $key);
-    }
-
-    private static function compareIcon($val1, $val2)
-    {
-        return self::compareIconEnhanced($val1, $val2);
     }
 
     private static function buildMapBFS($startId)

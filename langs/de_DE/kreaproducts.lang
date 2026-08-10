@@ -339,6 +339,7 @@ KreapErrorTechnicalSheet = Fehler beim Erzeugen des technischen Blatts.
 KreapNoProductData = Keine Produktdaten verfügbar
 KreapValuesMatch = Werte stimmen überein
 KreapValuesDiffer = Werte unterscheiden sich
+KreapRecursiveCost = Rekursive Kosten
 KreapInvalidProductIdProvided = Ungültige Produkt-ID
 KreapBuildHierarchyFailed = Aufbau der Produkthierarchie fehlgeschlagen
 KreapProductNotFound = Produkt #%s nicht gefunden oder ungültig

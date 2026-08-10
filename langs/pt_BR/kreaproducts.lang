@@ -31,6 +31,7 @@ kreap_description_Inline = Descricao do produto
 KreaFoodProduct = Produto alimentar
 FichaTecnica = Ficha técnica
 TotaisEstimadosDoProduto = Totais estimados do produto
+KreapRecursiveCost = Custo recursivo
 PrecoCusto = Preço de custo
 KreaProductsAssocToBomTitle = Converter associacoes para BOM
 KreaProductsAssocToBomSource = Produto origem (associacoes)

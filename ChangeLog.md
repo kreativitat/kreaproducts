@@ -1,6 +1,26 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.11.10] - 2026-08-10
+
+### Fixed
+
+- Matched recursive cost comparison tolerance to the four displayed decimal places.
+
+## [4.11.9] - 2026-08-10
+
+### Changed
+
+- Show the recursive component cost only when it differs from the direct total.
+- Removed the redundant technical-sheet table from the product hierarchy page.
+
+## [4.11.8] - 2026-08-10
+
+### Changed
+
+- Added the recursive component cost below the direct kit-component total.
+- Added the hierarchy cost-mismatch warning to the recursive total.
+
 ## [4.11.7] - 2026-08-10
 
 ### Added
