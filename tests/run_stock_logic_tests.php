@@ -132,7 +132,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.10.5'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.10.11'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -197,6 +197,24 @@ assertSameValue(true, strpos((string) $llmServiceSource, 'array(CURLINFO_HEADER_
 assertSameValue(true, strpos((string) $llmServiceSource, '$localUrlMode, -1, 15, 60, $curlOptions') !== false, 'Provider requests must allow enough time for DNS and connection establishment.');
 assertSameValue(true, strpos((string) $llmServiceSource, "array(6, 28)") !== false, 'Provider DNS and timeout failures must have a dedicated user-facing error.');
 assertSameValue(true, strpos((string) $llmServiceSource, 'general food-composition knowledge to estimate typical values') !== false, 'LLM nutrition generation must support estimates when exact label values are absent.');
+
+$aboutSource = file_get_contents(__DIR__.'/../admin/about.php');
+assertSameValue(true, strpos((string) $aboutSource, "trans('KreapAboutModuleLabel')") !== false, 'The About signature must display the module identity.');
+assertSameValue(true, strpos((string) $aboutSource, "trans('KreapAboutVersionLabel')") !== false, 'The About signature must display the current module version.');
+assertSameValue(true, strpos((string) $aboutSource, 'print $tmpmodule->getDescLong();') !== false, 'The About page must render the module long description from README.md.');
+assertSameValue(false, strpos((string) $aboutSource, "trans('KreapAboutAiCapabilitiesLabel')") !== false, 'The module signature must not contain an AI capabilities row.');
+assertSameValue(false, strpos((string) $aboutSource, '$nutritionFeatures') !== false, 'The README description must not be duplicated beside the signature.');
+assertSameValue(false, strpos((string) $aboutSource, 'Feature coverage') !== false, 'The About signature must not include the feature catalogue.');
+assertSameValue(false, strpos((string) $aboutSource, 'Main setup and product controls') !== false, 'The About signature must not include the setup-control catalogue.');
+assertSameValue(false, strpos((string) $aboutSource, '$featureRows') !== false, 'The removed feature catalogue must not remain as unused page data.');
+assertSameValue(false, strpos((string) $aboutSource, '$controlRows') !== false, 'The removed control catalogue must not remain as unused page data.');
+
+$readmeSource = file_get_contents(__DIR__.'/../README.md');
+assertSameValue(true, strpos((string) $readmeSource, 'KreaProducts also provides optional AI-assisted nutrition and allergen suggestions') !== false, 'The rendered About introduction must describe the module AI capabilities.');
+assertSameValue(true, strpos((string) $readmeSource, 'OpenAI, Anthropic, OpenRouter, or private Ollama') !== false, 'The rendered About content must name the supported AI providers.');
+assertSameValue(true, strpos((string) $readmeSource, 'nothing is saved without explicit user confirmation') !== false, 'The rendered About introduction must describe the review-first save boundary.');
+assertSameValue(true, strpos((string) $readmeSource, '### Nutrition and allergens') !== false, 'The rendered About features must retain the nutrition and allergen section.');
+assertSameValue(true, strpos((string) $readmeSource, '- Optional AI-assisted nutrition and allergen suggestions') !== false, 'The rendered nutrition and allergen features must include AI assistance.');
 assertSameValue(true, strpos((string) $llmServiceSource, 'For allergens, use only explicit product evidence') !== false, 'LLM allergen generation must remain evidence-based.');
 
 $setupSource = file_get_contents(__DIR__.'/../admin/setup.php');
@@ -493,9 +511,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.10.5', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.10.5', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.10.5', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.10.11', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.10.11', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.10.11', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

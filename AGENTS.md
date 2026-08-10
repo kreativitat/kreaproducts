@@ -251,6 +251,7 @@ Example style:
 
 ## Conventions
 
+- 2026-08-10: `admin/about.php` renders the authoritative README content through `DolibarrModules::getDescLong()` and then displays a separate clean branding signature containing only the logo, module name, current version, editor, GPL license, support email, and website. AI capabilities belong in the README introduction and Nutrition and allergens feature list; they must not be duplicated in custom About markup or the signature.
 - 2026-08-10: Allergen icons are rendered white only inside read-only grey allergen pills by applying a scoped CSS filter to the displayed image. The shared source icon assets remain unchanged for other module contexts.
 - 2026-08-10: Read-only allergen pills use Dolibarr's `--butactionbg` and `--textbutaction` theme variables with safe fallbacks, keeping their compact `badge-pill` shape while matching the native action-button grey across themes.
 - 2026-08-10: Nutrition and allergen record actions use `dolGetButtonAction()` inside a native `tabsAction` bar. Selector, edit, and modal form submissions use Dolibarr `button-save` and `button-cancel` controls; generic page-level `.button` links must not replace record action buttons.
@@ -260,6 +261,11 @@ Example style:
 
 ## Deprecated Knowledge
 
+- 2026-08-10: The 4.10.10 custom introduction and Nutrition and allergens block beside the signature became obsolete in 4.10.11. The existing README-backed `moduledesclong` is the authoritative About content.
+- 2026-08-10: The generic six-item About feature summary introduced in 4.10.9 became obsolete in 4.10.10. The page now uses the requested KreaProducts introduction and focused Nutrition and allergens feature list beside the signature.
+- 2026-08-10: The 4.10.8 AI-capabilities row inside the module signature became obsolete in 4.10.9. AI is now described in the separate introduction and feature highlights.
+- 2026-08-10: The 4.10.7 rule limiting the About signature to identity and contact rows became obsolete in 4.10.8. One translated AI-capabilities row is retained without restoring the removed feature or setup catalogues.
+- 2026-08-10: The 4.10.6 About-page feature and setup-control catalogues became obsolete in 4.10.7 because they made the module signature noisy and duplicated documentation maintained elsewhere.
 - 2026-08-10: The 4.10.2 nested calculated-nutrition table integration became obsolete in 4.10.3. The same component reference, name, unit weight, quantity, total weight, nutrient contribution, total, and normalized data now render as rows in the single unified 14-column table.
 - 2026-08-07: The 2026-07-11 rule that moved customer invoice day D to the configured close on D+1 is obsolete as of 4.5.15. Customer movements now retain their authoritative invoice datetime.
 - 2026-07-31: The 4.5.11 design that allowed non-stock-managed MO products to create execution lines without stock movements is obsolete as of 4.5.12. MO participation now makes stock management mandatory and updates the product accordingly.

@@ -4,6 +4,8 @@
 
 KreaProducts is an advanced product management module for the [Dolibarr ERP/CRM](https://www.dolibarr.org). It extends the Products module with nutrition, allergens, BOM/Technical Sheets, inventory, and cost/stock automations - built for hospitality and retail operations that need consistency, traceability, and accurate _food cost_.
 
+KreaProducts also provides optional AI-assisted nutrition and allergen suggestions through OpenAI, Anthropic, OpenRouter, or private Ollama. Suggestions remain reviewable, allergen declarations are based only on product evidence, and nothing is saved without explicit user confirmation.
+
 ## Features
 
 ### Nutrition and allergens
@@ -12,6 +14,7 @@ KreaProducts is an advanced product management module for the [Dolibarr ERP/CRM]
 - Nutrient propagation between parent/child products, including BOM (MRP) when enabled.
 - Allergen management with propagation by percentage of total weight and trace marking.
 - Support for non-food products (excluded from calculation).
+- Optional AI-assisted nutrition and allergen suggestions through OpenAI, Anthropic, OpenRouter, or private Ollama, with structured validation and explicit review before saving.
 
 ### Product structure and BOM
 

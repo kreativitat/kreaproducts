@@ -1,6 +1,43 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.10.11] - 2026-08-10
+
+### Fixed
+
+- Added AI capabilities to the README introduction and nutrition/allergen features rendered by the About page.
+- Restored the About signature as a separate clean branding block.
+
+## [4.10.10] - 2026-08-10
+
+### Changed
+
+- Placed the requested product introduction and nutrition/allergen features beside the clean module signature.
+
+## [4.10.9] - 2026-08-10
+
+### Fixed
+
+- Moved AI information from the module signature into the introduction and feature highlights.
+
+## [4.10.8] - 2026-08-10
+
+### Changed
+
+- Added a concise AI capabilities summary to the About signature.
+
+## [4.10.7] - 2026-08-10
+
+### Changed
+
+- Simplified the About page to a clean module signature.
+
+## [4.10.6] - 2026-08-10
+
+### Changed
+
+- Updated the About page for unified nutrition, allergens, and reviewed AI suggestions.
+
 ## [4.10.5] - 2026-08-10
 
 ### Changed
