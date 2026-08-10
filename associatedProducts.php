@@ -34,6 +34,7 @@ if (!$res) die('Failed to include main.inc.php');
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/lib/product.lib.php';
+require_once DOL_DOCUMENT_ROOT . '/core/lib/parsemd.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
 dol_include_once('/kreaproducts/class/KreaProductsNutrientUpdater.class.php');
@@ -594,6 +595,20 @@ $llmManualDataMode = isset($object->array_options['options_kreap_calc_nut'], $ob
 	&& (string) $object->array_options['options_kreap_calc_allergens'] === '0';
 $llmSuggestion = null;
 $llmSourceText = '';
+$otherCharacteristicsSubmittedValues = array();
+$otherCharacteristicsFieldDefinitions = array(
+	'options_kreap_brand' => array('label' => 'kreap_brand_Inline', 'type' => 'text', 'maxlength' => 300),
+	'options_kreap_video' => array('label' => 'kreap_video_Inline', 'type' => 'url', 'maxlength' => 300),
+	'options_kreap_description' => array('label' => 'kreap_description_Inline', 'type' => 'textarea', 'format' => 'markdown', 'rows' => 5, 'maxlength' => 9999),
+	'options_kreap_ingredients' => array('label' => 'kreap_ingredients_Inline', 'type' => 'textarea', 'format' => 'markdown', 'rows' => 5, 'maxlength' => 9999),
+	'options_kreap_recipe' => array('label' => 'productRecipeInline', 'type' => 'textarea', 'format' => 'markdown', 'rows' => 7, 'maxlength' => 9999),
+);
+
+// Convert raw database extra-field values before any action, hook, renderer, or editor consumes them.
+$object->array_options = kreaproducts_import_characteristic_database_values(
+	$object->array_options ?? array(),
+	$otherCharacteristicsFieldDefinitions
+);
 
 /*
  * Actions
@@ -610,6 +625,7 @@ $productWriteActions = array(
 	'copy_nutrition_allergens_to_product',
 	'generate_llm_product_data',
 	'apply_llm_product_data',
+	'save_other_characteristics',
 );
 if (in_array($action, $productWriteActions, true) && !$usercancreate) {
 	accessforbidden();
@@ -644,6 +660,18 @@ if (in_array($action, $llmWriteActions, true)) {
 	if (!$llmManualDataMode) {
 		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_MANUAL_MODE'));
 	}
+	if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_POST_REQUIRED'));
+	}
+	$submittedToken = GETPOST('token', 'alphanohtml');
+	if ($submittedToken === ''
+		|| (!hash_equals((string) currentToken(), (string) $submittedToken)
+			&& !hash_equals((string) newToken(), (string) $submittedToken))) {
+		accessforbidden($langs->trans('KreapInvalidCsrfToken'));
+	}
+}
+
+if ($action === 'save_other_characteristics') {
 	if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 		accessforbidden($langs->trans('KREAPRODUCTS_LLM_ERROR_POST_REQUIRED'));
 	}
@@ -749,6 +777,54 @@ if ($action === 'apply_llm_product_data') {
 	} catch (InvalidArgumentException $exception) {
 		dol_syslog('Invalid reviewed LLM product data for product '.(int) $object->id.': '.$exception->getMessage(), LOG_ERR);
 		setEventMessages($langs->trans('KREAPRODUCTS_LLM_ERROR_INVALID_DATA'), null, 'errors');
+	}
+}
+
+if ($action === 'save_other_characteristics') {
+	$errors = array();
+	foreach ($otherCharacteristicsFieldDefinitions as $fieldName => $definition) {
+		$value = ($definition['format'] ?? '') === 'markdown'
+			? kreaproducts_normalize_markdown(GETPOST($fieldName, 'none'))
+			: kreaproducts_normalize_plain_text(GETPOST($fieldName, 'none'));
+		$otherCharacteristicsSubmittedValues[$fieldName] = $value;
+		if (dol_strlen($value) > (int) $definition['maxlength']) {
+			$errors[] = $langs->trans(
+				'KREAPRODUCTS_OTHER_CHARACTERISTICS_VALUE_TOO_LONG',
+				$langs->trans($definition['label']),
+				(int) $definition['maxlength']
+			);
+		}
+	}
+
+	$videoValue = $otherCharacteristicsSubmittedValues['options_kreap_video'];
+	if ($videoValue !== '' && !kreaproducts_is_http_url($videoValue)) {
+		$errors[] = $langs->trans('KREAPRODUCTS_OTHER_CHARACTERISTICS_INVALID_VIDEO_URL');
+	}
+
+	if (empty($errors)) {
+		require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
+		$object->fetch_optionals();
+		foreach ($otherCharacteristicsSubmittedValues as $fieldName => $value) {
+			$object->array_options[$fieldName] = ($value === '' ? null : $value);
+		}
+
+		$db->begin();
+		$result = $object->insertExtraFields();
+		if ($result < 0) {
+			$db->rollback();
+			dol_syslog('Unable to save product characteristics for product #'.(int) $object->id.': '.$object->error, LOG_ERR);
+			$errors[] = $langs->trans('KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVE_ERROR');
+		} else {
+			$db->commit();
+			setEventMessages($langs->trans('KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVED'), null, 'mesgs');
+			header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id.'#kreaproducts-other-characteristics');
+			exit;
+		}
+	}
+
+	if (!empty($errors)) {
+		setEventMessages('', $errors, 'errors');
+		$action = 'edit_other_characteristics';
 	}
 }
 
@@ -1202,6 +1278,39 @@ if ($action === 'setweight' && $usercancreate) {
 	exit;
 }
 
+if ($action === 'setfinished' && $usercancreate) {
+	$submittedNature = GETPOSTISSET('finished') ? GETPOSTINT('finished') : -2;
+	$natureIsValid = ($submittedNature === -1);
+
+	if ($submittedNature >= 0) {
+		$sqlNature = "SELECT code FROM " . MAIN_DB_PREFIX . "c_product_nature";
+		$sqlNature .= " WHERE code = " . (int) $submittedNature . " AND active = 1";
+		$resNature = $db->query($sqlNature);
+		if ($resNature) {
+			$natureIsValid = ($db->num_rows($resNature) > 0);
+			$db->free($resNature);
+		} else {
+			dol_syslog("Unable to validate product nature: " . $db->lasterror(), LOG_ERR);
+		}
+	}
+
+	if (!$natureIsValid) {
+		setEventMessages($langs->trans("ErrorBadValueForParameter", "finished"), null, 'errors');
+	} else {
+		$object->oldcopy = dol_clone($object, 1);
+		$object->finished = ($submittedNature >= 0) ? $submittedNature : null;
+		$result = $object->update($object->id, $user);
+		if ($result > 0) {
+			setEventMessages($langs->trans("RecordSaved"), null, 'mesgs');
+		} else {
+			setEventMessages($object->error, $object->errors, 'errors');
+		}
+	}
+
+	header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+	exit;
+}
+
 if ($usercancreate && preg_match('/^setweight_(\d+)$/', $action, $matches)) {
 	$childId = (int) $matches[1];
 	$childProduct = new Product($db);
@@ -1411,8 +1520,12 @@ if ($id > 0 || !empty($ref)) {
 			// Nature
 			if ($object->type != Product::TYPE_SERVICE) {
 				if (!getDolGlobalString('PRODUCT_DISABLE_NATURE')) {
-					print '<tr><td>' . $form->textwithpicto($langs->trans("NatureOfProductShort"), $langs->trans("NatureOfProductDesc")) . '</td><td>';
-					print $object->getLibFinished();
+					$selectedNature = GETPOSTISSET('finished') ? GETPOSTINT('finished') : (string) $object->finished;
+					$natureEdit = $formproduct->selectProductNature('finished', $selectedNature);
+					print '<tr><td class="titlefield">';
+					print $form->editfieldkey("NatureOfProductShort", 'finished', $object->finished, $object, $usercancreate, 'asis', '', 0, 0, 'id', $langs->trans("NatureOfProductDesc"));
+					print '</td><td>';
+					print $form->editfieldval("NatureOfProductShort", 'finished', $object->getLibFinished(), $object, $usercancreate, 'asis', $natureEdit);
 					print '</td></tr>';
 				}
 			}
@@ -2635,52 +2748,6 @@ if ($id > 0 || !empty($ref)) {
 			}
 		}
 
-		// Process the recipe extra–field
-		if (isset($_POST['options_kreap_recipe'])) {
-			$extrafield_value = trim($_POST['options_kreap_recipe']);
-			if ($extrafield_value === '') {
-				$extrafield_value = null;
-			}
-			$object->array_options['options_kreap_recipe'] = $extrafield_value;
-		} else {
-			$extrafield_value = $object->array_options['options_kreap_recipe'];
-		}
-		$extrafields = new ExtraFields($db);
-		$extrafields->fetch_name_optionals_label($object->table_element);
-
-		// Only save extra–fields when at least one options_* field is posted.
-		$hasOptionsPost = false;
-		if (!empty($_POST)) {
-			foreach ($_POST as $postKey => $postValue) {
-				if (strpos($postKey, 'options_') === 0) {
-					$hasOptionsPost = true;
-					break;
-				}
-			}
-		}
-
-		if ($hasOptionsPost) {
-			// Refresh current values to avoid overwriting with stale data.
-			$object->fetch_optionals();
-			$originalOptions = $object->array_options;
-			// Merge POST values with the existing extra–fields values.
-			foreach ($extrafields->attributes[$object->table_element]['label'] as $key => $label) {
-				$fieldname = 'options_' . $key;
-				if (array_key_exists($fieldname, $_POST)) {
-					$extrafield_value = trim((string) $_POST[$fieldname]);
-					if ($extrafield_value === '') {
-						$extrafield_value = null;
-					}
-					$object->array_options[$fieldname] = $extrafield_value;
-				} elseif (array_key_exists($fieldname, $originalOptions)) {
-					$object->array_options[$fieldname] = $originalOptions[$fieldname];
-				}
-			}
-			// Save the changes to the database (one call for all extra–fields).
-			$object->insertExtraFields();
-		}
-
-
 		// Unified nutrition and allergen workspace.
 		$sectionMarginStyle = $sectionSpacingStyle;
 		$sectionMarginStyleLarge = 'margin-top: 32px;';
@@ -2894,7 +2961,7 @@ if ($id > 0 || !empty($ref)) {
 				$editLabel = $langs->trans('Edit');
 				$editHtml = '<span class="fas fa-pencil-alt paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($editLabel);
 				$editUrl = $_SERVER['PHP_SELF'].'?id='.(int) $object->id.'&action=edit_nutrition_allergens#kreaproducts-nutrition-allergens';
-				print dolGetButtonAction($editLabel, $editHtml, 'edit', $editUrl, 'kreaproducts-edit-nutrition-allergens', 1);
+				print dolGetButtonAction($editLabel, $editHtml, 'edit', $editUrl, 'kreaproducts-edit-nutrition-allergens', 1, array('attr' => array('title' => '', 'aria-label' => $editLabel)));
 			} elseif ($canManageNutritionAllergens && $nutritionAllergenMode === 1) {
 				$recalculateLabel = $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE');
 				$recalculateHtml = '<span class="fas fa-sync-alt paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($recalculateLabel);
@@ -2905,23 +2972,24 @@ if ($id > 0 || !empty($ref)) {
 					'#',
 					'kreaproducts-recalculate-nutrition-allergens',
 					1,
-					array('attr' => array('onclick' => 'document.getElementById(\'kreaproducts-recalculate-nutrition-allergens-form\').submit(); return false;'))
+					array('attr' => array(
+						'title' => '',
+						'aria-label' => $recalculateLabel,
+						'onclick' => 'document.getElementById(\'kreaproducts-recalculate-nutrition-allergens-form\').submit(); return false;',
+					))
 				);
 			}
 			if ($showCopyProductDataModal) {
 				$copyLabel = $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY');
 				$copyHtml = '<span class="fas fa-copy paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($copyLabel);
-				print dolGetButtonAction($copyLabel, $copyHtml, 'default', '#', 'kreaproducts-open-copy-product-data-modal', 1);
+				print dolGetButtonAction($copyLabel, $copyHtml, 'default', '#', 'kreaproducts-open-copy-product-data-modal', 1, array('attr' => array('title' => '', 'aria-label' => $copyLabel)));
 			}
 			if ($showLlmProductDataModal) {
 				$llmLabel = $langs->trans('KREAPRODUCTS_LLM_OPEN');
 				$llmHtml = '<span class="fas fa-wand-magic-sparkles paddingright" aria-hidden="true"></span>'.dol_escape_htmltag($llmLabel);
-				print dolGetButtonAction($llmLabel, $llmHtml, 'default', '#', 'kreaproducts-open-llm-modal', 1);
+				print dolGetButtonAction($llmLabel, $llmHtml, 'default', '#', 'kreaproducts-open-llm-modal', 1, array('attr' => array('title' => '', 'aria-label' => $llmLabel)));
 			}
 			print '</div>';
-		}
-		if ($nutritionAllergenMode !== 2) {
-			print '<div class="opacitymedium" style="margin-top:8px;">'.$langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER').'</div>';
 		}
 		print '</div>';
 
@@ -3059,81 +3127,67 @@ if ($id > 0 || !empty($ref)) {
 
 		if ($productIsFood) {
 			if (isset($object->array_options)) {
-
-				// Keep displayed values in sync with the posted data
-				if (isset($_POST['kreap_brand'])) {
-					$extrafield_value = trim($_POST['options_kreap_brand']);
-					if ($extrafield_value === '') {
-						$extrafield_value = null;
+				$isEditingOtherCharacteristics = ($action === 'edit_other_characteristics');
+				$otherCharacteristicsValues = array();
+				foreach ($otherCharacteristicsFieldDefinitions as $fieldName => $definition) {
+					if (array_key_exists($fieldName, $otherCharacteristicsSubmittedValues)) {
+						$otherCharacteristicsValues[$fieldName] = $otherCharacteristicsSubmittedValues[$fieldName];
+					} else {
+						$otherCharacteristicsValues[$fieldName] = $object->array_options[$fieldName] ?? '';
 					}
-					$object->array_options['options_kreap_brand'] = $extrafield_value;
-				} else {
-					$extrafield_value = $object->array_options['options_kreap_brand'];
 				}
 
-				if (isset($_POST['kreap_video'])) {
-					$extrafield_value = trim($_POST['options_kreap_video']);
-					if ($extrafield_value === '') {
-						$extrafield_value = null;
-					}
-					$object->array_options['options_kreap_video'] = $extrafield_value;
-				} else {
-					$extrafield_value = $object->array_options['options_kreap_video'];
-				}
-
-				if (isset($_POST['kreap_description'])) {
-					$extrafield_value = trim($_POST['options_kreap_description']);
-					if ($extrafield_value === '') {
-						$extrafield_value = null;
-					}
-					$object->array_options['options_kreap_description'] = $extrafield_value;
-				} else {
-					$extrafield_value = $object->array_options['options_kreap_description'];
-				}
-
-				$prepValue = isset($object->array_options['options_kreap_recipe']) ? $object->array_options['options_kreap_recipe'] : '';
-				$ingredientsValue = isset($object->array_options['options_kreap_ingredients']) ? $object->array_options['options_kreap_ingredients'] : '';
-				$brandValue = isset($object->array_options['options_kreap_brand']) ? $object->array_options['options_kreap_brand'] : '';
-				$videoValue = isset($object->array_options['options_kreap_video']) ? $object->array_options['options_kreap_video'] : '';
-				$descriptionValue = isset($object->array_options['options_kreap_description']) ? $object->array_options['options_kreap_description'] : '';
-
-				print '<div class="fichecenter" id="myAllergenButtons" style="' . $sectionMarginStyleLarge . '">';
+				print '<div class="fichecenter" id="kreaproducts-other-characteristics" style="' . $sectionMarginStyleLarge . '">';
 				print '<div class="titre inline-block" style="margin: 0 0 12px;">' . $langs->trans("productRecipeTitle") . '</div>';
 
-				print '<table class="ui-sortable liste nobottom" style="' . $tableMarginStyle . '">';
+				if ($isEditingOtherCharacteristics) {
+					print '<form method="post" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . (int) $object->id . '#kreaproducts-other-characteristics">';
+					print '<input type="hidden" name="action" value="save_other_characteristics">';
+					print '<input type="hidden" name="token" value="' . newToken() . '">';
+				}
 
-
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("productRecipeInline"), 'options_kreap_recipe', $prepValue, $object, $usercancreate, 'ckeditor');
-				print '</td></tr>';
-
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_ingredients_Inline"), 'options_kreap_ingredients', $ingredientsValue, $object, $usercancreate, 'ckeditor');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_ingredients_Inline"), 'options_kreap_ingredients', $ingredientsValue, $object, $usercancreate, 'ckeditor');
-				print '</td></tr>';
-
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $brandValue, $object, $usercancreate, 'string');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_brand_Inline"), 'options_kreap_brand', $brandValue, $object, $usercancreate, 'string');
-				print '</td></tr>';
-
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_video_Inline"), 'options_kreap_video', $videoValue, $object, $usercancreate, 'url');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_video_Inline"), 'options_kreap_video', $videoValue, $object, $usercancreate, 'url');
-				print '</td></tr>';
-
-				print '<tr><td class="titlefield">';
-				print $form->editfieldkey($langs->trans("kreap_description_Inline"), 'options_kreap_description', $descriptionValue, $object, $usercancreate, 'ckeditor');
-				print '</td><td>';
-				print $form->editfieldval($langs->trans("kreap_description_Inline"), 'options_kreap_description', $descriptionValue, $object, $usercancreate, 'ckeditor');
-				print '</td></tr>';
-
+				print '<table class="border centpercent tableforfield" style="' . $tableMarginStyle . '">';
+				foreach ($otherCharacteristicsFieldDefinitions as $fieldName => $definition) {
+					$value = $otherCharacteristicsValues[$fieldName];
+					if ($isEditingOtherCharacteristics && ($definition['format'] ?? '') === 'markdown') {
+						// Final invariant: a Markdown textarea must never receive database HTML.
+						$value = kreaproducts_normalize_markdown($value);
+					}
+					$label = $langs->trans($definition['label']);
+					print '<tr><td class="titlefield tdtop"><label for="' . $fieldName . '">' . dol_escape_htmltag($label) . '</label></td><td>';
+					if ($isEditingOtherCharacteristics) {
+						if ($definition['type'] === 'textarea') {
+							print '<textarea id="' . $fieldName . '" name="' . $fieldName . '" rows="' . (int) $definition['rows'] . '" maxlength="' . (int) $definition['maxlength'] . '" class="flat centpercent" style="resize:vertical;">' . dol_escape_htmltag($value, 0, 1) . '</textarea>';
+						} else {
+							print '<input id="' . $fieldName . '" name="' . $fieldName . '" type="' . $definition['type'] . '" maxlength="' . (int) $definition['maxlength'] . '" class="flat minwidth300" style="width:100%; max-width:900px;" value="' . dol_escape_htmltag($value) . '">';
+						}
+					} elseif ($value === '') {
+						print '<span class="opacitymedium">' . dol_escape_htmltag($langs->trans('NotDefined')) . '</span>';
+					} elseif ($definition['type'] === 'url' && kreaproducts_is_http_url($value)) {
+						print '<a href="' . dol_escape_htmltag($value) . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($value) . '</a>';
+					} elseif (($definition['format'] ?? '') === 'markdown') {
+						print '<div class="kreaproducts-markdown wordbreakimp">' . dolMd2Html($value, 'parsedown') . '</div>';
+					} else {
+						print '<div class="wordbreakimp">' . dol_nl2br(dol_escape_htmltag($value)) . '</div>';
+					}
+					print '</td></tr>';
+				}
 				print '</table>';
+
+				if ($isEditingOtherCharacteristics) {
+					print '<div class="center" style="margin-top:12px;">';
+					print '<input type="submit" class="button button-save" value="' . dol_escape_htmltag($langs->trans('Save')) . '"> ';
+					print '<input type="submit" class="button button-cancel" name="cancel" value="' . dol_escape_htmltag($langs->trans('Cancel')) . '">';
+					print '</div>';
+					print '</form>';
+				} elseif ($usercancreate) {
+					$editLabel = $langs->trans('Edit');
+					$editHtml = '<span class="fas fa-pencil-alt paddingright" aria-hidden="true"></span>' . dol_escape_htmltag($editLabel);
+					$editUrl = $_SERVER['PHP_SELF'] . '?id=' . (int) $object->id . '&action=edit_other_characteristics#kreaproducts-other-characteristics';
+					print '<div class="tabsAction">';
+					print dolGetButtonAction($editLabel, $editHtml, 'edit', $editUrl, 'kreaproducts-edit-other-characteristics', 1, array('attr' => array('title' => '', 'aria-label' => $editLabel)));
+					print '</div>';
+				}
 				print '</div>';
 			}
 		} // end productIsFood inner extrafields

@@ -613,11 +613,7 @@ class KreaProductsNutritionalCalculator
 
         print '<style>
             .krea-nutrition-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            .krea-nutrition-table { width: 100%; min-width: 920px; table-layout: fixed; border-collapse: collapse !important; border-spacing: 0; border-radius: 0 !important; font-size: 0.86em; line-height: 1.2; }
-            .krea-nutrition-table > tbody > tr:first-child > td:first-child,
-            .krea-nutrition-table > tbody > tr:first-child > td:last-child,
-            .krea-nutrition-table > tbody > tr:last-child > td:first-child,
-            .krea-nutrition-table > tbody > tr:last-child > td:last-child { border-radius: 0 !important; }
+            .krea-nutrition-table { width: 100%; min-width: 920px; table-layout: fixed; border-collapse: separate !important; border-spacing: 0; overflow: hidden; font-size: 0.86em; line-height: 1.2; }
             .krea-nutrition-table td { padding: 3px 4px; vertical-align: top; }
             .krea-nutrition-table .krea-mode-row td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
             .krea-nutrition-table .krea-section-title td { padding-top: 7px; padding-bottom: 7px; }

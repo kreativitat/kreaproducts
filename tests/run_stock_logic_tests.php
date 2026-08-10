@@ -49,6 +49,50 @@ assertSameValue(98, kreaproducts_normalize_weight_unit_scale('98'), 'Exotic weig
 assertSameValue(-3, kreaproducts_normalize_weight_unit_scale(null, -3), 'Missing submissions must preserve the current weight unit.');
 assertSameValue('', kreaproducts_weight_unit_select_value(0), 'The Dolibarr selector must receive its empty kilogram option value.');
 assertSameValue('-3', kreaproducts_weight_unit_select_value(-3), 'Non-kilogram selector values must remain unchanged.');
+assertSameValue(
+	"First line\nSecond\n- Third",
+	kreaproducts_normalize_plain_text('<p>First&nbsp;line<br>Second</p><ul><li>Third</li></ul><script>ignored()</script>'),
+	'Legacy rich text must normalize to predictable plain text while preserving meaningful line breaks.'
+);
+assertSameValue(
+	"## Preparation\n\nMix **well** and *serve*.\n\n- First\n- [Second](https://example.com/item)",
+	kreaproducts_normalize_markdown('<h2>Preparation</h2><p>Mix <strong>well</strong> and <em>serve</em>.</p><ul><li>First</li><li><a href="https://example.com/item">Second</a></li></ul><script>ignored()</script>'),
+	'Legacy database HTML must be converted into Markdown before it reaches the editor or renderer.'
+);
+$legacyRecipeHtml = "CHAPA\r\n<ul>\r\n<li>140G PATTY DE CARNE</li>\r\n<li>QJ EDAM - 1 FATIA</li>\r\n</ul>\r\n<br />\r\nMONTAGEM\r\n<ul>\r\n<li>RUCULA</li>\r\n<li>TOMATE - 1 FATIA</li>\r\n</ul>";
+$legacyRecipeMarkdown = "CHAPA\n\n- 140G PATTY DE CARNE\n\n- QJ EDAM - 1 FATIA\n\nMONTAGEM\n\n- RUCULA\n\n- TOMATE - 1 FATIA";
+assertSameValue($legacyRecipeMarkdown, kreaproducts_normalize_markdown($legacyRecipeHtml), 'Raw recipe HTML must import as editable Markdown.');
+assertSameValue($legacyRecipeMarkdown, kreaproducts_normalize_markdown(htmlspecialchars($legacyRecipeHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8')), 'Entity-encoded recipe HTML must import as editable Markdown.');
+assertSameValue($legacyRecipeMarkdown, kreaproducts_normalize_markdown(htmlspecialchars(htmlspecialchars($legacyRecipeHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES | ENT_HTML5, 'UTF-8')), 'Double-encoded recipe HTML must import as editable Markdown.');
+$importedCharacteristics = kreaproducts_import_characteristic_database_values(
+	array(
+		'options_kreap_brand' => '<strong>Brand</strong>',
+		'options_kreap_recipe' => $legacyRecipeHtml,
+	),
+	array(
+		'options_kreap_brand' => array('type' => 'text'),
+		'options_kreap_recipe' => array('type' => 'textarea', 'format' => 'markdown'),
+	)
+);
+assertSameValue('Brand', $importedCharacteristics['options_kreap_brand'], 'Plain characteristic database values must not retain HTML.');
+assertSameValue($legacyRecipeMarkdown, $importedCharacteristics['options_kreap_recipe'], 'The database import boundary must provide Markdown to the editor.');
+assertSameValue(
+	'**Already Markdown**',
+	kreaproducts_normalize_markdown('**Already Markdown**'),
+	'Existing Markdown must remain unchanged.'
+);
+assertSameValue(
+	'Unsupported markup',
+	kreaproducts_normalize_markdown('<table><tr><td>Unsupported markup</td></tr></table><img src="javascript:alert(1)">'),
+	'Unsupported legacy HTML must be removed instead of reaching Markdown storage.'
+);
+assertSameValue(
+	'<https://example.com>',
+	kreaproducts_normalize_markdown('<https://example.com>'),
+	'Markdown autolinks must not be mistaken for legacy HTML.'
+);
+assertSameValue(true, kreaproducts_is_http_url('https://www.example.com/video?id=10'), 'HTTPS video URLs must be accepted.');
+assertSameValue(false, kreaproducts_is_http_url('javascript:alert(1)'), 'Non-HTTP video URLs must be rejected.');
 
 $timezone = new DateTimeZone('Europe/Lisbon');
 $businessDay = new KreaProductsBusinessDayService();
@@ -132,18 +176,56 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.10.11'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.7'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
 assertSameValue(true, strpos((string) $moduleSource, '/kreaproducts/inventory_stock_overview.php?leftmenu=stock_inventories') !== false, 'The inventory stock overview must be registered in the stock inventory left menu.');
 assertSameValue(true, strpos((string) $moduleSource, '$user->hasRight("kreaproducts", "inventory", "expected")') !== false, 'The inventory stock overview menu must require the analysis permission.');
 assertSameValue(false, strpos((string) $moduleSource, 'dolibarr_set_const($db, "PRODUIT_SOUSPRODUITS"'), 'Module activation must not force global composed-product stock behavior.');
+assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_recipe', \$field_label, 'text'") !== false, 'Preparation Markdown must use a predictable text extrafield definition.');
+assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_description', \$field_label, 'text'") !== false, 'Product description Markdown must use a predictable text extrafield definition.');
+assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_ingredients', \$field_label, 'text'") !== false, 'Ingredients Markdown must use a predictable text extrafield definition.');
 
 $associatedProductsSource = file_get_contents(__DIR__.'/../associatedProducts.php');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $object->weight_units)') !== false, 'Parent-product weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $childProduct->weight_units)') !== false, 'Component weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_weight_unit_select_value') !== false, 'The KreaProducts product form must use Dolibarr\'s empty kilogram selector value.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "\$action === 'setfinished'") !== false, 'Product nature must have a dedicated inline-save action.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "selectProductNature('finished', \$selectedNature)") !== false, 'Product nature editing must use Dolibarr\'s native selector.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'editfieldkey("NatureOfProductShort", \'finished\'') !== false, 'Product nature must display the native inline-edit icon.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'editfieldval("NatureOfProductShort", \'finished\'') !== false, 'Product nature must use the native inline-edit value form.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "'save_other_characteristics'") !== false, 'Other characteristics must use one dedicated save boundary.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'id="kreaproducts-other-characteristics"') !== false, 'Other characteristics must render in one dedicated workspace.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_markdown(GETPOST($fieldName, \'none\'))') !== false, 'Markdown submissions must be normalized without retaining raw HTML.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_import_characteristic_database_values(') !== false, 'Existing database HTML must be converted at one import boundary.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '// Convert raw database extra-field values before any action, hook, renderer, or editor consumes them.') !== false, 'The import boundary must run before actions and rendering.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '$otherCharacteristicsValues[$fieldName] = $object->array_options[$fieldName] ?? \'\';') !== false, 'The editor must consume only the already-imported characteristic values.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '// Final invariant: a Markdown textarea must never receive database HTML.') !== false, 'Markdown textarea rendering must retain a final no-HTML invariant.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'dol_escape_htmltag($value, 0, 1)') !== false, 'Markdown textarea escaping must preserve real newline characters.');
+assertSameValue(true, strpos((string) $associatedProductsSource, "dolMd2Html(\$value, 'parsedown')") !== false, 'Markdown display must use Dolibarr safe-mode rendering.');
+assertSameValue(false, strpos((string) $associatedProductsSource, "'ckeditor'") !== false, 'Other characteristics must not use unpredictable inline HTML editors.');
+assertSameValue(false, strpos((string) $associatedProductsSource, '$hasOptionsPost') !== false, 'The broad options POST persistence path must be removed.');
+$ingredientsPosition = strpos((string) $associatedProductsSource, "'options_kreap_ingredients' =>");
+$brandPosition = strpos((string) $associatedProductsSource, "'options_kreap_brand' =>");
+$videoPosition = strpos((string) $associatedProductsSource, "'options_kreap_video' =>");
+$descriptionPosition = strpos((string) $associatedProductsSource, "'options_kreap_description' =>");
+$preparationPosition = strpos((string) $associatedProductsSource, "'options_kreap_recipe' =>");
+assertSameValue(
+	true,
+	$ingredientsPosition !== false
+		&& $brandPosition !== false
+		&& $videoPosition !== false
+		&& $descriptionPosition !== false
+		&& $preparationPosition !== false
+		&& $brandPosition < $videoPosition
+		&& $videoPosition < $descriptionPosition
+		&& $descriptionPosition < $ingredientsPosition
+		&& $ingredientsPosition < $preparationPosition,
+	'Ingredients must appear immediately before the final Preparation field.'
+);
+assertSameValue(false, strpos((string) $associatedProductsSource, 'KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER') !== false, 'The nutrition verification disclaimer must not render in the product workspace.');
+assertSameValue(false, strpos((string) $associatedProductsSource, 'KREAPRODUCTS_OTHER_CHARACTERISTICS_MARKDOWN_HELP') !== false, 'The Markdown helper paragraph must not render in the product workspace.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'name="nutrition_allergen_mode"') !== false, 'Nutrition and allergens must use one shared mode selector.');
 assertSameValue(true, strpos((string) $associatedProductsSource, "0 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_ENTERED'") !== false, 'The shared selector must expose entered data mode.');
 assertSameValue(true, strpos((string) $associatedProductsSource, "1 => 'KREAPRODUCTS_NUTRITION_ALLERGENS_CALCULATED'") !== false, 'The shared selector must expose calculated data mode.');
@@ -152,6 +234,8 @@ assertSameValue(true, strpos((string) $associatedProductsSource, 'name="action" 
 assertSameValue(true, strpos((string) $associatedProductsSource, "'save_nutrition_allergens_mode'") !== false, 'Shared mode changes must use the unified write boundary.');
 assertSameValue(true, strpos((string) $associatedProductsSource, '<div class="tabsAction">') !== false, 'Nutrition and allergen record actions must use the native Dolibarr action bar.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'dolGetButtonAction($editLabel') !== false, 'Nutrition and allergen record actions must use Dolibarr button rendering.');
+assertSameValue(true, substr_count((string) $associatedProductsSource, "'title' => ''") >= 5, 'Product workspace action buttons must suppress redundant hover descriptions.');
+assertSameValue(true, substr_count((string) $associatedProductsSource, "'aria-label' =>") >= 5, 'Action buttons without hover descriptions must retain accessible labels.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'KreaProductsNutritionalCalculator::computeAndDisplayNutritional($object->id, true)') !== false, 'Calculated mode must render detailed component rows inside the unified table.');
 assertSameValue(false, strpos((string) $associatedProductsSource, 'class="nobordernopadding"') !== false, 'Calculated mode must not nest its nutritional table inside a parent cell.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'class="button button-save"') !== false, 'Nutrition and allergen form submissions must use the native Save button class.');
@@ -182,7 +266,9 @@ assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'KreaProduct
 assertSameValue(true, strpos((string) $nutritionalCalculatorSource, "\$contrib = \$detail['contributions']") !== false, 'The calculated nutrition table must display nutrient contributions per component.');
 assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'computeAndDisplayNutritional($productId, $embedded = false)') !== false, 'The nutritional renderer must support backward-compatible embedded-row output.');
 assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'self::displayTableHeader($langs, !$embedded)') !== false, 'Embedded calculated mode must reuse the native component header without opening another table.');
-assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'border-collapse: collapse !important') !== false, 'The unified calculated table must have square collapsed borders.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'border-collapse: separate !important') !== false, 'The unified calculated table must support native Dolibarr rounded corners.');
+assertSameValue(false, strpos((string) $nutritionalCalculatorSource, 'border-radius: 0 !important') !== false, 'The calculated table must not override the active Dolibarr corner radius.');
+assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'overflow: hidden') !== false, 'The calculated table must clip row backgrounds to its rounded corners.');
 assertSameValue(true, strpos((string) $nutritionalCalculatorSource, 'select[name="weight_units"]') !== false, 'Compact selector styling must remain scoped to component weight units.');
 
 $llmServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsLlmProductDataService.class.php');
@@ -215,6 +301,26 @@ assertSameValue(true, strpos((string) $readmeSource, 'OpenAI, Anthropic, OpenRou
 assertSameValue(true, strpos((string) $readmeSource, 'nothing is saved without explicit user confirmation') !== false, 'The rendered About introduction must describe the review-first save boundary.');
 assertSameValue(true, strpos((string) $readmeSource, '### Nutrition and allergens') !== false, 'The rendered About features must retain the nutrition and allergen section.');
 assertSameValue(true, strpos((string) $readmeSource, '- Optional AI-assisted nutrition and allergen suggestions') !== false, 'The rendered nutrition and allergen features must include AI assistance.');
+assertSameValue(true, strpos((string) $readmeSource, '## Recent release highlights') !== false, 'The README must summarize changes for the current Dolistore release.');
+assertSameValue(true, strpos((string) $readmeSource, 'One coherent Nutrition and allergens workspace') !== false, 'The Dolistore description must explain the unified product-data workflow.');
+assertSameValue(true, strpos((string) $readmeSource, 'Markdown-based product description, ingredients, and preparation fields') !== false, 'The Dolistore description must explain Markdown characteristics and legacy conversion.');
+assertSameValue(true, strpos((string) $readmeSource, '- Dolibarr >= 19') !== false, 'README compatibility must match the descriptor Dolibarr minimum.');
+assertSameValue(true, strpos((string) $readmeSource, '- PHP >= 7.3') !== false, 'README compatibility must match the descriptor PHP minimum.');
+$localizedReadmes = array(
+	'fr_FR' => '## Nouveautés principales',
+	'de_DE' => '## Wichtigste Neuerungen',
+	'it_IT' => '## Principali novità',
+	'es_ES' => '## Principales novedades',
+);
+$releaseAllowlistSource = file_get_contents(__DIR__.'/../build/makepack-kreaproducts.conf');
+foreach ($localizedReadmes as $locale => $releaseHeading) {
+	$localizedReadmePath = __DIR__.'/../README-'.$locale.'.md';
+	assertSameValue(true, is_file($localizedReadmePath), 'The '.$locale.' Dolistore README must exist.');
+	$localizedReadmeSource = file_get_contents($localizedReadmePath);
+	assertSameValue(true, strpos((string) $localizedReadmeSource, $releaseHeading) !== false, 'The '.$locale.' README must contain localized release highlights.');
+	assertSameValue(true, strpos((string) $localizedReadmeSource, 'OpenAI, Anthropic, OpenRouter') !== false, 'The '.$locale.' README must describe the supported AI providers.');
+	assertSameValue(true, strpos((string) $releaseAllowlistSource, 'kreaproducts/README-'.$locale.'.md') !== false, 'The '.$locale.' README must be packaged for Dolistore.');
+}
 assertSameValue(true, strpos((string) $llmServiceSource, 'For allergens, use only explicit product evidence') !== false, 'LLM allergen generation must remain evidence-based.');
 
 $setupSource = file_get_contents(__DIR__.'/../admin/setup.php');
@@ -511,9 +617,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.10.11', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.10.11', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.10.11', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.11.7', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.11.7', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.11.7', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

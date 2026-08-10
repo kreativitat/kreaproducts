@@ -361,6 +361,10 @@ LUPI = Lupin
 updateAllergens = Update allergens
 productRecipeTitle = Other characteristics
 productRecipeInline = Preparation
+KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVED = Other characteristics saved.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVE_ERROR = The other characteristics could not be saved. No changes were committed.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_INVALID_VIDEO_URL = Video must be a complete HTTP or HTTPS URL.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_VALUE_TOO_LONG = %s exceeds the maximum length of %s characters.
 kreap_ingredients = Ingredients
 kreap_ingredients_help = Default ingredients text used on product labels. If empty, ingredients are calculated from kit components.
 kreap_ingredients_Inline = Ingredients
@@ -706,7 +710,6 @@ KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE = Recalculate
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPY = Copy nutrition and allergens
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP = Select the target product. The current nutrition and allergens will replace its existing data.
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED = Nutrition and allergens were copied.
-KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER = This data is unverified. Always check the product label and applicable law before using it.
 
 #
 # AI nutrition and allergens

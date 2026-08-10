@@ -390,6 +390,10 @@ KreaProductAllergensTableTitle = Tabela de alergénios
 KreaProductsTableTitle = Tabela nutricional
 productRecipeTitle = Outras características
 productRecipeInline = Preparação
+KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVED = Outras características guardadas.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_SAVE_ERROR = Não foi possível guardar as outras características. Nenhuma alteração foi confirmada.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_INVALID_VIDEO_URL = O vídeo deve ser um URL HTTP ou HTTPS completo.
+KREAPRODUCTS_OTHER_CHARACTERISTICS_VALUE_TOO_LONG = %s excede o comprimento máximo de %s caracteres.
 kreap_ingredients = Ingredientes
 kreap_ingredients_help = Texto de ingredientes usado por defeito nas etiquetas do produto. Se estiver vazio, os ingredientes são calculados a partir dos componentes do kit.
 kreap_ingredients_Inline = Ingredientes
@@ -717,7 +721,6 @@ KREAPRODUCTS_NUTRITION_ALLERGENS_RECALCULATE = Recalcular
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPY = Copiar nutrição e alergénios
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP = Selecione o produto de destino. A nutrição e os alergénios atuais substituirão os dados existentes nesse produto.
 KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED = A nutrição e os alergénios foram copiados.
-KREAPRODUCTS_NUTRITION_ALLERGENS_DISCLAIMER = Os dados não estão verificados. Confirme sempre o rótulo e a legislação aplicável antes de os utilizar.
 
 #
 # IA para nutrição e alergénios

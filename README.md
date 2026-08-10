@@ -2,19 +2,42 @@
 
 # KreaProducts for Dolibarr ERP/CRM
 
-KreaProducts is an advanced product management module for the [Dolibarr ERP/CRM](https://www.dolibarr.org). It extends the Products module with nutrition, allergens, BOM/Technical Sheets, inventory, and cost/stock automations - built for hospitality and retail operations that need consistency, traceability, and accurate _food cost_.
+KreaProducts is an advanced product management module for [Dolibarr ERP/CRM](https://www.dolibarr.org). It extends the Products module with recipes and technical sheets, nutrition, allergens, BOM/MRP, traceable inventory, value-dated stock movements, and automatic cost and selling-price updates. It is built for hospitality, retail, and food-production teams that need consistent product data, reliable traceability, and accurate _food cost_.
 
 KreaProducts also provides optional AI-assisted nutrition and allergen suggestions through OpenAI, Anthropic, OpenRouter, or private Ollama. Suggestions remain reviewable, allergen declarations are based only on product evidence, and nothing is saved without explicit user confirmation.
+
+## Recent release highlights
+
+- One coherent Nutrition and allergens workspace with a shared selector for entered data, calculated data, or non-food products.
+- Detailed calculated nutrition by component, including component quantity, weight, nutrient contribution, recipe totals, and normalized values per 100 g.
+- Common edit and save actions for manual nutrition and allergens, plus a dedicated modal for copying both datasets to another product.
+- Review-first AI suggestions with structured validation, configurable providers, encrypted hosted-provider credentials, and private-network safeguards for Ollama.
+- Markdown-based product description, ingredients, and preparation fields, including automatic conversion of legacy database HTML when records are loaded.
+- Native inline editing for product nature, aligned with the existing Type and Weight controls.
+- Trigger-safe API validation for one supplier invoice or every draft invoice for a supplier, with entity and warehouse validation.
+- Authoritative customer invoice datetimes, configurable future-date tolerance, and safer reconstruction of corrected inventory counts.
 
 ## Features
 
 ### Nutrition and allergens
 
-- Nutritional table with automatic calculation, validation, and updates.
+- One shared selector for an entered nutritional/allergen table, a calculated table, or a non-food product.
+- Common edit and save workflow for manually entered nutrition and allergens.
+- Detailed calculated table showing each component, quantity, applied weight, nutrient contribution, recipe totals, and normalized values per 100 g.
+- Nutritional calculation, relationship validation, propagation, and updates.
 - Nutrient propagation between parent/child products, including BOM (MRP) when enabled.
 - Allergen management with propagation by percentage of total weight and trace marking.
-- Support for non-food products (excluded from calculation).
+- Support for non-food products, which are excluded from calculation without deleting saved food data.
+- Nutrition and allergen copying to another product through a dedicated review modal.
 - Optional AI-assisted nutrition and allergen suggestions through OpenAI, Anthropic, OpenRouter, or private Ollama, with structured validation and explicit review before saving.
+
+### Product workspace and technical sheets
+
+- Unified product workspace for structure, costs, nutrition, allergens, and operational product characteristics.
+- Product description, ingredients, and preparation use predictable Markdown instead of storing editable HTML.
+- Existing legacy HTML is converted to equivalent Markdown when product data is loaded and is stored cleanly on the next explicit save.
+- Brand, video, description, ingredients, and preparation share one coherent edit and save workflow.
+- Product nature uses Dolibarr's native inline edit interaction, consistent with Type and Weight.
 
 ### Product structure and BOM
 
@@ -89,7 +112,7 @@ KreaProducts can also update **selling price automatically** when the product **
 - Dolibarr >= 19
 - PHP >= 7.3
 - MySQL or MariaDB database
-- Required modules: Products, Stock, Suppliers, BOM/MRP
+- Required modules: Products, Stock, Suppliers, BOM, MRP, Cron
 - Optional: Lots (productbatch)
 
 ## Installation
@@ -112,6 +135,7 @@ KreaProducts can also update **selling price automatically** when the product **
 | `KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT`     | Percentage of total weight to mark allergens as traces.            |
 | `KREAPRODUCTS_STOCK_MOVEMENT_DATA`              | Use invoice date for stock movements.                              |
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME`               | Time applied to supplier invoice movements.                        |
+| `KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES` | Maximum accepted future offset for customer invoice datetimes. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME`           | Default time when creating inventory.                              |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT`          | Root category for inventory selection.                             |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE`                | BOM type used for dismantling.                                     |
@@ -124,6 +148,10 @@ KreaProducts can also update **selling price automatically** when the product **
 | `KREAPRODUCTS_REPLACE_PRODUCT_LIST`             | Replace the standard product list.                                 |
 | `KREAPRODUCTS_DEBUG_LOG`                        | Enable KreaProducts debug logs.                                    |
 | `KREAPRODUCTS_LABEL_MAX_COUNT`                  | Maximum labels generated by one request, capped at 1000.           |
+| `KREAPRODUCTS_LLM_PROVIDER`                     | AI provider: OpenAI, Anthropic, OpenRouter, or Ollama.              |
+| `KREAPRODUCTS_LLM_MODEL`                        | Provider model used for nutrition and allergen suggestions.        |
+| `KREAPRODUCTS_LLM_API_KEY`                      | Encrypted credential for hosted AI providers.                      |
+| `KREAPRODUCTS_LLM_OLLAMA_URL`                   | Private Ollama endpoint allowed only on local/private networks.     |
 
 Note: allergen thresholds are percentages of the total recipe weight of the final product.
 

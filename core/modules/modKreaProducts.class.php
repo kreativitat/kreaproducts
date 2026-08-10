@@ -81,7 +81,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '4.10.11';
+		$this->version = '4.11.7';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -667,18 +667,22 @@ class modKreaProducts extends DolibarrModules
 		}
 
         $field_label = $langs->trans("kreap_recipe");
-		$extraFieldResults[] = $extrafields->addExtraField('kreap_recipe', $field_label, 'html', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_help = 0;
+		$extraFieldResults[] = $extrafields->addExtraField('kreap_recipe', $field_label, 'text', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$extraFieldResults[] = $extrafields->updateExtraField('kreap_recipe', $field_label, 'text', 300, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_brand");
 		$extraFieldResults[] = $extrafields->addExtraField('kreap_brand', $field_label, 'varchar', 301, 300, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_description");
-		$extraFieldResults[] = $extrafields->addExtraField('kreap_description', $field_label, 'html', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, 0, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$field_help = 0;
+		$extraFieldResults[] = $extrafields->addExtraField('kreap_description', $field_label, 'text', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$extraFieldResults[] = $extrafields->updateExtraField('kreap_description', $field_label, 'text', 302, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_ingredients");
         $field_help = $langs->trans("kreap_ingredients_help");
-		$extraFieldResults[] = $extrafields->addExtraField('kreap_ingredients', $field_label, 'html', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
-		$extraFieldResults[] = $extrafields->updateExtraField('kreap_ingredients', $field_label, 'html', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$extraFieldResults[] = $extrafields->addExtraField('kreap_ingredients', $field_label, 'text', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
+		$extraFieldResults[] = $extrafields->updateExtraField('kreap_ingredients', $field_label, 'text', 303, 9999, 'product', 0, 0, '', '', 1, '', -2, $field_help, '', '', 'kreaproducts@kreaproducts', 'isModEnabled("kreaproducts")');
 
         $field_label = $langs->trans("kreap_default_label_layout");
         $field_help = $langs->trans("kreap_default_label_layout_help");

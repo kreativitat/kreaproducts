@@ -1,6 +1,67 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.11.7] - 2026-08-10
+
+### Added
+
+- Added French, German, Italian, and Spanish README descriptions for Dolistore and localized About pages.
+
+## [4.11.6] - 2026-08-10
+
+### Changed
+
+- Updated README and Dolistore-facing feature and requirement information.
+
+## [4.11.5] - 2026-08-10
+
+### Changed
+
+- Added native inline editing for product nature in the product summary.
+
+## [4.11.4] - 2026-08-10
+
+### Fixed
+
+- Converted characteristic database values to Markdown before actions and editor rendering.
+- Preserved real Markdown line breaks inside edit textareas.
+
+## [4.11.3] - 2026-08-10
+
+### Changed
+
+- Moved Ingredients directly before Preparation.
+- Removed the nutrition disclaimer and Markdown helper text from the product workspace.
+
+### Fixed
+
+- Converted raw and encoded legacy HTML to Markdown before opening the editor.
+
+## [4.11.2] - 2026-08-10
+
+### Changed
+
+- Removed hover descriptions from product workspace action buttons.
+- Restored native rounded corners on the Nutrition and allergens table.
+
+## [4.11.1] - 2026-08-10
+
+### Changed
+
+- Added safe Markdown editing and rendering for ingredients, description, and preparation.
+- Converted existing HTML to Markdown when product characteristics are loaded.
+
+## [4.11.0] - 2026-08-10
+
+### Changed
+
+- Replaced inline HTML editors in Other characteristics with one plain-text edit and save workflow.
+- Moved Preparation to the final field position.
+
+### Fixed
+
+- Removed the broad extra-field POST handler that could persist unrelated submitted options.
+
 ## [4.10.11] - 2026-08-10
 
 ### Fixed
