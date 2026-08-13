@@ -122,6 +122,41 @@ function kreaproducts_weight_unit_select_value($weightUnit)
 }
 
 /**
+ * Resolve the unified nutrition and allergen mode.
+ *
+ * Empty legacy values are manual because that is how the product workspace
+ * historically rendered them. Mixed values resolve conservatively to the
+ * least permissive mode until the unified selector synchronizes both fields.
+ *
+ * @param mixed $nutritionMode Saved nutrition calculation mode
+ * @param mixed $allergenMode  Saved allergen calculation mode
+ * @param mixed $isFood        Whether the product is food
+ * @return int 0 for manual, 1 for calculated, or 2 for non-food/invalid
+ */
+function kreaproducts_resolve_nutrition_allergen_mode($nutritionMode, $allergenMode, $isFood = 1)
+{
+	if ((int) $isFood !== 1) {
+		return 2;
+	}
+
+	$modes = array();
+	foreach (array($nutritionMode, $allergenMode) as $mode) {
+		if ($mode === null || trim((string) $mode) === '') {
+			$modes[] = 0;
+			continue;
+		}
+
+		$mode = trim((string) $mode);
+		if (!in_array($mode, array('0', '1', '2'), true)) {
+			return 2;
+		}
+		$modes[] = (int) $mode;
+	}
+
+	return max($modes);
+}
+
+/**
  * Normalize legacy rich text and submitted content to predictable plain text.
  *
  * Existing HTML line and list breaks are preserved as text line breaks. Script

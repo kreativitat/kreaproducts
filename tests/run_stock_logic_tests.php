@@ -49,6 +49,12 @@ assertSameValue(98, kreaproducts_normalize_weight_unit_scale('98'), 'Exotic weig
 assertSameValue(-3, kreaproducts_normalize_weight_unit_scale(null, -3), 'Missing submissions must preserve the current weight unit.');
 assertSameValue('', kreaproducts_weight_unit_select_value(0), 'The Dolibarr selector must receive its empty kilogram option value.');
 assertSameValue('-3', kreaproducts_weight_unit_select_value(-3), 'Non-kilogram selector values must remain unchanged.');
+assertSameValue(0, kreaproducts_resolve_nutrition_allergen_mode(null, null, 1), 'Empty legacy modes must resolve to the manual mode displayed by the product workspace.');
+assertSameValue(0, kreaproducts_resolve_nutrition_allergen_mode('', '0', 1), 'Empty and explicit manual legacy modes must remain manual.');
+assertSameValue(1, kreaproducts_resolve_nutrition_allergen_mode('1', '0', 1), 'Mixed calculated/manual modes must fail closed as calculated.');
+assertSameValue(2, kreaproducts_resolve_nutrition_allergen_mode('0', '2', 1), 'A non-food mode must take precedence over manual mode.');
+assertSameValue(2, kreaproducts_resolve_nutrition_allergen_mode('0', '0', 0), 'A non-food product must never resolve to manual mode.');
+assertSameValue(2, kreaproducts_resolve_nutrition_allergen_mode('invalid', '0', 1), 'Invalid stored modes must fail closed.');
 assertSameValue(
 	"First line\nSecond\n- Third",
 	kreaproducts_normalize_plain_text('<p>First&nbsp;line<br>Second</p><ul><li>Third</li></ul><script>ignored()</script>'),
@@ -176,7 +182,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.11.11'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.15.2'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -186,6 +192,43 @@ assertSameValue(false, strpos((string) $moduleSource, 'dolibarr_set_const($db, "
 assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_recipe', \$field_label, 'text'") !== false, 'Preparation Markdown must use a predictable text extrafield definition.');
 assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_description', \$field_label, 'text'") !== false, 'Product description Markdown must use a predictable text extrafield definition.');
 assertSameValue(true, strpos((string) $moduleSource, "updateExtraField('kreap_ingredients', \$field_label, 'text'") !== false, 'Ingredients Markdown must use a predictable text extrafield definition.');
+assertSameValue(true, strpos((string) $moduleSource, 'product:-stats:NU:$conf->kreaproducts->enabled') !== false, 'KreaProducts must remove the legacy core product statistics tab without changing Dolibarr core.');
+assertSameValue(true, strpos((string) $moduleSource, '/kreaproducts/product_statistics.php?id=__ID__') !== false, 'KreaProducts must register its replacement product statistics dashboard.');
+
+$productStatisticsPageSource = file_get_contents(__DIR__.'/../product_statistics.php');
+$productStatisticsServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsProductStatistics.class.php');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "restrictedArea(\$user, 'produit|service'") !== false, 'The product statistics dashboard must retain the native product/service access boundary.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "\$user->hasRight('facture', 'lire')") !== false, 'Customer sales statistics must require the native invoice read permission.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "\$user->hasRight('fournisseur', 'facture', 'lire')") !== false, 'Supplier statistics must require the native supplier-invoice read permission.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "\$user->hasRight('margins', 'liretous')") !== false, 'Margin statistics must require the native all-margins read permission.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "\$user->hasRight('stock', 'lire')") !== false, 'Operational product statistics must require the native stock read permission.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, '$showOperations') !== false, 'The statistics dashboard must select an operational view for internal and manufactured products.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "empty(\$object->tosell) && empty(\$object->tobuy)") !== false, 'Products that are neither sold nor purchased must use operational statistics.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "e.entity IN ('.getEntity('stock').')") !== false, 'Operational stock statistics must resolve warehouses through the active stock entity scope.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, 'product_association AS pa') !== false, 'Ingredient statistics must discover composed products through Dolibarr product associations.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "b.status = 1 AND b.bomtype = 0") !== false, 'Ingredient relations must include only active manufacturing BOMs.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "if (\$originType === 'inventory')") !== false, 'Inventory adjustments must remain separate from operational demand and production flow.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "getEntity('invoice')") !== false, 'Customer statistics must use the active customer-invoice entity scope.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "getEntity('facture_fourn')") !== false, 'Supplier statistics must use the active supplier-invoice entity scope.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, 'f.fk_statut IN (1, 2)') !== false, 'Statistics must exclude draft and abandoned invoices.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, 'societe_commerciaux AS sc') !== false, 'Statistics must enforce commercial assignments for restricted users.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, "\$this->db->ifsql('f.type = 2'") !== false, 'Statistics must reverse credit-note quantities.');
+assertSameValue(false, strpos((string) $productStatisticsPageSource, 'DolGraph') !== false, 'The replacement dashboard must not generate legacy graph image files.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "'today', 'yesterday', '7d', 'currentmonth', 'lastmonth', '3m', '6m'") !== false, 'Statistics must provide all requested short period presets.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "\$period = '12m';") !== false, 'Statistics must default to the last 12 months.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "dol_time_plus_duree(\$todayStart, -6, 'd')") !== false, 'Last-seven-days statistics must include today and the preceding six days.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "dol_mktime(0, 0, 0, \$today['mon'] - 1, 1, \$today['year'])") !== false, 'Previous-month statistics must start on the exact first calendar day.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "dol_mktime(0, 0, 0, \$today['mon'] - 5, 1, \$today['year'])") !== false, 'Six-month statistics must start on the exact first calendar day.');
+assertSameValue(false, strpos((string) $productStatisticsPageSource, '<details class="kps-stat-breakdown"') !== false, 'Monthly detail must not be collapsible.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, 'kps-stat-breakdown-title') !== false, 'Monthly detail must retain a permanently visible heading.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, '<tfoot><tr class="liste_total">') !== false, 'Monthly detail tables must end with period totals.');
+assertSameValue(true, strpos((string) $productStatisticsServiceSource, 'array_slice($top, 0, 10)') !== false, 'Customer and supplier rankings must return up to ten entries.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, 'kps-stat-columns kps-stat-customer-columns') !== false, 'Top customers and recent customer invoices must share one two-column row.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, 'kps-stat-columns kps-stat-supplier-columns') !== false, 'Top suppliers and recent supplier invoices must share one two-column row.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "'layer' => 30, 'stroke_width' => 4, 'point_radius' => 4") !== false, 'Net revenue must render as the uninterrupted top chart layer.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, "'layer' => 10, 'stroke_width' => 6, 'point_radius' => 6, 'dasharray' => '9 6'") !== false, 'Gross margin must render as a wider dashed underlay when series coincide.');
+assertSameValue(true, strpos((string) $productStatisticsPageSource, 'usort($drawSeries') !== false, 'Chart series must be rendered by explicit layer without changing legend order.');
+assertSameValue(true, substr_count((string) $productStatisticsPageSource, 'foreach ($drawSeries as $item)') >= 2, 'Both chart scaling and SVG drawing must use the explicitly layered series order.');
 
 $associatedProductsSource = file_get_contents(__DIR__.'/../associatedProducts.php');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $object->weight_units)') !== false, 'Parent-product weight updates must preserve the current unit when the submission is missing.');
@@ -252,7 +295,7 @@ assertSameValue(true, strpos((string) $associatedProductsSource, 'copyDialog.dia
 assertSameValue(true, strpos((string) $associatedProductsSource, "array('generate_llm_product_data', 'apply_llm_product_data')") !== false, 'LLM generation and application must remain explicit write actions.');
 assertSameValue(true, strpos((string) $associatedProductsSource, "REQUEST_METHOD'] ?? 'GET'") !== false, 'LLM product-data actions must remain POST-only.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'hash_equals((string) currentToken()') !== false, 'LLM product-data actions must validate the submitted CSRF token explicitly.');
-assertSameValue(true, strpos((string) $associatedProductsSource, '$llmManualDataMode') !== false, 'LLM suggestions must remain restricted to manual nutrition and allergen modes.');
+assertSameValue(true, strpos((string) $associatedProductsSource, '$llmManualDataMode = ($nutritionAllergenMode === 0);') !== false, 'LLM suggestions must use the same resolved manual mode as the product workspace.');
 assertSameValue(true, strpos((string) $associatedProductsSource, "'kreaproducts-open-llm-modal'") !== false, 'The LLM workflow must expose a dedicated native action launcher.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'id="kreaproducts-llm-modal" style="display:none;"') !== false, 'The LLM workflow must remain hidden until its modal is opened.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'llmDialog.dialog("open")') !== false, 'The LLM launcher must open the Dolibarr modal.');
@@ -639,9 +682,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.11.11', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.11.11', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.11.11', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.15.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.15.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.15.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

@@ -41,6 +41,18 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-11: Commercial statistics draw gross margin first as a wider dashed underlay and net revenue last as an uninterrupted solid overlay. Revenue and margin can legitimately have identical monthly points when no product cost is recorded; explicit SVG layers preserve revenue as the primary visible series without falsifying either value, while legend order remains revenue then margin.
+
+- 2026-08-11: Product statistics render top customers beside recent customer invoices and top suppliers beside recent supplier invoices. The last-seven-days preset includes today and the preceding six calendar days and compares against the immediately preceding seven-day period; the default remains the last 12 months.
+
+- 2026-08-11: Product statistics monthly detail is permanently visible and ends with a totals row. Customer and supplier rankings return up to ten entries. Short period presets use calendar boundaries; today and yesterday compare with the preceding day, previous month compares with the full prior month, and current month, three-month, and six-month views compare with the immediately preceding equal-duration range.
+
+- 2026-08-11: Product statistics select commercial and operational views from verified product behavior. Products that are neither sold nor purchased directly, products produced through active manufacturing or dismantling BOM structures, and products consumed by composed-product or manufacturing BOM relations receive an operational dashboard. Signed stock movements are authoritative for produced quantity, indirect customer-product usage, manufacturing usage, supplier-origin receipts, operational net flow, and inventory adjustment; inventory movements remain separate from production and demand. Direct sales and purchase panels render only when the product flags or actual invoice-line activity make them relevant.
+
+- 2026-08-11: KreaProducts replaces the core product-level `stats` tab through module descriptor removal/addition, without modifying Dolibarr core `/product/stats/card.php`. The dashboard uses validated/closed invoice lines, applies credit-note signs, compares selectable periods, and renders responsive server-side HTML/SVG without generated graph files. The global product statistics page remains core-owned.
+
+- 2026-08-11: The unified nutrition/allergen mode is resolved once for both rendering and write authorization. Empty legacy values retain the historically displayed manual mode; mixed values resolve conservatively to calculated or non-food until the unified selector synchronizes both extrafields. The linked `kreaproducts_nutritional.is_food` flag overrides empty mode values so non-food products cannot invoke AI generation.
+
 - 2026-08-10: Product hierarchy and nutritional calculation classes use distinct module-specific internal product-node class names. Both calculators are loaded by `associatedProducts.php` in calculated nutrition mode, so generic shared class names would terminate the request with a duplicate declaration before nutrition and allergens render.
 - 2026-08-10: The associated-products component table preserves its direct one-level cost total. It displays the hierarchy's fully recursive terminal-component cost beneath the total label, with a vertically aligned red error icon inside the parentheses, only when the recursive and direct totals differ by at least 0.0001, matching the four displayed decimal places. The redundant technical-sheet table is not rendered on `productTree.php`; its recursive calculator remains reusable by the associated-products view.
 - 2026-08-10: Product Other characteristics use one dedicated CSRF-protected edit/save workflow. Brand, video, description, ingredients, and preparation are persisted together through `Product::insertExtraFields()` inside one transaction and render in that order, with Ingredients directly before Preparation. Rich-text editors and broad `options_*` POST scanning are prohibited. Immediately after `Product::fetch_optionals()`, `kreaproducts_import_characteristic_database_values()` replaces raw, entity-encoded, and double-encoded legacy HTML in `array_options` with Markdown before any controller action, hook, renderer, or editor can consume it. Markdown textareas must call `dol_escape_htmltag($value, 0, 1)` so Dolibarr preserves real newline characters instead of displaying literal `\n` sequences. Ingredients, description, and preparation render through Dolibarr's safe-mode `dolMd2Html()` parser, while Brand and video remain strict plain fields. Converted values persist without raw HTML on the next explicit save.
@@ -141,6 +153,10 @@ Example style:
 
 ## Database & Schema Notes
 
+- 2026-08-11: Operational product statistics add no schema. `stock_mouvement` remains scoped through entity-valid `entrepot` rows from `getEntity('stock')`; `product_association` remains isolated through entity-valid parent products; BOM relations require active BOMs in the effective `getEntity('bom')` scope. Inventory-origin movements are reported separately and excluded from operational demand and net flow.
+
+- 2026-08-11: Product statistics add no schema. Customer flows read entity-scoped `facture` joined to `facturedet`; supplier flows read entity-scoped `facture_fourn` joined to `facture_fourn_det`. Both line tables are scoped through their invoice parent and the already-authorized product identifier.
+
 - 2026-08-10: The existing product extrafields `kreap_recipe`, `kreap_description`, and `kreap_ingredients` retain their database columns but their Dolibarr extrafield metadata is updated from `html` to `text` during module activation. Existing HTML values are converted to Markdown at the database-read boundary and persisted as Markdown on the next explicit Other characteristics save; no bulk data rewrite or SQL DDL migration runs automatically.
 - 2026-08-10: LLM suggestions add no schema. Confirmed nutrition replaces the entity-validated product row in `kreaproducts_nutritional`, and confirmed allergens replace `kreaproducts_productallergens` rows only after validating the linked product through `getEntity('product')`; both replacements share one transaction.
 
@@ -183,6 +199,8 @@ Example style:
 
 ## Multicompany Notes
 
+- 2026-08-11: Product statistics use `getEntity('invoice')` and `getEntity('facture_fourn')`, enforce external-user third-party scope, and apply `societe_commerciaux` assignment restrictions when the user cannot view all customer records. Supplier amounts, PMP, stock valuation, and invoice-line margin remain hidden unless the corresponding native rights allow them.
+
 - 2026-08-07: Supplier-wide invoice validation requires access to the supplier in the active third-party scope and selects draft `facture_fourn` rows only from `getEntity('supplier_invoice')`; every selected invoice is re-authorized by the single-invoice boundary before validation.
 - 2026-08-07: Supplier-invoice API validation checks Dolibarr resource access, locks `facture_fourn` within `getEntity('supplier_invoice')`, and accepts only active warehouses within `getEntity('stock')`.
 
@@ -192,6 +210,8 @@ Example style:
 - 2026-07-12: Inventory, production, MO-line, and automatic-dismantling warehouse IDs are validated against the active `getEntity('stock')` scope before stock posting.
 
 ## Known Pitfalls & Gotchas
+
+- 2026-08-11: Legacy products may have `NULL` or empty `kreap_calc_nut` and `kreap_calc_allergens` values. The product workspace historically displayed those values as manual; AI authorization must use `kreaproducts_resolve_nutrition_allergen_mode()` instead of requiring two literal string zeroes.
 
 - 2026-08-10: Legacy `kreaproducts_nutritional.date_creation='0000-00-00 00:00:00'` is normalized by `CommonObject::fetchCommon()` to an empty value; `updateCommon()` then writes `NULL` and fails under strict SQL mode. `Nutritional::update()` repairs an empty creation date from the existing `tms`, falling back to `dol_now()`, before the native update lifecycle.
 
@@ -222,6 +242,22 @@ Example style:
 - 2026-07-12: Automatic inventory closure requires the Dolibarr Scheduled Jobs module and an operational cron runner. Module version 4.0.0 declares `modCron` as a dependency and enables the closure job at one-minute frequency.
 
 ## Environment & Configuration
+
+- 2026-08-11: Version 4.15.2 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. An entity-1 read-only render of screenshot product reference `7101` confirmed identical revenue and margin points, a six-pixel dashed margin underlay rendered first, and a four-pixel uninterrupted revenue overlay rendered last. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `30b7d64dfaf2de329469ef8347198aa7b1a523879861189ee1e7441411590fe7`.
+
+- 2026-08-11: Version 4.15.1 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. An entity-1 read-only render on product 3852 reproduced identical revenue and gross-margin points and confirmed that revenue remains visible through a wider solid stroke and larger points beneath the dashed margin overlay. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `2bbae15f0cdc2ca93a562d17d36b3fde29502254710d0ad07ba8b44b6e339d87`.
+
+- 2026-08-11: Version 4.15.0 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. Entity-1 read-only runtime renders confirmed the seven-day range, the unchanged 12-month default, customer ranking/recent-invoice pairing on product 3852, and supplier ranking/recent-invoice pairing on product 7050. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `814ce87795466fc36a112c9d45d3d442539f3483c8a2aa96209ec981cc85e00b`.
+
+- 2026-08-11: Version 4.14.0 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. Entity-1 read-only runtime renders confirmed the 12-month default; exact today, yesterday, current-month, previous-month, three-month, and six-month ranges; permanently visible monthly totals; ten customer rows on product 3852; and ten supplier rows on product 7050. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `14bcef596f7f5bd7c935e2734e7aece9289e860e22824ca5a937cfb97e6ebf53`.
+
+- 2026-08-11: Version 4.13.0 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. An entity-1 authenticated render of internal product reference `704` completed in under one second, classified it as a produced ingredient, reported 920 produced units, 20,052.0019 units of indirect customer-product usage, and 28 consuming-product relations, and omitted direct revenue and invoice panels. A sellable-product regression render retained the commercial dashboard and complete footer. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `e95e8efcb728d22ac3d599756cc60e35b32209645e2146fc45088f0c6046ff90`.
+
+- 2026-08-11: Version 4.12.1 passed the focused stock regression suite, descriptor lint, and terminology scans confirming that Portuguese locale and documentation artifacts contain no `estoque` or `estoques`. The 186-entry release ZIP contains 67 lint-clean PHP files, packages the corrected `pt_BR` stock terminology, and has SHA-256 `27b267069f79220a89f619edae606a84aec922d15e6735d975a98a11aea3bbfe`.
+
+- 2026-08-11: Version 4.12.0 passed the focused regression suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. An entity-1 authenticated server render on high-activity product 3852 completed in 2.9 seconds with 10 KPI cards, one inline SVG chart, six detail tables, a complete footer, the `krea_stats` tab active, and the core `stats` tab absent. The tab-only registration refresh committed 11 KreaProducts tab constants without rerunning module permissions, cron, or schema activation. The 186-entry release ZIP contains 67 lint-clean PHP files, includes both statistics files, excludes internal maintainer/test files, and has SHA-256 `0e6a0ac97dc17bba603d6a7d630d7a025a021577177efbe4c22a1e66af8f6338`.
+
+- 2026-08-11: Version 4.11.12 passed the stock and LLM focused suites and all 67 source PHP lint checks on PHP 8.1.20 and 8.4.5. The 184-entry release ZIP contains 65 lint-clean PHP files, excludes internal maintainer/test files, and has SHA-256 `06602a7b91c05a8d4d0ef7721d211a650177ad5c34cd56e0d2f126394fb62792`.
 
 - 2026-08-10: Version 4.9.1 passed both focused suites and all 67 source PHP lint checks on PHP 8.1.20 and 8.4.5. A live save from active entity 2 updated shared product 7110, repaired nutritional row 53 from a zero creation date to its existing `tms`, committed all nine reviewed nutrition values, and left zero allergen rows. The 180-entry release ZIP contains 65 lint-clean PHP files, excludes internal maintainer/test files, and has SHA-256 `c0e2ab94a84eaf78d339a3ce49dde92065b5fc4e1c328a8529921214818a0b13`.
 
@@ -255,6 +291,8 @@ Example style:
 
 ## Conventions
 
+- 2026-08-11: All Portuguese locale and documentation artifacts use `stock`, never `estoque`, for inventory quantities and movements. This terminology convention applies to both `pt_PT` and `pt_BR` content.
+
 - 2026-08-10: English Dolistore and About content uses `README.md` as the canonical fallback. French, German, Italian, and Spanish use Dolibarr-native locale files `README-fr_FR.md`, `README-de_DE.md`, `README-it_IT.md`, and `README-es_ES.md`; every localized README must be explicitly included in the release allowlist and retain feature, AI-provider, compatibility, license, and support parity with the English marketplace description.
 - 2026-08-10: `README.md` is both the repository documentation and the long description rendered by Dolibarr's About page and packaged for Dolistore. Release highlights must describe shipped behavior only, while Requirements must remain aligned with `modKreaProducts.class.php`; version 4.11.7 declares Dolibarr 19+ and PHP 7.3+ even when a marketplace listing is intentionally restricted to a narrower supported range.
 - 2026-08-10: The technical-sheet product summary renders Product nature with the same native `Form::editfieldkey()` and `Form::editfieldval()` interaction as Type and Weight. Edit mode uses `FormProduct::selectProductNature()`, validates the submitted value against the active Dolibarr product-nature dictionary, and persists it through `Product::update()` with a pre-change `oldcopy` so `PRODUCT_MODIFY` observers receive the correct lifecycle state.
@@ -268,6 +306,8 @@ Example style:
 - 2026-07-12: User-facing setup labels, permission descriptions, AJAX responses, and mobile inventory errors must use Dolibarr translation keys. Framework-neutral calculation classes may retain English exception text only when the localized boundary translates it before display.
 
 ## Deprecated Knowledge
+
+- 2026-08-11: Version 4.15.1 rendered the wider revenue series beneath a narrower dashed margin series. Screenshot verification showed that the dashed margin still visually dominated coincident paths, so version 4.15.2 reversed the explicit SVG layers and renders revenue last.
 
 - 2026-08-10: The 4.11.3 view-layer conversion became obsolete in 4.11.4 because later extrafield refreshes could expose raw HTML to the editor. Conversion now occurs once at the database-import boundary before actions and rendering.
 - 2026-08-10: The 4.11.0 order that placed Ingredients first became obsolete in 4.11.3. Ingredients now appears immediately before Preparation.

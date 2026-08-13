@@ -81,7 +81,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '4.11.11';
+		$this->version = '4.15.2';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -263,6 +263,8 @@ class modKreaProducts extends DolibarrModules
         $this->tabs[] = array('data' => 'product:+(5)kreaproducts_nuttable:NutritionalCard:kreaproducts@kreaproducts:($object->array_options[\'options_kreap_calc_nut\']==1 && (!isModEnabled(\'kreaproducts\') || !$conf->global->KREAPRODUCTS_NUTRITIONAL_TABLE_TAB)):/kreaproducts/nutritional_card.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(6)krea_producttree:ProductTree:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/productTree.php?id=__ID__');
         $this->tabs[] = array('data' => 'product:+(7)krea_labels:KREAPRODUCTS_LABELS_TAB:kreaproducts@kreaproducts:$conf->kreaproducts->enabled:/kreaproducts/product_labels.php?id=__ID__');
+		$this->tabs[] = array('data' => 'product:-stats:NU:$conf->kreaproducts->enabled');
+		$this->tabs[] = array('data' => 'product:+(8)krea_stats:Statistics:products:$conf->kreaproducts->enabled:/kreaproducts/product_statistics.php?id=__ID__');
 
 
         // Dictionaries

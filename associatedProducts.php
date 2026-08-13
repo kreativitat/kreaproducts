@@ -591,9 +591,23 @@ $canUseLlmProductData = $usercancreate
 $canManageNutritionAllergens = $usercancreate
 	&& $user->hasRight('kreaproducts', 'nutritional', 'write')
 	&& $user->hasRight('kreaproducts', 'productallergens', 'write');
-$llmManualDataMode = isset($object->array_options['options_kreap_calc_nut'], $object->array_options['options_kreap_calc_allergens'])
-	&& (string) $object->array_options['options_kreap_calc_nut'] === '0'
-	&& (string) $object->array_options['options_kreap_calc_allergens'] === '0';
+$sqlFoodFlag = 'SELECT n.is_food FROM '.MAIN_DB_PREFIX.'kreaproducts_nutritional AS n';
+$sqlFoodFlag .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = n.fk_product';
+$sqlFoodFlag .= ' AND p.entity IN ('.getEntity('product').')';
+$sqlFoodFlag .= ' WHERE n.fk_product = '.(int) $object->id.' ORDER BY n.rowid ASC LIMIT 1';
+$resFoodFlag = $db->query($sqlFoodFlag);
+if ($resFoodFlag && ($foodObj = $db->fetch_object($resFoodFlag))) {
+	$productIsFood = ($foodObj->is_food !== null) ? (int) $foodObj->is_food : 1;
+}
+if ($resFoodFlag) {
+	$db->free($resFoodFlag);
+}
+$nutritionAllergenMode = kreaproducts_resolve_nutrition_allergen_mode(
+	$object->array_options['options_kreap_calc_nut'] ?? null,
+	$object->array_options['options_kreap_calc_allergens'] ?? null,
+	$productIsFood
+);
+$llmManualDataMode = ($nutritionAllergenMode === 0);
 $llmSuggestion = null;
 $llmSourceText = '';
 $otherCharacteristicsSubmittedValues = array();
@@ -1461,16 +1475,6 @@ if ($id > 0 || !empty($ref)) {
 		}
 		dol_banner_tab($object, 'ref', $linkback, $shownav, 'ref', '');
 
-		// Food/non-food toggle (default: food)
-		$productIsFood = 1;
-		$sqlFoodFlag = "SELECT rowid, is_food FROM " . MAIN_DB_PREFIX . "kreaproducts_nutritional WHERE fk_product = " . (int) $object->id . " LIMIT 1";
-		$resFoodFlag = $db->query($sqlFoodFlag);
-		$foodRowId = null;
-		if ($resFoodFlag && ($foodObj = $db->fetch_object($resFoodFlag))) {
-			$productIsFood = ($foodObj->is_food !== null) ? (int) $foodObj->is_food : 1;
-			$foodRowId = (int) $foodObj->rowid;
-		}
-		if ($resFoodFlag) $db->free($resFoodFlag);
 		$productHasBom = kreaproducts_has_bom_for_product($db, $object->id);
 
 		if ($object->type != Product::TYPE_SERVICE || getDolGlobalString('STOCK_SUPPORTS_SERVICES') || !getDolGlobalString('PRODUIT_MULTIPRICES')) {
@@ -2767,13 +2771,6 @@ if ($id > 0 || !empty($ref)) {
 		$sectionMarginStyle = $sectionSpacingStyle;
 		$sectionMarginStyleLarge = 'margin-top: 32px;';
 		$tableMarginStyle = 'margin-top: 10px;';
-		$nutritionAllergenMode = 0;
-		if (!$productIsFood) {
-			$nutritionAllergenMode = 2;
-		} elseif ((string) ($object->array_options['options_kreap_calc_nut'] ?? '') === '1'
-			&& (string) ($object->array_options['options_kreap_calc_allergens'] ?? '') === '1') {
-			$nutritionAllergenMode = 1;
-		}
 		$isEditingNutritionAllergens = ($action === 'edit_nutrition_allergens' && $nutritionAllergenMode === 0 && $canManageNutritionAllergens);
 		$llmProvider = strtolower(trim((string) getDolGlobalString('KREAPRODUCTS_LLM_PROVIDER')));
 		$showLlmProductDataModal = $canUseLlmProductData && $nutritionAllergenMode === 0 && $llmProvider !== '';

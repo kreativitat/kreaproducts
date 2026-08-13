@@ -2,7 +2,7 @@
 
 # KreaProducts para Dolibarr ERP/CRM
 
-KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/CRM](https://www.dolibarr.org). Amplia o módulo de Produtos com nutrição, alérgenos, BOM/Fichas Técnicas, inventário e automatizações de custos e estoque — pensado para operações de restauração e varejo que precisam de consistência, rastreabilidade e _food cost_ sempre correto.
+KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/CRM](https://www.dolibarr.org). Amplia o módulo de Produtos com nutrição, alérgenos, BOM/Fichas Técnicas, inventário e automatizações de custos e stock — pensado para operações de restauração e varejo que precisam de consistência, rastreabilidade e _food cost_ sempre correto.
 
 ## Funcionalidades
 
@@ -25,21 +25,21 @@ KreaProducts é um módulo avançado para gestão de produtos no [Dolibarr ERP/C
 - Multiempresa: BOM compartilhada (entity=0) disponível em todas as entidades, com prioridade para a BOM da entidade atual quando existe.
 - Desmontagem controlada por produto via campo extra `kreap_dismantle`.
 
-### Datas corretas de estoque e inventário (data da fatura e data-valor)
+### Datas corretas de stock e inventário (data da fatura e data-valor)
 
-O Dolibarr, por padrão, registra muitos movimentos **na data em que o documento é lançado/validado no sistema** — o que pode não coincidir com a realidade operacional. Em ambientes com compras frequentes, essa diferença cria desvios e ruído na análise de estoque.
+O Dolibarr, por padrão, registra muitos movimentos **na data em que o documento é lançado/validado no sistema** — o que pode não coincidir com a realidade operacional. Em ambientes com compras frequentes, essa diferença cria desvios e ruído na análise de stock.
 
 O KreaProducts corrige essa limitação com duas automatizações essenciais:
 
-- **Entrada de estoque pela data da fatura (fornecedores):** os produtos são lançados em estoque com a **data da fatura/data de entrada**, em vez da data em que o documento é registrado no Dolibarr. Isso elimina discrepâncias quando a fatura é registrada dias depois.
+- **Entrada de stock pela data da fatura (fornecedores):** os produtos são lançados em stock com a **data da fatura/data de entrada**, em vez da data em que o documento é registrado no Dolibarr. Isso elimina discrepâncias quando a fatura é registrada dias depois.
 - **Inventário por data-valor (retroativo):** o ajuste do inventário é aplicado com base na **data do inventário (data-valor)**, e não na data de validação. Dessa forma, é possível lançar um inventário com data-valor anterior (por exemplo, de uma semana atrás) e garantir que as correções e os relatórios permaneçam consistentes — algo que o módulo padrão não garante.
-- **Recalculo por inventário físico:** o estoque é recalculado com base na **quantidade contada** (qty_stock) quando disponível, usando qty_view apenas como fallback — evitando desvios em retroativos.
+- **Recalculo por inventário físico:** o stock é recalculado com base na **quantidade contada** (qty_stock) quando disponível, usando qty_view apenas como fallback — evitando desvios em retroativos.
 
 ### Gestão inteligente de embalagens e custo unitário (desmontagem automática)
 
 Na restauração, é comum comprar o mesmo item em embalagens diferentes — mas para o _food cost_ o que importa é o **custo unitário real** (ex.: EUR/L, EUR/kg, EUR/un).
 
-Exemplo típico: **óleo**. Pode ser comprado em **galões de 10L, 5L, 1L** ou **caixas 12x1L**. Se essas embalagens entrarem no sistema como "produtos diferentes", rapidamente surgem inconsistências de estoque e custo por unidade.
+Exemplo típico: **óleo**. Pode ser comprado em **galões de 10L, 5L, 1L** ou **caixas 12x1L**. Se essas embalagens entrarem no sistema como "produtos diferentes", rapidamente surgem inconsistências de stock e custo por unidade.
 
 O KreaProducts resolve isso por meio do módulo **BOM do Dolibarr (Listas de Materiais / Ficha de Materiais – FM)**:
 
@@ -48,7 +48,7 @@ O KreaProducts resolve isso por meio do módulo **BOM do Dolibarr (Listas de Mat
 
 Esse processo:
 
-- cria os **movimentos de estoque** correspondentes,
+- cria os **movimentos de stock** correspondentes,
 - mantém o **custo proporcional** e a rastreabilidade (origem -> destino),
 - e garante que o produto unitário fique pronto para uso em receitas, inventário e cálculos de margem.
 
@@ -68,13 +68,13 @@ Essa funcionalidade é especialmente relevante em operações com muitas receita
 
 - Lista de produtos simplificada com opção de ocultar itens.
 - Simulador de preços (Métricas e Margens) com markup de teste.
-- Lista de movimentos de estoque por produto com **estoque total**.
+- Lista de movimentos de stock por produto com **stock total**.
 
 ## Requisitos
 
 - Dolibarr >= 19
 - PHP >= 7.0
-- Módulos obrigatórios: Produtos, Estoque, Fornecedores, BOM/MRP
+- Módulos obrigatórios: Produtos, Stock, Fornecedores, BOM/MRP
 - Opcional: Lotes (productbatch)
 
 ## Instalação
@@ -95,7 +95,7 @@ Essa funcionalidade é especialmente relevante em operações com muitas receita
 | `KREAPRODUCTS_AUTO_SYNCH_BUY_PRICE` | Propagar automaticamente o preço de custo (recalculo em cascata). |
 | `KREAPRODUCTS_ALLERGEN_FULL_THRESHOLD_PCT` | Percentual do peso total para considerar alérgenos como presentes. |
 | `KREAPRODUCTS_ALLERGEN_TRACE_THRESHOLD_PCT` | Percentual do peso total para marcar alérgenos como traços. |
-| `KREAPRODUCTS_STOCK_MOVEMENT_DATA` | Usar data da fatura nos movimentos de estoque. |
+| `KREAPRODUCTS_STOCK_MOVEMENT_DATA` | Usar data da fatura nos movimentos de stock. |
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME` | Hora aplicada a movimentos de fatura de fornecedor. |
 | `KREAPRODUCTS_INVENTORY_DEFAULT_TIME` | Hora padrão ao criar inventário. |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT` | Categoria raiz para seleção de inventário. |

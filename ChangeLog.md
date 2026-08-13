@@ -1,6 +1,79 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.15.2] - 2026-08-11
+
+### Fixed
+
+- Rendered net revenue above coincident gross-margin graph lines.
+
+## [4.15.1] - 2026-08-11
+
+### Fixed
+
+- Kept net revenue visible when its graph overlaps gross margin.
+
+## [4.15.0] - 2026-08-11
+
+### Added
+
+- Added a last-seven-days statistics period.
+
+### Changed
+
+- Paired customer and supplier rankings with their respective recent invoice tables.
+
+## [4.14.0] - 2026-08-11
+
+### Added
+
+- Added today, yesterday, current month, previous month, three-month, and six-month statistics periods.
+
+### Changed
+
+- Kept monthly detail tables visible with period totals.
+- Increased customer and supplier rankings to ten entries.
+
+## [4.13.0] - 2026-08-11
+
+### Added
+
+- Added operational statistics for manufactured ingredients and internal stock products.
+
+### Changed
+
+- Selected statistics cards and charts from each product's commercial and operational role.
+
+### Fixed
+
+- Removed empty commercial sections from products without direct sales or purchases.
+
+## [4.12.1] - 2026-08-11
+
+### Changed
+
+- Standardized Portuguese stock terminology across translations and documentation.
+
+## [4.12.0] - 2026-08-11
+
+### Added
+
+- Added a responsive product statistics dashboard with period comparisons, monthly trends, counterparties, and recent invoices.
+
+### Changed
+
+- Replaced the native product statistics tab with the KreaProducts dashboard.
+
+### Security
+
+- Enforced document permissions, commercial assignments, advanced price rights, and entity scopes in product statistics.
+
+## [4.11.12] - 2026-08-11
+
+### Fixed
+
+- Kept AI suggestion authorization consistent with the displayed nutrition and allergen mode.
+
 ## [4.11.11] - 2026-08-10
 
 ### Fixed
