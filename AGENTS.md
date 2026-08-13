@@ -41,6 +41,8 @@ Example style:
 
 ## Architecture Decisions
 
+- 2026-08-13: The parent-kit list on `associatedProducts.php` keeps the direct `Product::getFather()` dataset and its server-provided initial order. Sorting is a scoped client-side presentation feature: each header toggles ascending and descending order, product references and labels use locale-aware natural text comparison, quantities use numeric comparison, equal values retain their original relative order, and active direction is exposed through `aria-sort`. No database, entity scope, association traversal, or product lifecycle behavior changes.
+
 - 2026-08-11: Commercial statistics draw gross margin first as a wider dashed underlay and net revenue last as an uninterrupted solid overlay. Revenue and margin can legitimately have identical monthly points when no product cost is recorded; explicit SVG layers preserve revenue as the primary visible series without falsifying either value, while legend order remains revenue then margin.
 
 - 2026-08-11: Product statistics render top customers beside recent customer invoices and top suppliers beside recent supplier invoices. The last-seven-days preset includes today and the preceding six calendar days and compares against the immediately preceding seven-day period; the default remains the last 12 months.
@@ -242,6 +244,8 @@ Example style:
 - 2026-07-12: Automatic inventory closure requires the Dolibarr Scheduled Jobs module and an operational cron runner. Module version 4.0.0 declares `modCron` as a dependency and enables the closure job at one-minute frequency.
 
 ## Environment & Configuration
+
+- 2026-08-13: Version 4.16.0 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. JavaScript syntax validation and a Node interaction harness proved natural reference sorting, numeric quantity sorting, direction toggling, and `aria-sort` state changes. The 187-entry release ZIP contains the new controller, 67 lint-clean PHP files, and has SHA-256 `1c730c25de5645960362e01fabde2dc04edd82f6957239426bfd2fc095e836b2`.
 
 - 2026-08-11: Version 4.15.2 passed the focused stock suite and all 69 source PHP lint checks on PHP 8.1.20 and 8.4.5. An entity-1 read-only render of screenshot product reference `7101` confirmed identical revenue and margin points, a six-pixel dashed margin underlay rendered first, and a four-pixel uninterrupted revenue overlay rendered last. The 186-entry release ZIP contains 67 lint-clean PHP files and has SHA-256 `30b7d64dfaf2de329469ef8347198aa7b1a523879861189ee1e7441411590fe7`.
 

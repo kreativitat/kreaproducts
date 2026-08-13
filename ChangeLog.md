@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.16.0] - 2026-08-13
+
+### Added
+
+- Added ascending and descending sorting to every parent-kit table header.
+
 ## [4.15.2] - 2026-08-11
 
 ### Fixed

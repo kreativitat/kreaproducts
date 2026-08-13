@@ -1458,7 +1458,7 @@ if (GETPOST("type") == '1' || ($object->type == Product::TYPE_SERVICE)) {
 	$help_url = 'EN:Module_Services_En|FR:Module_Services|ES:M&oacute;dulo_Servicios|DE:Modul_Leistungen';
 }
 
-llxHeader('', $title, $help_url, '', 0, 0, '', '', '', 'mod-kreaproducts page-card_krea_subproduct');
+llxHeader('', $title, $help_url, '', 0, 0, array('/kreaproducts/js/associated-products-sort.js'), '', '', 'mod-kreaproducts page-card_krea_subproduct');
 
 $head = product_prepare_head($object);
 $titre = $langs->trans("CardProduct" . $object->type);
@@ -2655,18 +2655,47 @@ if ($id > 0 || !empty($ref)) {
 		if (count($prodsfather) > 0) {
 			print '<div class="fichecenter" style="' . $sectionSpacingStyle . '">';
 			print '<style>
+				#krea-parent-products-table .krea-parent-sort-button {
+					align-items: center;
+					background: transparent;
+					border: 0;
+					color: inherit;
+					cursor: pointer;
+					display: inline-flex;
+					font: inherit;
+					font-weight: inherit;
+					gap: 0.35em;
+					padding: 0;
+					text-align: inherit;
+				}
+				#krea-parent-products-table th.right .krea-parent-sort-button {
+					justify-content: flex-end;
+					width: 100%;
+				}
+				#krea-parent-products-table .krea-parent-sort-button:focus-visible {
+					outline: 2px solid currentColor;
+					outline-offset: 2px;
+				}
+				#krea-parent-products-table .krea-parent-sort-indicator {
+					min-width: 1em;
+					text-align: center;
+				}
 				@media (max-width: 768px) {
 					#krea-parentlist-title .titre,
 					#krea-parentlist-title .titre > span { display: block; width: 100%; }
 				}
 			</style>';
 			print load_fiche_titre($langs->trans("ProductParentList"), '', '', 0, 'krea-parentlist-title');
-			print '<table class="liste">';
+			print '<table class="liste" id="krea-parent-products-table">';
+			print '<thead>';
 			print '<tr class="liste_titre">';
-			print '<td>' . $langs->trans('ParentProducts') . '</td>';
-			print '<td>' . $langs->trans('Label') . '</td>';
-			print '<td class="right">' . $langs->trans('Qty') . '</td>';
+			print '<th scope="col" aria-sort="none"><button type="button" class="krea-parent-sort-button" data-krea-sort-key="ref" data-krea-sort-type="text"><span>' . $langs->trans('ParentProducts') . '</span><span class="krea-parent-sort-indicator" aria-hidden="true">↕</span></button></th>';
+			print '<th scope="col" aria-sort="none"><button type="button" class="krea-parent-sort-button" data-krea-sort-key="label" data-krea-sort-type="text"><span>' . $langs->trans('Label') . '</span><span class="krea-parent-sort-indicator" aria-hidden="true">↕</span></button></th>';
+			print '<th scope="col" class="right" aria-sort="none"><button type="button" class="krea-parent-sort-button" data-krea-sort-key="qty" data-krea-sort-type="number"><span>' . $langs->trans('Qty') . '</span><span class="krea-parent-sort-indicator" aria-hidden="true">↕</span></button></th>';
 			print '</tr>';
+			print '</thead>';
+			print '<tbody>';
+			$parentPosition = 0;
 			foreach ($prodsfather as $value) {
 				$idprod = $value["id"];
 				$productstatic->id = $idprod;
@@ -2678,12 +2707,14 @@ if ($id > 0 || !empty($ref)) {
 				$productstatic->status_buy = $value['status_buy'];
 				$qtyValue = (float) price2num($value['qty'], 'MS');
 
-				print '<tr class="oddeven">';
+				print '<tr class="oddeven" data-krea-sort-ref="' . dol_escape_htmltag($productstatic->ref) . '" data-krea-sort-label="' . dol_escape_htmltag($productstatic->label) . '" data-krea-sort-qty="' . dol_escape_htmltag((string) $qtyValue) . '" data-krea-sort-position="' . $parentPosition . '">';
 				print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 				print '<td>' . dol_escape_htmltag($productstatic->label) . '</td>';
 				print '<td class="right">' . number_format($qtyValue, 3, '.', '') . ' un</td>';
 				print '</tr>';
+				$parentPosition++;
 			}
+			print '</tbody>';
 			print '</table>';
 			print '</div>';
 		}

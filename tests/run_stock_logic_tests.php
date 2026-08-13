@@ -182,7 +182,7 @@ assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KR
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.15.2'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.0'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -231,6 +231,13 @@ assertSameValue(true, strpos((string) $productStatisticsPageSource, 'usort($draw
 assertSameValue(true, substr_count((string) $productStatisticsPageSource, 'foreach ($drawSeries as $item)') >= 2, 'Both chart scaling and SVG drawing must use the explicitly layered series order.');
 
 $associatedProductsSource = file_get_contents(__DIR__.'/../associatedProducts.php');
+$associatedProductsSortSource = file_get_contents(__DIR__.'/../js/associated-products-sort.js');
+assertSameValue(true, strpos((string) $associatedProductsSource, "array('/kreaproducts/js/associated-products-sort.js')") !== false, 'The associated-products page must load its scoped parent-table sorting controller.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'id="krea-parent-products-table"') !== false, 'The parent-kit list must expose one scoped sortable table.');
+assertSameValue(3, substr_count((string) $associatedProductsSource, 'class="krea-parent-sort-button"'), 'Every parent-kit table header must be a sort control.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'data-krea-sort-key="qty" data-krea-sort-type="number"') !== false, 'Parent-kit quantities must use numeric sorting.');
+assertSameValue(true, strpos((string) $associatedProductsSortSource, "currentDirection === 'ascending' ? 'descending' : 'ascending'") !== false, 'Repeated header selection must toggle ascending and descending order.');
+assertSameValue(true, strpos((string) $associatedProductsSortSource, "header.setAttribute('aria-sort', isActive ? direction : 'none')") !== false, 'Sortable parent-kit headers must expose their active direction accessibly.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $object->weight_units)') !== false, 'Parent-product weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_normalize_weight_unit_scale($submittedWeightUnit, $childProduct->weight_units)') !== false, 'Component weight updates must preserve the current unit when the submission is missing.');
 assertSameValue(true, strpos((string) $associatedProductsSource, 'kreaproducts_weight_unit_select_value') !== false, 'The KreaProducts product form must use Dolibarr\'s empty kilogram selector value.');
@@ -682,9 +689,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.15.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.15.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.15.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.16.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.16.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.16.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');
