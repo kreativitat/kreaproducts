@@ -33,6 +33,7 @@ if (!class_exists('Mos')) {
 	require_once DOL_DOCUMENT_ROOT . '/mrp/class/api_mos.class.php';
 }
 dol_include_once('/kreaproducts/class/KreaProductsLabelService.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsProductionQuantityValidator.class.php');
 
 /**
  * API class for KreaProducts touch production workflow.
@@ -1145,7 +1146,9 @@ class KreaProductsApi extends DolibarrApi
 		$traceError = '';
 		$labelPayload = array();
 
-		$this->db->begin();
+		if (!$this->db->begin()) {
+			$this->failInternalRequest('Unable to start the production transaction', $this->db->lasterror());
+		}
 		try {
 			if ($moId > 0) {
 				$this->lockMoForProduction($moId);
@@ -1286,6 +1289,7 @@ class KreaProductsApi extends DolibarrApi
 		$mo->fetchLines();
 		$this->disableStockChangeForNonStockMoLines($mo);
 		$mo->fetchLines();
+		$this->assertMoLinesSupportedByCoreProductionApi($mo->lines);
 		$componentLotMaps = $this->indexComponentLotsByMoLine($componentLots);
 		$this->assertComponentLotsMatchMoLines($componentLots, $mo->lines);
 		$batchManagedSubproducts = $this->findBatchManagedAssociatedSubproductsForMoLines($mo->lines);
@@ -2510,6 +2514,12 @@ class KreaProductsApi extends DolibarrApi
 			if (!is_array($entry)) {
 				continue;
 			}
+			if (!array_key_exists('qty', $entry)) {
+				throw new RestException(400, 'Component lot qty is required');
+			}
+			if (!is_numeric($entry['qty'])) {
+				throw new RestException(400, 'Component lot qty must be numeric');
+			}
 
 			$lineId = (int) (isset($entry['mo_line_id']) ? $entry['mo_line_id'] : 0);
 			$bomLineId = (int) (isset($entry['bom_line_id']) ? $entry['bom_line_id'] : (isset($entry['line_id']) ? $entry['line_id'] : 0));
@@ -2631,6 +2641,7 @@ class KreaProductsApi extends DolibarrApi
 			}
 		}
 
+		$matchedMoLineIds = array();
 		foreach ((array) $componentLots as $lot) {
 			if (!is_array($lot)) {
 				continue;
@@ -2650,9 +2661,49 @@ class KreaProductsApi extends DolibarrApi
 				throw new RestException(409, 'Component lot line does not match MO consume lines');
 			}
 
+			$matchedMoLineId = (int) (isset($matchedLine->id) ? $matchedLine->id : 0);
+			if ($matchedMoLineId <= 0 || isset($matchedMoLineIds[$matchedMoLineId])) {
+				throw new RestException(409, 'Each manufacturing-order component line may have only one component lot entry');
+			}
+			$matchedMoLineIds[$matchedMoLineId] = true;
+
 			$componentProductId = (int) (!empty($lot['component_product_id']) ? $lot['component_product_id'] : 0);
 			if ($componentProductId > 0 && !empty($matchedLine->fk_product) && (int) $matchedLine->fk_product !== $componentProductId) {
 				throw new RestException(409, 'Component lot product does not match MO consume line product');
+			}
+
+			if (!KreaProductsProductionQuantityValidator::matchesRecipeQuantity($matchedLine->qty, $lot['qty'])) {
+				throw new RestException(409, 'Component lot quantity must match the manufacturing-order recipe quantity');
+			}
+		}
+	}
+
+	/**
+	 * Reject MO lines that Dolibarr's core Mos API cannot post with lot details.
+	 *
+	 * @param array $moLines Manufacturing order lines
+	 * @return void
+	 */
+	protected function assertMoLinesSupportedByCoreProductionApi($moLines)
+	{
+		$checkedProducts = array();
+		foreach ((array) $moLines as $line) {
+			if (!is_object($line)) {
+				continue;
+			}
+			$role = (string) (isset($line->role) ? $line->role : '');
+			if ($role !== 'toconsume' && $role !== 'toproduce') {
+				continue;
+			}
+			$productId = (int) (isset($line->fk_product) ? $line->fk_product : 0);
+			if ($productId <= 0 || isset($checkedProducts[$productId])) {
+				continue;
+			}
+			$checkedProducts[$productId] = true;
+
+			$product = $this->fetchProduct($productId);
+			if (!empty($product->status_batch) || !empty($product->tobatch)) {
+				throw new RestException(409, 'Batch-managed manufacturing-order lines are not supported by this production endpoint');
 			}
 		}
 	}
@@ -2918,7 +2969,9 @@ class KreaProductsApi extends DolibarrApi
 		$traceTable = MAIN_DB_PREFIX . 'kreaproducts_mo_batch';
 		$componentTable = MAIN_DB_PREFIX . 'kreaproducts_mo_component_batch';
 
-		$this->db->begin();
+		if (!$this->db->begin()) {
+			throw new RuntimeException('Unable to start the production trace transaction');
+		}
 
 		$sql = "INSERT INTO " . $traceTable . " (entity, fk_mo, production_qty, inventorycode, fk_user_creat, date_creation)";
 		$sql .= " VALUES (";
@@ -2974,7 +3027,7 @@ class KreaProductsApi extends DolibarrApi
 				$componentProductId = (int) $lot['component_product_id'];
 			}
 
-			$componentQty = (!empty($lot['qty']) ? (float) $lot['qty'] : (float) $line->qty);
+			$componentQty = (array_key_exists('qty', $lot) ? (float) $lot['qty'] : (float) $line->qty);
 			$componentBatch = (!empty($lot['batch']) ? (string) $lot['batch'] : '');
 			$bomLineId = ((string) (isset($line->origin_type) ? $line->origin_type : '') === 'bomline' ? (int) (isset($line->origin_id) ? $line->origin_id : 0) : 0);
 			if (!empty($lot['bom_line_id'])) {
@@ -3008,7 +3061,10 @@ class KreaProductsApi extends DolibarrApi
 			}
 		}
 
-		$this->db->commit();
+		if (!$this->db->commit()) {
+			$this->db->rollback();
+			throw new RuntimeException('Unable to commit the production trace transaction');
+		}
 	}
 
 	/**

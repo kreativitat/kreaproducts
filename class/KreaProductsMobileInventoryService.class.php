@@ -155,17 +155,17 @@ class KreaProductsMobileInventoryService
 		$category = $this->fetchTemplateCategory((int) $categoryId);
 		$warehouse = $this->fetchWarehouse((int) $warehouseId);
 		$valueTimestamp = $this->resolveInventoryValueTimestamp(dol_now());
-		$this->db->begin();
+		$this->beginStockTransaction();
 		try {
 			$this->lockInventoryStartScope((int) $category->rowid, (int) $warehouse->rowid);
 			$openInventory = $this->findOpenInventory((int) $category->rowid, (int) $warehouse->rowid);
 			if (!empty($openInventory['id'])) {
-				$this->db->commit();
+				$this->commitStockTransaction();
 				return $this->getInventory((int) $openInventory['id']);
 			}
 			$dayInventory = $this->findBusinessDayInventory((int) $category->rowid, (int) $warehouse->rowid, $valueTimestamp);
 			if (!empty($dayInventory['id'])) {
-				$this->db->commit();
+				$this->commitStockTransaction();
 				return $this->getInventory((int) $dayInventory['id']);
 			}
 			$blockingOpenInventory = $this->findAnyOpenManagedInventory();
@@ -210,7 +210,7 @@ class KreaProductsMobileInventoryService
 			$this->db->rollback();
 			throw $exception;
 		}
-		$this->db->commit();
+		$this->commitStockTransaction();
 
 		dol_syslog(__METHOD__.' inventory='.$inventory->id.' category='.$category->rowid.' warehouse='.$warehouse->rowid.' entity='.$this->conf->entity, LOG_INFO);
 
@@ -630,7 +630,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_FOUND'), 404);
 		}
 
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$error = 0;
 		$errorMessage = '';
 
@@ -690,7 +690,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($errorMessage, 500);
 		}
 
-		$this->db->commit();
+		$this->commitStockTransaction();
 		dol_syslog(__METHOD__.' inventory='.$inventoryId.' user='.$this->user->id, LOG_NOTICE);
 
 		return array(
@@ -745,7 +745,7 @@ class KreaProductsMobileInventoryService
 			return $this->getInventory((int) $inventoryId);
 		}
 
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$error = 0;
 		$errorMessage = '';
 		try {
@@ -888,7 +888,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($errorMessage, 500);
 		}
 
-		$this->db->commit();
+		$this->commitStockTransaction();
 		dol_syslog(__METHOD__.' inventory='.$inventoryId.' count_rows='.count($counts).' user='.$this->user->id, LOG_INFO);
 
 		return $this->getInventory((int) $inventoryId);
@@ -910,7 +910,7 @@ class KreaProductsMobileInventoryService
 			return $this->getInventory((int) $record->rowid);
 		}
 
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$sql = 'SELECT i.rowid, i.status, i.date_inventory FROM '.$this->db->prefix().'inventory i';
 		$sql .= ' WHERE i.rowid='.((int) $record->rowid);
 		$sql .= ' AND i.entity='.((int) $this->conf->entity).' FOR UPDATE';
@@ -1099,7 +1099,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
 		}
 
-		$this->db->commit();
+		$this->commitStockTransaction();
 		dol_syslog(__METHOD__.' inventory='.(int) $record->rowid.' count_rows='.count($counts).' user='.$this->user->id, LOG_NOTICE);
 		return $this->getInventory((int) $record->rowid);
 	}
@@ -1222,7 +1222,7 @@ class KreaProductsMobileInventoryService
 		}
 		$closedInventory = $this->getInventory((int) $inventoryId);
 		$inventory->context['kreaproducts_mobile_inventory'] = 1;
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$error = 0;
 		$errorMessage = '';
 		try {
@@ -1445,7 +1445,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($errorMessage, 500);
 		}
 
-		$this->db->commit();
+		$this->commitStockTransaction();
 		$closedInventory = $this->refreshClosedInventoryMetadata($closedInventory);
 		dol_syslog(__METHOD__.' inventory='.$inventoryId.' lines='.count($lines).' user='.$this->user->id, LOG_NOTICE);
 
@@ -1474,7 +1474,7 @@ class KreaProductsMobileInventoryService
 	public function reverseInventory($inventoryId)
 	{
 		$this->requireCloseAccess();
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$sql = 'SELECT i.rowid FROM '.$this->db->prefix().'inventory as i';
 		$sql .= ' WHERE i.rowid='.((int) $inventoryId);
 		$sql .= ' AND i.entity='.((int) $this->conf->entity).' FOR UPDATE';
@@ -1537,6 +1537,26 @@ class KreaProductsMobileInventoryService
 			$result = $this->getInventory((int) $inventoryId);
 			$result['reversed'] = 1;
 			return $result;
+		}
+
+		$checkedScopes = array();
+		foreach ($rows as $row) {
+			$scopeKey = ((int) $row->fk_product).'|'.((int) $row->fk_warehouse).'|'.((string) $row->batch);
+			if (isset($checkedScopes[$scopeKey])) {
+				continue;
+			}
+			$checkedScopes[$scopeKey] = true;
+			if ($this->hasLaterActiveInventoryAnchor(
+				(int) $row->fk_product,
+				(int) $row->fk_warehouse,
+				(string) $row->batch,
+				(string) $record->date_inventory,
+				(int) $inventoryId,
+				true
+			)) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_LATER_PRODUCT_ANCHOR'), 409);
+			}
 		}
 
 		$movement = new MouvementStock($this->db);
@@ -1694,11 +1714,42 @@ class KreaProductsMobileInventoryService
 			}
 		}
 
-		$this->db->commit();
+		$this->commitStockTransaction();
 		dol_syslog(__METHOD__.' inventory='.$inventoryId.' user='.$this->user->id, LOG_NOTICE);
 		$result = $this->getInventory((int) $inventoryId);
 		$result['reversed'] = 1;
 		return $result;
+	}
+
+	/**
+	 * Start a stock transaction and fail before the first mutation when unavailable.
+	 *
+	 * @return void
+	 */
+	private function beginStockTransaction()
+	{
+		if ($this->db->begin()) {
+			return;
+		}
+
+		dol_syslog(__METHOD__.' '.$this->db->lasterror(), LOG_ERR);
+		throw new KreaProductsStockApiException($this->langs->trans('KreaProductsStockUnexpectedError'), 500);
+	}
+
+	/**
+	 * Commit a stock transaction and never report success after commit failure.
+	 *
+	 * @return void
+	 */
+	private function commitStockTransaction()
+	{
+		if ($this->db->commit()) {
+			return;
+		}
+
+		dol_syslog(__METHOD__.' '.$this->db->lasterror(), LOG_ERR);
+		$this->db->rollback();
+		throw new KreaProductsStockApiException($this->langs->trans('KreaProductsStockUnexpectedError'), 500);
 	}
 
 	/**
@@ -2307,7 +2358,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
 		}
 
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$error = 0;
 		$errorMessage = '';
 		while ($obj = $this->db->fetch_object($resql)) {
@@ -2331,7 +2382,7 @@ class KreaProductsMobileInventoryService
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($errorMessage, 500);
 		}
-		$this->db->commit();
+		$this->commitStockTransaction();
 	}
 
 	/**
@@ -2700,9 +2751,10 @@ class KreaProductsMobileInventoryService
 	 * @param string $batch           Lot or serial
 	 * @param string $valueDateSql    Inventory value date
 	 * @param int    $excludeInventory Inventory to exclude
+	 * @param bool   $lock             Lock the matching later anchor when found
 	 * @return bool
 	 */
-	private function hasLaterActiveInventoryAnchor($productId, $warehouseId, $batch, $valueDateSql, $excludeInventory)
+	private function hasLaterActiveInventoryAnchor($productId, $warehouseId, $batch, $valueDateSql, $excludeInventory, $lock = false)
 	{
 		$sql = 'SELECT i.rowid FROM '.$this->db->prefix().'inventory as i';
 		$sql .= ' INNER JOIN '.$this->db->prefix().'inventorydet as id ON id.fk_inventory = i.rowid';
@@ -2718,6 +2770,9 @@ class KreaProductsMobileInventoryService
 		$sql .= " AND i.date_inventory >= '".$this->db->escape((string) $valueDateSql)."'";
 		$sql .= ' AND (a.rowid IS NULL OR a.status = 1)';
 		$sql .= $this->db->plimit(1, 0);
+		if ($lock) {
+			$sql .= ' FOR UPDATE';
+		}
 		$resql = $this->db->query($sql);
 		if (!$resql) {
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
@@ -3078,7 +3133,7 @@ class KreaProductsMobileInventoryService
 		}
 
 		$provisionalReference = $this->buildProvisionalInventoryReference((int) $inventory->rowid);
-		$this->db->begin();
+		$this->beginStockTransaction();
 		$sql = 'SELECT rowid, ref, status FROM '.$this->db->prefix().'inventory';
 		$sql .= ' WHERE rowid='.((int) $inventory->rowid);
 		$sql .= ' AND entity='.((int) $this->conf->entity);
@@ -3106,7 +3161,7 @@ class KreaProductsMobileInventoryService
 			$inventory->ref = $provisionalReference;
 			$inventory->import_key = 'KPS';
 		}
-		$this->db->commit();
+		$this->commitStockTransaction();
 	}
 
 	/**

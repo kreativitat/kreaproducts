@@ -691,7 +691,7 @@ class KreaProductsStockMovementService
 			$invDate = $db->idate($invDate);
 		}
 
-		$nextInvMove = $this->getNextInventoryMovementAfter($db, $productId, $warehouse, $batch, $invDate);
+		$nextInvMove = $this->getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $invDate);
 		if (!$nextInvMove['valid']) {
 			return null;
 		}
@@ -818,12 +818,13 @@ class KreaProductsStockMovementService
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
-			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
+			. ' AND (a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))'
 			. ' ORDER BY i.date_inventory DESC, i.rowid DESC LIMIT 1';
 
 		$res = $db->query($sql);
@@ -868,13 +869,14 @@ class KreaProductsStockMovementService
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory <= '" . $db->escape($beforeDate) . "'"
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
-			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
+			. ' AND (a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))'
 			. ' ORDER BY i.date_inventory DESC, i.rowid DESC LIMIT 1';
 
 		$res = $db->query($sql);
@@ -895,35 +897,6 @@ class KreaProductsStockMovementService
 			'corrected_counted_qty' => $row->corrected_counted_qty,
 			'batch' => $row->batch,
 		);
-	}
-
-	protected function getNextInventoryMovementAfter($db, $productId, $warehouse, $batch, $afterDate)
-	{
-		$productId = (int) $productId;
-		$warehouse = (int) $warehouse;
-		if ($productId <= 0 || $warehouse <= 0 || empty($afterDate)) {
-			return array('found' => false, 'valid' => true);
-		}
-		if (is_numeric($afterDate)) {
-			$afterDate = $db->idate($afterDate);
-		}
-
-		$batch = trim((string) $batch);
-		$cond = ($batch !== '') ? " AND batch='" . $db->escape($batch) . "'" : " AND (batch='' OR batch IS NULL)";
-
-		$sql = 'SELECT rowid FROM ' . MAIN_DB_PREFIX . "stock_mouvement WHERE origintype='inventory' AND fk_product=" . $productId . ' AND fk_entrepot=' . $warehouse . $cond
-			. " AND datem > '" . $db->escape($afterDate) . "' ORDER BY datem ASC, rowid ASC LIMIT 1";
-
-		$res = $db->query($sql);
-		if (!$res) {
-			return array('found' => false, 'valid' => false);
-		}
-		$row = $db->fetch_object($res);
-		if (!$row) {
-			return array('found' => false, 'valid' => true);
-		}
-
-		return array('found' => true, 'valid' => true, 'rowid' => (int) $row->rowid);
 	}
 
 	protected function getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $afterDate)
@@ -949,13 +922,14 @@ class KreaProductsStockMovementService
 			. ' JOIN ' . MAIN_DB_PREFIX . 'inventorydet id ON id.fk_inventory = i.rowid'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
+			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
 			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory > '" . $db->escape($afterDate) . "'"
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
 			. $condDet
-			. ' AND (sm.rowid IS NOT NULL OR a.rowid IS NOT NULL)'
+			. ' AND (a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))'
 			. ' ORDER BY i.date_inventory ASC, i.rowid ASC LIMIT 1';
 
 		$res = $db->query($sql);

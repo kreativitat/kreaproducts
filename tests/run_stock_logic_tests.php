@@ -25,6 +25,7 @@ if (!function_exists('price2num')) {
 require_once __DIR__.'/../class/KreaProductsBusinessDayService.class.php';
 require_once __DIR__.'/../class/KreaProductsInventoryLedgerCalculator.class.php';
 require_once __DIR__.'/../class/KreaProductsBomCostCalculator.class.php';
+require_once __DIR__.'/../class/KreaProductsProductionQuantityValidator.class.php';
 require_once __DIR__.'/../lib/kreaproducts.lib.php';
 
 /**
@@ -144,6 +145,11 @@ assertSameValue(true, in_array('kreaproducts_count_correction_reversal', $origin
 assertSameValue(false, KreaProductsInventoryLedgerCalculator::isIndependentStockItem(true, false, 1), 'Kit parent without operational parent movements must not be counted independently.');
 assertSameValue(true, KreaProductsInventoryLedgerCalculator::isIndependentStockItem(true, true, 1), 'Kit parent with operational parent movements may be counted independently.');
 assertSameValue(true, KreaProductsInventoryLedgerCalculator::isIndependentStockItem(true, false, 0), 'Simple product must remain countable.');
+assertSameValue(true, KreaProductsProductionQuantityValidator::matchesRecipeQuantity('12.50000000', 12.5), 'Equivalent normalized recipe quantities must be accepted.');
+assertSameValue(false, KreaProductsProductionQuantityValidator::matchesRecipeQuantity(12.5, 0), 'A zero component override must not satisfy a positive recipe quantity.');
+assertSameValue(false, KreaProductsProductionQuantityValidator::matchesRecipeQuantity(12.5, 12.499), 'A partial component override must not satisfy the recipe quantity.');
+assertSameValue(false, KreaProductsProductionQuantityValidator::matchesRecipeQuantity(12.5, 13), 'An excess component override must not satisfy the recipe quantity.');
+assertSameValue(false, KreaProductsProductionQuantityValidator::matchesRecipeQuantity(12.5, 'invalid'), 'Non-numeric component quantities must fail closed.');
 
 assertSameValue(null, KreaProductsInventoryLedgerCalculator::normalizePhysicalCount(null), 'Null must remain uncounted.');
 assertSameValue(null, KreaProductsInventoryLedgerCalculator::normalizePhysicalCount(''), 'Blank text must remain uncounted.');
@@ -180,9 +186,19 @@ assertSameValue(true, strpos((string) $stockMovementSource, '$db->jdate($move->d
 assertSameValue(false, strpos((string) $stockMovementSource, 'dol_stringtotime($move->datem)') !== false, 'Dismantling must not reinterpret server SQL datetimes as GMT.');
 assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 30)") !== false, 'Customer invoice future tolerance must be configurable with a 30-minute fallback.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
+assertSameValue(true, substr_count((string) $stockMovementSource, 'a_any.fk_inventorydet=id.rowid') >= 3, 'Inventory anchor queries must distinguish reversed audited inventories from legacy inventory movements.');
+assertSameValue(true, substr_count((string) $stockMovementSource, '(a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))') >= 3, 'Reversed audited inventories must not remain eligible as stock anchors.');
+assertSameValue(true, strpos((string) $stockMovementSource, '$this->getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $invDate)') !== false, 'Backdated inventory handling must search for the next active anchor rather than any immutable inventory movement.');
+assertSameValue(false, strpos((string) $stockMovementSource, 'getNextInventoryMovementAfter') !== false, 'Backdated inventory handling must not retain a raw movement-only anchor lookup.');
+
+$inventoryServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsInventoryService.class.php');
+assertSameValue(true, strpos((string) $inventoryServiceSource, 'e.entity IN (" . getEntity(\'stock\') . ")') !== false, 'Native inventory prefill must limit warehouses to the active Dolibarr stock entity scope.');
+assertSameValue(true, strpos((string) $inventoryServiceSource, 'KreaProductsInventoryLedgerCalculator::excludedMovementOrigins()') !== false, 'Native inventory prefill must exclude every module-owned inventory-ledger origin.');
+assertSameValue(true, strpos((string) $inventoryServiceSource, 'if ($movedCache === false)') !== false, 'Native inventory prefill must abort when movement reconstruction fails.');
+assertSameValue(false, strpos((string) $inventoryServiceSource, "Error loading stock movements: " . '$db->lasterror(), LOG_ERR);\n\t\t\t\tcontinue;') !== false, 'Native inventory prefill must not convert movement-query failures into zero movement.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.0'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.1'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -383,6 +399,10 @@ assertSameValue(false, strpos((string) $actionsSource, 'SET stockable_product ='
 assertSameValue(false, strpos((string) $actionsSource, "GETPOST('stockable_product', 'int')") !== false, 'KreaProducts must not parse the native HTML checkbox value as an integer.');
 
 $mobileInventorySource = file_get_contents(__DIR__.'/../class/KreaProductsMobileInventoryService.class.php');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'private function beginStockTransaction()') !== false, 'Stock mutations must share a checked transaction-start boundary.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'private function commitStockTransaction()') !== false, 'Stock mutations must share a checked transaction-commit boundary.');
+assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->begin();') !== false, 'Stock mutations must not ignore transaction-start failures.');
+assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->commit();') !== false, 'Stock mutations must not ignore transaction-commit failures.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "i.date_inventory >= '") !== false, 'Equal-time inventory anchors must be rejected.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'isInventoryInCurrentCountingWindow') !== false, 'Recorded correction windows must remain enforced.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'isAuditedLegacyKitParentLine') !== false, 'Historical audited kit-parent corrections must retain narrow compatibility.');
@@ -542,7 +562,8 @@ assertSameValue(true, strpos((string) $productionApiSource, 'hasMoExecutionMovem
 assertSameValue(true, strpos((string) $productionApiSource, 'assertWarehouseAvailableForProduction($warehouseId)') !== false, 'Production warehouses must be validated in the active entity scope.');
 assertSameValue(true, strpos((string) $productionApiSource, 'assertProductionThirdpartyAvailable($requestedThirdpartyId)') !== false, 'Production third parties must be validated in the active entity and user scope.');
 assertSameValue(true, strpos((string) $productionApiSource, 'assertProductionProjectAvailable($requestedProjectId)') !== false, 'Production projects must be validated in the active entity and user scope.');
-assertSameValue(true, strpos((string) $productionRunSource, '$this->db->begin();') < strpos((string) $productionRunSource, '$mo->update(DolibarrApiAccess::$user)'), 'The production transaction must start before an existing MO is mutated.');
+assertSameValue(true, strpos((string) $productionRunSource, 'if (!$this->db->begin())') < strpos((string) $productionRunSource, '$mo->update(DolibarrApiAccess::$user)'), 'The checked production transaction must start before an existing MO is mutated.');
+assertSameValue(true, strpos((string) $productionRunSource, 'assertMoLinesSupportedByCoreProductionApi($mo->lines)') < strpos((string) $productionRunSource, '$mosApi->produceAndConsume('), 'Unsupported batch-managed MO lines must be rejected before core stock posting.');
 assertSameValue(false, strpos((string) $productionApiSource, 'CREATE TABLE IF NOT EXISTS'), 'Production requests must not create database tables.');
 assertSameValue(false, strpos((string) $productionApiSource, 'ALTER TABLE '), 'Production requests must not alter database tables.');
 assertSameValue(false, strpos((string) $productionApiSource, 'ensureProductionTraceTables'), 'Production API paths must use read-only schema readiness checks.');
@@ -638,6 +659,8 @@ $reverseEnd = strpos((string) $mobileInventorySource, 'private function requireI
 $reverseSource = substr((string) $mobileInventorySource, $reverseStart, $reverseEnd - $reverseStart);
 assertSameValue(true, strpos((string) $reverseSource, "inventory as i") < strpos((string) $reverseSource, 'kreaproducts_inventory_adjustment as a'), 'Inventory reversal must lock the header before adjustment rows.');
 assertSameValue(true, strpos((string) $reverseSource, 'FOR UPDATE') !== false, 'Inventory reversal must lock its header row.');
+assertSameValue(true, strpos((string) $reverseSource, 'hasLaterActiveInventoryAnchor(') !== false, 'Inventory reversal must reject an older anchor while a later active inventory exists.');
+assertSameValue(true, strpos((string) $reverseSource, '$this->commitStockTransaction();') !== false, 'Inventory reversal must verify its final database commit.');
 
 $bomDismantleSource = file_get_contents(__DIR__.'/../ajax/bom_dismantle.php');
 assertSameValue(true, strpos((string) $bomDismantleSource, 'if (empty($token) ||') !== false, 'The BOM helper must reject a missing CSRF token.');
@@ -658,6 +681,9 @@ $productLabelsSource = file_get_contents(__DIR__.'/../product_labels.php');
 assertSameValue(false, strpos((string) $productLabelsSource, 'ALTER TABLE') !== false, 'Product label requests must never alter the database schema.');
 $restApiSource = file_get_contents(__DIR__.'/../class/api_kreaproducts.class.php');
 assertSameValue(true, strpos((string) $restApiSource, 'protected function failInternalRequest') !== false, 'Internal REST failures must use the centralized logging boundary.');
+assertSameValue(true, strpos((string) $restApiSource, 'Component lot quantity must match the manufacturing-order recipe quantity') !== false, 'Component-lot quantities must not override manufacturing recipe quantities.');
+assertSameValue(true, strpos((string) $restApiSource, 'assertMoLinesSupportedByCoreProductionApi') !== false, 'Production must reject batch-managed MO lines before delegating to an incompatible core API.');
+assertSameValue(true, strpos((string) $restApiSource, "if (!\$this->db->begin())") !== false, 'Production must fail before MO mutation when its outer transaction cannot start.');
 assertSameValue(false, preg_match('/throw new RestException\\([^;\\n]*(?:lasterror|getMessage|->error)/', (string) $restApiSource) === 1, 'REST responses must not interpolate raw database, object, or exception errors.');
 $labelPdfStart = strpos((string) $restApiSource, 'public function postProductionLabelPdf');
 $labelPdfEnd = strpos((string) $restApiSource, 'public function postProductionLabelTspl', $labelPdfStart);
@@ -689,9 +715,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.16.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.16.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.16.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.16.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.16.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.16.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

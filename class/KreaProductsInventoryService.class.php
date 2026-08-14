@@ -19,6 +19,7 @@
  */
 
 require_once DOL_DOCUMENT_ROOT . '/product/inventory/class/inventory.class.php';
+require_once __DIR__.'/KreaProductsInventoryLedgerCalculator.class.php';
 
 class KreaProductsInventoryService
 {
@@ -81,6 +82,7 @@ class KreaProductsInventoryService
 		$sql .= ", " . MAIN_DB_PREFIX . "product as p, " . MAIN_DB_PREFIX . "entrepot as e";
 		$sql .= " WHERE p.entity IN (" . getEntity('product') . ")";
 		$sql .= " AND ps.fk_product = p.rowid AND ps.fk_entrepot = e.rowid";
+		$sql .= " AND e.entity IN (" . getEntity('stock') . ")";
 		if (!getDolGlobalString('STOCK_SUPPORTS_SERVICES')) {
 			$sql .= " AND p.fk_product_type = 0";
 		}
@@ -125,6 +127,9 @@ class KreaProductsInventoryService
 
 		if (!empty($inventoryAnchorDate) && !empty($stockRows)) {
 			$movedCache = $this->loadMovedQuantitiesAfterDate($db, $inventoryAnchorDate, array_values($productIds), array_values($warehouseIdsForMoveLookup));
+			if ($movedCache === false) {
+				return -1;
+			}
 		}
 
 		$error = 0;
@@ -182,7 +187,7 @@ class KreaProductsInventoryService
 	 * @param string $inventoryAnchorDate SQL datetime used as the inventory value date
 	 * @param int[] $productIds Candidate product ids
 	 * @param int[] $warehouseIds Candidate warehouse ids
-	 * @return array<string,float>
+	 * @return array<string,float>|false
 	 */
 	private function loadMovedQuantitiesAfterDate($db, $inventoryAnchorDate, array $productIds, array $warehouseIds)
 	{
@@ -193,19 +198,27 @@ class KreaProductsInventoryService
 		}
 
 		$movedCache = array();
+		$excludedOrigins = array();
+		foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
+			$excludedOrigins[] = "'".$db->escape($origin)."'";
+		}
 		foreach (array_chunk($productIds, 500) as $productChunk) {
-			$sqlMoved = "SELECT fk_product, fk_entrepot, COALESCE(batch, '') as batch_key, COALESCE(SUM(value), 0) as moved";
-			$sqlMoved .= " FROM " . MAIN_DB_PREFIX . "stock_mouvement";
-			$sqlMoved .= " WHERE fk_product IN (" . implode(',', $productChunk) . ")";
-			$sqlMoved .= " AND fk_entrepot IN (" . implode(',', $warehouseIds) . ")";
-			$sqlMoved .= " AND datem > '" . $db->escape($inventoryAnchorDate) . "'";
-			$sqlMoved .= " AND (origintype IS NULL OR origintype <> 'inventory')";
-			$sqlMoved .= " GROUP BY fk_product, fk_entrepot, COALESCE(batch, '')";
+			$sqlMoved = "SELECT sm.fk_product, sm.fk_entrepot, COALESCE(sm.batch, '') as batch_key, COALESCE(SUM(sm.value), 0) as moved";
+			$sqlMoved .= " FROM " . MAIN_DB_PREFIX . "stock_mouvement as sm";
+			$sqlMoved .= " INNER JOIN " . MAIN_DB_PREFIX . "product as p ON p.rowid = sm.fk_product";
+			$sqlMoved .= " AND p.entity IN (" . getEntity('product') . ")";
+			$sqlMoved .= " INNER JOIN " . MAIN_DB_PREFIX . "entrepot as e ON e.rowid = sm.fk_entrepot";
+			$sqlMoved .= " AND e.entity IN (" . getEntity('stock') . ")";
+			$sqlMoved .= " WHERE sm.fk_product IN (" . implode(',', $productChunk) . ")";
+			$sqlMoved .= " AND sm.fk_entrepot IN (" . implode(',', $warehouseIds) . ")";
+			$sqlMoved .= " AND sm.datem > '" . $db->escape($inventoryAnchorDate) . "'";
+			$sqlMoved .= " AND (sm.origintype IS NULL OR sm.origintype NOT IN (" . implode(', ', $excludedOrigins) . "))";
+			$sqlMoved .= " GROUP BY sm.fk_product, sm.fk_entrepot, COALESCE(sm.batch, '')";
 
 			$resMoved = $db->query($sqlMoved);
 			if (!$resMoved) {
 				dol_syslog(__METHOD__ . " Error loading stock movements: " . $db->lasterror(), LOG_ERR);
-				continue;
+				return false;
 			}
 
 			while ($obj = $db->fetch_object($resMoved)) {

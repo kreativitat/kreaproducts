@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.16.1] - 2026-08-14
+
+### Fixed
+
+- Enforced manufacturing recipe quantities in production requests.
+- Excluded reversed inventories from stock anchors.
+- Blocked reversal of inventories superseded by later physical counts.
+- Failed closed on stock transaction and inventory-prefill errors.
+- Rejected unsupported batch-managed production lines before stock posting.
+
 ## [4.16.0] - 2026-08-13
 
 ### Added
