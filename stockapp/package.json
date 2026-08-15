@@ -3,7 +3,7 @@
   "author": "Kreativität Works <mail@kreativitat.com>",
   "license": "GPL-3.0-or-later",
   "private": true,
-  "version": "4.16.1",
+  "version": "4.16.2",
   "type": "module",
   "scripts": {
     "dev": "vite",

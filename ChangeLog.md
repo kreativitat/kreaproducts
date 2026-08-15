@@ -1,6 +1,15 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.16.2] - 2026-08-15
+
+### Fixed
+
+- Restored the configured default time for inventory value dates.
+- Recalculated stock with movements posted after the inventory time.
+- Prevented future source invoice clocks from blocking inventory reconstruction.
+- Displayed saved inventory labels in the inventory list.
+
 ## [4.16.1] - 2026-08-14
 
 ### Fixed

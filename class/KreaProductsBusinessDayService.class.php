@@ -23,14 +23,14 @@ class KreaProductsBusinessDayService
 	/**
 	 * @param int             $entryTimestamp Entry timestamp
 	 * @param DateTimeZone    $timezone       Entity/user timezone
-	 * @param string          $closingTime    Business-day close marker
+	 * @param string          $inventoryTime  Configured inventory value time
 	 * @param string          $entryCutoff    Start of the next counting window
 	 * @return int
 	 * @throws InvalidArgumentException
 	 */
-	public function resolveInventoryValueTimestamp($entryTimestamp, DateTimeZone $timezone, $closingTime = '06:00', $entryCutoff = '20:00')
+	public function resolveInventoryValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '10:30', $entryCutoff = '20:00')
 	{
-		$closingTime = $this->normalizeTime($closingTime, 'closing time');
+		$inventoryTime = $this->normalizeTime($inventoryTime, 'inventory time');
 		$entryCutoff = $this->normalizeTime($entryCutoff, 'entry cutoff');
 		$entry = (new DateTimeImmutable('@'.((int) $entryTimestamp)))->setTimezone($timezone);
 		$targetDate = $entry->format('Y-m-d');
@@ -39,8 +39,8 @@ class KreaProductsBusinessDayService
 			$targetDate = $entry->modify('+1 day')->format('Y-m-d');
 		}
 
-		$valueDate = new DateTimeImmutable($targetDate.' '.$closingTime, $timezone);
-		return $valueDate->modify('+1 minute')->getTimestamp();
+		$valueDate = new DateTimeImmutable($targetDate.' '.$inventoryTime, $timezone);
+		return $valueDate->getTimestamp();
 	}
 
 	/**

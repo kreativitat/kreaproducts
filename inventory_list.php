@@ -158,6 +158,7 @@ include DOL_DOCUMENT_ROOT.'/core/tpl/extrafields_list_array_fields.tpl.php';
 
 $defaultchecked = array(
 	't.ref',
+	't.title',
 	't.fk_warehouse',
 	't.date_inventory',
 	't.date_creation',
@@ -170,7 +171,7 @@ foreach ($defaultchecked as $fieldkey) {
 		$arrayfields[$fieldkey]['checked'] = 1;
 	}
 }
-$forceunchecked = array('t.fk_product', 't.title');
+$forceunchecked = array('t.fk_product');
 foreach ($forceunchecked as $fieldkey) {
 	if (isset($arrayfields[$fieldkey])) {
 		$arrayfields[$fieldkey]['checked'] = 0;

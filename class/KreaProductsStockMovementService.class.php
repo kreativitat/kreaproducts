@@ -109,9 +109,10 @@ class KreaProductsStockMovementService
 	 * @param MouvementStock $move Customer invoice stock movement
 	 * @param DoliDB         $db   Database handler
 	 * @param Conf           $conf Dolibarr configuration
+	 * @param bool           $keepExistingDateOnFuture Keep the persisted movement date during inventory reconstruction when the source clock exceeds tolerance
 	 * @return bool
 	 */
-	protected function shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf)
+	protected function shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf, $keepExistingDateOnFuture = false)
 	{
 		if (empty($move->origin_id)) {
 			return true;
@@ -148,6 +149,14 @@ class KreaProductsStockMovementService
 			$invoiceTimestamp = $this->resolveCustomerInvoiceDateTimeTimestamp($invoiceDateTime, $conf);
 			$futureToleranceMinutes = min(1440, max(0, getDolGlobalInt('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 30)));
 			if ($invoiceTimestamp > dol_now() + ($futureToleranceMinutes * 60)) {
+				if ($keepExistingDateOnFuture && !empty($move->datem)) {
+					dol_syslog(
+						__METHOD__.' Keeping existing customer movement datetime '.(string) $move->datem
+						.' because source datetime '.(string) $invoiceDateTime.' exceeds the configured future tolerance during inventory reconstruction',
+						LOG_WARNING
+					);
+					return true;
+				}
 				dol_syslog(__METHOD__.' Refusing future customer invoice datetime '.(string) $invoiceDateTime, LOG_ERR);
 				return false;
 			}
@@ -227,7 +236,7 @@ class KreaProductsStockMovementService
 			$move->fk_entrepot = (int) $row->fk_entrepot;
 			$move->batch = (string) $row->batch;
 			$move->datem = (string) $row->datem;
-			if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf)) {
+			if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf, true)) {
 				return false;
 			}
 			if (!$this->recalculateAfterOperationalMovement($move, $db, $conf, $user)) {

@@ -780,12 +780,8 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
 		}
 		$allowedLineIds = array();
-		$hadSavedCount = false;
 		while ($obj = $this->db->fetch_object($resql)) {
 			$allowedLineIds[(int) $obj->rowid] = true;
-			if (!is_null($obj->qty_view)) {
-				$hadSavedCount = true;
-			}
 		}
 		$this->db->free($resql);
 		foreach ($counts as $count) {
@@ -826,21 +822,17 @@ class KreaProductsMobileInventoryService
 			}
 		}
 
-		if (!$error) {
-			if ($valueDateSql === '' && !$hadSavedCount) {
-				$sql = 'SELECT rowid FROM '.$this->db->prefix().'inventorydet';
-				$sql .= ' WHERE fk_inventory = '.((int) $inventoryId).' AND qty_view IS NOT NULL';
-				$sql .= $this->db->plimit(1, 0);
-				$resql = $this->db->query($sql);
-				if (!$resql) {
-					$error++;
-					$errorMessage = $this->db->lasterror();
-				} elseif ($this->db->num_rows($resql) > 0) {
-					$valueDateSql = $this->db->idate($this->resolveInventoryValueTimestamp(dol_now()));
-				}
-				if ($resql) {
-					$this->db->free($resql);
-				}
+		if (!$error && $valueDateSql === '') {
+			$lockedValueDate = is_numeric($lockedInventory->date_inventory)
+				? $this->db->idate((int) $lockedInventory->date_inventory)
+				: (string) $lockedInventory->date_inventory;
+			try {
+				$valueDateSql = $this->db->idate(
+					$this->resolveEditableInventoryValueTimestamp(substr($lockedValueDate, 0, 10))
+				);
+			} catch (InvalidArgumentException $exception) {
+				$error++;
+				$errorMessage = $this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID');
 			}
 		}
 
@@ -1249,7 +1241,7 @@ class KreaProductsMobileInventoryService
 			$inventory->date_inventory = $businessDayService->resolveInventoryValueTimestamp(
 				$legacyEntryTimestamp > 0 ? $legacyEntryTimestamp : dol_now(),
 				$this->getOperationTimezone(),
-				getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00'),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
 				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
 			);
 			$sql = 'UPDATE '.$this->db->prefix().'inventory';
@@ -2493,7 +2485,7 @@ class KreaProductsMobileInventoryService
 		return $businessDayService->resolveInventoryValueTimestamp(
 			(int) $entryTimestamp,
 			$this->getOperationTimezone(),
-			getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00'),
+			getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
 			getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
 		);
 	}
@@ -2508,12 +2500,11 @@ class KreaProductsMobileInventoryService
 	private function resolveEditableInventoryValueTimestamp($calendarDate)
 	{
 		$businessDayService = new KreaProductsBusinessDayService();
-		$closingTimestamp = $businessDayService->resolveDateTimestamp(
+		return $businessDayService->resolveDateTimestamp(
 			(string) $calendarDate,
 			$this->getOperationTimezone(),
-			getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')
+			getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')
 		);
-		return $closingTimestamp + 60;
 	}
 
 	/**

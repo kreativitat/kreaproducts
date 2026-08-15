@@ -105,21 +105,21 @@ $timezone = new DateTimeZone('Europe/Lisbon');
 $businessDay = new KreaProductsBusinessDayService();
 
 $entry = new DateTimeImmutable('2026-07-12 01:30:00', $timezone);
-$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '06:00', '20:00');
-assertSameValue('2026-07-12 06:01:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Early-morning count window failed.');
+$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
+assertSameValue('2026-07-12 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Early-morning count window failed.');
 
 $entry = new DateTimeImmutable('2026-07-12 19:59:59', $timezone);
-$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '06:00', '20:00');
-assertSameValue('2026-07-12 06:01:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Pre-cutoff count window failed.');
+$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
+assertSameValue('2026-07-12 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Pre-cutoff count window failed.');
 
 $entry = new DateTimeImmutable('2026-07-12 20:00:00', $timezone);
-$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '06:00', '20:00');
-assertSameValue('2026-07-13 06:01:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Cutoff boundary failed.');
+$valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
+assertSameValue('2026-07-13 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Cutoff boundary failed.');
 
 $supplierTimestamp = $businessDay->resolveDateTimestamp('2026-07-12', $timezone, '10:00');
 assertSameValue('2026-07-12 10:00:00', (new DateTimeImmutable('@'.$supplierTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Supplier time normalization failed.');
-$editableValueTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '06:00') + 60;
-assertSameValue('2026-07-11 06:01:00', (new DateTimeImmutable('@'.$editableValueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Editable value-date anchor failed.');
+$editableValueTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '10:30');
+assertSameValue('2026-07-11 10:30:00', (new DateTimeImmutable('@'.$editableValueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Editable value-date anchor failed.');
 $autoCloseTimestamp = $businessDay->resolveInventoryAutoCloseTimestamp($editableValueTimestamp, $timezone, '20:00', 15);
 assertSameValue('2026-07-11 19:45:00', (new DateTimeImmutable('@'.$autoCloseTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Automatic inventory closure threshold failed.');
 
@@ -186,6 +186,8 @@ assertSameValue(true, strpos((string) $stockMovementSource, '$db->jdate($move->d
 assertSameValue(false, strpos((string) $stockMovementSource, 'dol_stringtotime($move->datem)') !== false, 'Dismantling must not reinterpret server SQL datetimes as GMT.');
 assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 30)") !== false, 'Customer invoice future tolerance must be configurable with a 30-minute fallback.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf, true)') !== false, 'Inventory reconstruction must retain the persisted movement date when a future source clock exceeds tolerance.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf))') !== false, 'Live customer movement ingestion must continue to reject future source clocks beyond tolerance.');
 assertSameValue(true, substr_count((string) $stockMovementSource, 'a_any.fk_inventorydet=id.rowid') >= 3, 'Inventory anchor queries must distinguish reversed audited inventories from legacy inventory movements.');
 assertSameValue(true, substr_count((string) $stockMovementSource, '(a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))') >= 3, 'Reversed audited inventories must not remain eligible as stock anchors.');
 assertSameValue(true, strpos((string) $stockMovementSource, '$this->getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $invDate)') !== false, 'Backdated inventory handling must search for the next active anchor rather than any immutable inventory movement.');
@@ -198,7 +200,7 @@ assertSameValue(true, strpos((string) $inventoryServiceSource, 'if ($movedCache 
 assertSameValue(false, strpos((string) $inventoryServiceSource, "Error loading stock movements: " . '$db->lasterror(), LOG_ERR);\n\t\t\t\tcontinue;') !== false, 'Native inventory prefill must not convert movement-query failures into zero movement.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.1'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.2'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -401,6 +403,8 @@ assertSameValue(false, strpos((string) $actionsSource, "GETPOST('stockable_produ
 $mobileInventorySource = file_get_contents(__DIR__.'/../class/KreaProductsMobileInventoryService.class.php');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'private function beginStockTransaction()') !== false, 'Stock mutations must share a checked transaction-start boundary.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'private function commitStockTransaction()') !== false, 'Stock mutations must share a checked transaction-commit boundary.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')") !== false, 'Inventory value timestamps must use the configured default inventory time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'getMovementQuantityAfterValueDate(') !== false, 'Inventory reconstruction must retain operational movements posted after the configured inventory time.');
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->begin();') !== false, 'Stock mutations must not ignore transaction-start failures.');
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->commit();') !== false, 'Stock mutations must not ignore transaction-commit failures.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "i.date_inventory >= '") !== false, 'Equal-time inventory anchors must be rejected.');
@@ -519,6 +523,7 @@ assertSameValue(true, strpos((string) $mobileInventorySource, "c.entity IN ('.ge
 
 $inventoryListSource = file_get_contents(__DIR__.'/../inventory_list.php');
 assertSameValue(true, strpos((string) $inventoryListSource, "\$object->fields['date_inventory']['type'] = 'date'") !== false, 'The Dolibarr inventory list must display the value date without time.');
+assertSameValue(true, strpos((string) $inventoryListSource, "'t.title',") !== false, 'The inventory list must display the saved label by default.');
 assertSameValue(false, strpos((string) $mobileAppSource, 'formatDateTime(item.date_inventory') !== false, 'The mobile inventory list must not display the value-date ordering time.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'formatDate(item.date_inventory || item.date_creation)') !== false, 'The mobile inventory list must display the value date as a calendar date.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'Data valor') !== false, 'The mobile initiated inventory must expose the concise value-date label.');
@@ -715,9 +720,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.16.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.16.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.16.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.16.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.16.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.16.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');
