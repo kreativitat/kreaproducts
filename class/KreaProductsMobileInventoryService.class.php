@@ -361,6 +361,9 @@ class KreaProductsMobileInventoryService
 		foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
 			$excludedOrigins[] = "'".$this->db->escape($origin)."'";
 		}
+		if ((int) $inventory->status === Inventory::STATUS_VALIDATED) {
+			return $this->loadOpenInventoryVirtualStockAtBusinessDayClose($inventory, $closingTimestamp, $excludedOrigins);
+		}
 
 		$sql = 'SELECT id.rowid, id.qty_stock, COALESCE(SUM(sm.value), 0) as moved';
 		$sql .= ' FROM '.$this->db->prefix().'inventorydet as id';
@@ -390,6 +393,55 @@ class KreaProductsMobileInventoryService
 				(float) $obj->moved,
 				$closingTimestamp,
 				$anchorTimestamp
+			);
+		}
+		$this->db->free($resql);
+
+		return $virtualStock;
+	}
+
+	/**
+	 * Reconstruct an open inventory from live stock because its persisted
+	 * qty_stock has not yet been finalized by the recording lifecycle.
+	 *
+	 * @param object   $inventory        Entity-scoped open inventory
+	 * @param int      $closingTimestamp Configured billing-day close
+	 * @param string[] $excludedOrigins  Inventory-ledger origins to ignore
+	 * @return array<int,float>
+	 */
+	private function loadOpenInventoryVirtualStockAtBusinessDayClose($inventory, $closingTimestamp, array $excludedOrigins)
+	{
+		$sql = "SELECT id.rowid, CASE WHEN COALESCE(id.batch, '') = ''";
+		$sql .= ' THEN COALESCE(ps.reel, 0) ELSE COALESCE(pb.qty, 0) END as current_qty,';
+		$sql .= ' COALESCE(SUM(sm.value), 0) as moved';
+		$sql .= ' FROM '.$this->db->prefix().'inventorydet as id';
+		$sql .= ' INNER JOIN '.$this->db->prefix().'product as p ON p.rowid = id.fk_product';
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' INNER JOIN '.$this->db->prefix().'entrepot as e ON e.rowid = id.fk_warehouse';
+		$sql .= ' AND e.entity IN ('.getEntity('stock').')';
+		$sql .= ' LEFT JOIN '.$this->db->prefix().'product_stock as ps ON ps.fk_product = id.fk_product';
+		$sql .= ' AND ps.fk_entrepot = id.fk_warehouse';
+		$sql .= ' LEFT JOIN '.$this->db->prefix().'product_batch as pb ON pb.fk_product_stock = ps.rowid';
+		$sql .= ' AND pb.batch = id.batch';
+		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement as sm ON sm.fk_product = id.fk_product';
+		$sql .= ' AND sm.fk_entrepot = id.fk_warehouse';
+		$sql .= " AND sm.datem > '".$this->db->escape($this->db->idate($closingTimestamp))."'";
+		$sql .= ' AND (sm.origintype IS NULL OR sm.origintype NOT IN ('.implode(', ', $excludedOrigins).'))';
+		$sql .= " AND ((COALESCE(id.batch, '') = '' AND (sm.batch = '' OR sm.batch IS NULL)) OR sm.batch = id.batch)";
+		$sql .= ' WHERE id.fk_inventory = '.((int) $inventory->rowid);
+		$sql .= ' GROUP BY id.rowid, id.batch, ps.reel, pb.qty';
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' inventory='.(int) $inventory->rowid.' error='.$this->db->lasterror(), LOG_ERR);
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_LOAD_VIRTUAL_STOCK'), 500);
+		}
+
+		$virtualStock = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$virtualStock[(int) $obj->rowid] = KreaProductsInventoryLedgerCalculator::expectedQuantityAtValueDate(
+				(float) $obj->current_qty,
+				(float) $obj->moved
 			);
 		}
 		$this->db->free($resql);

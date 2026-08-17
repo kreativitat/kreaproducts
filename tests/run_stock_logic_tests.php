@@ -204,7 +204,7 @@ assertSameValue(true, strpos((string) $inventoryServiceSource, 'if ($movedCache 
 assertSameValue(false, strpos((string) $inventoryServiceSource, "Error loading stock movements: " . '$db->lasterror(), LOG_ERR);\n\t\t\t\tcontinue;') !== false, 'Native inventory prefill must not convert movement-query failures into zero movement.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.3'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.4'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -410,6 +410,8 @@ assertSameValue(true, strpos((string) $mobileInventorySource, 'private function 
 assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')") !== false, 'Inventory value timestamps must use the configured default inventory time.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')") !== false, 'Displayed virtual stock must use the configured billing-day close time.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'virtual_stock_at_business_close') !== false, 'Inventory analysis must expose a distinct close-time virtual stock value.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'loadOpenInventoryVirtualStockAtBusinessDayClose') !== false, 'Open inventories must reconstruct close-time stock from the live ledger.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'THEN COALESCE(ps.reel, 0) ELSE COALESCE(pb.qty, 0) END as current_qty') !== false, 'Open close-time reconstruction must support product and batch stock.');
 assertSameValue(true, strpos((string) file_get_contents(__DIR__.'/../inventory.php'), "\$line['virtual_stock_at_business_close']") !== false, 'The inventory page must display close-time virtual stock rather than the adjustment anchor.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'getMovementQuantityAfterValueDate(') !== false, 'Inventory reconstruction must retain operational movements posted after the configured inventory time.');
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->begin();') !== false, 'Stock mutations must not ignore transaction-start failures.');
@@ -727,9 +729,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.16.3', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.16.3', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.16.3', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.16.4', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.16.4', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.16.4', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

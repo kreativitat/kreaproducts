@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.16.4] - 2026-08-17
+
+### Fixed
+
+- Reconstructed open-inventory virtual stock from the live ledger at billing close.
+
 ## [4.16.3] - 2026-08-17
 
 ### Fixed
