@@ -120,6 +120,10 @@ $supplierTimestamp = $businessDay->resolveDateTimestamp('2026-07-12', $timezone,
 assertSameValue('2026-07-12 10:00:00', (new DateTimeImmutable('@'.$supplierTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Supplier time normalization failed.');
 $editableValueTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '10:30');
 assertSameValue('2026-07-11 10:30:00', (new DateTimeImmutable('@'.$editableValueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Editable value-date anchor failed.');
+$billingCloseTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '06:00');
+assertSameValue(84.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -44, $billingCloseTimestamp, $editableValueTimestamp), 'Billing-close stock before the inventory anchor failed.');
+assertSameValue(37.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -3, $editableValueTimestamp, $billingCloseTimestamp), 'Billing-close stock after the inventory anchor failed.');
+assertSameValue(40.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -3, $editableValueTimestamp, $editableValueTimestamp), 'Equal billing-close and inventory anchors must preserve stock.');
 $autoCloseTimestamp = $businessDay->resolveInventoryAutoCloseTimestamp($editableValueTimestamp, $timezone, '20:00', 15);
 assertSameValue('2026-07-11 19:45:00', (new DateTimeImmutable('@'.$autoCloseTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Automatic inventory closure threshold failed.');
 
@@ -200,7 +204,7 @@ assertSameValue(true, strpos((string) $inventoryServiceSource, 'if ($movedCache 
 assertSameValue(false, strpos((string) $inventoryServiceSource, "Error loading stock movements: " . '$db->lasterror(), LOG_ERR);\n\t\t\t\tcontinue;') !== false, 'Native inventory prefill must not convert movement-query failures into zero movement.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.2'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.3'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -404,6 +408,9 @@ $mobileInventorySource = file_get_contents(__DIR__.'/../class/KreaProductsMobile
 assertSameValue(true, strpos((string) $mobileInventorySource, 'private function beginStockTransaction()') !== false, 'Stock mutations must share a checked transaction-start boundary.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'private function commitStockTransaction()') !== false, 'Stock mutations must share a checked transaction-commit boundary.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')") !== false, 'Inventory value timestamps must use the configured default inventory time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')") !== false, 'Displayed virtual stock must use the configured billing-day close time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'virtual_stock_at_business_close') !== false, 'Inventory analysis must expose a distinct close-time virtual stock value.');
+assertSameValue(true, strpos((string) file_get_contents(__DIR__.'/../inventory.php'), "\$line['virtual_stock_at_business_close']") !== false, 'The inventory page must display close-time virtual stock rather than the adjustment anchor.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'getMovementQuantityAfterValueDate(') !== false, 'Inventory reconstruction must retain operational movements posted after the configured inventory time.');
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->begin();') !== false, 'Stock mutations must not ignore transaction-start failures.');
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->commit();') !== false, 'Stock mutations must not ignore transaction-commit failures.');
@@ -720,9 +727,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.16.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.16.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.16.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.16.3', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.16.3', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.16.3', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

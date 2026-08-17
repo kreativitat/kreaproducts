@@ -48,6 +48,25 @@ class KreaProductsInventoryLedgerCalculator
 	}
 
 	/**
+	 * Reconstruct stock at a target clock from an immutable inventory anchor.
+	 *
+	 * @param float $anchorQuantity     Stock stored at the inventory anchor
+	 * @param float $movementQuantity   Net operational movement between target and anchor
+	 * @param int   $targetTimestamp    Requested stock timestamp
+	 * @param int   $anchorTimestamp    Inventory anchor timestamp
+	 * @return float
+	 */
+	public static function quantityAtTimestampFromAnchor($anchorQuantity, $movementQuantity, $targetTimestamp, $anchorTimestamp)
+	{
+		if ((int) $targetTimestamp === (int) $anchorTimestamp) {
+			return (float) price2num((float) $anchorQuantity, 'MS');
+		}
+
+		$direction = (int) $targetTimestamp < (int) $anchorTimestamp ? -1 : 1;
+		return (float) price2num(((float) $anchorQuantity) + ($direction * (float) $movementQuantity), 'MS');
+	}
+
+	/**
 	 * @return string[]
 	 */
 	public static function excludedMovementOrigins()

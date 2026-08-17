@@ -229,6 +229,9 @@ class KreaProductsMobileInventoryService
 		$canViewInventoryAnalysis = $this->canViewInventoryAnalysis();
 		$inventory = $this->fetchInventoryRecord((int) $inventoryId);
 		$this->normalizeInitiatedTechnicalReference($inventory);
+		$virtualStockAtBusinessClose = $canViewInventoryAnalysis
+			? $this->loadVirtualStockAtBusinessDayClose($inventory)
+			: array();
 
 		$sql = 'SELECT id.rowid, id.fk_product, id.fk_warehouse, id.batch, id.qty_stock, id.qty_view,';
 		$sql .= ' p.ref, p.label, p.barcode, p.tobatch';
@@ -242,7 +245,6 @@ class KreaProductsMobileInventoryService
 		if (!$resql) {
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
 		}
-
 		$lines = array();
 		$counted = 0;
 		while ($obj = $this->db->fetch_object($resql)) {
@@ -263,6 +265,9 @@ class KreaProductsMobileInventoryService
 			);
 			if ($canViewInventoryAnalysis) {
 				$line['expected_quantity'] = (float) $obj->qty_stock;
+				$line['virtual_stock_at_business_close'] = array_key_exists((int) $obj->rowid, $virtualStockAtBusinessClose)
+					? (float) $virtualStockAtBusinessClose[(int) $obj->rowid]
+					: (float) $obj->qty_stock;
 			}
 			$lines[] = $line;
 		}
@@ -318,6 +323,78 @@ class KreaProductsMobileInventoryService
 			'can_view_analysis' => $canViewInventoryAnalysis ? 1 : 0,
 			'lines' => $lines,
 		);
+	}
+
+	/**
+	 * Load the display-only virtual stock at the configured billing-day close.
+	 *
+	 * The persisted qty_stock remains the inventory adjustment anchor. This method
+	 * reconstructs only the value shown in inventory.php and its deviation columns.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @return array<int,float> Inventory line ID to close-time virtual stock
+	 */
+	private function loadVirtualStockAtBusinessDayClose($inventory)
+	{
+		$anchorTimestamp = (int) $this->db->jdate($inventory->date_inventory);
+		if ($anchorTimestamp <= 0) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_LOAD_VIRTUAL_STOCK'), 500);
+		}
+
+		$timezone = $this->getOperationTimezone();
+		$anchorDate = (new DateTimeImmutable('@'.$anchorTimestamp))->setTimezone($timezone);
+		$businessDayService = new KreaProductsBusinessDayService();
+		try {
+			$closingTimestamp = $businessDayService->resolveDateTimestamp(
+				$anchorDate->format('Y-m-d'),
+				$timezone,
+				getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')
+			);
+		} catch (InvalidArgumentException $exception) {
+			dol_syslog(__METHOD__.' inventory='.(int) $inventory->rowid.' invalid billing-day close configuration', LOG_ERR);
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_LOAD_VIRTUAL_STOCK'), 500);
+		}
+
+		$rangeStart = min($closingTimestamp, $anchorTimestamp);
+		$rangeEnd = max($closingTimestamp, $anchorTimestamp);
+		$excludedOrigins = array();
+		foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
+			$excludedOrigins[] = "'".$this->db->escape($origin)."'";
+		}
+
+		$sql = 'SELECT id.rowid, id.qty_stock, COALESCE(SUM(sm.value), 0) as moved';
+		$sql .= ' FROM '.$this->db->prefix().'inventorydet as id';
+		$sql .= ' INNER JOIN '.$this->db->prefix().'product as p ON p.rowid = id.fk_product';
+		$sql .= ' AND p.entity IN ('.getEntity('product').')';
+		$sql .= ' INNER JOIN '.$this->db->prefix().'entrepot as e ON e.rowid = id.fk_warehouse';
+		$sql .= ' AND e.entity IN ('.getEntity('stock').')';
+		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement as sm ON sm.fk_product = id.fk_product';
+		$sql .= ' AND sm.fk_entrepot = id.fk_warehouse';
+		$sql .= " AND sm.datem > '".$this->db->escape($this->db->idate($rangeStart))."'";
+		$sql .= " AND sm.datem <= '".$this->db->escape($this->db->idate($rangeEnd))."'";
+		$sql .= ' AND (sm.origintype IS NULL OR sm.origintype NOT IN ('.implode(', ', $excludedOrigins).'))';
+		$sql .= " AND ((COALESCE(id.batch, '') = '' AND (sm.batch = '' OR sm.batch IS NULL)) OR sm.batch = id.batch)";
+		$sql .= ' WHERE id.fk_inventory = '.((int) $inventory->rowid);
+		$sql .= ' GROUP BY id.rowid, id.qty_stock';
+
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__.' inventory='.(int) $inventory->rowid.' error='.$this->db->lasterror(), LOG_ERR);
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_LOAD_VIRTUAL_STOCK'), 500);
+		}
+
+		$virtualStock = array();
+		while ($obj = $this->db->fetch_object($resql)) {
+			$virtualStock[(int) $obj->rowid] = KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(
+				(float) $obj->qty_stock,
+				(float) $obj->moved,
+				$closingTimestamp,
+				$anchorTimestamp
+			);
+		}
+		$this->db->free($resql);
+
+		return $virtualStock;
 	}
 
 	/**

@@ -468,7 +468,7 @@ print '</tr>';
 foreach ($inventory['lines'] as $line) {
 	$isCounted = !empty($line['counted']);
 	$value = $isCounted ? (string) $line['quantity'] : '';
-	$expectedQuantity = $canViewInventoryAnalysis ? (float) $line['expected_quantity'] : 0.0;
+	$expectedQuantity = $canViewInventoryAnalysis ? (float) $line['virtual_stock_at_business_close'] : 0.0;
 	$absoluteDeviation = $canViewInventoryAnalysis && $isCounted ? (float) $line['quantity'] - $expectedQuantity : null;
 	$relativeDeviation = $canViewInventoryAnalysis && $isCounted && abs($expectedQuantity) >= 0.0001
 		? $absoluteDeviation / abs($expectedQuantity) * 100
