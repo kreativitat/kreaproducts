@@ -73,7 +73,7 @@ if (getDolGlobalString('MAIN_USE_ADVANCED_PERMS')
 
 $service = new KreaProductsMobileInventoryService($db, $user, $langs, $conf);
 $inventoryJs = array('/custom/kreaproducts/js/kreaproducts_inventory.js');
-$isWriteAction = in_array($action, array('start_inventory', 'save_counts', 'save_and_close', 'confirm_close', 'confirm_delete', 'confirm_reverse'), true);
+$isWriteAction = in_array($action, array('start_inventory', 'save_counts', 'save_and_close', 'confirm_close', 'confirm_delete', 'confirm_edit'), true);
 if ($isWriteAction && (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
 	|| !hash_equals((string) currentToken(), (string) GETPOST('token', 'alphanohtml')))
 ) {
@@ -124,12 +124,13 @@ if ($id <= 0) {
 	print '<a href="'.dol_escape_htmltag($categoryReturnUrl).'">'.$langs->trans('BackToList').'</a>';
 	print '</li></ul></div><div class="clearboth"></div>';
 	print '<p class="opacitymedium">'.$langs->trans('KREAPRODUCTS_INVENTORY_SELECT_CATEGORY').'</p>';
-	$blockingOpenInventory = !empty($templateData['blocking_open_inventory']) ? $templateData['blocking_open_inventory'] : null;
-	if ($blockingOpenInventory) {
-		$blockingUrl = $_SERVER['PHP_SELF'].'?id='.((int) $blockingOpenInventory['id']);
+	$mutationWindow = !empty($templateData['mutation_window']) ? $templateData['mutation_window'] : array();
+	$mutationLocked = !empty($mutationWindow['active']);
+	if ($mutationLocked) {
 		print '<div class="warning">'.img_warning().' '.$langs->trans(
-			'KREAPRODUCTS_INVENTORY_OPEN_BLOCKED_LINK',
-			'<a href="'.dol_escape_htmltag($blockingUrl).'">'.dol_escape_htmltag((string) $blockingOpenInventory['ref']).'</a>'
+			'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
+			(string) $mutationWindow['start_time'],
+			(string) $mutationWindow['end_time']
 		).'</div><br>';
 	}
 	print '<div class="div-table-responsive-no-min">';
@@ -141,20 +142,25 @@ if ($id <= 0) {
 	print '</tr>';
 	foreach ($templateData['templates'] as $template) {
 		$openInventory = !empty($template['open_inventory']) ? $template['open_inventory'] : null;
-		$isBlockedByOtherOpenInventory = $blockingOpenInventory && !$openInventory;
 		$categoryButtonClass = $openInventory ? 'kps-category-existing' : 'kps-category-new';
 		print '<tr class="oddeven">';
 		print '<td><strong>'.dol_escape_htmltag((string) $template['label']).'</strong></td>';
 		print '<td class="right">'.((int) $template['product_count']).'</td>';
 		print '<td class="right">';
-		print '<form method="POST" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'" class="kps-category-card">';
-		print '<input type="hidden" name="token" value="'.newToken().'">';
-		print '<input type="hidden" name="action" value="start_inventory">';
-		print '<input type="hidden" name="category_id" value="'.((int) $template['id']).'">';
-		print '<button type="submit" class="button kps-category-action '.$categoryButtonClass.'" data-loading-label="'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_OPENING')).'"'.(!$service->canCount() || $isBlockedByOtherOpenInventory ? ' disabled="disabled"' : '').'>';
-		print $openInventory ? $langs->trans('KREAPRODUCTS_INVENTORY_CONTINUE') : $langs->trans('KREAPRODUCTS_INVENTORY_START');
-		print '</button>';
-		print '</form>';
+		if ($openInventory) {
+			print '<a class="button kps-category-action '.$categoryButtonClass.'" href="'.dol_escape_htmltag($_SERVER['PHP_SELF'].'?id='.((int) $openInventory['id'])).'">';
+			print $langs->trans('KREAPRODUCTS_INVENTORY_CONTINUE');
+			print '</a>';
+		} else {
+			print '<form method="POST" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'" class="kps-category-card">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+			print '<input type="hidden" name="action" value="start_inventory">';
+			print '<input type="hidden" name="category_id" value="'.((int) $template['id']).'">';
+			print '<button type="submit" class="button kps-category-action '.$categoryButtonClass.'" data-loading-label="'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_OPENING')).'"'.(!$service->canCount() || $mutationLocked ? ' disabled="disabled"' : '').'>';
+			print $langs->trans('KREAPRODUCTS_INVENTORY_START');
+			print '</button>';
+			print '</form>';
+		}
 		print '</td></tr>';
 	}
 	print '</table>';
@@ -218,7 +224,12 @@ try {
 		$selectedValueDate = !empty($inventory['can_edit_value_date']) && GETPOSTISSET('date_inventory')
 			? GETPOST('date_inventory', 'alphanohtml')
 			: '';
-		$inventory = $service->saveCounts($id, $counts, $selectedValueDate);
+		$inventory = $service->saveCounts(
+			$id,
+			$counts,
+			$selectedValueDate,
+			GETPOSTINT('confirm_post_cutoff_date') === 1
+		);
 		setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_COUNTS_SAVED'), null, 'mesgs');
 		if ($continueToClose) {
 			header('Location: '.$_SERVER['PHP_SELF'].'?id='.$id.'&action=close_inventory');
@@ -235,9 +246,10 @@ try {
 		setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_DELETED'), null, 'mesgs');
 		header('Location: '.dol_buildpath('/custom/kreaproducts/inventory_list.php', 1));
 		exit;
-	} elseif ($action === 'confirm_reverse' && $confirm === 'yes') {
-		$inventory = $service->reverseInventory($id);
-		setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_REVERSED'), null, 'mesgs');
+	} elseif ($action === 'confirm_edit' && $confirm === 'yes') {
+		$inventory = $service->editInventory($id);
+		$object->fetch($id);
+		setEventMessages($langs->trans('KREAPRODUCTS_INVENTORY_REOPENED'), null, 'mesgs');
 		$action = '';
 	}
 } catch (KreaProductsStockApiException $exception) {
@@ -273,12 +285,12 @@ if ($action === 'close_inventory' && !empty($inventory['can_close'])) {
 		0,
 		$confirmationUseAjax
 	);
-} elseif ($action === 'reverse_inventory' && !empty($inventory['can_reverse'])) {
+} elseif ($action === 'edit_inventory' && !empty($inventory['can_edit'])) {
 	$formconfirm = $form->formconfirm(
 		$_SERVER['PHP_SELF'].'?id='.$id,
-		$langs->trans('KREAPRODUCTS_INVENTORY_REVERSE_ACTION'),
-		$langs->trans('KREAPRODUCTS_INVENTORY_REVERSE_CONFIRM'),
-		'confirm_reverse',
+		$langs->trans('Edit'),
+		$langs->trans('KREAPRODUCTS_INVENTORY_EDIT_CONFIRM'),
+		'confirm_edit',
 		'',
 		0,
 		$confirmationUseAjax
@@ -291,6 +303,9 @@ print '<style>';
 print 'div.tabsAction>.kps-inventory-action{display:inline-flex!important;align-items:center;justify-content:center;height:38px!important;min-height:38px!important;box-sizing:border-box;vertical-align:top;white-space:nowrap;margin-bottom:1.4em!important;font-family:inherit!important;font-size:inherit!important;font-weight:bold!important;font-style:normal!important;font-variant:normal!important;font-stretch:normal!important;line-height:1.2!important;letter-spacing:normal!important;text-transform:uppercase!important}';
 print '.kps-counted-row td{background:rgba(46,160,67,.06)}';
 print '.kps-inventory-search{display:flex;justify-content:flex-start;margin-bottom:24px}';
+print '.kps-inventory-explanation{margin:18px 0 0;padding:14px 16px}';
+print '.kps-inventory-explanation ul{margin:8px 0 0 1.4em;padding:0}';
+print '.kps-inventory-explanation li+li{margin-top:6px}';
 print '</style>';
 print $formconfirm;
 $head = array();
@@ -416,6 +431,50 @@ if (!empty($inventory['correction_mode'])) {
 	print '<div class="warning">'.img_warning().' '.$langs->trans('KREAPRODUCTS_INVENTORY_CORRECTION_DATE_WARNING', $correctionDate, $correctionDate).'</div><br>';
 }
 
+$businessDayService = new KreaProductsBusinessDayService();
+$inventoryDefaultTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30');
+$billingCloseTime = getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00');
+$inventoryCutoffTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00');
+$automaticCloseTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45');
+try {
+	$inventoryDefaultTime = substr($businessDayService->normalizeConfiguredTime($inventoryDefaultTime, 'inventory time'), 0, 5);
+	$billingCloseTime = substr($businessDayService->normalizeConfiguredTime($billingCloseTime, 'billing close time'), 0, 5);
+	$inventoryCutoffTime = substr($businessDayService->normalizeConfiguredTime($inventoryCutoffTime, 'inventory cutoff time'), 0, 5);
+	$automaticCloseTime = substr($businessDayService->normalizeConfiguredTime($automaticCloseTime, 'inventory automatic close time'), 0, 5);
+} catch (InvalidArgumentException $exception) {
+	// The inventory service reports invalid time configuration on the affected stock operation.
+}
+$inventoryAnchorLabel = dol_print_date((int) $inventory['date_inventory'], 'dayhour', 'tzuserrel');
+$postCutoffMinimumDate = !empty($inventory['post_cutoff_minimum_value_date'])
+	? dol_print_date((int) $inventory['post_cutoff_minimum_value_date'], '%Y-%m-%d', 'tzuserrel')
+	: '';
+$postCutoffConfirmTemplate = $langs->trans(
+	'KREAPRODUCTS_INVENTORY_POST_CUTOFF_CONFIRM',
+	$inventoryCutoffTime
+);
+
+$mutationWindow = !empty($inventory['mutation_window']) ? $inventory['mutation_window'] : array();
+if (!empty($mutationWindow['active'])) {
+	print '<div class="warning">'.img_warning().' '.$langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
+		(string) $mutationWindow['start_time'],
+		(string) $mutationWindow['end_time']
+	).'</div><br>';
+} elseif (!empty($inventory['counts_expired'])) {
+	print '<div class="error">'.img_error().' '.$langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_COUNTS_EXPIRED',
+		dol_print_date((int) $inventory['max_value_date'], 'day'),
+		$inventoryDefaultTime
+	).'</div><br>';
+} elseif (!empty($inventory['blocked_by_open_inventory'])) {
+	print '<div class="error">'.img_error().' '.$langs->trans('KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN_UNKNOWN').'</div><br>';
+} elseif (!empty($inventory['history_locked'])) {
+	print '<div class="warning">'.img_warning().' '.$langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_HISTORY_LOCKED_AT_CUTOFF',
+		$inventoryCutoffTime
+	).'</div><br>';
+}
+
 print '<div class="fichecenter">';
 print '<table class="border centpercent tableforfield">';
 print '<tr><td class="titlefield">'.$langs->trans('Warehouse').'</td><td>'.dol_escape_htmltag((string) $inventory['warehouse_ref']).'</td></tr>';
@@ -433,10 +492,16 @@ print '</table>';
 print '</div>';
 
 print '<div class="clearboth"></div><br>';
-print '<form method="POST" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'" id="kps-inventory-count-form">';
+print '<form method="POST" action="'.dol_escape_htmltag($_SERVER['PHP_SELF']).'" id="kps-inventory-count-form"';
+if ($postCutoffMinimumDate !== '') {
+	print ' data-kps-post-cutoff-min-date="'.dol_escape_htmltag($postCutoffMinimumDate).'"';
+	print ' data-kps-post-cutoff-confirm-template="'.dol_escape_htmltag($postCutoffConfirmTemplate).'"';
+}
+print '>';
 print '<input type="hidden" name="token" value="'.newToken().'">';
 print '<input type="hidden" name="action" value="save_counts">';
 print '<input type="hidden" name="id" value="'.$id.'">';
+print '<input type="hidden" name="confirm_post_cutoff_date" value="0" data-kps-post-cutoff-confirmed>';
 $showBatchColumn = false;
 foreach ($inventory['lines'] as $inventoryLine) {
 	if ((string) $inventoryLine['batch'] !== '') {
@@ -520,12 +585,28 @@ if (!empty($inventory['editable'])) {
 if (!empty($inventory['can_close'])) {
 	print '<button type="submit" form="kps-inventory-count-form" name="action" value="save_and_close" class="butAction kps-inventory-action">'.$langs->trans('MakeMovementsAndClose').'</button>';
 }
-if (!empty($inventory['can_reverse'])) {
-	print '<a class="butActionDelete kps-inventory-action" href="'.$_SERVER['PHP_SELF'].'?id='.$id.'&action=reverse_inventory&token='.newToken().'">'.$langs->trans('KREAPRODUCTS_INVENTORY_REVERSE_ACTION').'</a>';
+if (!empty($inventory['can_edit'])) {
+	print '<a class="butAction kps-inventory-action" href="'.$_SERVER['PHP_SELF'].'?id='.$id.'&action=edit_inventory&token='.newToken().'">'.$langs->trans('Edit').'</a>';
 }
 if (!empty($inventory['can_delete'])) {
 	print '<a class="butActionDelete kps-inventory-action" href="'.$_SERVER['PHP_SELF'].'?id='.$id.'&action=delete_inventory&token='.newToken().'">'.$langs->trans('Delete').'</a>';
 }
+print '</div>';
+
+print '<div class="info kps-inventory-explanation">';
+print '<strong>'.img_info().' '.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_TITLE')).'</strong>';
+print '<ul>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_VALUE_DATE', $inventoryAnchorLabel, $inventoryDefaultTime, $inventoryCutoffTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_VIRTUAL_STOCK', $billingCloseTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_SAVE')).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_EXECUTE')).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_EDIT_DELETE')).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_AUTOCLOSE', $automaticCloseTime, $inventoryCutoffTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_READ_ONLY_WINDOW', $automaticCloseTime, $inventoryCutoffTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_EXPIRED_COUNTS', $inventoryCutoffTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_OPEN_SCOPE')).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_HISTORY_LOCKED', $inventoryCutoffTime)).'</li>';
+print '</ul>';
 print '</div>';
 
 llxFooter();

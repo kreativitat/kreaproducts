@@ -19,9 +19,9 @@ import {
   LogOut,
   Minus,
   Package,
+  Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   Save,
   ScanLine,
   Search,
@@ -35,6 +35,7 @@ import {
   ApiError,
   closeInventory,
   deleteInventory,
+  editInventory,
   getBootstrapSession,
   getInventories,
   getInventory,
@@ -47,7 +48,6 @@ import {
   InventoryTemplate,
   LoginMeta,
   logout,
-  reverseInventory,
   saveCounts,
   SessionData,
   startInventory,
@@ -278,7 +278,7 @@ function App() {
   const [online, setOnline] = useState(window.navigator.onLine);
   const [startCandidate, setStartCandidate] = useState<InventoryTemplate | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<InventoryDetail | null>(null);
-  const [reverseCandidate, setReverseCandidate] = useState<InventoryDetail | null>(null);
+  const [editCandidate, setEditCandidate] = useState<InventoryDetail | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [highlightLine, setHighlightLine] = useState<number | null>(null);
@@ -602,21 +602,23 @@ function App() {
     }
   };
 
-  const handleReverseInventory = async () => {
-    if (!reverseCandidate || reverseCandidate.can_reverse !== 1 || busy) {
+  const handleEditInventory = async () => {
+    if (!editCandidate || editCandidate.can_edit !== 1 || busy) {
       return;
     }
     setBusy(true);
     clearFeedback();
     try {
-      const reversedInventory = await reverseInventory(reverseCandidate.id);
-      setInventory(reversedInventory);
-      setCounts(buildCounts(reversedInventory, false));
-      setReverseCandidate(null);
-      showNotice('Correção de inventário revertida');
+      const editableInventory = await editInventory(editCandidate.id);
+      setInventory(editableInventory);
+      setCounts(buildCounts(editableInventory, false));
+      setValueDate(formatDateInput(editableInventory.date_inventory));
+      setDirty(false);
+      setEditCandidate(null);
+      showNotice('Inventário reaberto para edição');
       await reloadTemplates();
-    } catch (reverseError) {
-      showError(getErrorMessage(reverseError, 'Não foi possível reverter a correção do inventário.'));
+    } catch (editError) {
+      showError(getErrorMessage(editError, 'Não foi possível editar o inventário.'));
     } finally {
       setBusy(false);
     }
@@ -800,10 +802,10 @@ function App() {
               <RefreshCw className={busy ? 'spin' : ''} size={19} />
             </button>
 		  </div>
-		  {templates?.blocking_open_inventory && (
+		  {templates?.mutation_window.active === 1 && (
 			<div className="correction-warning">
 			  <AlertCircle size={18} />
-			  <span>Feche o inventário {templates.blocking_open_inventory.ref} antes de iniciar outra categoria.</span>
+			  <span>Inventários apenas para consulta entre as {templates.mutation_window.start_time} e as {templates.mutation_window.end_time}.</span>
 			</div>
 		  )}
 
@@ -811,7 +813,7 @@ function App() {
             {templates?.templates.map((template, index) => {
               const open = template.open_inventory;
               return (
-				<button type="button" className={`template-card accent-${index % 4}`} key={template.id} onClick={() => handleTemplate(template)} disabled={busy || session.rights.count !== 1 || Boolean(templates.blocking_open_inventory && !open)}>
+				<button type="button" className={`template-card accent-${index % 4}`} key={template.id} onClick={() => handleTemplate(template)} disabled={busy || session.rights.count !== 1 || templates.mutation_window.active === 1}>
                   <span className="template-icon"><Package size={24} /></span>
                   <span className="template-copy">
                     <strong>{template.label}</strong>
@@ -852,16 +854,44 @@ function App() {
 				: inventoryEditable
 					? `${localCounted} de ${inventory.total_lines} contados`
 					: `Concluído · ${localCounted} de ${inventory.total_lines}`}</strong>
-              {!inventoryEditable && <em className="read-only-badge">Apenas leitura</em>}
+			  {!inventoryEditable && <em className="read-only-badge">Apenas leitura</em>}
             </div>
           </div>
 
-          {inventory.correction_mode === 1 && (
+		  {inventory.correction_mode === 1 && (
             <div className="correction-warning">
               <AlertCircle size={18} />
               <span>Este inventário é do dia {formatDate(inventory.date_inventory)}. Só pode corrigir as contagens referentes a esse dia.</span>
             </div>
-          )}
+		  )}
+
+		  {inventory.mutation_window.active === 1 && (
+			<div className="correction-warning">
+			  <AlertCircle size={18} />
+			  <span>Inventário apenas para consulta entre as {inventory.mutation_window.start_time} e as {inventory.mutation_window.end_time}.</span>
+			</div>
+		  )}
+
+		  {inventory.counts_expired === 1 && (
+			<div className="correction-warning">
+			  <AlertCircle size={18} />
+			  <span>Esta contagem expirou porque podem existir movimentos de stock posteriores. Elimine este inventário, crie o inventário atual e conte novamente os produtos.</span>
+			</div>
+		  )}
+
+		  {inventory.blocked_by_open_inventory === 1 && (
+			<div className="correction-warning">
+			  <AlertCircle size={18} />
+			  <span>Existe um inventário anterior aberto para esta categoria e armazém. Feche-o ou elimine-o antes de guardar ou executar este inventário; até lá, este duplicado só pode ser eliminado.</span>
+			</div>
+		  )}
+
+		  {inventory.history_locked === 1 && (
+			<div className="correction-warning">
+			  <AlertCircle size={18} />
+			  <span>Este inventário pertence a uma janela de contagem encerrada e é permanentemente apenas para consulta.</span>
+			</div>
+		  )}
 
           <label className="field-label value-date-field">
             Data valor
@@ -956,10 +986,15 @@ function App() {
               )}
             </footer>
           )}
-          {!inventoryEditable && inventory.can_reverse === 1 && (
+          {!inventoryEditable && inventory.can_delete === 1 && (
             <footer className="inventory-footer">
-              <button type="button" className="button danger" onClick={() => setReverseCandidate(inventory)} disabled={busy || !online}>
-                <RotateCcw size={18} />Reverter correção
+              {inventory.can_edit === 1 && (
+                <button type="button" className="button secondary" onClick={() => setEditCandidate(inventory)} disabled={busy || !online}>
+                  <Pencil size={18} />Editar inventário
+                </button>
+              )}
+              <button type="button" className="button danger" onClick={() => setDeleteCandidate(inventory)} disabled={busy}>
+                <Trash2 size={18} />Eliminar inventário
               </button>
             </footer>
           )}
@@ -992,7 +1027,9 @@ function App() {
       {deleteCandidate && (
         <ConfirmModal
           title="Eliminar inventário"
-          detail="Esta operação apaga a contagem iniciada. Não gera movimentos de stock e não pode ser aplicada a inventários concluídos."
+          detail={deleteCandidate.status === 2
+			? 'Esta operação cria os movimentos compensatórios necessários e elimina o inventário fechado.'
+			: 'Esta operação apaga a contagem iniciada e não gera movimentos de stock.'}
           confirmLabel="Eliminar"
           tone="danger"
           loading={busy}
@@ -1000,15 +1037,15 @@ function App() {
           onClose={() => setDeleteCandidate(null)}
         />
       )}
-      {reverseCandidate && (
+      {editCandidate && (
         <ConfirmModal
-          title="Reverter correção de inventário"
-          detail="Serão criados movimentos opostos. O inventário e os movimentos originais permanecem no histórico."
-          confirmLabel="Reverter correção"
+          title="Editar inventário"
+          detail="Os movimentos atuais serão compensados e o inventário regressará ao estado iniciado. Depois das alterações, execute novamente os movimentos para o fechar."
+          confirmLabel="Editar"
           tone="danger"
           loading={busy}
-          onConfirm={() => void handleReverseInventory()}
-          onClose={() => setReverseCandidate(null)}
+          onConfirm={() => void handleEditInventory()}
+          onClose={() => setEditCandidate(null)}
         />
       )}
       {showScanner && inventory && (

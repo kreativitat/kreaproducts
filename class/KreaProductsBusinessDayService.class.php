@@ -30,8 +30,8 @@ class KreaProductsBusinessDayService
 	 */
 	public function resolveInventoryValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '10:30', $entryCutoff = '20:00')
 	{
-		$inventoryTime = $this->normalizeTime($inventoryTime, 'inventory time');
-		$entryCutoff = $this->normalizeTime($entryCutoff, 'entry cutoff');
+		$inventoryTime = $this->normalizeConfiguredTime($inventoryTime, 'inventory time');
+		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'entry cutoff');
 		$entry = (new DateTimeImmutable('@'.((int) $entryTimestamp)))->setTimezone($timezone);
 		$targetDate = $entry->format('Y-m-d');
 
@@ -41,6 +41,33 @@ class KreaProductsBusinessDayService
 
 		$valueDate = new DateTimeImmutable($targetDate.' '.$inventoryTime, $timezone);
 		return $valueDate->getTimestamp();
+	}
+
+	/**
+	 * Return the mandatory next-window inventory timestamp when entry occurs at
+	 * or after the cutoff. A pre-cutoff entry has no mandatory minimum.
+	 *
+	 * @param int          $entryTimestamp Entry timestamp
+	 * @param DateTimeZone $timezone       Business timezone
+	 * @param string       $inventoryTime  Configured inventory value time
+	 * @param string       $entryCutoff    Start of the next counting window
+	 * @return int Zero before cutoff, otherwise the mandatory next-window timestamp
+	 * @throws InvalidArgumentException
+	 */
+	public function resolvePostCutoffMinimumValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '10:30', $entryCutoff = '20:00')
+	{
+		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'entry cutoff');
+		$entry = (new DateTimeImmutable('@'.((int) $entryTimestamp)))->setTimezone($timezone);
+		if ($entry->format('H:i:s') < $entryCutoff) {
+			return 0;
+		}
+
+		return $this->resolveInventoryValueTimestamp(
+			(int) $entryTimestamp,
+			$timezone,
+			(string) $inventoryTime,
+			(string) $entryCutoff
+		);
 	}
 
 	/**
@@ -55,7 +82,7 @@ class KreaProductsBusinessDayService
 	public function resolveDateTimestamp($calendarDate, DateTimeZone $timezone, $time)
 	{
 		$calendarDate = trim((string) $calendarDate);
-		$time = $this->normalizeTime($time, 'configured time');
+		$time = $this->normalizeConfiguredTime($time, 'configured time');
 		$date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $calendarDate.' '.$time, $timezone);
 		$dateErrors = DateTimeImmutable::getLastErrors();
 		if ($date === false || (is_array($dateErrors) && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))) {
@@ -89,22 +116,54 @@ class KreaProductsBusinessDayService
 	 *
 	 * @param int          $valueTimestamp Inventory value timestamp
 	 * @param DateTimeZone $timezone       Business timezone
-	 * @param string       $entryCutoff    Start of the next counting window
-	 * @param int          $leadMinutes    Minutes before cutoff
+	 * @param string       $autoCloseTime Configured automatic closure time
 	 * @return int
 	 * @throws InvalidArgumentException
 	 */
-	public function resolveInventoryAutoCloseTimestamp($valueTimestamp, DateTimeZone $timezone, $entryCutoff = '20:00', $leadMinutes = 15)
+	public function resolveInventoryAutoCloseTimestamp($valueTimestamp, DateTimeZone $timezone, $autoCloseTime = '19:45')
 	{
-		$entryCutoff = $this->normalizeTime($entryCutoff, 'entry cutoff');
-		$leadMinutes = (int) $leadMinutes;
-		if ($leadMinutes < 1 || $leadMinutes > 1440) {
-			throw new InvalidArgumentException('Invalid automatic closure lead time.');
+		$autoCloseTime = $this->normalizeConfiguredTime($autoCloseTime, 'inventory automatic close time');
+		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone);
+		$automaticClose = new DateTimeImmutable($valueDate->format('Y-m-d').' '.$autoCloseTime, $timezone);
+		return $automaticClose->getTimestamp();
+	}
+
+	/**
+	 * Resolve the daily interval during which inventory operations are read-only.
+	 *
+	 * The interval starts at the configured automatic closure time and ends at
+	 * the configured entry cutoff. The end is exclusive, so writes resume at
+	 * the exact cutoff time for the new counting window.
+	 *
+	 * @param int          $timestamp   Timestamp to evaluate
+	 * @param DateTimeZone $timezone    Business timezone
+	 * @param string       $lockStart   Configured automatic closure and lock start time
+	 * @param string       $entryCutoff Start of the next counting window
+	 * @return array{active:bool,start:int,end:int}
+	 * @throws InvalidArgumentException
+	 */
+	public function resolveInventoryMutationLockWindow($timestamp, DateTimeZone $timezone, $lockStart = '19:45', $entryCutoff = '20:00')
+	{
+		$lockStart = $this->normalizeConfiguredTime($lockStart, 'inventory automatic close time');
+		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'entry cutoff');
+		if ($lockStart >= $entryCutoff) {
+			throw new InvalidArgumentException('Inventory automatic close time must be earlier than the entry cutoff.');
+		}
+		$current = (new DateTimeImmutable('@'.((int) $timestamp)))->setTimezone($timezone);
+		$nextCutoff = new DateTimeImmutable($current->format('Y-m-d').' '.$entryCutoff, $timezone);
+		if ($current >= $nextCutoff) {
+			$nextCutoff = $nextCutoff->modify('+1 day');
+		}
+		$lockStartDateTime = new DateTimeImmutable($nextCutoff->format('Y-m-d').' '.$lockStart, $timezone);
+		if ($lockStartDateTime >= $nextCutoff) {
+			$lockStartDateTime = $lockStartDateTime->modify('-1 day');
 		}
 
-		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone);
-		$cutoff = new DateTimeImmutable($valueDate->format('Y-m-d').' '.$entryCutoff, $timezone);
-		return $cutoff->modify('-'.$leadMinutes.' minutes')->getTimestamp();
+		return array(
+			'active' => $current >= $lockStartDateTime && $current < $nextCutoff,
+			'start' => $lockStartDateTime->getTimestamp(),
+			'end' => $nextCutoff->getTimestamp(),
+		);
 	}
 
 	/**
@@ -113,12 +172,12 @@ class KreaProductsBusinessDayService
 	 * @return string
 	 * @throws InvalidArgumentException
 	 */
-	private function normalizeTime($time, $label)
+	public function normalizeConfiguredTime($time, $label = 'configured time')
 	{
 		$time = trim((string) $time);
-		if (!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/', $time)) {
+		if (!preg_match('/^(0?[0-9]|1[0-9]|2[0-3]):([0-5][0-9])(?::([0-5][0-9]))?$/', $time, $matches)) {
 			throw new InvalidArgumentException('Invalid '.$label.'. Expected HH:MM or HH:MM:SS.');
 		}
-		return strlen($time) === 5 ? $time.':00' : $time;
+		return sprintf('%02d:%02d:%02d', (int) $matches[1], (int) $matches[2], isset($matches[3]) ? (int) $matches[3] : 0);
 	}
 }

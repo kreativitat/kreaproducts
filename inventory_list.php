@@ -36,6 +36,7 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/html.formcompany.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/company.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/product/inventory/class/inventory.class.php';
+dol_include_once('/kreaproducts/class/KreaProductsMobileInventoryService.class.php');
 
 /**
  * @var Conf $conf
@@ -47,9 +48,12 @@ require_once DOL_DOCUMENT_ROOT.'/product/inventory/class/inventory.class.php';
 
 function kreaproducts_format_inventory_ref_display($ref)
 {
-	$ref = (string) $ref;
+	$ref = trim((string) $ref);
 	if ($ref === '') {
 		return '';
+	}
+	if (preg_match('/^\(PROV\d+\)$/i', $ref) === 1) {
+		return strtoupper($ref);
 	}
 	$ref = preg_replace('/\s*\([^)]*\)/', '', $ref);
 	return strtoupper(trim($ref));
@@ -197,6 +201,18 @@ if (!getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
 	$result = restrictedArea($user, 'stock', 0, '', 'inventory_advance');
 }
 
+$inventoryService = new KreaProductsMobileInventoryService($db, $user, $langs, $conf);
+try {
+	$inventoryMutationWindow = $inventoryService->getInventoryMutationWindowState();
+} catch (Throwable $exception) {
+	$inventoryMutationWindow = array('active' => 1, 'start_time' => '?', 'end_time' => '?');
+}
+$inventoryMutationLocked = !empty($inventoryMutationWindow['active']);
+if ($inventoryMutationLocked) {
+	$permissiontoadd = false;
+	$permissiontodelete = false;
+}
+
 
 /*
  * Actions
@@ -208,6 +224,16 @@ if (GETPOST('cancel', 'alpha')) {
 }
 if (!GETPOST('confirmmassaction', 'alpha') && $massaction != 'presend' && $massaction != 'confirm_presend') {
 	$massaction = '';
+}
+if ($inventoryMutationLocked && in_array($massaction, array('predelete', 'delete'), true)) {
+	setEventMessages($langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
+		(string) $inventoryMutationWindow['start_time'],
+		(string) $inventoryMutationWindow['end_time']
+	), null, 'errors');
+	$massaction = '';
+	$action = 'list';
+	$toselect = array();
 }
 
 $parameters = array();
@@ -455,6 +481,14 @@ if ($num == 1 && getDolGlobalString('MAIN_SEARCH_DIRECT_OPEN_IF_ONLY_ONE') && $s
 // --------------------------------------------------------------------
 
 llxHeader('', $title, $help_url, '', 0, 0, $morejs, $morecss, '', 'bodyforlist');	// Can use also classforhorizontalscrolloftabs instead of bodyforlist for no horizontal scroll
+
+if ($inventoryMutationLocked) {
+	print '<div class="warning">'.img_warning().' '.$langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
+		(string) $inventoryMutationWindow['start_time'],
+		(string) $inventoryMutationWindow['end_time']
+	).'</div><br>';
+}
 
 $arrayofselected = is_array($toselect) ? $toselect : array();
 
@@ -793,6 +827,9 @@ while ($i < $imaxinloop) {
 						: DOL_URL_ROOT.'/product/inventory/inventory.php?id='.$object->id;
 					$title = $langs->trans("Inventory");
 					$refdisplay = kreaproducts_format_inventory_ref_display($object->ref);
+					if ($refdisplay === '' && $isManagedInventory && (int) $object->status === Inventory::STATUS_VALIDATED) {
+						$refdisplay = '(PROV'.str_pad((string) ((int) $object->id), 6, '0', STR_PAD_LEFT).')';
+					}
 					print '<a href="'.$url.'" class="classfortooltip" title="'.dol_escape_htmltag($title).'">';
 					print img_object('', $object->picto, 'class="paddingright"', 0, 0, $title);
 					print dol_escape_htmltag($refdisplay);

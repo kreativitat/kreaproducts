@@ -1,6 +1,131 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.19.1] - 2026-08-18
+
+### Changed
+
+- Limited the open-inventory gate to the same category and warehouse.
+- Made recorded inventories from earlier counting windows permanently read-only.
+
+### Fixed
+
+- Blocked saving, editing, or executing a later inventory while an older inventory remains open in the same scope.
+
+## [4.19.0] - 2026-08-18
+
+### Added
+
+- Added a per-entity setup time for automatic inventory closure and the read-only interval start.
+
+### Changed
+
+- Made inventories consultation-only between the configured automatic closure time and entry cutoff.
+
+### Fixed
+
+- Rejected saving, editing, or executing counts from an earlier counting window and required a new physical count.
+
+## [4.18.5] - 2026-08-18
+
+### Changed
+
+- Moved the inventory stock explanation below the page actions.
+
+### Fixed
+
+- Prevented inventories created after the entry cutoff from saving an earlier value date and offered confirmation to use the mandatory next day.
+
+## [4.18.4] - 2026-08-18
+
+### Added
+
+- Added an inventory-page explanation of value-time anchoring and stock lifecycle behavior.
+
+### Changed
+
+- Clarified the setup help for inventory anchor time, billing-close display time, and recorded-inventory editing.
+
+## [4.18.3] - 2026-08-18
+
+### Fixed
+
+- Preserved the active adjustment generation's exact value timestamp when a recorded inventory is reopened and saved, even when the configured default inventory hour has since changed.
+
+## [4.18.2] - 2026-08-18
+
+### Fixed
+
+- Kept recorded stock active while revised inventory counts are being edited.
+- Replaced the previous adjustment atomically when the revised inventory is executed.
+- Preserved the original value date while recorded inventory counts are being edited.
+- Exposed Edit immediately after successful inventory execution.
+
+## [4.18.1] - 2026-08-18
+
+### Fixed
+
+- Accepted single-digit configured hours for inventory and supplier-invoice movement times.
+
+## [4.18.0] - 2026-08-18
+
+### Changed
+
+- Allowed append-only adjustment generations when a closed inventory is edited and executed again.
+
+### Fixed
+
+- Prevented duplicate adjustment-key failures during inventory re-execution.
+
+## [4.17.1] - 2026-08-18
+
+### Fixed
+
+- Preserved the configured inventory time when executing same-day stock movements.
+
+## [4.17.0] - 2026-08-18
+
+### Added
+
+- Added a closed-inventory Edit action that compensates stock and reopens the count before re-execution.
+
+### Changed
+
+- Enforced strictly increasing value dates for each inventory category and warehouse.
+
+### Fixed
+
+- Made saved same-day draft inventories immediately eligible for stock execution.
+- Clamped a same-day future ordering time to the actual execution time before creating stock movements.
+
+## [4.16.7] - 2026-08-18
+
+### Changed
+
+- Simplified inventory actions to Save/Delete while counting, Execute/Delete after saved counts, and Delete after closure.
+- Removed the user-facing inventory reversal action and intermediate reversed state.
+
+### Fixed
+
+- Compensated closed-inventory stock effects and deleted the inventory in one operation.
+
+## [4.16.6] - 2026-08-18
+
+### Fixed
+
+- Distinguished fully reversed inventories from active recorded inventories in list and detail views.
+- Kept deletion available for fully reversed inventories in the mobile interface.
+
+## [4.16.5] - 2026-08-18
+
+### Fixed
+
+- Preserved provisional inventory references in the inventory list.
+- Restricted inventory reversal to the latest inventory of each category and warehouse.
+- Applied reversal stock movements at the effective time of the movement being canceled while retaining the actual reversal audit time.
+- Exposed deletion only for initiated or fully reversed inventories while preserving the stock-movement audit trail.
+- Returned an explicit conflict instead of silently accepting a repeated reversal.
+
 ## [4.16.4] - 2026-08-17
 
 ### Fixed

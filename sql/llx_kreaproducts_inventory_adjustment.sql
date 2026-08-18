@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS llx_kreaproducts_inventory_adjustment (
 	date_creation datetime NOT NULL,
 	date_reversal datetime DEFAULT NULL,
 	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-	UNIQUE KEY uk_kreaproducts_inventory_adjustment_line (entity, fk_inventorydet),
+	KEY idx_kreaproducts_inventory_adjustment_line (entity, fk_inventorydet, status),
 	KEY idx_kreaproducts_inventory_adjustment_anchor (entity, fk_product, fk_warehouse, batch, value_datetime, status),
 	KEY idx_kreaproducts_inventory_adjustment_inventory (entity, fk_inventory, status),
 	KEY idx_kreaproducts_inventory_adjustment_movement (fk_movement),

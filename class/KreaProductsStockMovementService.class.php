@@ -352,13 +352,15 @@ class KreaProductsStockMovementService
 			return true;
 		}
 
-		$time = trim($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:00');
-		if (!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/', $time)) {
+		$businessDayService = new KreaProductsBusinessDayService();
+		try {
+			$time = $businessDayService->normalizeConfiguredTime(
+				$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:00',
+				'supplier invoice movement time'
+			);
+		} catch (InvalidArgumentException $exception) {
 			dol_syslog(__METHOD__.' Invalid KREAPRODUCTS_SUPPLIER_MOVE_TIME value.', LOG_ERR);
 			return false;
-		}
-		if (strlen($time) === 5) {
-			$time .= ':00';
 		}
 
 		$sql = 'SELECT datef FROM ' . MAIN_DB_PREFIX . 'facture_fourn';
@@ -820,7 +822,7 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+		$sql = 'SELECT i.date_inventory, CASE WHEN i.status='.((int) Inventory::STATUS_VALIDATED).' AND a.rowid IS NOT NULL THEN a.counted_qty ELSE id.qty_view END AS qty_view, id.qty_stock, id.batch,'
 			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
 			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
@@ -828,7 +830,8 @@ class KreaProductsStockMovementService
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
-			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' WHERE (i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' OR (i.status = ' . ((int) Inventory::STATUS_VALIDATED) . ' AND a.rowid IS NOT NULL))'
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. ' AND id.fk_product = ' . $productId
 			. ' AND id.fk_warehouse = ' . $warehouse
@@ -871,7 +874,7 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+		$sql = 'SELECT i.date_inventory, CASE WHEN i.status='.((int) Inventory::STATUS_VALIDATED).' AND a.rowid IS NOT NULL THEN a.counted_qty ELSE id.qty_view END AS qty_view, id.qty_stock, id.batch,'
 			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
 			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty'
 			. ' FROM ' . MAIN_DB_PREFIX . 'inventory i'
@@ -879,7 +882,8 @@ class KreaProductsStockMovementService
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
-			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' WHERE (i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' OR (i.status = ' . ((int) Inventory::STATUS_VALIDATED) . ' AND a.rowid IS NOT NULL))'
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory <= '" . $db->escape($beforeDate) . "'"
 			. ' AND id.fk_product = ' . $productId
@@ -923,7 +927,7 @@ class KreaProductsStockMovementService
 		$condDet = ($batch !== '') ? " AND id.batch='" . $db->escape($batch) . "'" : " AND (id.batch='' OR id.batch IS NULL)";
 		$condSm = $this->batchCondSm($db, $batch);
 
-		$sql = 'SELECT i.rowid AS inv_id, i.ref, i.date_inventory, id.qty_view, id.qty_stock, id.batch,'
+		$sql = 'SELECT i.rowid AS inv_id, i.ref, i.date_inventory, CASE WHEN i.status='.((int) Inventory::STATUS_VALIDATED).' AND a.rowid IS NOT NULL THEN a.counted_qty ELSE id.qty_view END AS qty_view, id.qty_stock, id.batch,'
 			. ' (SELECT c.corrected_counted_qty FROM ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_correction c'
 			. ' WHERE c.entity=i.entity AND c.fk_inventorydet=id.rowid AND c.status=1 ORDER BY c.rowid DESC LIMIT 1) AS corrected_counted_qty,'
 			. ' sm.rowid AS fk_movement, a.rowid AS fk_adjustment'
@@ -932,7 +936,8 @@ class KreaProductsStockMovementService
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . "stock_mouvement sm ON sm.origintype='inventory' AND sm.fk_origin=i.rowid AND sm.fk_product=id.fk_product AND sm.fk_entrepot=id.fk_warehouse" . $condSm
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a ON a.entity=i.entity AND a.fk_inventorydet=id.rowid AND a.status=1'
 			. ' LEFT JOIN ' . MAIN_DB_PREFIX . 'kreaproducts_inventory_adjustment a_any ON a_any.entity=i.entity AND a_any.fk_inventorydet=id.rowid'
-			. ' WHERE i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' WHERE (i.status = ' . ((int) Inventory::STATUS_RECORDED)
+			. ' OR (i.status = ' . ((int) Inventory::STATUS_VALIDATED) . ' AND a.rowid IS NOT NULL))'
 			. ' AND i.entity IN (' . getEntity('inventory') . ')'
 			. " AND i.date_inventory > '" . $db->escape($afterDate) . "'"
 			. ' AND id.fk_product = ' . $productId

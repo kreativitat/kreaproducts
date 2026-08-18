@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	const inputs = Array.from(countForm.querySelectorAll('[data-kps-count]'));
 	const valueDateInput = document.querySelector('[data-kps-value-date]');
+	const postCutoffConfirmed = countForm.querySelector('[data-kps-post-cutoff-confirmed]');
 	const saveButton = document.getElementById('kps-save-counts');
 	const progress = document.getElementById('kps-count-progress');
 	const search = document.getElementById('kps-product-search');
@@ -122,8 +123,14 @@ document.addEventListener('DOMContentLoaded', function () {
 		input.addEventListener('input', updatePageState);
 	});
 	if (valueDateInput) {
-		valueDateInput.addEventListener('input', updatePageState);
-		valueDateInput.addEventListener('change', updatePageState);
+		const handleValueDateChange = function () {
+			if (postCutoffConfirmed) {
+				postCutoffConfirmed.value = '0';
+			}
+			updatePageState();
+		};
+		valueDateInput.addEventListener('input', handleValueDateChange);
+		valueDateInput.addEventListener('change', handleValueDateChange);
 	}
 
 	if (search) {
@@ -135,7 +142,22 @@ document.addEventListener('DOMContentLoaded', function () {
 		});
 	}
 
-	countForm.addEventListener('submit', function () {
+	countForm.addEventListener('submit', function (event) {
+		const minimumDate = countForm.dataset.kpsPostCutoffMinDate || '';
+		if (valueDateInput && minimumDate !== '' && valueDateInput.value !== '' && valueDateInput.value < minimumDate) {
+			const template = countForm.dataset.kpsPostCutoffConfirmTemplate || '';
+			const message = template
+				.split('{selected}').join(valueDateInput.value)
+				.split('{required}').join(minimumDate);
+			if (!window.confirm(message)) {
+				event.preventDefault();
+				return;
+			}
+			valueDateInput.value = minimumDate;
+			if (postCutoffConfirmed) {
+				postCutoffConfirmed.value = '1';
+			}
+		}
 		submitting = true;
 		if (saveButton) {
 			saveButton.disabled = true;

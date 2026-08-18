@@ -102,7 +102,7 @@ $mobileMutationActions = array(
 	'start_inventory',
 	'save_counts',
 	'close_inventory',
-	'reverse_inventory',
+	'edit_inventory',
 	'delete_inventory',
 	'logout',
 );
@@ -253,11 +253,11 @@ if ($requestedAction !== '') {
 			$allowIncomplete = !empty($payload['allow_incomplete']);
 			$api->respond(array('success' => true, 'data' => $inventoryService->closeInventory($inventoryId, $allowIncomplete)));
 		}
-		if ($requestedAction === 'reverse_inventory') {
+		if ($requestedAction === 'edit_inventory') {
 			$api->requireMethod('POST');
 			$payload = $api->getRequestJsonBody();
 			$inventoryId = isset($payload['inventory_id']) ? (int) $payload['inventory_id'] : 0;
-			$api->respond(array('success' => true, 'data' => $inventoryService->reverseInventory($inventoryId)));
+			$api->respond(array('success' => true, 'data' => $inventoryService->editInventory($inventoryId)));
 		}
 		if ($requestedAction === 'delete_inventory') {
 			$api->requireMethod('POST');

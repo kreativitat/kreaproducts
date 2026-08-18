@@ -63,6 +63,7 @@ global $langs, $user;
 require_once DOL_DOCUMENT_ROOT . "/core/lib/admin.lib.php";
 require_once '../lib/kreaproducts.lib.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.formcategory.class.php';
+require_once __DIR__.'/../class/KreaProductsBusinessDayService.class.php';
 //require_once "../class/myclass.class.php";
 
 // Translations
@@ -155,6 +156,10 @@ if (!isset($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME)) {
 if (!isset($conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME = '10:30';
+}
+if (!isset($conf->global->KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME = '19:45';
 }
 // Ensure dismantle BOM type has default (was hardcoded 1)
 if (!isset($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE)) {
@@ -564,6 +569,11 @@ $item->defaultFieldValue = '20:00';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME_HELP');
 $item->fieldAttr = array('type' => 'time', 'step' => '60');
 
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME');
+$item->defaultFieldValue = '19:45';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '60');
+
 $item = $formSetup->newItem('KREAPRODUCTS_STOCK_INVENTORY_LIST_LIMIT');
 $item->setAsNumber(1, 200, 1);
 $item->defaultFieldValue = '30';
@@ -675,6 +685,27 @@ $dirmodels = array_merge(array('/'), (array) $conf->modules_parts['models']);
 /*
  * Actions
  */
+
+if ($action === 'update') {
+	try {
+		$businessDayService = new KreaProductsBusinessDayService();
+		$submittedAutoCloseTime = $businessDayService->normalizeConfiguredTime(
+			GETPOST('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', 'alphanohtml'),
+			'inventory automatic close time'
+		);
+		$submittedEntryCutoff = $businessDayService->normalizeConfiguredTime(
+			GETPOST('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', 'alphanohtml'),
+			'inventory entry cutoff time'
+		);
+		if ($submittedAutoCloseTime >= $submittedEntryCutoff) {
+			throw new InvalidArgumentException('Inventory automatic close time must be earlier than the entry cutoff.');
+		}
+	} catch (InvalidArgumentException $exception) {
+		setEventMessages($langs->trans('KREAPRODUCTS_ERROR_INVENTORY_TIME_ORDER'), null, 'errors');
+		$action = '';
+		$error++;
+	}
+}
 
 // For retrocompatibility Dolibarr < 15.0
 if (versioncompare(explode('.', DOL_VERSION), array(15)) < 0 && $action == 'update' && !empty($user->admin)) {

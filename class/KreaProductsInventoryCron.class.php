@@ -47,7 +47,7 @@ class KreaProductsInventoryCron
 	}
 
 	/**
-	 * Close inventories due at 15 minutes before the configured entry cutoff.
+	 * Close inventories due at the configured automatic closure time.
 	 *
 	 * @return int 0 on success, -1 on failure
 	 */

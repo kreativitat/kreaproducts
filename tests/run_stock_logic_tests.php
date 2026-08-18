@@ -107,25 +107,55 @@ $businessDay = new KreaProductsBusinessDayService();
 $entry = new DateTimeImmutable('2026-07-12 01:30:00', $timezone);
 $valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
 assertSameValue('2026-07-12 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Early-morning count window failed.');
+$singleDigitValueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '8:30', '20:00');
+assertSameValue('2026-07-12 08:30:00', (new DateTimeImmutable('@'.$singleDigitValueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Single-digit inventory hours must normalize safely.');
 
 $entry = new DateTimeImmutable('2026-07-12 19:59:59', $timezone);
 $valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
 assertSameValue('2026-07-12 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Pre-cutoff count window failed.');
+assertSameValue(0, $businessDay->resolvePostCutoffMinimumValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00'), 'A pre-cutoff inventory must not receive a mandatory next-day minimum.');
 
 $entry = new DateTimeImmutable('2026-07-12 20:00:00', $timezone);
 $valueTimestamp = $businessDay->resolveInventoryValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
 assertSameValue('2026-07-13 10:30:00', (new DateTimeImmutable('@'.$valueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Cutoff boundary failed.');
+$minimumPostCutoffTimestamp = $businessDay->resolvePostCutoffMinimumValueTimestamp($entry->getTimestamp(), $timezone, '10:30', '20:00');
+assertSameValue('2026-07-13 10:30:00', (new DateTimeImmutable('@'.$minimumPostCutoffTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'A cutoff-time inventory must require the next calendar value date.');
+
+$entry = new DateTimeImmutable('2026-07-12 21:00:00', $timezone);
+$minimumPostCutoffTimestamp = $businessDay->resolvePostCutoffMinimumValueTimestamp($entry->getTimestamp(), $timezone, '8:30', '20:00');
+assertSameValue('2026-07-13 08:30:00', (new DateTimeImmutable('@'.$minimumPostCutoffTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'A post-cutoff inventory must require the next day at the configured inventory time.');
 
 $supplierTimestamp = $businessDay->resolveDateTimestamp('2026-07-12', $timezone, '10:00');
 assertSameValue('2026-07-12 10:00:00', (new DateTimeImmutable('@'.$supplierTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Supplier time normalization failed.');
+$singleDigitSupplierTimestamp = $businessDay->resolveDateTimestamp('2026-07-12', $timezone, '9:30');
+assertSameValue('2026-07-12 09:30:00', (new DateTimeImmutable('@'.$singleDigitSupplierTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Single-digit supplier invoice hours must normalize safely.');
 $editableValueTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '10:30');
 assertSameValue('2026-07-11 10:30:00', (new DateTimeImmutable('@'.$editableValueTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Editable value-date anchor failed.');
 $billingCloseTimestamp = $businessDay->resolveDateTimestamp('2026-07-11', $timezone, '06:00');
 assertSameValue(84.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -44, $billingCloseTimestamp, $editableValueTimestamp), 'Billing-close stock before the inventory anchor failed.');
 assertSameValue(37.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -3, $editableValueTimestamp, $billingCloseTimestamp), 'Billing-close stock after the inventory anchor failed.');
 assertSameValue(40.0, KreaProductsInventoryLedgerCalculator::quantityAtTimestampFromAnchor(40, -3, $editableValueTimestamp, $editableValueTimestamp), 'Equal billing-close and inventory anchors must preserve stock.');
-$autoCloseTimestamp = $businessDay->resolveInventoryAutoCloseTimestamp($editableValueTimestamp, $timezone, '20:00', 15);
+$autoCloseTimestamp = $businessDay->resolveInventoryAutoCloseTimestamp($editableValueTimestamp, $timezone, '19:45');
 assertSameValue('2026-07-11 19:45:00', (new DateTimeImmutable('@'.$autoCloseTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Automatic inventory closure threshold failed.');
+$configuredAutoCloseTimestamp = $businessDay->resolveInventoryAutoCloseTimestamp($editableValueTimestamp, $timezone, '18:35');
+assertSameValue('2026-07-11 18:35:00', (new DateTimeImmutable('@'.$configuredAutoCloseTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Automatic inventory closure must use its independent configured time.');
+
+$lockWindow = $businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 19:44:59', $timezone))->getTimestamp(), $timezone, '19:45', '20:00');
+assertSameValue(false, $lockWindow['active'], 'Inventory mutations must remain open immediately before the configured lock start.');
+$lockWindow = $businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 19:45:00', $timezone))->getTimestamp(), $timezone, '19:45', '20:00');
+assertSameValue(true, $lockWindow['active'], 'The configured automatic closure time must start the read-only interval.');
+$lockWindow = $businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 19:59:59', $timezone))->getTimestamp(), $timezone, '19:45', '20:00');
+assertSameValue(true, $lockWindow['active'], 'Inventory mutations must remain locked until the configured cutoff.');
+$lockWindow = $businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 20:00:00', $timezone))->getTimestamp(), $timezone, '19:45', '20:00');
+assertSameValue(false, $lockWindow['active'], 'The configured cutoff must reopen inventory mutations for the next counting window.');
+$customLockWindow = $businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 18:40:00', $timezone))->getTimestamp(), $timezone, '18:35', '19:10');
+assertSameValue(true, $customLockWindow['active'], 'The read-only interval must use both setup times rather than fixed clock values.');
+try {
+	$businessDay->resolveInventoryMutationLockWindow((new DateTimeImmutable('2026-07-11 18:40:00', $timezone))->getTimestamp(), $timezone, '20:00', '20:00');
+	throw new RuntimeException('Equal automatic closure and cutoff times must be rejected.');
+} catch (InvalidArgumentException $exception) {
+	assertSameValue(true, strpos($exception->getMessage(), 'earlier than') !== false, 'Invalid configured inventory times must fail closed.');
+}
 
 $customerTimestamp = $businessDay->resolveInvoiceDateTimeTimestamp('2026-07-11 23:45:12', $timezone);
 assertSameValue('2026-07-11 23:45:12', (new DateTimeImmutable('@'.$customerTimestamp))->setTimezone($timezone)->format('Y-m-d H:i:s'), 'Customer invoice datetime normalization failed.');
@@ -142,6 +172,7 @@ assertSameValue(44.0, 50.0 + $adjustment, 'Delayed count correction failed.');
 $origins = KreaProductsInventoryLedgerCalculator::excludedMovementOrigins();
 assertSameValue(true, in_array('inventory', $origins, true), 'Inventory correction origin must be excluded.');
 assertSameValue(true, in_array('kreaproducts_inventory_reversal', $origins, true), 'Inventory reversal origin must be excluded.');
+assertSameValue(true, in_array('kreaproducts_inventory_reinstatement', $origins, true), 'Inventory reinstatement origin must be excluded.');
 assertSameValue(true, in_array('kreaproducts_inventory_rebase', $origins, true), 'Inventory rebase origin must be excluded.');
 assertSameValue(true, in_array('kreaproducts_inventory_rebase_reversal', $origins, true), 'Inventory rebase reversal origin must be excluded.');
 assertSameValue(true, in_array('kreaproducts_count_correction', $origins, true), 'Count correction origin must be excluded.');
@@ -186,9 +217,12 @@ assertSameValue(true, strpos((string) $stockMovementSource, 'ProductUpdater::get
 assertSameValue(true, strpos((string) $stockMovementSource, "\t\treturn 0;\n\t}") !== false, 'Successful stock movement processing must use Dolibarr trigger success code zero.');
 assertSameValue(true, strpos((string) $stockMovementSource, "'corrected_counted_qty' => \$row->corrected_counted_qty") !== false, 'Inventory reconstruction must carry the latest active corrected count into its anchor.');
 assertSameValue(true, strpos((string) $stockMovementSource, "array_key_exists('corrected_counted_qty', \$anchor)") !== false, 'Corrected counts must take precedence over the original inventory quantity.');
+assertSameValue(true, substr_count((string) $stockMovementSource, 'AND a.rowid IS NOT NULL))') >= 3, 'A reopened edit draft with an active adjustment must remain a reconstruction anchor.');
+assertSameValue(true, substr_count((string) $stockMovementSource, 'THEN a.counted_qty ELSE id.qty_view END AS qty_view') >= 3, 'Reconstruction must retain the active generation count while revised counts are staged.');
 assertSameValue(true, strpos((string) $stockMovementSource, '$db->jdate($move->datem)') !== false, 'Dismantling must parse movement SQL datetimes in the server timezone.');
 assertSameValue(false, strpos((string) $stockMovementSource, 'dol_stringtotime($move->datem)') !== false, 'Dismantling must not reinterpret server SQL datetimes as GMT.');
 assertSameValue(true, strpos((string) $stockMovementSource, "getDolGlobalInt('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 30)") !== false, 'Customer invoice future tolerance must be configurable with a 30-minute fallback.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'normalizeConfiguredTime(') !== false, 'Supplier invoice movement dating must share configured-time normalization.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf, true)') !== false, 'Inventory reconstruction must retain the persisted movement date when a future source clock exceeds tolerance.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf))') !== false, 'Live customer movement ingestion must continue to reject future source clocks beyond tolerance.');
@@ -203,8 +237,27 @@ assertSameValue(true, strpos((string) $inventoryServiceSource, 'KreaProductsInve
 assertSameValue(true, strpos((string) $inventoryServiceSource, 'if ($movedCache === false)') !== false, 'Native inventory prefill must abort when movement reconstruction fails.');
 assertSameValue(false, strpos((string) $inventoryServiceSource, "Error loading stock movements: " . '$db->lasterror(), LOG_ERR);\n\t\t\t\tcontinue;') !== false, 'Native inventory prefill must not convert movement-query failures into zero movement.');
 
+$mobileInventoryServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsMobileInventoryService.class.php');
+assertSameValue(true, strpos((string) $mobileInventoryServiceSource, '&& $counted > 0') !== false, 'Execute must become available only after at least one count is saved.');
+assertSameValue(true, strpos((string) $mobileInventoryServiceSource, "'can_reverse' => 0") !== false, 'Inventory details must never expose a direct reversal action.');
+
+$inventoryListSource = file_get_contents(__DIR__.'/../inventory_list.php');
+assertSameValue(false, strpos((string) $inventoryListSource, 'kps_fully_reversed') !== false, 'The Dolibarr inventory list must not expose an intermediate reversed state.');
+
+$inventoryPageSource = file_get_contents(__DIR__.'/../inventory.php');
+assertSameValue(false, strpos((string) $inventoryPageSource, 'reverse_inventory') !== false, 'The Dolibarr inventory page must not expose a direct reversal action.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "'confirm_edit'") !== false, 'The Dolibarr inventory page must protect inventory reopening as a confirmed POST action.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "action=edit_inventory") !== false, 'The Dolibarr recorded inventory page must expose Edit when authorized.');
+
+$mobileInventoryAppSource = file_get_contents(__DIR__.'/../stockapp/src/App.tsx');
+assertSameValue(true, strpos((string) $mobileInventoryAppSource, '!inventoryEditable && inventory.can_delete === 1') !== false, 'Mobile inventory detail must expose deletion independently of editability.');
+assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Reverter correção') !== false, 'Mobile inventory detail must not expose a direct reversal action.');
+assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'Editar inventário') !== false, 'Mobile recorded inventory detail must expose Edit.');
+assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templates.blocking_open_inventory && !open)') !== false, 'Open inventories must not block unrelated category and warehouse scopes in mobile.');
+assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
+
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.16.4'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.19.1'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -397,6 +450,8 @@ assertSameValue(true, strpos((string) $llmServiceSource, 'For allergens, use onl
 
 $setupSource = file_get_contents(__DIR__.'/../admin/setup.php');
 assertSameValue(true, strpos((string) $setupSource, "newItem('KREAPRODUCTS_LLM_API_KEY')->setAsSecureKey()") !== false, 'The LLM API key must use Dolibarr encrypted secure-key storage.');
+assertSameValue(true, strpos((string) $setupSource, "newItem('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME')") !== false, 'The automatic inventory closure and lock-start time must be configurable in setup.');
+assertSameValue(true, strpos((string) $setupSource, '$submittedAutoCloseTime >= $submittedEntryCutoff') !== false, 'Setup must reject an automatic closure time that is not earlier than the entry cutoff.');
 
 $actionsSource = file_get_contents(__DIR__.'/../class/actions_kreaproducts.class.php');
 assertSameValue(true, strpos((string) $actionsSource, 'buildProductCardKilogramSelectionScriptRow') !== false, 'Native product forms must apply the kilogram selector workaround.');
@@ -409,6 +464,10 @@ assertSameValue(true, strpos((string) $mobileInventorySource, 'private function 
 assertSameValue(true, strpos((string) $mobileInventorySource, 'private function commitStockTransaction()') !== false, 'Stock mutations must share a checked transaction-commit boundary.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')") !== false, 'Inventory value timestamps must use the configured default inventory time.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')") !== false, 'Displayed virtual stock must use the configured billing-day close time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45')") !== false, 'Automatic closure and the read-only lock must use the configured setup time.');
+assertSameValue(true, substr_count((string) $mobileInventorySource, '$this->requireInventoryMutationWindowOpen();') >= 5, 'Every interactive inventory mutation must enforce the configured read-only interval.');
+assertSameValue(true, substr_count((string) $mobileInventorySource, '$this->requireInventoryCountsCurrent(') >= 3, 'Saving, editing, and executing must reject counts from an earlier counting window.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'if ($this->schedulerMode)') !== false, 'Scheduled automatic closure must be the only mutation exempt from the read-only interval.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'virtual_stock_at_business_close') !== false, 'Inventory analysis must expose a distinct close-time virtual stock value.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'loadOpenInventoryVirtualStockAtBusinessDayClose') !== false, 'Open inventories must reconstruct close-time stock from the live ledger.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'THEN COALESCE(ps.reel, 0) ELSE COALESCE(pb.qty, 0) END as current_qty') !== false, 'Open close-time reconstruction must support product and batch stock.');
@@ -431,27 +490,79 @@ assertSameValue(true, strpos((string) $mobileInventorySource, 'can_edit_value_da
 assertSameValue(true, strpos((string) $mobileInventorySource, 'findRecordedInventoryOnCalendarDate(') !== false, 'Inventory closure must check for a recorded inventory on the selected calendar date.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_INVENTORY_RECORDED_DATE_EXISTS') !== false, 'Duplicate recorded value dates must return a clear refusal message.');
 assertSameValue(false, strpos((string) $mobileInventorySource, 'counting window has closed and it can no longer be recorded') !== false, 'Initiated inventories must remain closable after an explicit value-date change.');
-assertSameValue(true, strpos((string) $mobileInventorySource, 'findAnyOpenManagedInventory()') !== false, 'Starting a new category must detect an existing initiated managed inventory.');
+assertSameValue(false, strpos((string) $mobileInventorySource, 'findAnyOpenManagedInventory()') !== false, 'An open inventory must block only its own category and warehouse, not unrelated scopes.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN') !== false, 'Starting another inventory in an occupied category and warehouse must return a clear conflict.');
+assertSameValue(true, substr_count((string) $mobileInventorySource, 'requireFirstOpenInventoryOfScope(') >= 4, 'Saving, editing, and executing must recheck the first open inventory while holding the scope lock.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'ORDER BY i.date_inventory ASC, i.rowid ASC') !== false, 'The oldest open inventory must own its category and warehouse scope.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "'history_locked' => (\$isRecorded && !\$isCurrentCountingWindow) ? 1 : 0") !== false, 'Recorded inventories outside the current counting window must be marked as permanent read-only history.');
+assertSameValue(true, strpos((string) $mobileInventorySource, '($isLatestOfKind && $isCurrentCountingWindow && $this->canClose())') !== false, 'Recorded inventory deletion must be exposed only in the current counting window.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'closeDueInventories($now = 0)') !== false, 'Managed inventories must expose automatic due closure.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'closeDueInventoriesAsScheduler($now = 0)') !== false, 'Scheduled closure must use a dedicated administrator-only entry point.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_INVENTORY_FUTURE_CLOSE_BLOCKED') !== false, 'Future inventory anchors must not post stock immediately.');
-assertSameValue(true, strpos((string) $mobileInventorySource, '$canDelete = $isKreaProductsStockInventory && $isOpen && $this->canCount();') !== false, 'Authorized counters must be allowed to delete initiated inventories.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'isFutureCalendarDate($valueTimestamp, $now)') !== false, 'Inventory closure must distinguish a future calendar date from a same-day ordering time.');
+assertSameValue(false, strpos((string) $mobileInventorySource, '$valueTimestamp = $now;') !== false, 'Same-day inventory execution must preserve the configured inventory ordering time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "'can_reverse' => 0") !== false, 'Direct inventory reversal must remain disabled.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "'can_edit' => \$canEdit ? 1 : 0") !== false, 'The latest recorded inventory must expose edit capability.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'public function editInventory') !== false, 'The service must expose the explicit recorded-inventory edit lifecycle.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "\$closedInventory['can_edit'] = !\$mutationLocked && \$closedStillCurrent && \$this->canClose() ? 1 : 0") !== false, 'A successful execution response must expose Edit only in the current counting window and outside the configured read-only interval.');
+assertSameValue(true, strpos((string) $mobileInventorySource, '$this->compensateInventoryStockEffects($record, false, true, true);') !== false, 'Inventory re-execution must atomically replace the previous active adjustment generation.');
+assertSameValue(true, substr_count((string) $mobileInventorySource, 'assertValueDateAfterLatestInventory(') >= 4, 'Creation, saving, and closure must enforce strictly increasing category and warehouse dates.');
 $deleteInventoryStart = strpos((string) $mobileInventorySource, 'public function deleteInventory');
 $deleteInventoryEnd = strpos((string) $mobileInventorySource, 'public function saveCounts', $deleteInventoryStart);
 assertSameValue(true, $deleteInventoryStart !== false && $deleteInventoryEnd !== false, 'Inventory deletion service scope could not be resolved.');
 $deleteInventorySource = substr((string) $mobileInventorySource, $deleteInventoryStart, $deleteInventoryEnd - $deleteInventoryStart);
 assertSameValue(true, strpos((string) $deleteInventorySource, '$this->requireCountAccess();') !== false, 'Initiated inventory deletion must require count permission.');
-assertSameValue(false, strpos((string) $deleteInventorySource, '$this->requireCloseAccess();') !== false, 'Initiated inventory deletion must not require close or reversal permission.');
-assertSameValue(true, strpos((string) $deleteInventorySource, 'Inventory::STATUS_VALIDATED') !== false, 'Deletion must remain restricted to initiated inventories.');
+assertSameValue(true, strpos((string) $deleteInventorySource, '$this->requireCloseAccess();') !== false, 'Recorded inventory deletion must require close permission.');
+assertSameValue(true, strpos((string) $deleteInventorySource, 'return $this->compensateInventoryStockEffects($record, true);') !== false, 'Recorded inventory deletion must compensate stock before removing the record.');
+assertSameValue(true, strpos((string) $deleteInventorySource, '$initiatedHasActiveStockEffects') !== false, 'Deleting an edit draft must compensate its still-active stock generation.');
+assertSameValue(true, strpos((string) $deleteInventorySource, 'KREAPRODUCTS_ERROR_INVENTORY_HISTORY_LOCKED') !== false, 'Recorded inventories from an earlier counting window must reject deletion.');
+assertSameValue(true, strpos((string) $deleteInventorySource, '$inventory->setDraft($this->user)') !== false, 'Inventory deletion must use the native Dolibarr draft lifecycle before deletion.');
+
+$editInventoryStart = strpos((string) $mobileInventorySource, 'public function editInventory');
+$editInventoryEnd = strpos((string) $mobileInventorySource, 'public function saveCounts', $editInventoryStart);
+assertSameValue(true, $editInventoryStart !== false && $editInventoryEnd !== false, 'Inventory edit service scope could not be resolved.');
+$editInventorySource = substr((string) $mobileInventorySource, $editInventoryStart, $editInventoryEnd - $editInventoryStart);
+assertSameValue(false, strpos((string) $editInventorySource, 'compensateInventoryStockEffects(') !== false, 'Opening Edit must not change live stock.');
+assertSameValue(true, strpos((string) $editInventorySource, '$inventory->setStatut(Inventory::STATUS_VALIDATED') !== false, 'Edit must reopen the same inventory through the native validated lifecycle.');
+assertSameValue(true, strpos((string) $editInventorySource, 'getActiveAdjustmentValueDate($inventoryId, true)') !== false, 'Edit must restore the immutable active adjustment timestamp before reopening the inventory.');
+assertSameValue(true, strpos((string) $mobileInventorySource, '($canCount && !$hasActiveAdjustmentGeneration)') !== false, 'A reopened recorded inventory must keep its original value date immutable.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_ERROR_EDIT_VALUE_DATE_IMMUTABLE') !== false, 'The service must reject value-date changes while revised counts are staged.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'if (!$stagesRecordedRevision)') !== false, 'A revision save must never recompute its timestamp from the current configured inventory hour.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_ERROR_ACTIVE_INVENTORY_VALUE_DATE_INCONSISTENT') !== false, 'Revision saves must fail closed when one active adjustment generation has inconsistent value timestamps.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'resolvePostCutoffMinimumValueTimestamp($inventory)') !== false, 'Inventory reads and saves must derive the mandatory post-cutoff value date from the inventory creation time.');
+assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_INVENTORY_POST_CUTOFF_DATE_REQUIRED') !== false, 'An unconfirmed post-cutoff backdate must fail before counts are persisted.');
+assertSameValue(true, strpos((string) $mobileInventorySource, ': (int) $this->db->jdate($inventory->date_inventory)') !== false, 'The post-cutoff safeguard must also validate the stored value date when a client omits the date field.');
+
+$inventoryListSource = file_get_contents(__DIR__.'/../inventory_list.php');
+assertSameValue(true, strpos((string) $inventoryListSource, "preg_match('/^\\(PROV\\d+\\)\$/i', \$ref)") !== false, 'The inventory list must preserve Dolibarr provisional references.');
+assertSameValue(true, strpos((string) $inventoryListSource, "\$refdisplay = '(PROV'.str_pad") !== false, 'The inventory list must provide a provisional display fallback for initiated managed inventories.');
+assertSameValue(true, strpos((string) $inventoryListSource, '$inventoryMutationLocked') !== false, 'The inventory list must suppress creation and mass deletion during the configured read-only interval.');
 
 $mobileAppSource = file_get_contents(__DIR__.'/../stockapp/src/App.tsx');
 assertSameValue(true, strpos((string) $mobileAppSource, 'Guardar correções') !== false, 'Mobile correction mode must include a bottom save action.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'cria os movimentos compensatórios necessários e elimina o inventário fechado') !== false, 'Deleting a recorded inventory must explain its atomic compensation and removal.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'templates.mutation_window.active === 1') !== false, 'The mobile category selector must become read-only during the configured lock interval.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'inventory.counts_expired === 1') !== false, 'The mobile inventory must explain that stale products need to be counted again.');
 
 $inventoryPageSource = file_get_contents(__DIR__.'/../inventory.php');
 assertSameValue(false, strpos((string) $inventoryPageSource, 'new MouvementStock'), 'The dedicated inventory page must not calculate stock movements directly.');
 assertSameValue(false, strpos((string) $inventoryPageSource, 'stock_mouvement'), 'The dedicated inventory page must not query the stock movement ledger directly.');
 assertSameValue(false, strpos((string) $inventoryPageSource, 'restrictedArea($user') !== false, 'Custom inventory actions must not inherit core action-name write checks from restrictedArea.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "\$user->hasRight('stock', 'lire')") !== false, 'The custom inventory page must retain an explicit stock-read gate.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_TITLE') !== false, 'The inventory detail page must explain its stock lifecycle.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')") !== false, 'The inventory explanation must show the configured stock-anchor time.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00')") !== false, 'The inventory explanation must distinguish the billing-close display time.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "'KREAPRODUCTS_INVENTORY_LOGIC_VALUE_DATE', \$inventoryAnchorLabel, \$inventoryDefaultTime, \$inventoryCutoffTime") !== false, 'The bottom explanation must disclose the configured cutoff and next-day value-date rule.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45')") !== false, 'The inventory explanation must use the configured automatic closure time.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_READ_ONLY_WINDOW') !== false, 'The bottom explanation must document the configured read-only interval.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_EXPIRED_COUNTS') !== false, 'The bottom explanation must require a new count after an earlier window expires.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_OPEN_SCOPE') !== false, 'The bottom explanation must document the category and warehouse open-inventory gate.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_HISTORY_LOCKED') !== false, 'The bottom explanation must document permanent recorded-history locking.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "GETPOSTINT('confirm_post_cutoff_date') === 1") !== false, 'The inventory page must pass only an explicit post-cutoff date confirmation to the service.');
+assertSameValue(true, strpos((string) $inventoryPageSource, 'data-kps-post-cutoff-min-date') !== false, 'The inventory form must expose its mandatory next-window date to the confirmation UI.');
+$inventoryActionsPosition = strrpos((string) $inventoryPageSource, "print '<div class=\"tabsAction\">';");
+$inventoryExplanationPosition = strrpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_LOGIC_TITLE');
+assertSameValue(true, $inventoryActionsPosition !== false && $inventoryExplanationPosition > $inventoryActionsPosition, 'The inventory stock explanation must render below the page actions.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '$service->saveCounts') !== false, 'The dedicated inventory page must delegate count saving to the shared service.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '$service->closeInventory') !== false, 'The dedicated inventory page must delegate inventory closure to the shared service.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '$service->startInventory') !== false, 'The unified page must start inventories from configured categories.');
@@ -466,7 +577,8 @@ assertSameValue(false, strpos((string) $inventoryPageSource, "array('horizontalb
 assertSameValue(true, strpos((string) $inventoryPageSource, 'data-kps-statistics-product') !== false, 'Inventory statistics must provide a product selector.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "foreach (\$selectedProductStatistics['daily'] as \$dayStatistics)") !== false, 'Each selected product graph must display its own daily intake and consumption.');
 assertSameValue(false, strpos((string) $inventoryPageSource, "\$langs->trans('Status')") !== false, 'The inventory detail must not repeat the initiated status in its summary table.');
-assertSameValue(false, strpos((string) $inventoryPageSource, "'dayhour'") !== false, 'The inventory value date must be displayed without its ordering time.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "print dol_print_date((int) \$inventory['date_inventory'], 'day');") !== false, 'The inventory summary must display the value date without its ordering time.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "\$inventoryAnchorLabel = dol_print_date((int) \$inventory['date_inventory'], 'dayhour', 'tzuserrel');") !== false, 'The stock explanation must disclose the exact inventory anchor timestamp.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "\$langs->trans('KREAPRODUCTS_VALUE_DATE')") !== false, 'The inventory summary must use the concise module value-date label.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'data-kps-value-date') !== false, 'Initiated Dolibarr inventories must render an editable value-date field.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'KREAPRODUCTS_INVENTORY_CORRECTION_DATE_WARNING') !== false, 'Recorded same-day corrections must display their allowed correction date.');
@@ -482,6 +594,12 @@ assertSameValue(true, strpos((string) $inventoryPageSource, 'name="action" value
 assertSameValue(true, strpos((string) $inventoryPageSource, "header('Location: '.\$_SERVER['PHP_SELF'].'?id='.\$id.'&action=close_inventory')") !== false, 'Save-and-close must redirect to confirmation only after counts are persisted.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "'save_and_close'") !== false, 'Save-and-close must be protected as a POST write action.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '<a class="butActionDelete kps-inventory-action" href=') !== false, 'Destructive actions must use the native Dolibarr delete class and shared height class.');
+
+$inventoryJsSource = file_get_contents(__DIR__.'/../js/kreaproducts_inventory.js');
+assertSameValue(true, strpos((string) $inventoryJsSource, 'window.confirm(message)') !== false, 'The inventory page must ask before replacing an invalid post-cutoff value date.');
+assertSameValue(true, strpos((string) $inventoryJsSource, 'valueDateInput.value = minimumDate') !== false, 'Accepted confirmation must replace the submitted date with the mandatory next-window date.');
+assertSameValue(true, strpos((string) $inventoryJsSource, "postCutoffConfirmed.value = '1'") !== false, 'Accepted confirmation must be explicit in the server request.');
+assertSameValue(true, strpos((string) $inventoryJsSource, "postCutoffConfirmed.value = '0'") !== false, 'Changing the value date must invalidate an earlier browser confirmation.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '$confirmationUseAjax = 0') !== false, 'Inventory write confirmations must submit through POST forms, not AJAX GET requests.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "'confirm_close',\n\t\t'',\n\t\t'yes',") !== false, 'Inventory closure confirmation must select Yes by default.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'kps-category-new') !== false, 'New category actions must use the light green state class.');
@@ -599,7 +717,8 @@ assertSameValue(true, strpos((string) $stockServiceSource, '$this->dismantleIfNe
 $traceMigrationSource = file_get_contents(__DIR__.'/../sql/llx_kreaproducts_mo_batchtrace_upgrade.sql');
 assertSameValue(true, strpos((string) $traceMigrationSource, 'information_schema.COLUMNS') !== false, 'Production trace upgrades must run through an idempotent activation migration.');
 
-assertSameValue(true, strpos((string) $mobileInventorySource, '$this->canCount() && $this->isCurrentBusinessDayInventory($closedRecord)') !== false, 'Post-close correction flags must remain limited to the current business day.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "\$closedInventory['editable'] = 0") !== false, 'Recorded inventories must remain read-only after stock execution.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "\$closedInventory['can_delete'] = !\$mutationLocked && \$closedStillCurrent && \$this->canClose() ? 1 : 0") !== false, 'Recorded inventories must expose deletion only in the current counting window and outside the configured read-only interval.');
 
 $moduleDescriptorSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
 assertSameValue(true, strpos((string) $moduleDescriptorSource, "'method' => 'closeDueInventories'") !== false, 'The automatic inventory closure cron job must be registered.');
@@ -668,13 +787,18 @@ assertSameValue(true, strpos((string) $associatedProductsSource, 'print $recursi
 $triggerSource = file_get_contents(__DIR__.'/../core/triggers/interface_99_modKreaProducts_KreaProductsTriggers.class.php');
 assertSameValue(true, strpos((string) $triggerSource, 'ProductUpdater::prepareProductCostUpdate($product);') !== false, 'Supplier-invoice cost persistence must preserve oldcopy before changing cost_price.');
 
-$reverseStart = strpos((string) $mobileInventorySource, 'public function reverseInventory');
-$reverseEnd = strpos((string) $mobileInventorySource, 'private function requireInventoryValueDatingEnabled', $reverseStart);
-$reverseSource = substr((string) $mobileInventorySource, $reverseStart, $reverseEnd - $reverseStart);
-assertSameValue(true, strpos((string) $reverseSource, "inventory as i") < strpos((string) $reverseSource, 'kreaproducts_inventory_adjustment as a'), 'Inventory reversal must lock the header before adjustment rows.');
-assertSameValue(true, strpos((string) $reverseSource, 'FOR UPDATE') !== false, 'Inventory reversal must lock its header row.');
-assertSameValue(true, strpos((string) $reverseSource, 'hasLaterActiveInventoryAnchor(') !== false, 'Inventory reversal must reject an older anchor while a later active inventory exists.');
-assertSameValue(true, strpos((string) $reverseSource, '$this->commitStockTransaction();') !== false, 'Inventory reversal must verify its final database commit.');
+$deleteRecordedStart = strpos((string) $mobileInventorySource, 'private function compensateInventoryStockEffects');
+$deleteRecordedEnd = strpos((string) $mobileInventorySource, 'private function requireInventoryValueDatingEnabled', $deleteRecordedStart);
+$deleteRecordedSource = substr((string) $mobileInventorySource, $deleteRecordedStart, $deleteRecordedEnd - $deleteRecordedStart);
+assertSameValue(true, strpos((string) $deleteRecordedSource, "inventory as i") < strpos((string) $deleteRecordedSource, 'kreaproducts_inventory_adjustment as a'), 'Recorded deletion must lock the header before adjustment rows.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, 'FOR UPDATE') !== false, 'Recorded deletion must lock inventory and ledger rows.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, 'hasLaterActiveInventoryAnchor(') !== false, 'Recorded deletion must reject unsafe removal before a later active anchor.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, '(string) $row->value_datetime') !== false, 'Compensation must protect the original active adjustment timestamp even when an edit changes the staged value date.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, 'isLatestInventoryOfKind($record, true)') !== false, 'Recorded deletion must enforce the latest template and warehouse boundary under lock.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, '$inventory->setDraft($this->user)') !== false, 'Recorded deletion must use the native draft lifecycle after compensating stock.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, '$inventory->delete($this->user)') !== false, 'Recorded deletion must remove the record in the compensation transaction.');
+assertSameValue(true, strpos((string) $deleteRecordedSource, '$this->commitStockTransaction();') !== false, 'Recorded deletion must verify its final database commit.');
+assertSameValue(false, strpos((string) $mobileInventorySource, 'public function reverseInventory') !== false, 'The service must not expose reversal as a public action.');
 
 $bomDismantleSource = file_get_contents(__DIR__.'/../ajax/bom_dismantle.php');
 assertSameValue(true, strpos((string) $bomDismantleSource, 'if (empty($token) ||') !== false, 'The BOM helper must reject a missing CSRF token.');
@@ -690,6 +814,7 @@ assertSameValue(true, substr_count((string) $mobileControllerSource, 'catch (Thr
 assertSameValue(false, strpos((string) $mobileControllerSource, "catch (Throwable \$e) {\n\t\t\$_SESSION['dol_loginmesg'] = \$e->getMessage()") !== false, 'OAuth failures must not expose raw exception details.');
 assertSameValue(true, substr_count((string) $mobileControllerSource, 'if ($e->httpCode >= 500)') >= 4, 'Mobile business exceptions must sanitize every internal server failure boundary.');
 assertSameValue(true, strpos((string) $mobileControllerSource, "respondError(\$langs->trans('KreaProductsStockUnexpectedError'), \$e->httpCode)") !== false, 'Mobile API server errors must expose only the generic translated response.');
+assertSameValue(true, strpos((string) $mobileControllerSource, "'edit_inventory'") !== false, 'Mobile mutations must expose the explicit recorded-inventory edit lifecycle.');
 
 $productLabelsSource = file_get_contents(__DIR__.'/../product_labels.php');
 assertSameValue(false, strpos((string) $productLabelsSource, 'ALTER TABLE') !== false, 'Product label requests must never alter the database schema.');
@@ -724,14 +849,21 @@ assertSameValue(true, strpos((string) $nutritionalNumberingSource, '$this->date_
 $allergenIndexMigration = file_get_contents(__DIR__.'/../sql/llx_kreaproducts_productallergens_upgrade.sql');
 assertSameValue(true, strpos((string) $allergenIndexMigration, 'idx_kreaproducts_productallergens_fk_product') !== false, 'The allergen product lookup index migration must be installed.');
 
+$inventoryAdjustmentSchema = file_get_contents(__DIR__.'/../sql/llx_kreaproducts_inventory_adjustment.sql');
+$inventoryAdjustmentHistoryMigration = file_get_contents(__DIR__.'/../sql/llx_kreaproducts_inventory_adjustment_history_upgrade.sql');
+assertSameValue(false, strpos((string) $inventoryAdjustmentSchema, 'UNIQUE KEY uk_kreaproducts_inventory_adjustment_line') !== false, 'Fresh installs must allow append-only adjustment generations per inventory line.');
+assertSameValue(true, strpos((string) $inventoryAdjustmentSchema, 'KEY idx_kreaproducts_inventory_adjustment_line (entity, fk_inventorydet, status)') !== false, 'Fresh installs must index adjustment history by entity, line, and active status.');
+assertSameValue(true, strpos((string) $inventoryAdjustmentHistoryMigration, 'DROP INDEX uk_kreaproducts_inventory_adjustment_line') !== false, 'Upgrades must remove the legacy one-row-per-line unique key.');
+assertSameValue(true, strpos((string) $inventoryAdjustmentHistoryMigration, 'CREATE INDEX idx_kreaproducts_inventory_adjustment_line') !== false, 'Upgrades must add the non-unique adjustment history index.');
+
 $inventoryRunnerSource = file_get_contents(__DIR__.'/../scripts/run_inventory_auto_close.php');
 assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'KreaProductsInventoryCron'") !== false, 'The isolated runner must select only KreaProducts inventory jobs.');
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.16.4', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.16.4', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.16.4', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.19.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.19.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.19.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

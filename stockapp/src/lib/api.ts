@@ -79,10 +79,19 @@ export interface Warehouse {
   description: string;
 }
 
+export interface InventoryMutationWindow {
+  active: number;
+  start: number;
+  end: number;
+  start_time: string;
+  end_time: string;
+}
+
 export interface OpenInventorySummary {
   id: number;
   ref: string;
   title: string;
+  date_inventory: number;
   total_lines: number;
   counted_lines: number;
 }
@@ -104,6 +113,7 @@ export interface InventorySummary {
 
 export interface InventoryListData {
   history_enabled: number;
+  mutation_window: InventoryMutationWindow;
   inventories: InventorySummary[];
 }
 
@@ -119,6 +129,7 @@ export interface TemplateData {
   root_category_id: number;
   default_warehouse_id: number;
   history_enabled: number;
+  mutation_window: InventoryMutationWindow;
   blocking_open_inventory: OpenInventorySummary | null;
   warehouses: Warehouse[];
   templates: InventoryTemplate[];
@@ -155,6 +166,10 @@ export interface InventoryDetail {
   date_creation: number;
   date_inventory: number;
   max_value_date: number;
+  mutation_window: InventoryMutationWindow;
+  counts_expired: number;
+  blocked_by_open_inventory: number;
+  history_locked: number;
   counted_lines: number;
   total_lines: number;
   complete: number;
@@ -163,6 +178,7 @@ export interface InventoryDetail {
   can_edit_value_date: number;
   can_close: number;
   can_delete: number;
+  can_edit: number;
   can_reverse: number;
   correction_mode: number;
   managed: number;
@@ -285,8 +301,8 @@ export function closeInventory(inventoryId: number, allowIncomplete = false): Pr
   });
 }
 
-export function reverseInventory(inventoryId: number): Promise<InventoryDetail> {
-  return post<InventoryDetail>('reverse_inventory', { inventory_id: inventoryId });
+export function editInventory(inventoryId: number): Promise<InventoryDetail> {
+  return post<InventoryDetail>('edit_inventory', { inventory_id: inventoryId });
 }
 
 export function deleteInventory(inventoryId: number): Promise<{ deleted: number; inventory_id: number }> {

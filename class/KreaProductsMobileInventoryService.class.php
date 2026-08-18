@@ -78,6 +78,37 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Return the current inventory mutation lock state for the active entity.
+	 *
+	 * @param int $now Timestamp to evaluate, or zero for now
+	 * @return array{active:int,start:int,end:int,start_time:string,end_time:string}
+	 */
+	public function getInventoryMutationWindowState($now = 0)
+	{
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		try {
+			$businessDayService = new KreaProductsBusinessDayService();
+			$window = $businessDayService->resolveInventoryMutationLockWindow(
+				$now,
+				$this->getOperationTimezone(),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45'),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
+			);
+		} catch (InvalidArgumentException $exception) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 500);
+		}
+		$timezone = $this->getOperationTimezone();
+
+		return array(
+			'active' => !empty($window['active']) ? 1 : 0,
+			'start' => (int) $window['start'],
+			'end' => (int) $window['end'],
+			'start_time' => (new DateTimeImmutable('@'.((int) $window['start'])))->setTimezone($timezone)->format('H:i'),
+			'end_time' => (new DateTimeImmutable('@'.((int) $window['end'])))->setTimezone($timezone)->format('H:i'),
+		);
+	}
+
+	/**
 	 * List configured inventory templates and their active inventory.
 	 *
 	 * @return array<string,mixed>
@@ -85,12 +116,12 @@ class KreaProductsMobileInventoryService
 	public function listTemplates()
 	{
 		$this->requireReadAccess();
+		$mutationWindow = $this->getInventoryMutationWindowState();
 
 		$rootCategoryId = $this->getRootCategoryId();
 		$warehouses = $this->listWarehouses();
 		$defaultWarehouseId = $this->resolveDefaultWarehouseId($warehouses);
 		$currentValueTimestamp = $this->resolveInventoryValueTimestamp(dol_now());
-		$blockingOpenInventory = $this->findAnyOpenManagedInventory();
 
 		$sql = 'SELECT c.rowid, c.label, COUNT(DISTINCT p.rowid) as product_count';
 		$sql .= ' FROM '.$this->db->prefix().'categorie as c';
@@ -134,7 +165,8 @@ class KreaProductsMobileInventoryService
 			'root_category_id' => $rootCategoryId,
 			'default_warehouse_id' => $defaultWarehouseId,
 			'history_enabled' => $this->isHistoryEnabled() ? 1 : 0,
-			'blocking_open_inventory' => $blockingOpenInventory,
+			'mutation_window' => $mutationWindow,
+			'blocking_open_inventory' => null,
 			'warehouses' => $warehouses,
 			'templates' => $templates,
 		);
@@ -150,6 +182,7 @@ class KreaProductsMobileInventoryService
 	public function startInventory($categoryId, $warehouseId = 0)
 	{
 		$this->requireCountAccess();
+		$this->requireInventoryMutationWindowOpen();
 		$this->requireInventoryValueDatingEnabled();
 
 		$category = $this->fetchTemplateCategory((int) $categoryId);
@@ -160,20 +193,15 @@ class KreaProductsMobileInventoryService
 			$this->lockInventoryStartScope((int) $category->rowid, (int) $warehouse->rowid);
 			$openInventory = $this->findOpenInventory((int) $category->rowid, (int) $warehouse->rowid);
 			if (!empty($openInventory['id'])) {
-				$this->commitStockTransaction();
-				return $this->getInventory((int) $openInventory['id']);
+				throw new KreaProductsStockApiException(
+					$this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN', (string) $openInventory['ref']),
+					409
+				);
 			}
 			$dayInventory = $this->findBusinessDayInventory((int) $category->rowid, (int) $warehouse->rowid, $valueTimestamp);
 			if (!empty($dayInventory['id'])) {
 				$this->commitStockTransaction();
 				return $this->getInventory((int) $dayInventory['id']);
-			}
-			$blockingOpenInventory = $this->findAnyOpenManagedInventory();
-			if (!empty($blockingOpenInventory['id'])) {
-				throw new KreaProductsStockApiException(
-					$this->langs->trans('KREAPRODUCTS_INVENTORY_OPEN_BLOCKED', (string) $blockingOpenInventory['ref']),
-					409
-				);
 			}
 			$overlappingInventory = $this->findOverlappingBusinessDayInventory((int) $category->rowid, (int) $warehouse->rowid, $valueTimestamp);
 			if (!empty($overlappingInventory['id'])) {
@@ -182,6 +210,7 @@ class KreaProductsMobileInventoryService
 					409
 				);
 			}
+			$this->assertValueDateAfterLatestInventory((int) $category->rowid, (int) $warehouse->rowid, $valueTimestamp, 0, true);
 
 			$inventory = new Inventory($this->db);
 			$inventory->context['kreaproducts_mobile_inventory'] = 1;
@@ -277,25 +306,30 @@ class KreaProductsMobileInventoryService
 		$templateCategoryId = !empty($inventory->template_category_id) ? (int) $inventory->template_category_id : $this->extractSingleTemplateCategoryId((string) $inventory->categories_product);
 		$category = $this->fetchCategoryById($templateCategoryId);
 		$isOpen = (int) $inventory->status === Inventory::STATUS_VALIDATED;
+		$isRecorded = (int) $inventory->status === Inventory::STATUS_RECORDED;
 		$isKreaProductsStockInventory = $this->isKreaProductsStockReference((string) $inventory->ref, (string) $inventory->import_key);
-		$isCurrentBusinessDay = $isKreaProductsStockInventory && $this->isInventoryInCurrentCountingWindow($inventory);
-		$openInventoryCanBeCounted = $isOpen;
-		$canCorrect = $isKreaProductsStockInventory
-			&& (int) $inventory->status === Inventory::STATUS_RECORDED
-			&& $isCurrentBusinessDay
-			&& $this->canCount()
-			&& !$this->hasReversedAdjustments((int) $inventory->rowid);
-		$canCount = $isKreaProductsStockInventory && $this->canCount() && ($openInventoryCanBeCounted || $canCorrect);
+		$hasActiveAdjustmentGeneration = $isKreaProductsStockInventory && $this->hasActiveAdjustments((int) $inventory->rowid);
+		$mutationWindow = $this->getInventoryMutationWindowState();
+		$mutationLocked = !empty($mutationWindow['active']);
+		$isCurrentCountingWindow = $isKreaProductsStockInventory && $this->isInventoryInCurrentCountingWindow($inventory);
+		$isFirstOpenOfScope = !$isOpen || $this->isFirstOpenInventoryOfScope($inventory);
+		$postCutoffMinimumValueDate = ($isKreaProductsStockInventory && $isOpen && !$hasActiveAdjustmentGeneration)
+			? $this->resolvePostCutoffMinimumValueTimestamp($inventory)
+			: 0;
+		$openInventoryCanBeCounted = $isOpen && $isCurrentCountingWindow && $isFirstOpenOfScope && !$mutationLocked;
+		$canCount = $isKreaProductsStockInventory && $this->canCount() && $openInventoryCanBeCounted;
 		$canClose = $isKreaProductsStockInventory
 			&& $isOpen
-			&& (int) $this->db->jdate($inventory->date_inventory) <= dol_now()
+			&& $isCurrentCountingWindow
+			&& !$mutationLocked
+			&& $counted > 0
+			&& !$this->isFutureCalendarDate((int) $this->db->jdate($inventory->date_inventory))
 			&& $this->canClose();
-		$canDelete = $isKreaProductsStockInventory && $isOpen && $this->canCount();
-		$canReverse = $isKreaProductsStockInventory
-			&& (int) $inventory->status === Inventory::STATUS_RECORDED
-			&& !$isCurrentBusinessDay
-			&& $this->canClose()
-			&& $this->hasActiveAdjustments((int) $inventory->rowid);
+		$isLatestOfKind = $isKreaProductsStockInventory && $isRecorded && $this->isLatestInventoryOfKind($inventory);
+		$canEdit = $isLatestOfKind && $isCurrentCountingWindow && !$mutationLocked && $this->canClose() && $hasActiveAdjustmentGeneration;
+		$canDelete = $isKreaProductsStockInventory
+			&& !$mutationLocked
+			&& (($isOpen && $this->canCount()) || ($isLatestOfKind && $isCurrentCountingWindow && $this->canClose()));
 
 		return array(
 			'id' => (int) $inventory->rowid,
@@ -309,16 +343,22 @@ class KreaProductsMobileInventoryService
 			'date_creation' => $this->db->jdate($inventory->date_creation),
 			'date_inventory' => $this->db->jdate($inventory->date_inventory),
 			'max_value_date' => $this->resolveInventoryValueTimestamp(dol_now()),
+			'post_cutoff_minimum_value_date' => (int) $postCutoffMinimumValueDate,
+			'mutation_window' => $mutationWindow,
+			'counts_expired' => ($isOpen && !$isCurrentCountingWindow) ? 1 : 0,
+			'blocked_by_open_inventory' => ($isOpen && !$isFirstOpenOfScope) ? 1 : 0,
+			'history_locked' => ($isRecorded && !$isCurrentCountingWindow) ? 1 : 0,
 			'counted_lines' => $counted,
 			'total_lines' => $total,
 			'complete' => ($total > 0 && $counted === $total) ? 1 : 0,
 			'editable' => $canCount ? 1 : 0,
 			'can_count' => $canCount ? 1 : 0,
-			'can_edit_value_date' => ($isKreaProductsStockInventory && $isOpen && $this->canCount()) ? 1 : 0,
+			'can_edit_value_date' => ($canCount && !$hasActiveAdjustmentGeneration) ? 1 : 0,
 			'can_close' => $canClose ? 1 : 0,
 			'can_delete' => $canDelete ? 1 : 0,
-			'can_reverse' => $canReverse ? 1 : 0,
-			'correction_mode' => $canCorrect ? 1 : 0,
+			'can_edit' => $canEdit ? 1 : 0,
+			'can_reverse' => 0,
+			'correction_mode' => 0,
 			'managed' => $isKreaProductsStockInventory ? 1 : 0,
 			'can_view_analysis' => $canViewInventoryAnalysis ? 1 : 0,
 			'lines' => $lines,
@@ -361,7 +401,9 @@ class KreaProductsMobileInventoryService
 		foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
 			$excludedOrigins[] = "'".$this->db->escape($origin)."'";
 		}
-		if ((int) $inventory->status === Inventory::STATUS_VALIDATED) {
+		if ((int) $inventory->status === Inventory::STATUS_VALIDATED
+			&& !$this->hasActiveAdjustments((int) $inventory->rowid)
+		) {
 			return $this->loadOpenInventoryVirtualStockAtBusinessDayClose($inventory, $closingTimestamp, $excludedOrigins);
 		}
 
@@ -660,11 +702,13 @@ class KreaProductsMobileInventoryService
 	public function listInventories()
 	{
 		$this->requireReadAccess();
+		$mutationWindow = $this->getInventoryMutationWindowState();
 
 		$templateCategories = $this->listTemplateCategoryMap();
 		if (empty($templateCategories)) {
 			return array(
 				'history_enabled' => 1,
+				'mutation_window' => $mutationWindow,
 				'inventories' => array(),
 			);
 		}
@@ -721,6 +765,7 @@ class KreaProductsMobileInventoryService
 
 		return array(
 			'history_enabled' => 1,
+			'mutation_window' => $mutationWindow,
 			'inventories' => $inventories,
 		);
 	}
@@ -736,20 +781,42 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
-	 * Delete an initiated KreaProductsStock inventory before any stock movements are generated.
+	 * Delete an initiated or recorded inventory.
+	 *
+	 * Recorded inventory stock effects are compensated in the same transaction before
+	 * the inventory record is removed. No intermediate reversed inventory is exposed.
 	 *
 	 * @param int $inventoryId Inventory ID
 	 * @return array<string,int>
 	 */
 	public function deleteInventory($inventoryId)
 	{
-		$this->requireCountAccess();
+		$this->requireReadAccess();
+		$this->requireInventoryMutationWindowOpen();
 		$record = $this->fetchInventoryRecord((int) $inventoryId);
 		if (!$this->isKreaProductsStockReference((string) $record->ref, (string) $record->import_key)) {
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_MANAGED'), 404);
 		}
-		if ((int) $record->status !== Inventory::STATUS_VALIDATED) {
-			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_DELETE_INITIATED_ONLY'), 409);
+		$isInitiated = (int) $record->status === Inventory::STATUS_VALIDATED;
+		$isRecorded = (int) $record->status === Inventory::STATUS_RECORDED;
+		$isReversedRecorded = $isRecorded && $this->isInventoryFullyReversed((int) $record->rowid);
+		if (!$isInitiated && !$isRecorded) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_DELETE_INITIATED_OR_RECORDED_ONLY'), 409);
+		}
+		if ($isRecorded && !$this->isInventoryInCurrentCountingWindow($record)) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_HISTORY_LOCKED'), 409);
+		}
+		$initiatedHasActiveStockEffects = $isInitiated
+			&& ($this->hasActiveAdjustments((int) $record->rowid)
+				|| $this->hasActiveCorrections((int) $record->rowid)
+				|| $this->hasUnreversedRebaseMovements((int) $record->rowid));
+		if ($isInitiated && !$initiatedHasActiveStockEffects) {
+			$this->requireCountAccess();
+		} else {
+			$this->requireCloseAccess();
+		}
+		if ($isRecorded && !$isReversedRecorded) {
+			return $this->compensateInventoryStockEffects($record, true);
 		}
 
 		$inventory = new Inventory($this->db);
@@ -762,8 +829,14 @@ class KreaProductsMobileInventoryService
 		$this->beginStockTransaction();
 		$error = 0;
 		$errorMessage = '';
+		try {
+			$this->lockInventoryStartScope((int) $record->template_category_id, (int) $record->fk_warehouse);
+		} catch (Throwable $exception) {
+			$this->db->rollback();
+			throw $exception;
+		}
 
-		$sql = 'SELECT i.rowid, i.ref, i.status, i.categories_product';
+		$sql = 'SELECT i.rowid, i.ref, i.status, i.categories_product, i.import_key';
 		$sql .= ' FROM '.$this->db->prefix().'inventory as i';
 		$sql .= ' WHERE i.rowid = '.((int) $inventoryId);
 		$sql .= ' AND i.entity = '.((int) $this->conf->entity);
@@ -780,13 +853,23 @@ class KreaProductsMobileInventoryService
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_ENTITY_NOT_FOUND'), 404);
 		}
-		if ((int) $lockedInventory->status !== Inventory::STATUS_VALIDATED) {
+		$lockedIsInitiated = (int) $lockedInventory->status === Inventory::STATUS_VALIDATED;
+		$lockedIsReversedRecorded = (int) $lockedInventory->status === Inventory::STATUS_RECORDED
+			&& $this->isInventoryFullyReversed((int) $inventoryId);
+		if ((!$isInitiated || !$lockedIsInitiated) && (!$isReversedRecorded || !$lockedIsReversedRecorded)) {
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_STATUS_CHANGED_BEFORE_DELETE'), 409);
 		}
 		if (!$this->isTemplateCategoryValue((string) $lockedInventory->categories_product)) {
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_MANAGED'), 404);
+		}
+		if ($lockedIsInitiated && $initiatedHasActiveStockEffects) {
+			if (!$this->isLatestInventoryOfKind($record, true)) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_LATEST_KIND_ONLY'), 409);
+			}
+			$this->compensateInventoryStockEffects($record, false, true, true);
 		}
 
 		$sql = 'SELECT id.rowid, id.qty_view';
@@ -820,7 +903,7 @@ class KreaProductsMobileInventoryService
 		}
 
 		$this->commitStockTransaction();
-		dol_syslog(__METHOD__.' inventory='.$inventoryId.' user='.$this->user->id, LOG_NOTICE);
+		dol_syslog(__METHOD__.' inventory='.$inventoryId.' ref='.$record->ref.' previous_status='.$record->status.' user='.$this->user->id, LOG_NOTICE);
 
 		return array(
 			'deleted' => 1,
@@ -829,48 +912,158 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Reopen the latest recorded inventory of one category and warehouse for editing.
+	 *
+	 * Existing stock effects remain active while the revised counts are staged.
+	 * The next closure compensates the previous generation and posts its replacement
+	 * atomically in the same stock transaction.
+	 *
+	 * @param int $inventoryId Inventory ID
+	 * @return array<string,mixed>
+	 */
+	public function editInventory($inventoryId)
+	{
+		$this->requireCloseAccess();
+		$this->requireInventoryMutationWindowOpen();
+		$record = $this->fetchInventoryRecord((int) $inventoryId);
+		if (!$this->isKreaProductsStockReference((string) $record->ref, (string) $record->import_key)
+			|| (int) $record->status !== Inventory::STATUS_RECORDED
+			|| !$this->hasActiveAdjustments((int) $record->rowid)
+		) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_EDIT_RECORDED_ONLY'), 409);
+		}
+		$this->requireInventoryCountsCurrent($record);
+
+		$inventoryId = (int) $record->rowid;
+		$this->beginStockTransaction();
+		try {
+			$this->lockInventoryStartScope((int) $record->template_category_id, (int) $record->fk_warehouse);
+			$this->requireInventoryCountsCurrent($record);
+			$this->requireFirstOpenInventoryOfScope($record);
+		} catch (Throwable $exception) {
+			$this->db->rollback();
+			throw $exception;
+		}
+
+		$sql = 'SELECT i.rowid, i.status FROM '.$this->db->prefix().'inventory as i';
+		$sql .= ' WHERE i.rowid='.$inventoryId;
+		$sql .= ' AND i.entity='.((int) $this->conf->entity).' FOR UPDATE';
+		$resql = $this->db->query($sql);
+		$lockedInventory = $resql ? $this->db->fetch_object($resql) : false;
+		if ($resql) {
+			$this->db->free($resql);
+		}
+		if (!$lockedInventory || (int) $lockedInventory->status !== Inventory::STATUS_RECORDED) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_EDIT_RECORDED_ONLY'), 409);
+		}
+		if (!$this->isLatestInventoryOfKind($record, true)) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_LATEST_KIND_ONLY'), 409);
+		}
+
+		$inventory = new Inventory($this->db);
+		$inventory->context['kreaproducts_mobile_inventory'] = 1;
+		if ($inventory->fetch($inventoryId) <= 0) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_FOUND'), 404);
+		}
+		try {
+			$activeValueDateSql = $this->getActiveAdjustmentValueDate($inventoryId, true);
+		} catch (Throwable $exception) {
+			$this->db->rollback();
+			throw $exception;
+		}
+		$sql = 'UPDATE '.$this->db->prefix().'inventory';
+		$sql .= " SET date_inventory='".$this->db->escape($activeValueDateSql)."'";
+		$sql .= ' WHERE rowid='.$inventoryId.' AND entity='.((int) $this->conf->entity);
+		if (!$this->db->query($sql)) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+
+		$sql = 'SELECT id.rowid FROM '.$this->db->prefix().'inventorydet as id';
+		$sql .= ' WHERE id.fk_inventory='.$inventoryId.' FOR UPDATE';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		$this->db->free($resql);
+		if ($inventory->setStatut(Inventory::STATUS_VALIDATED, null, '', 'INVENTORY_VALIDATED') <= 0) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->getObjectError($inventory, $this->langs->trans('KREAPRODUCTS_ERROR_REOPEN_INVENTORY')), 500);
+		}
+
+		$this->commitStockTransaction();
+		dol_syslog(__METHOD__.' inventory='.$inventoryId.' ref='.$record->ref.' user='.$this->user->id, LOG_NOTICE);
+		return $this->getInventory($inventoryId);
+	}
+
+	/**
 	 * Persist absolute physical quantities for inventory lines.
 	 *
 	 * @param int                         $inventoryId Inventory ID
 	 * @param array<int,array<string,mixed>> $counts     Count rows
-	 * @param string                      $calendarDate Optional editable value date in YYYY-MM-DD format
+	 * @param string                      $calendarDate                Optional editable value date in YYYY-MM-DD format
+	 * @param bool                        $confirmPostCutoffCorrection Confirm replacement by the mandatory next-window date
 	 * @return array<string,mixed>
 	 */
-	public function saveCounts($inventoryId, array $counts, $calendarDate = '')
+	public function saveCounts($inventoryId, array $counts, $calendarDate = '', $confirmPostCutoffCorrection = false)
 	{
 		$this->requireCountAccess();
+		$this->requireInventoryMutationWindowOpen();
 		$this->requireInventoryValueDatingEnabled();
 		$inventory = $this->fetchInventoryRecord((int) $inventoryId);
 		if (!$this->isKreaProductsStockReference((string) $inventory->ref, (string) $inventory->import_key)) {
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_MANAGED'), 404);
 		}
-		if ((int) $inventory->status === Inventory::STATUS_RECORDED) {
-			if (!$this->isCurrentBusinessDayInventory($inventory)) {
-				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_CURRENT_DAY_CORRECTION_ONLY'), 409);
-			}
-			if ($this->hasReversedAdjustments((int) $inventory->rowid)) {
-				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSED_NOT_CORRECTABLE'), 409);
-			}
-			return $this->correctRecordedCounts($inventory, $counts);
-		}
 		if ((int) $inventory->status !== Inventory::STATUS_VALIDATED) {
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_COUNT_OPEN_ONLY'), 409);
 		}
+		$this->requireInventoryCountsCurrent($inventory);
 		$calendarDate = trim((string) $calendarDate);
 		$hasExplicitValueDate = $calendarDate !== '';
+		$stagesRecordedRevision = $this->hasActiveAdjustments((int) $inventoryId);
 		$valueDateSql = '';
-		if ($hasExplicitValueDate) {
+		if (!$stagesRecordedRevision) {
 			try {
-				$editableValueTimestamp = $this->resolveEditableInventoryValueTimestamp($calendarDate);
-				if ($editableValueTimestamp > $this->resolveInventoryValueTimestamp(dol_now())) {
+				$editableValueTimestamp = $hasExplicitValueDate
+					? $this->resolveEditableInventoryValueTimestamp($calendarDate)
+					: (int) $this->db->jdate($inventory->date_inventory);
+				if ($editableValueTimestamp <= 0) {
+					throw new InvalidArgumentException('Invalid inventory value date.');
+				}
+				$postCutoffMinimumValueTimestamp = $this->resolvePostCutoffMinimumValueTimestamp($inventory);
+				if ($postCutoffMinimumValueTimestamp > 0 && $editableValueTimestamp < $postCutoffMinimumValueTimestamp) {
+					if (!$confirmPostCutoffCorrection) {
+						throw new KreaProductsStockApiException(
+							$this->langs->trans(
+								'KREAPRODUCTS_INVENTORY_POST_CUTOFF_DATE_REQUIRED',
+								getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00'),
+								dol_print_date($postCutoffMinimumValueTimestamp, 'day')
+							),
+							409
+						);
+					}
+					$editableValueTimestamp = $postCutoffMinimumValueTimestamp;
+					$calendarDate = (new DateTimeImmutable('@'.$postCutoffMinimumValueTimestamp))
+						->setTimezone($this->getOperationTimezone())
+						->format('Y-m-d');
+					$hasExplicitValueDate = true;
+				}
+				if ($hasExplicitValueDate && $editableValueTimestamp > $this->resolveInventoryValueTimestamp(dol_now())) {
 					throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_AFTER_WINDOW'), 400);
 				}
-				$valueDateSql = $this->db->idate($editableValueTimestamp);
+				if ($hasExplicitValueDate) {
+					$valueDateSql = $this->db->idate($editableValueTimestamp);
+				}
 			} catch (InvalidArgumentException $exception) {
 				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 400);
 			}
 		}
 		if (empty($counts) && !$hasExplicitValueDate) {
+			$this->requireFirstOpenInventoryOfScope($inventory);
 			return $this->getInventory((int) $inventoryId);
 		}
 
@@ -879,6 +1072,8 @@ class KreaProductsMobileInventoryService
 		$errorMessage = '';
 		try {
 			$this->lockInventoryStartScope((int) $inventory->template_category_id, (int) $inventory->fk_warehouse);
+			$this->requireInventoryCountsCurrent($inventory);
+			$this->requireFirstOpenInventoryOfScope($inventory);
 		} catch (Throwable $exception) {
 			$this->db->rollback();
 			throw $exception;
@@ -898,6 +1093,32 @@ class KreaProductsMobileInventoryService
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_STATUS_CHANGED_BEFORE_SAVE'), 409);
 		}
+		if ($stagesRecordedRevision) {
+			try {
+				$valueDateSql = $this->getActiveAdjustmentValueDate((int) $inventoryId, true);
+			} catch (Throwable $exception) {
+				$this->db->rollback();
+				throw $exception;
+			}
+			$activeValueTimestamp = (int) $this->db->jdate($valueDateSql);
+			$activeCalendarDate = (new DateTimeImmutable('@'.$activeValueTimestamp))
+				->setTimezone($this->getOperationTimezone())
+				->format('Y-m-d');
+			if ($hasExplicitValueDate && $calendarDate !== $activeCalendarDate) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_EDIT_VALUE_DATE_IMMUTABLE'), 409);
+			}
+		}
+		$candidateValueTimestamp = $valueDateSql !== ''
+			? (int) $this->db->jdate($valueDateSql)
+			: (int) $this->db->jdate($lockedInventory->date_inventory);
+		$this->assertValueDateAfterLatestInventory(
+			(int) $inventory->template_category_id,
+			(int) $inventory->fk_warehouse,
+			$candidateValueTimestamp,
+			(int) $inventoryId,
+			true
+		);
 
 		$sql = 'SELECT id.rowid, id.qty_view';
 		$sql .= ' FROM '.$this->db->prefix().'inventorydet as id';
@@ -955,13 +1176,17 @@ class KreaProductsMobileInventoryService
 			$lockedValueDate = is_numeric($lockedInventory->date_inventory)
 				? $this->db->idate((int) $lockedInventory->date_inventory)
 				: (string) $lockedInventory->date_inventory;
-			try {
-				$valueDateSql = $this->db->idate(
-					$this->resolveEditableInventoryValueTimestamp(substr($lockedValueDate, 0, 10))
-				);
-			} catch (InvalidArgumentException $exception) {
-				$error++;
-				$errorMessage = $this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID');
+			if ($stagesRecordedRevision) {
+				$valueDateSql = $lockedValueDate;
+			} else {
+				try {
+					$valueDateSql = $this->db->idate(
+						$this->resolveEditableInventoryValueTimestamp(substr($lockedValueDate, 0, 10))
+					);
+				} catch (InvalidArgumentException $exception) {
+					$error++;
+					$errorMessage = $this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID');
+				}
 			}
 		}
 
@@ -1236,9 +1461,10 @@ class KreaProductsMobileInventoryService
 		$this->requireCloseAccess();
 		$this->requireInventoryValueDatingEnabled();
 		$now = (int) $now > 0 ? (int) $now : dol_now();
+		$this->getInventoryMutationWindowState($now);
 		$businessDayService = new KreaProductsBusinessDayService();
 		$timezone = $this->getOperationTimezone();
-		$entryCutoff = getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00');
+		$autoCloseTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45');
 
 		$sql = 'SELECT i.rowid, i.date_inventory';
 		$sql .= ' FROM '.$this->db->prefix().'inventory as i';
@@ -1262,8 +1488,7 @@ class KreaProductsMobileInventoryService
 			$autoCloseTimestamp = $businessDayService->resolveInventoryAutoCloseTimestamp(
 				$valueTimestamp,
 				$timezone,
-				$entryCutoff,
-				15
+				$autoCloseTime
 			);
 			if ($now >= $autoCloseTimestamp) {
 				$dueInventoryIds[] = (int) $obj->rowid;
@@ -1325,6 +1550,7 @@ class KreaProductsMobileInventoryService
 	public function closeInventory($inventoryId, $allowIncomplete = false)
 	{
 		$this->requireCloseAccess();
+		$this->requireInventoryMutationWindowOpen();
 		$this->requireInventoryValueDatingEnabled();
 		$record = $this->fetchInventoryRecord((int) $inventoryId);
 		if ((int) $record->status === Inventory::STATUS_RECORDED) {
@@ -1336,6 +1562,7 @@ class KreaProductsMobileInventoryService
 		if ((int) $record->status !== Inventory::STATUS_VALIDATED) {
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_CLOSE_OPEN_ONLY'), 409);
 		}
+		$this->requireInventoryCountsCurrent($record);
 		$inventory = new Inventory($this->db);
 		$result = $inventory->fetch((int) $inventoryId);
 		if ($result <= 0) {
@@ -1348,6 +1575,8 @@ class KreaProductsMobileInventoryService
 		$errorMessage = '';
 		try {
 			$this->lockInventoryStartScope((int) $record->template_category_id, (int) $record->fk_warehouse);
+			$this->requireInventoryCountsCurrent($record);
+			$this->requireFirstOpenInventoryOfScope($record);
 		} catch (Throwable $exception) {
 			$this->db->rollback();
 			throw $exception;
@@ -1363,6 +1592,16 @@ class KreaProductsMobileInventoryService
 		if (!$lockedInventory || (int) $lockedInventory->status !== Inventory::STATUS_VALIDATED) {
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_STATUS_CHANGED_BEFORE_CLOSE'), 409);
+		}
+		$replacesActiveGeneration = $this->hasActiveAdjustments((int) $inventoryId)
+			|| $this->hasActiveCorrections((int) $inventoryId)
+			|| $this->hasUnreversedRebaseMovements((int) $inventoryId);
+		if ($replacesActiveGeneration) {
+			if (!$this->isLatestInventoryOfKind($record, true)) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_LATEST_KIND_ONLY'), 409);
+			}
+			$this->compensateInventoryStockEffects($record, false, true, true);
 		}
 		if (strpos((string) $record->ref, 'KS-') === 0) {
 			$businessDayService = new KreaProductsBusinessDayService();
@@ -1414,11 +1653,19 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_INVENTORY_UNCOUNTED_CONFIRMATION_REQUIRED'), 409);
 		}
 		$valueTimestamp = !empty($inventory->date_inventory) ? (int) $inventory->date_inventory : (int) $this->db->jdate($record->date_inventory);
-		if ($valueTimestamp > dol_now()) {
+		$now = dol_now();
+		if ($this->isFutureCalendarDate($valueTimestamp, $now)) {
 			$this->db->rollback();
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_INVENTORY_FUTURE_CLOSE_BLOCKED'), 409);
 		}
 		$valueDateSql = $this->db->idate($valueTimestamp);
+		$this->assertValueDateAfterLatestInventory(
+			(int) $record->template_category_id,
+			(int) $record->fk_warehouse,
+			$valueTimestamp,
+			(int) $inventoryId,
+			true
+		);
 		$existingRecordedInventory = $this->findRecordedInventoryOnCalendarDate(
 			(int) $record->template_category_id,
 			(int) $record->fk_warehouse,
@@ -1439,7 +1686,6 @@ class KreaProductsMobileInventoryService
 		$movement->setOrigin($inventory->element, (int) $inventory->id);
 		$movement->context['kreaproducts_inventory_ledger'] = 1;
 		$inventoryMovementService = new KreaProductsInventoryMovementService($this->db, $this->conf, $this->langs);
-		$now = dol_now();
 		$stockMovementService = new KreaProductsStockMovementService();
 		$finalReference = $this->resolveAvailableInventoryReference(
 			$this->buildInventoryReference((string) $record->title, $valueTimestamp),
@@ -1571,15 +1817,16 @@ class KreaProductsMobileInventoryService
 		dol_syslog(__METHOD__.' inventory='.$inventoryId.' lines='.count($lines).' user='.$this->user->id, LOG_NOTICE);
 
 		$closedInventory['status'] = (int) Inventory::STATUS_RECORDED;
-		$closedRecord = new stdClass();
-		$closedRecord->date_inventory = $valueDateSql;
-		$canCorrectNow = $this->canCount() && $this->isCurrentBusinessDayInventory($closedRecord);
-		$closedInventory['editable'] = $canCorrectNow ? 1 : 0;
-		$closedInventory['can_count'] = $canCorrectNow ? 1 : 0;
+		$closedInventory['editable'] = 0;
+		$closedInventory['can_count'] = 0;
 		$closedInventory['can_close'] = 0;
-		$closedInventory['can_delete'] = 0;
+		$mutationLocked = !empty($this->getInventoryMutationWindowState()['active']);
+		$closedStillCurrent = $this->isInventoryInCurrentCountingWindow($record);
+		$closedInventory['can_delete'] = !$mutationLocked && $closedStillCurrent && $this->canClose() ? 1 : 0;
+		$closedInventory['can_edit'] = !$mutationLocked && $closedStillCurrent && $this->canClose() ? 1 : 0;
+		$closedInventory['history_locked'] = $closedStillCurrent ? 0 : 1;
 		$closedInventory['can_reverse'] = 0;
-		$closedInventory['correction_mode'] = $canCorrectNow ? 1 : 0;
+		$closedInventory['correction_mode'] = 0;
 		$closedInventory['skipped_lines'] = $uncountedLineCount;
 		$closedInventory['email_notification'] = $this->sendInventoryEmailIfConfigured($closedInventory);
 
@@ -1587,55 +1834,53 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
-	 * Reverse a closed inventory through new opposite stock movements.
+	 * Compensate the active stock generation of an inventory.
 	 *
-	 * @param int $inventoryId Inventory ID
+	 * @param object $record                 Entity-scoped inventory record
+	 * @param bool   $deleteAfter            Delete after compensation
+	 * @param bool   $stockEffectsOnly       Return after compensation without changing the inventory lifecycle
+	 * @param bool   $transactionAlreadyOpen Caller already owns and locked the inventory transaction
 	 * @return array<string,mixed>
 	 */
-	public function reverseInventory($inventoryId)
+	private function compensateInventoryStockEffects($record, $deleteAfter = false, $stockEffectsOnly = false, $transactionAlreadyOpen = false)
 	{
-		$this->requireCloseAccess();
-		$this->beginStockTransaction();
-		$sql = 'SELECT i.rowid FROM '.$this->db->prefix().'inventory as i';
-		$sql .= ' WHERE i.rowid='.((int) $inventoryId);
-		$sql .= ' AND i.entity='.((int) $this->conf->entity).' FOR UPDATE';
-		$resql = $this->db->query($sql);
-		if (!$resql) {
-			$this->db->rollback();
-			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		$inventoryId = (int) $record->rowid;
+
+		if (!$transactionAlreadyOpen) {
+			$this->beginStockTransaction();
+			try {
+				$this->lockInventoryStartScope((int) $record->template_category_id, (int) $record->fk_warehouse);
+			} catch (Throwable $exception) {
+				$this->db->rollback();
+				throw $exception;
+			}
+
+			$sql = 'SELECT i.rowid, i.status FROM '.$this->db->prefix().'inventory as i';
+			$sql .= ' WHERE i.rowid='.((int) $inventoryId);
+			$sql .= ' AND i.entity='.((int) $this->conf->entity).' FOR UPDATE';
+			$resql = $this->db->query($sql);
+			if (!$resql) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+			}
+			$lockedInventory = $this->db->fetch_object($resql);
+			$this->db->free($resql);
+			if (!$lockedInventory || (int) $lockedInventory->status !== Inventory::STATUS_RECORDED) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_RECORDED_ONLY'), 409);
+			}
 		}
-		$lockedInventory = $this->db->fetch_object($resql);
-		$this->db->free($resql);
-		if (!$lockedInventory) {
+		if (!$this->isLatestInventoryOfKind($record, true)) {
 			$this->db->rollback();
-			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_FOUND'), 404);
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_LATEST_KIND_ONLY'), 409);
+		}
+		if ($deleteAfter && !$this->isInventoryInCurrentCountingWindow($record)) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_HISTORY_LOCKED'), 409);
 		}
 
-		try {
-			$record = $this->fetchInventoryRecord((int) $inventoryId);
-		} catch (Throwable $exception) {
-			$this->db->rollback();
-			throw $exception;
-		}
-		if (!$this->isKreaProductsStockReference((string) $record->ref, (string) $record->import_key)
-			|| (int) $record->status !== Inventory::STATUS_RECORDED
-		) {
-			$this->db->rollback();
-			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_RECORDED_ONLY'), 409);
-		}
-		try {
-			$isCurrentBusinessDay = $this->isCurrentBusinessDayInventory($record);
-		} catch (Throwable $exception) {
-			$this->db->rollback();
-			throw $exception;
-		}
-		if ($isCurrentBusinessDay) {
-			$this->db->rollback();
-			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_CURRENT_DAY_MUST_CORRECT'), 409);
-		}
-
-		$sql = 'SELECT a.rowid, a.fk_product, a.fk_warehouse, a.batch, a.adjustment_qty, a.fk_movement,';
-		$sql .= ' sm.value as current_movement_qty';
+		$sql = 'SELECT a.rowid, a.fk_inventorydet, a.fk_product, a.fk_warehouse, a.batch, a.value_datetime, a.adjustment_qty, a.fk_movement,';
+		$sql .= ' sm.value as current_movement_qty, sm.datem as current_movement_date';
 		$sql .= ' FROM '.$this->db->prefix().'kreaproducts_inventory_adjustment as a';
 		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement as sm ON sm.rowid = a.fk_movement';
 		$sql .= ' WHERE a.entity = '.((int) $this->conf->entity);
@@ -1655,9 +1900,19 @@ class KreaProductsMobileInventoryService
 		$this->db->free($resql);
 		if (empty($rows)) {
 			$this->db->rollback();
-			$result = $this->getInventory((int) $inventoryId);
-			$result['reversed'] = 1;
-			return $result;
+			$messageKey = $this->hasReversedAdjustments((int) $inventoryId)
+				? 'KREAPRODUCTS_ERROR_INVENTORY_ALREADY_REVERSED'
+				: 'KREAPRODUCTS_ERROR_REVERSAL_AUDIT_MISSING';
+			throw new KreaProductsStockApiException($this->langs->trans($messageKey), 409);
+		}
+		$activeLineIds = array();
+		foreach ($rows as $row) {
+			$lineId = (int) $row->fk_inventorydet;
+			if (isset($activeLineIds[$lineId])) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_ACTIVE_INVENTORY_AUDIT_EXISTS'), 409);
+			}
+			$activeLineIds[$lineId] = true;
 		}
 
 		$checkedScopes = array();
@@ -1671,7 +1926,7 @@ class KreaProductsMobileInventoryService
 				(int) $row->fk_product,
 				(int) $row->fk_warehouse,
 				(string) $row->batch,
-				(string) $record->date_inventory,
+				(string) $row->value_datetime,
 				(int) $inventoryId,
 				true
 			)) {
@@ -1699,6 +1954,7 @@ class KreaProductsMobileInventoryService
 			$reverseQuantity = (float) price2num(-$activeAdjustment, 'MS');
 			$reverseMovementId = 0;
 			if ($reverseQuantity != 0.0) {
+				$movementDate = (int) $this->db->jdate($row->current_movement_date);
 				$reverseMovementId = $inventoryMovementService->create(
 					$movement,
 					$this->user,
@@ -1708,7 +1964,7 @@ class KreaProductsMobileInventoryService
 					0,
 					$this->langs->trans('KREAPRODUCTS_MOVEMENT_INVENTORY_REVERSAL', (string) $record->ref),
 					'REV-'.$record->ref,
-					$now,
+					$movementDate,
 					(string) $row->batch,
 					true
 				);
@@ -1731,7 +1987,7 @@ class KreaProductsMobileInventoryService
 		}
 
 		$sql = 'SELECT c.rowid, c.fk_product, c.fk_warehouse, c.batch, c.adjustment_qty, c.fk_movement,';
-		$sql .= ' sm.value as current_movement_qty';
+		$sql .= ' sm.value as current_movement_qty, sm.datem as current_movement_date';
 		$sql .= ' FROM '.$this->db->prefix().'kreaproducts_inventory_correction c';
 		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement sm ON sm.rowid=c.fk_movement';
 		$sql .= ' WHERE c.entity='.((int) $this->conf->entity);
@@ -1757,6 +2013,7 @@ class KreaProductsMobileInventoryService
 			$reverseQuantity = (float) price2num(-$activeQuantity, 'MS');
 			$reverseMovementId = 0;
 			if ($reverseQuantity != 0.0) {
+				$movementDate = (int) $this->db->jdate($correction->current_movement_date);
 				$movement->setOrigin(KreaProductsInventoryLedgerCalculator::COUNT_CORRECTION_REVERSAL_ORIGIN, (int) $inventoryId);
 				$reverseMovementId = $inventoryMovementService->create(
 					$movement,
@@ -1767,7 +2024,7 @@ class KreaProductsMobileInventoryService
 					0,
 					$this->langs->trans('KREAPRODUCTS_MOVEMENT_COUNT_CORRECTION_REVERSAL', (string) $record->ref),
 					'KPS-CORR-REV-'.((int) $correction->rowid),
-					$now,
+					$movementDate,
 					(string) $correction->batch,
 					true
 				);
@@ -1789,7 +2046,7 @@ class KreaProductsMobileInventoryService
 			}
 		}
 
-		$sql = 'SELECT sm.rowid, sm.fk_product, sm.fk_entrepot, sm.batch, sm.value';
+		$sql = 'SELECT sm.rowid, sm.fk_product, sm.fk_entrepot, sm.batch, sm.value, sm.datem';
 		$sql .= ' FROM '.$this->db->prefix().'stock_mouvement as sm';
 		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement as rev';
 		$sql .= " ON rev.origintype = '".$this->db->escape(KreaProductsInventoryLedgerCalculator::REBASE_REVERSAL_ORIGIN)."'";
@@ -1815,6 +2072,7 @@ class KreaProductsMobileInventoryService
 			if ($reverseQuantity == 0.0) {
 				continue;
 			}
+			$movementDate = (int) $this->db->jdate($rebaseMovement->datem);
 			$movement->setOrigin(KreaProductsInventoryLedgerCalculator::REBASE_REVERSAL_ORIGIN, (int) $inventoryId);
 			$reverseMovementId = $inventoryMovementService->create(
 				$movement,
@@ -1825,7 +2083,7 @@ class KreaProductsMobileInventoryService
 				0,
 				$this->langs->trans('KREAPRODUCTS_MOVEMENT_REBASE_REVERSAL', (string) $record->ref),
 				'KPS-REBASE-REV-'.((int) $rebaseMovement->rowid),
-				$now,
+				$movementDate,
 				(string) $rebaseMovement->batch,
 				true
 			);
@@ -1834,12 +2092,39 @@ class KreaProductsMobileInventoryService
 				throw new KreaProductsStockApiException($inventoryMovementService->error ?: $this->langs->trans('KREAPRODUCTS_ERROR_REVERSE_REBASE_MOVEMENT'), 500);
 			}
 		}
+		if ($stockEffectsOnly) {
+			return array('inventory_id' => $inventoryId);
+		}
+
+		$inventory = new Inventory($this->db);
+		$inventory->context['kreaproducts_mobile_inventory'] = 1;
+		if ($inventory->fetch($inventoryId) <= 0) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_NOT_FOUND'), 404);
+		}
+		$sql = 'SELECT id.rowid FROM '.$this->db->prefix().'inventorydet as id';
+		$sql .= ' WHERE id.fk_inventory='.$inventoryId.' FOR UPDATE';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		$this->db->free($resql);
+		if ($deleteAfter) {
+			if ($inventory->setDraft($this->user) <= 0 || $inventory->delete($this->user) <= 0) {
+				$this->db->rollback();
+				throw new KreaProductsStockApiException($this->getObjectError($inventory, $this->langs->trans('KREAPRODUCTS_ERROR_DELETE_INVENTORY')), 500);
+			}
+		} elseif ($inventory->setStatut(Inventory::STATUS_VALIDATED, null, '', 'INVENTORY_VALIDATED') <= 0) {
+			$this->db->rollback();
+			throw new KreaProductsStockApiException($this->getObjectError($inventory, $this->langs->trans('KREAPRODUCTS_ERROR_REOPEN_INVENTORY')), 500);
+		}
 
 		$this->commitStockTransaction();
-		dol_syslog(__METHOD__.' inventory='.$inventoryId.' user='.$this->user->id, LOG_NOTICE);
-		$result = $this->getInventory((int) $inventoryId);
-		$result['reversed'] = 1;
-		return $result;
+		dol_syslog(__METHOD__.' inventory='.$inventoryId.' ref='.$record->ref.' delete='.(int) $deleteAfter.' user='.$this->user->id, LOG_NOTICE);
+		return $deleteAfter
+			? array('deleted' => 1, 'inventory_id' => $inventoryId)
+			: $this->getInventory($inventoryId);
 	}
 
 	/**
@@ -1961,6 +2246,60 @@ class KreaProductsMobileInventoryService
 		if (!$this->canCount()) {
 			throw new KreaProductsStockApiException($this->langs->trans('ErrorForbidden'), 403);
 		}
+	}
+
+	/**
+	 * Reject interactive inventory writes during the configured read-only interval.
+	 * Scheduled automatic closure is the only permitted mutation in this window.
+	 *
+	 * @param int $now Timestamp to evaluate, or zero for now
+	 * @return void
+	 */
+	private function requireInventoryMutationWindowOpen($now = 0)
+	{
+		if ($this->schedulerMode) {
+			return;
+		}
+		try {
+			$window = $this->getInventoryMutationWindowState($now);
+		} catch (InvalidArgumentException $exception) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 500);
+		}
+		if (!empty($window['active'])) {
+			throw new KreaProductsStockApiException(
+				$this->langs->trans(
+					'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
+					(string) $window['start_time'],
+					(string) $window['end_time']
+				),
+				409
+			);
+		}
+	}
+
+	/**
+	 * Reject counts whose value date belongs to an earlier counting window.
+	 * Old physical counts must never be shifted forward after new stock movements.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @param int    $now       Timestamp to evaluate, or zero for now
+	 * @return void
+	 */
+	private function requireInventoryCountsCurrent($inventory, $now = 0)
+	{
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		if ($this->isInventoryInCurrentCountingWindow($inventory, $now)) {
+			return;
+		}
+		$currentValueTimestamp = $this->resolveInventoryValueTimestamp($now);
+		throw new KreaProductsStockApiException(
+			$this->langs->trans(
+				'KREAPRODUCTS_ERROR_INVENTORY_COUNTS_EXPIRED',
+				dol_print_date($currentValueTimestamp, 'day'),
+				substr(getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'), 0, 5)
+			),
+			409
+		);
 	}
 
 	/**
@@ -2219,7 +2558,7 @@ class KreaProductsMobileInventoryService
 		if ($warehouseId <= 0) {
 			return null;
 		}
-		$sql = 'SELECT i.rowid, i.ref, i.title,';
+		$sql = 'SELECT i.rowid, i.ref, i.title, i.date_inventory,';
 		$sql .= ' i.categories_product,';
 		$sql .= ' COUNT(id.rowid) as total_lines,';
 		$sql .= ' SUM(CASE WHEN id.qty_view IS NOT NULL THEN 1 ELSE 0 END) as counted_lines';
@@ -2230,8 +2569,8 @@ class KreaProductsMobileInventoryService
 		$sql .= ' AND i.fk_warehouse = '.((int) $warehouseId);
 		$sql .= " AND (i.import_key = 'KPS' OR i.ref LIKE 'KPS-%' OR i.ref LIKE 'KS-%')";
 		$sql .= ' AND '.$this->buildCategoryContainsSqlCondition('i.categories_product', (int) $categoryId);
-		$sql .= ' GROUP BY i.rowid, i.ref, i.title, i.categories_product';
-		$sql .= ' ORDER BY i.rowid DESC';
+		$sql .= ' GROUP BY i.rowid, i.ref, i.title, i.date_inventory, i.categories_product';
+		$sql .= ' ORDER BY i.date_inventory ASC, i.rowid ASC';
 		$resql = $this->db->query($sql);
 		if (!$resql) {
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
@@ -2251,51 +2590,52 @@ class KreaProductsMobileInventoryService
 			'id' => (int) $obj->rowid,
 			'ref' => (string) $obj->ref,
 			'title' => (string) $obj->title,
+			'date_inventory' => $this->db->jdate($obj->date_inventory),
 			'total_lines' => (int) $obj->total_lines,
 			'counted_lines' => (int) $obj->counted_lines,
 		);
 	}
 
 	/**
-	 * Find the oldest initiated managed inventory in the active entity.
+	 * Check whether this inventory is the first open inventory in its category and warehouse.
 	 *
-	 * @return array<string,mixed>|null
+	 * A recorded inventory passes only when no initiated inventory already occupies the scope.
+	 * This allows the oldest initiated inventory to be completed or deleted while preventing
+	 * a later duplicate from being saved or executed first.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @return bool
 	 */
-	private function findAnyOpenManagedInventory()
+	private function isFirstOpenInventoryOfScope($inventory)
 	{
-		$sql = 'SELECT i.rowid, i.ref, i.title, i.categories_product, i.fk_warehouse, i.date_inventory,';
-		$sql .= ' COUNT(id.rowid) as total_lines,';
-		$sql .= ' SUM(CASE WHEN id.qty_view IS NOT NULL THEN 1 ELSE 0 END) as counted_lines';
-		$sql .= ' FROM '.$this->db->prefix().'inventory as i';
-		$sql .= ' INNER JOIN '.$this->db->prefix().'entrepot as e ON e.rowid = i.fk_warehouse';
-		$sql .= ' AND e.entity IN ('.getEntity('stock').')';
-		$sql .= ' LEFT JOIN '.$this->db->prefix().'inventorydet as id ON id.fk_inventory = i.rowid';
-		$sql .= ' WHERE i.entity = '.((int) $this->conf->entity);
-		$sql .= ' AND i.status = '.((int) Inventory::STATUS_VALIDATED);
-		$sql .= " AND (i.import_key = 'KPS' OR i.ref LIKE 'KPS-%' OR i.ref LIKE 'KS-%')";
-		$sql .= ' GROUP BY i.rowid, i.ref, i.title, i.categories_product, i.fk_warehouse, i.date_inventory';
-		$sql .= ' ORDER BY i.date_inventory ASC, i.rowid ASC';
-		$sql .= $this->db->plimit(1);
-		$resql = $this->db->query($sql);
-		if (!$resql) {
-			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
-		}
-		$obj = $this->db->fetch_object($resql);
-		$this->db->free($resql);
-		if (!$obj) {
-			return null;
-		}
-
-		return array(
-			'id' => (int) $obj->rowid,
-			'ref' => (string) $obj->ref,
-			'title' => (string) $obj->title,
-			'category_id' => $this->extractSingleTemplateCategoryId((string) $obj->categories_product),
-			'warehouse_id' => (int) $obj->fk_warehouse,
-			'date_inventory' => $this->db->jdate($obj->date_inventory),
-			'total_lines' => (int) $obj->total_lines,
-			'counted_lines' => (int) $obj->counted_lines,
+		$firstOpen = $this->findOpenInventory(
+			(int) $inventory->template_category_id,
+			(int) $inventory->fk_warehouse
 		);
+		return empty($firstOpen['id']) || (int) $firstOpen['id'] === (int) $inventory->rowid;
+	}
+
+	/**
+	 * Reject saving, executing, or reopening an inventory while an older initiated
+	 * inventory exists for the same entity, category, and warehouse.
+	 *
+	 * The caller must hold the category and warehouse scope lock.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @return void
+	 */
+	private function requireFirstOpenInventoryOfScope($inventory)
+	{
+		$firstOpen = $this->findOpenInventory(
+			(int) $inventory->template_category_id,
+			(int) $inventory->fk_warehouse
+		);
+		if (!empty($firstOpen['id']) && (int) $firstOpen['id'] !== (int) $inventory->rowid) {
+			throw new KreaProductsStockApiException(
+				$this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN', (string) $firstOpen['ref']),
+				409
+			);
+		}
 	}
 
 	/**
@@ -2402,6 +2742,53 @@ class KreaProductsMobileInventoryService
 		}
 		$this->db->free($resql);
 		return $match;
+	}
+
+	/**
+	 * Enforce strictly increasing inventory value dates per category and warehouse.
+	 *
+	 * @param int  $categoryId        Template category ID
+	 * @param int  $warehouseId       Warehouse ID
+	 * @param int  $valueTimestamp    Candidate value timestamp
+	 * @param int  $excludeInventoryId Current inventory ID
+	 * @param bool $lock              Lock comparison rows
+	 * @return void
+	 */
+	private function assertValueDateAfterLatestInventory($categoryId, $warehouseId, $valueTimestamp, $excludeInventoryId = 0, $lock = false)
+	{
+		$timezone = $this->getOperationTimezone();
+		$candidateDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone)->format('Y-m-d');
+		$sql = 'SELECT i.rowid, i.ref, i.categories_product, i.date_inventory';
+		$sql .= ' FROM '.$this->db->prefix().'inventory as i';
+		$sql .= ' WHERE i.entity='.((int) $this->conf->entity);
+		$sql .= ' AND i.fk_warehouse='.((int) $warehouseId);
+		$sql .= ' AND i.status IN ('.((int) Inventory::STATUS_VALIDATED).', '.((int) Inventory::STATUS_RECORDED).')';
+		if ($excludeInventoryId > 0) {
+			$sql .= ' AND i.rowid<>'.((int) $excludeInventoryId);
+		}
+		$sql .= ' ORDER BY i.date_inventory DESC, i.rowid DESC';
+		if ($lock) {
+			$sql .= ' FOR UPDATE';
+		}
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		while ($obj = $this->db->fetch_object($resql)) {
+			if ($this->extractSingleTemplateCategoryId((string) $obj->categories_product) !== (int) $categoryId) {
+				continue;
+			}
+			$latestDate = (new DateTimeImmutable('@'.((int) $this->db->jdate($obj->date_inventory))))->setTimezone($timezone)->format('Y-m-d');
+			$this->db->free($resql);
+			if ($candidateDate <= $latestDate) {
+				throw new KreaProductsStockApiException(
+					$this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_DATE_NOT_AFTER_LATEST', $candidateDate, (string) $obj->ref, $latestDate),
+					409
+				);
+			}
+			return;
+		}
+		$this->db->free($resql);
 	}
 
 	/**
@@ -2620,6 +3007,32 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Resolve the earliest allowed value timestamp for an inventory created after cutoff.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @return int Zero when the inventory was created before cutoff
+	 */
+	private function resolvePostCutoffMinimumValueTimestamp($inventory)
+	{
+		$creationTimestamp = (int) $this->db->jdate($inventory->date_creation);
+		if ($creationTimestamp <= 0) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 500);
+		}
+
+		try {
+			$businessDayService = new KreaProductsBusinessDayService();
+			return $businessDayService->resolvePostCutoffMinimumValueTimestamp(
+				$creationTimestamp,
+				$this->getOperationTimezone(),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
+			);
+		} catch (InvalidArgumentException $exception) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 500);
+		}
+	}
+
+	/**
 	 * Resolve an explicitly selected calendar date to the configured inventory anchor.
 	 *
 	 * @param string $calendarDate Calendar date in YYYY-MM-DD format
@@ -2704,6 +3117,22 @@ class KreaProductsMobileInventoryService
 		} catch (Exception $exception) {
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVALID_TIMEZONE'), 500);
 		}
+	}
+
+	/**
+	 * Test a value timestamp by calendar date, independently of its hidden ordering time.
+	 *
+	 * @param int $valueTimestamp Inventory value timestamp
+	 * @param int $now            Current timestamp, or zero for now
+	 * @return bool
+	 */
+	private function isFutureCalendarDate($valueTimestamp, $now = 0)
+	{
+		$timezone = $this->getOperationTimezone();
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone)->format('Y-m-d');
+		$currentDate = (new DateTimeImmutable('@'.$now))->setTimezone($timezone)->format('Y-m-d');
+		return $valueDate > $currentDate;
 	}
 
 	/**
@@ -2805,6 +3234,44 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Return the immutable value timestamp shared by one active adjustment generation.
+	 *
+	 * @param int  $inventoryId Inventory ID
+	 * @param bool $lockRows    Lock the active audit rows in the caller transaction
+	 * @return string Database datetime
+	 */
+	private function getActiveAdjustmentValueDate($inventoryId, $lockRows = false)
+	{
+		$sql = 'SELECT value_datetime FROM '.$this->db->prefix().'kreaproducts_inventory_adjustment';
+		$sql .= ' WHERE entity='.((int) $this->conf->entity);
+		$sql .= ' AND fk_inventory='.((int) $inventoryId).' AND status=1';
+		$sql .= ' ORDER BY rowid ASC';
+		if ($lockRows) {
+			$sql .= ' FOR UPDATE';
+		}
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+
+		$valueDateSql = '';
+		while ($obj = $this->db->fetch_object($resql)) {
+			$rowValueDateSql = (string) $obj->value_datetime;
+			if ($valueDateSql === '') {
+				$valueDateSql = $rowValueDateSql;
+			} elseif ($rowValueDateSql !== $valueDateSql) {
+				$this->db->free($resql);
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_ACTIVE_INVENTORY_VALUE_DATE_INCONSISTENT'), 409);
+			}
+		}
+		$this->db->free($resql);
+		if ($valueDateSql === '') {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSAL_AUDIT_MISSING'), 409);
+		}
+		return $valueDateSql;
+	}
+
+	/**
 	 * @param int $inventoryId Inventory ID
 	 * @return bool
 	 */
@@ -2824,15 +3291,123 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
-	 * @param object $inventory Inventory database record
+	 * @param int $inventoryId Inventory ID
 	 * @return bool
 	 */
-	private function isCurrentBusinessDayInventory($inventory)
+	private function hasActiveCorrections($inventoryId)
+	{
+		$sql = 'SELECT rowid FROM '.$this->db->prefix().'kreaproducts_inventory_correction';
+		$sql .= ' WHERE entity='.((int) $this->conf->entity);
+		$sql .= ' AND fk_inventory='.((int) $inventoryId).' AND status=1';
+		$sql .= $this->db->plimit(1, 0);
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		$hasCorrections = $this->db->num_rows($resql) > 0;
+		$this->db->free($resql);
+		return $hasCorrections;
+	}
+
+	/**
+	 * @param int $inventoryId Inventory ID
+	 * @return bool
+	 */
+	private function hasUnreversedRebaseMovements($inventoryId)
+	{
+		$sql = 'SELECT sm.rowid FROM '.$this->db->prefix().'stock_mouvement as sm';
+		$sql .= ' LEFT JOIN '.$this->db->prefix().'stock_mouvement as rev';
+		$sql .= " ON rev.origintype='".$this->db->escape(KreaProductsInventoryLedgerCalculator::REBASE_REVERSAL_ORIGIN)."'";
+		$sql .= ' AND rev.fk_origin=sm.fk_origin';
+		$sql .= " AND rev.inventorycode=CONCAT('KPS-REBASE-REV-', sm.rowid)";
+		$sql .= " WHERE sm.origintype='".$this->db->escape(KreaProductsInventoryLedgerCalculator::REBASE_ORIGIN)."'";
+		$sql .= ' AND sm.fk_origin='.((int) $inventoryId);
+		$sql .= ' AND rev.rowid IS NULL';
+		$sql .= $this->db->plimit(1, 0);
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		$hasUnreversedMovements = $this->db->num_rows($resql) > 0;
+		$this->db->free($resql);
+		return $hasUnreversedMovements;
+	}
+
+	/**
+	 * A recorded inventory becomes deletable only after every stock effect is reversed.
+	 *
+	 * @param int $inventoryId Inventory ID
+	 * @return bool
+	 */
+	private function isInventoryFullyReversed($inventoryId)
+	{
+		return $this->hasReversedAdjustments((int) $inventoryId)
+			&& !$this->hasActiveAdjustments((int) $inventoryId)
+			&& !$this->hasActiveCorrections((int) $inventoryId)
+			&& !$this->hasUnreversedRebaseMovements((int) $inventoryId);
+	}
+
+	/**
+	 * Check that no newer managed inventory exists for the same template and warehouse.
+	 *
+	 * The category row is locked by callers before a mutating check, preventing a
+	 * concurrent inventory creation from passing the same latest-kind boundary.
+	 *
+	 * @param object $inventory Entity-scoped inventory record
+	 * @param bool   $lock      Lock later inventory candidates
+	 * @return bool
+	 */
+	private function isLatestInventoryOfKind($inventory, $lock = false)
+	{
+		$templateCategoryId = !empty($inventory->template_category_id)
+			? (int) $inventory->template_category_id
+			: $this->extractSingleTemplateCategoryId((string) $inventory->categories_product);
+		if ($templateCategoryId <= 0 || empty($inventory->date_inventory)) {
+			return false;
+		}
+
+		$valueDateSql = is_numeric($inventory->date_inventory)
+			? $this->db->idate((int) $inventory->date_inventory)
+			: (string) $inventory->date_inventory;
+		$sql = 'SELECT i.rowid, i.categories_product FROM '.$this->db->prefix().'inventory as i';
+		$sql .= ' WHERE i.entity='.((int) $this->conf->entity);
+		$sql .= ' AND i.fk_warehouse='.((int) $inventory->fk_warehouse);
+		$sql .= ' AND i.rowid<>'.((int) $inventory->rowid);
+		$sql .= ' AND i.status IN ('.((int) Inventory::STATUS_VALIDATED).', '.((int) Inventory::STATUS_RECORDED).')';
+		$sql .= " AND (i.import_key='KPS' OR i.ref LIKE 'KPS-%' OR i.ref LIKE 'KS-%')";
+		$sql .= " AND (i.date_inventory>'".$this->db->escape($valueDateSql)."'";
+		$sql .= " OR (i.date_inventory='".$this->db->escape($valueDateSql)."' AND i.rowid>".((int) $inventory->rowid).'))';
+		$sql .= ' ORDER BY i.date_inventory DESC, i.rowid DESC';
+		if ($lock) {
+			$sql .= ' FOR UPDATE';
+		}
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+		$isLatest = true;
+		while ($obj = $this->db->fetch_object($resql)) {
+			if ($this->extractSingleTemplateCategoryId((string) $obj->categories_product) === $templateCategoryId) {
+				$isLatest = false;
+				break;
+			}
+		}
+		$this->db->free($resql);
+		return $isLatest;
+	}
+
+	/**
+	 * @param object $inventory Inventory database record
+	 * @param int    $now       Timestamp to evaluate, or zero for now
+	 * @return bool
+	 */
+	private function isCurrentBusinessDayInventory($inventory, $now = 0)
 	{
 		if (empty($inventory->date_inventory)) {
 			return false;
 		}
-		$currentValueDate = $this->db->idate($this->resolveInventoryValueTimestamp(dol_now()));
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		$currentValueDate = $this->db->idate($this->resolveInventoryValueTimestamp($now));
 		$inventoryValueDate = $inventory->date_inventory;
 		if (is_numeric($inventoryValueDate)) {
 			$inventoryValueDate = $this->db->idate((int) $inventoryValueDate);
@@ -2848,12 +3423,14 @@ class KreaProductsMobileInventoryService
 	 * so their effective value date must be resolved before comparison.
 	 *
 	 * @param object $inventory Inventory database record
+	 * @param int    $now       Timestamp to evaluate, or zero for now
 	 * @return bool
 	 */
-	private function isInventoryInCurrentCountingWindow($inventory)
+	private function isInventoryInCurrentCountingWindow($inventory, $now = 0)
 	{
+		$now = (int) $now > 0 ? (int) $now : dol_now();
 		if (strpos((string) ($inventory->ref ?? ''), 'KS-') !== 0) {
-			return $this->isCurrentBusinessDayInventory($inventory);
+			return $this->isCurrentBusinessDayInventory($inventory, $now);
 		}
 
 		$entryTimestamp = (int) $this->db->jdate($inventory->date_inventory);
@@ -2861,7 +3438,7 @@ class KreaProductsMobileInventoryService
 			return false;
 		}
 		$effectiveDate = $this->db->idate($this->resolveInventoryValueTimestamp($entryTimestamp));
-		$currentDate = $this->db->idate($this->resolveInventoryValueTimestamp(dol_now()));
+		$currentDate = $this->db->idate($this->resolveInventoryValueTimestamp($now));
 		return $effectiveDate === $currentDate;
 	}
 
@@ -3247,14 +3824,14 @@ class KreaProductsMobileInventoryService
 	private function normalizeInitiatedTechnicalReference($inventory)
 	{
 		if ((int) $inventory->status !== Inventory::STATUS_VALIDATED
-			|| preg_match('/^KPS-\d+-\d+-\d{14}-[A-F0-9]{4}$/', (string) $inventory->ref) !== 1
+			|| !$this->needsProvisionalInventoryReference((string) $inventory->ref, (string) $inventory->import_key)
 		) {
 			return;
 		}
 
 		$provisionalReference = $this->buildProvisionalInventoryReference((int) $inventory->rowid);
 		$this->beginStockTransaction();
-		$sql = 'SELECT rowid, ref, status FROM '.$this->db->prefix().'inventory';
+		$sql = 'SELECT rowid, ref, status, import_key FROM '.$this->db->prefix().'inventory';
 		$sql .= ' WHERE rowid='.((int) $inventory->rowid);
 		$sql .= ' AND entity='.((int) $this->conf->entity);
 		$sql .= ' FOR UPDATE';
@@ -3268,7 +3845,7 @@ class KreaProductsMobileInventoryService
 			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_INVENTORY_ENTITY_NOT_FOUND'), 404);
 		}
 		if ((int) $lockedInventory->status === Inventory::STATUS_VALIDATED
-			&& preg_match('/^KPS-\d+-\d+-\d{14}-[A-F0-9]{4}$/', (string) $lockedInventory->ref) === 1
+			&& $this->needsProvisionalInventoryReference((string) $lockedInventory->ref, (string) $lockedInventory->import_key)
 		) {
 			$sql = 'UPDATE '.$this->db->prefix().'inventory';
 			$sql .= " SET ref='".$this->db->escape($provisionalReference)."', import_key='KPS'";
@@ -3282,6 +3859,19 @@ class KreaProductsMobileInventoryService
 			$inventory->import_key = 'KPS';
 		}
 		$this->commitStockTransaction();
+	}
+
+	/**
+	 * @param string $reference Inventory reference
+	 * @param string $importKey Inventory ownership marker
+	 * @return bool
+	 */
+	private function needsProvisionalInventoryReference($reference, $importKey)
+	{
+		$reference = trim((string) $reference);
+		return preg_match('/^KPS-\d+-\d+-\d{14}-[A-F0-9]{4}$/', $reference) === 1
+			|| preg_match('/^KPS-TMP-\d+-\d+-[A-F0-9]+$/', $reference) === 1
+			|| ((string) $importKey === 'KPS' && $reference === '');
 	}
 
 	/**
@@ -3342,6 +3932,18 @@ class KreaProductsMobileInventoryService
 		$sql .= ' AND entity='.((int) $this->conf->entity);
 		if (!$this->db->query($sql)) {
 			throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+		}
+
+		$sql = 'SELECT ref FROM '.$this->db->prefix().'inventory';
+		$sql .= ' WHERE rowid='.((int) $inventoryId);
+		$sql .= ' AND entity='.((int) $this->conf->entity);
+		$resql = $this->db->query($sql);
+		$storedInventory = $resql ? $this->db->fetch_object($resql) : false;
+		if ($resql) {
+			$this->db->free($resql);
+		}
+		if (!$storedInventory || (string) $storedInventory->ref !== (string) $reference) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_PERSIST_INVENTORY_REFERENCE'), 500);
 		}
 	}
 

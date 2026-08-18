@@ -22,6 +22,7 @@ class KreaProductsInventoryLedgerCalculator
 {
 	public const INVENTORY_ORIGIN = 'inventory';
 	public const REVERSAL_ORIGIN = 'kreaproducts_inventory_reversal';
+	public const REINSTATEMENT_ORIGIN = 'kreaproducts_inventory_reinstatement';
 	public const REBASE_ORIGIN = 'kreaproducts_inventory_rebase';
 	public const REBASE_REVERSAL_ORIGIN = 'kreaproducts_inventory_rebase_reversal';
 	public const COUNT_CORRECTION_ORIGIN = 'kreaproducts_count_correction';
@@ -74,6 +75,7 @@ class KreaProductsInventoryLedgerCalculator
 		return array(
 			self::INVENTORY_ORIGIN,
 			self::REVERSAL_ORIGIN,
+			self::REINSTATEMENT_ORIGIN,
 			self::REBASE_ORIGIN,
 			self::REBASE_REVERSAL_ORIGIN,
 			self::COUNT_CORRECTION_ORIGIN,
