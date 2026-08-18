@@ -3407,13 +3407,18 @@ class KreaProductsMobileInventoryService
 			return false;
 		}
 		$now = (int) $now > 0 ? (int) $now : dol_now();
-		$currentValueDate = $this->db->idate($this->resolveInventoryValueTimestamp($now));
-		$inventoryValueDate = $inventory->date_inventory;
-		if (is_numeric($inventoryValueDate)) {
-			$inventoryValueDate = $this->db->idate((int) $inventoryValueDate);
+		$currentValueTimestamp = $this->resolveInventoryValueTimestamp($now);
+		$inventoryValueTimestamp = is_numeric($inventory->date_inventory)
+			? (int) $inventory->date_inventory
+			: (int) $this->db->jdate($inventory->date_inventory);
+		if ($inventoryValueTimestamp <= 0) {
+			return false;
 		}
 
-		return (string) $inventoryValueDate === (string) $currentValueDate;
+		$timezone = $this->getOperationTimezone();
+		$currentCalendarDate = (new DateTimeImmutable('@'.$currentValueTimestamp))->setTimezone($timezone)->format('Y-m-d');
+		$inventoryCalendarDate = (new DateTimeImmutable('@'.$inventoryValueTimestamp))->setTimezone($timezone)->format('Y-m-d');
+		return $inventoryCalendarDate === $currentCalendarDate;
 	}
 
 	/**
@@ -3437,8 +3442,13 @@ class KreaProductsMobileInventoryService
 		if ($entryTimestamp <= 0) {
 			return false;
 		}
-		$effectiveDate = $this->db->idate($this->resolveInventoryValueTimestamp($entryTimestamp));
-		$currentDate = $this->db->idate($this->resolveInventoryValueTimestamp($now));
+		$timezone = $this->getOperationTimezone();
+		$effectiveDate = (new DateTimeImmutable('@'.$this->resolveInventoryValueTimestamp($entryTimestamp)))
+			->setTimezone($timezone)
+			->format('Y-m-d');
+		$currentDate = (new DateTimeImmutable('@'.$this->resolveInventoryValueTimestamp($now)))
+			->setTimezone($timezone)
+			->format('Y-m-d');
 		return $effectiveDate === $currentDate;
 	}
 

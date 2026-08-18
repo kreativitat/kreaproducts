@@ -477,6 +477,7 @@ assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->begin
 assertSameValue(false, strpos((string) $mobileInventorySource, '$this->db->commit();') !== false, 'Stock mutations must not ignore transaction-commit failures.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "i.date_inventory >= '") !== false, 'Equal-time inventory anchors must be rejected.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'isInventoryInCurrentCountingWindow') !== false, 'Recorded correction windows must remain enforced.');
+assertSameValue(true, substr_count((string) $mobileInventorySource, "->format('Y-m-d')") >= 4, 'Counting-window membership must compare business calendar dates without replacing immutable anchor times.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'isAuditedLegacyKitParentLine') !== false, 'Historical audited kit-parent corrections must retain narrow compatibility.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "\$inventory->import_key = 'KPS'") !== false, 'New managed inventories must store a hidden ownership marker.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'dol_print_date((int) $valueTimestamp, \'%Y%m%d\', \'tzuserrel\').\'_\'.$referenceLabel') !== false, 'New inventory references must use the value-day and category format.');

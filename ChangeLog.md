@@ -11,6 +11,7 @@
 ### Fixed
 
 - Blocked saving, editing, or executing a later inventory while an older inventory remains open in the same scope.
+- Kept same-window inventories writable when their immutable anchor time differs from the current setup time.
 
 ## [4.19.0] - 2026-08-18
 
