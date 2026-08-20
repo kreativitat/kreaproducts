@@ -231,6 +231,21 @@ assertSameValue(true, substr_count((string) $stockMovementSource, '(a.rowid IS N
 assertSameValue(true, strpos((string) $stockMovementSource, '$this->getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $invDate)') !== false, 'Backdated inventory handling must search for the next active anchor rather than any immutable inventory movement.');
 assertSameValue(false, strpos((string) $stockMovementSource, 'getNextInventoryMovementAfter') !== false, 'Backdated inventory handling must not retain a raw movement-only anchor lookup.');
 
+$productListSource = file_get_contents(__DIR__.'/../product_list.php');
+assertSameValue(true, strpos((string) $productListSource, "actions_changeselectedfields.inc.php") !== false, 'The product list must persist native Dolibarr column selections.');
+assertSameValue(true, strpos((string) $productListSource, "multiSelectArrayWithCheckbox('selectedfields', \$arrayfields") !== false, 'The product list must expose the native column configurator.');
+assertSameValue(true, strpos((string) $productListSource, "'zsbms_entities'") !== false, 'The product list must offer the ZSBMS entities column.');
+assertSameValue(true, strpos((string) $productListSource, 'COALESCE(pe.zs_synch, 0) as zs_synch') !== false, 'ZSBMS pills must require the product sync flag.');
+assertSameValue(true, strpos((string) $productListSource, 'COALESCE(zsp.restricted, 0) as zsbms_restricted') !== false, 'ZSBMS pills must exclude restricted shadow rows.');
+assertSameValue(true, strpos((string) $productListSource, "cstore.name = 'ZS_API_STORE'") !== false, 'ZSBMS store ids must resolve through each entity configuration.');
+assertSameValue(true, strpos((string) $productListSource, 'font-size: 0.62em') !== false, 'ZSBMS entity pills must use compact text.');
+assertSameValue(true, strpos((string) $productListSource, 'justify-content: flex-start') !== false, 'ZSBMS entity pills must be left aligned.');
+assertSameValue(true, strpos((string) $productListSource, 'zsp.retalho_by_store as zsbms_retail_by_store') !== false, 'ZSBMS pill colors must use the per-store availability source.');
+assertSameValue(true, strpos((string) $productListSource, 'kreaproducts-zsbms-pill-sale') !== false, 'Venda pills must have their own color class.');
+assertSameValue(true, strpos((string) $productListSource, 'kreaproducts-zsbms-pill-backoffice') !== false, 'Backoffice pills must have their own color class.');
+assertSameValue(true, strpos((string) $productListSource, 'kreaproducts-zsbms-pill-discontinued') !== false, 'Discontinued pills must have a neutral color class.');
+assertSameValue(true, strpos((string) $productListSource, "DoliZSynchRetalhoSoBackOffice") !== false, 'Backoffice pills must expose their translated availability label.');
+
 $inventoryServiceSource = file_get_contents(__DIR__.'/../class/KreaProductsInventoryService.class.php');
 assertSameValue(true, strpos((string) $inventoryServiceSource, 'e.entity IN (" . getEntity(\'stock\') . ")') !== false, 'Native inventory prefill must limit warehouses to the active Dolibarr stock entity scope.');
 assertSameValue(true, strpos((string) $inventoryServiceSource, 'KreaProductsInventoryLedgerCalculator::excludedMovementOrigins()') !== false, 'Native inventory prefill must exclude every module-owned inventory-ledger origin.');
@@ -257,7 +272,7 @@ assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templ
 assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.19.1'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.20.2'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -540,6 +555,7 @@ assertSameValue(true, strpos((string) $inventoryListSource, "\$refdisplay = '(PR
 assertSameValue(true, strpos((string) $inventoryListSource, '$inventoryMutationLocked') !== false, 'The inventory list must suppress creation and mass deletion during the configured read-only interval.');
 
 $mobileAppSource = file_get_contents(__DIR__.'/../stockapp/src/App.tsx');
+$mobileApiSource = file_get_contents(__DIR__.'/../stockapp/src/lib/api.ts');
 assertSameValue(true, strpos((string) $mobileAppSource, 'Guardar correções') !== false, 'Mobile correction mode must include a bottom save action.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'cria os movimentos compensatórios necessários e elimina o inventário fechado') !== false, 'Deleting a recorded inventory must explain its atomic compensation and removal.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'templates.mutation_window.active === 1') !== false, 'The mobile category selector must become read-only during the configured lock interval.');
@@ -657,6 +673,10 @@ assertSameValue(true, strpos((string) $mobileAppSource, 'formatDate(item.date_in
 assertSameValue(true, strpos((string) $mobileAppSource, 'Data valor') !== false, 'The mobile initiated inventory must expose the concise value-date label.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'inventory.can_edit_value_date === 1 ? valueDate : undefined') !== false, 'The mobile app must submit editable value dates with counts.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'JSON.stringify({ counts, valueDate })') !== false, 'Offline drafts must preserve the selected value date with counts.');
+assertSameValue(true, strpos((string) $mobileApiSource, 'virtual_stock_at_business_close?: number') !== false, 'The mobile API contract must expose the authorized billing-close stock snapshot.');
+assertSameValue(true, strpos((string) $mobileApiSource, 'virtual_stock_snapshot_time: string') !== false, 'The mobile API contract must expose the configured snapshot time.');
+assertSameValue(true, strpos((string) $mobileAppSource, "inventory.can_view_analysis === 1 && typeof line.virtual_stock_at_business_close === 'number'") !== false, 'The mobile app must render stock snapshots only for authorized analysis users.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'Stock virtual às {inventory.virtual_stock_snapshot_time}') !== false, 'The mobile inventory must identify the configured stock snapshot hour.');
 
 $productionApiSource = file_get_contents(__DIR__.'/../class/api_kreaproducts.class.php');
 $supplierValidationStart = strpos((string) $productionApiSource, 'public function postSupplierInvoiceValidate');
@@ -862,9 +882,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.19.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.19.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.19.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.20.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.20.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.20.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

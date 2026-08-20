@@ -943,6 +943,9 @@ function App() {
                     <div>
                       <strong>{line.label}</strong>
                       <span>{line.ref}{line.batch ? ` · ${line.batch}` : ''}</span>
+					  {inventory.can_view_analysis === 1 && typeof line.virtual_stock_at_business_close === 'number' && (
+						<span>Stock virtual às {inventory.virtual_stock_snapshot_time}: {formatQuantity(line.virtual_stock_at_business_close)}</span>
+					  )}
                     </div>
                   </div>
                   <div className="quantity-control">

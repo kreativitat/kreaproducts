@@ -1,6 +1,34 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.20.2] - 2026-08-20
+
+### Changed
+
+- Left-aligned ZSBMS entity pills and colored Venda, Backoffice, and discontinued availability distinctly.
+
+## [4.20.1] - 2026-08-20
+
+### Changed
+
+- Reduced the size of the ZSBMS entity pills in the product list.
+
+## [4.20.0] - 2026-08-20
+
+### Added
+
+- Added compact entity pills for products active in ZSBMS.
+
+### Fixed
+
+- Made the product list honor each user's configured visible columns.
+
+## [4.19.2] - 2026-08-20
+
+### Fixed
+
+- Displayed the billing-close virtual-stock snapshot in the mobile inventory.
+
 ## [4.19.1] - 2026-08-18
 
 ### Changed

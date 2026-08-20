@@ -261,6 +261,12 @@ class KreaProductsMobileInventoryService
 		$virtualStockAtBusinessClose = $canViewInventoryAnalysis
 			? $this->loadVirtualStockAtBusinessDayClose($inventory)
 			: array();
+		$virtualStockSnapshotTime = $canViewInventoryAnalysis
+			? substr((new KreaProductsBusinessDayService())->normalizeConfiguredTime(
+				getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00'),
+				'billing-day close time'
+			), 0, 5)
+			: '';
 
 		$sql = 'SELECT id.rowid, id.fk_product, id.fk_warehouse, id.batch, id.qty_stock, id.qty_view,';
 		$sql .= ' p.ref, p.label, p.barcode, p.tobatch';
@@ -361,6 +367,7 @@ class KreaProductsMobileInventoryService
 			'correction_mode' => 0,
 			'managed' => $isKreaProductsStockInventory ? 1 : 0,
 			'can_view_analysis' => $canViewInventoryAnalysis ? 1 : 0,
+			'virtual_stock_snapshot_time' => $virtualStockSnapshotTime,
 			'lines' => $lines,
 		);
 	}

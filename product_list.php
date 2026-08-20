@@ -54,6 +54,10 @@ $search_price_level = GETPOST('search_price_level', 'int');
 $priceLevel = ($search_price_level > 0) ? (int) $search_price_level : 1;
 $useMultiprices = !empty($conf->global->PRODUIT_MULTIPRICES);
 $showMarginColumn = !empty($conf->global->KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED);
+$zsbmsIntegrationEnabled = isModEnabled('dolizsynch');
+if ($zsbmsIntegrationEnabled) {
+	$langs->load('dolizsynch@dolizsynch');
+}
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');
 $leftmenu = GETPOST('leftmenu', 'alpha');
@@ -165,8 +169,9 @@ $arrayfields = array(
 	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 6),
 	'vat_rate' => array('label' => $langs->trans('VAT'), 'checked' => 1, 'position' => 7),
 	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 8),
-	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 9),
-	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 10),
+	'zsbms_entities' => array('label' => 'ZSBMS', 'enabled' => $zsbmsIntegrationEnabled, 'checked' => 1, 'position' => 9),
+	'p.tobuy' => array('label' => $langs->trans('Buy'), 'checked' => 1, 'position' => 10),
+	'p.tosell' => array('label' => $langs->trans('Sell'), 'checked' => 1, 'position' => 11),
 );
 if ($showMarginColumn) {
 	$arrayfields = array_slice($arrayfields, 0, 3, true) + array(
@@ -174,8 +179,13 @@ if ($showMarginColumn) {
 	) + array_slice($arrayfields, 3, null, true);
 }
 if ($show_hidden) {
-	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 11);
+	$arrayfields['kreap_hideproduct'] = array('label' => $langs->trans('kreap_hideproduct'), 'checked' => 1, 'position' => 12);
 }
+
+// Apply the current user's native Dolibarr list-column selection before rendering the list.
+include DOL_DOCUMENT_ROOT . '/core/actions_changeselectedfields.inc.php';
+$varpage = empty($contextpage) ? $_SERVER['PHP_SELF'] : $contextpage;
+$selectedfields = $form->multiSelectArrayWithCheckbox('selectedfields', $arrayfields, $varpage, 'left');
 
 $allowedSortFields = array(
 	'p.ref' => 'p.ref',
@@ -200,8 +210,14 @@ $sql = "SELECT p.rowid, p.ref, p.label, p.entity, p.tobuy, p.tosell, p.fk_produc
 	. "COALESCE(pp.price_ttc, p.price_ttc, 0) as sell_price_ttc, "
 	. "COALESCE(p.tva_tx, 0) as vat_rate, "
 	. "COALESCE(pe.kreap_hideproduct, 0) as kreap_hideproduct";
+if ($zsbmsIntegrationEnabled) {
+	$sql .= ", COALESCE(pe.zs_synch, 0) as zs_synch, COALESCE(zsp.restricted, 0) as zsbms_restricted, zsp.product_company as zsbms_product_company, zsp.retalho_by_store as zsbms_retail_by_store";
+}
 $sql .= " FROM " . MAIN_DB_PREFIX . "product as p";
 $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_extrafields as pe ON p.rowid = pe.fk_object";
+if ($zsbmsIntegrationEnabled) {
+	$sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "dolizsynch_zsproduct as zsp ON p.rowid = zsp.fk_product";
+}
 $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "product_price as pp ON pp.rowid = (";
 $sql .= "SELECT pp2.rowid FROM " . MAIN_DB_PREFIX . "product_price as pp2";
 $sql .= " WHERE pp2.fk_product = p.rowid";
@@ -298,6 +314,30 @@ if ($resEntity) {
 	$db->free($resEntity);
 }
 
+$zsbmsEntityLabelsByStore = array();
+if ($zsbmsIntegrationEnabled && !empty($arrayfields['zsbms_entities']['checked'])) {
+	$sqlZsbmsEntities = "SELECT e.rowid, e.label, cstore.value as zsbms_store";
+	$sqlZsbmsEntities .= " FROM " . MAIN_DB_PREFIX . "entity as e";
+	$sqlZsbmsEntities .= " INNER JOIN " . MAIN_DB_PREFIX . "const as cmodule ON cmodule.entity = e.rowid";
+	$sqlZsbmsEntities .= " AND cmodule.name = 'MAIN_MODULE_DOLIZSYNCH' AND cmodule.value = '1'";
+	$sqlZsbmsEntities .= " INNER JOIN " . MAIN_DB_PREFIX . "const as cstore ON cstore.entity = e.rowid";
+	$sqlZsbmsEntities .= " AND cstore.name = 'ZS_API_STORE'";
+	$sqlZsbmsEntities .= " WHERE e.active = 1 AND cstore.value <> ''";
+	$sqlZsbmsEntities .= " ORDER BY e.rowid ASC";
+	$resZsbmsEntities = $db->query($sqlZsbmsEntities);
+	if ($resZsbmsEntities) {
+		while ($objZsbmsEntity = $db->fetch_object($resZsbmsEntities)) {
+			$zsbmsStore = trim((string) $objZsbmsEntity->zsbms_store);
+			if ($zsbmsStore !== '') {
+				$zsbmsEntityLabelsByStore[$zsbmsStore] = (string) $objZsbmsEntity->label;
+			}
+		}
+		$db->free($resZsbmsEntities);
+	} else {
+		dol_syslog(__FILE__ . ': failed to load ZSBMS entity labels: ' . $db->lasterror(), LOG_WARNING);
+	}
+}
+
 $toggleParams = array(
 	'show_hidden' => $show_hidden ? 0 : 1,
 	'sortfield' => $sortfield,
@@ -383,6 +423,14 @@ if (!empty($availableProductSuffixes)) {
 
 llxHeader('', $title);
 
+print '<style>
+.kreaproducts-zsbms-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 2px; max-width: 150px; }
+.kreaproducts-zsbms-pill { border-radius: 999px; font-size: 0.62em; line-height: 1.1; padding: 0 4px; white-space: nowrap; }
+.kreaproducts-zsbms-pill-sale { background: #dff3e4 !important; color: #17652d !important; }
+.kreaproducts-zsbms-pill-backoffice { background: #dbeafe !important; color: #1e40af !important; }
+.kreaproducts-zsbms-pill-discontinued { background: #eceff2 !important; color: #5f6368 !important; }
+</style>';
+
 $newcardbutton = '';
 if ($user->rights->produit->creer) {
 	$newcardbutton .= dolGetButtonTitle($langs->trans('NewProduct'), '', 'fa fa-plus-circle', DOL_URL_ROOT . '/product/card.php?action=create&type=0', '', 1, array());
@@ -445,28 +493,34 @@ if (!empty($moreforfilter)) {
 // Filter row
 print '<tr class="liste_titre_filter">';
 print '<td class="liste_titre center maxwidthsearch"><div class="nowraponall">' . $form->showFilterButtons('right') . '</div></td>';
-print '<td class="liste_titre left"><input class="flat width75" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
-print '<td class="liste_titre left"><input class="flat" style="width: 100%; box-sizing: border-box;" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
-print '<td class="liste_titre right"></td>';
-if ($showMarginColumn) {
-	print '<td class="liste_titre right"></td>';
-}
-print '<td class="liste_titre right"></td>';
-print '<td class="liste_titre right"></td>';
-print '<td class="liste_titre right"></td>';
-print '<td class="liste_titre maxwidthonsmartphone" align="center">&nbsp;</td>';
-$selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
-print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
-$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
-print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
-if ($show_hidden) {
-	print '<td class="liste_titre center parentonrightofpage"></td>';
+foreach ($arrayfields as $key => $val) {
+	if (empty($val['checked'])) {
+		continue;
+	}
+	switch ($key) {
+		case 'p.ref':
+			print '<td class="liste_titre left"><input class="flat width75" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
+			break;
+		case 'p.label':
+			print '<td class="liste_titre left"><input class="flat" style="width: 100%; box-sizing: border-box;" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
+			break;
+		case 'p.tobuy':
+			$selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
+			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+			break;
+		case 'p.tosell':
+			$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
+			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+			break;
+		default:
+			print '<td class="liste_titre">&nbsp;</td>';
+	}
 }
 print '</tr>';
 
 // Header row
 print '<tr class="liste_titre">';
-print '<th class="wrapcolumntitle center maxwidthsearch liste_titre"></th>';
+print_liste_field_titre($selectedfields, $_SERVER['PHP_SELF'], '', '', '', '', $sortfield, $sortorder, 'center maxwidthsearch ');
 foreach ($arrayfields as $key => $val) {
 	if (!empty($val['checked'])) {
 		$align = '';
@@ -477,7 +531,7 @@ foreach ($arrayfields as $key => $val) {
 		} elseif ($key === 'p.tobuy' || $key === 'p.tosell' || $key === 'kreap_hideproduct') {
 			$align = 'center ';
 		}
-		if ($key === 'margin_without_vat') {
+		if ($key === 'margin_without_vat' || $key === 'zsbms_entities') {
 			print '<th class="' . trim($align . 'liste_titre') . '">' . dol_escape_htmltag($val['label']) . '</th>';
 			continue;
 		}
@@ -562,6 +616,48 @@ while ($i < min($num, $limit)) {
 			$entityLabel = isset($entityLabels[$obj->entity]) ? $entityLabels[$obj->entity] : $obj->entity;
 			print '<td class="center nowrap"><div class="refidno multicompany-entity-card-container" style="white-space: nowrap;"><span class="fa fa-globe"></span><span class="multiselect-selected-title-text" style="white-space: nowrap; max-width: none; overflow: visible; text-overflow: clip;">' . dol_escape_htmltag($entityLabel) . '</span></div></td>';
 			break;
+			case 'zsbms_entities':
+				$zsbmsLabels = array();
+				$zsbmsAvailabilityByStore = array();
+				if (!empty($obj->zs_synch) && empty($obj->zsbms_restricted) && !empty($obj->zsbms_product_company)) {
+					$decodedZsbmsAvailability = json_decode((string) $obj->zsbms_retail_by_store, true);
+					if (json_last_error() === JSON_ERROR_NONE && is_array($decodedZsbmsAvailability)) {
+						foreach ($decodedZsbmsAvailability as $zsbmsStore => $zsbmsAvailability) {
+							$zsbmsStore = trim((string) $zsbmsStore);
+							$zsbmsAvailability = (int) $zsbmsAvailability;
+							if ($zsbmsStore !== '' && in_array($zsbmsAvailability, array(0, 1, 2), true)) {
+								$zsbmsAvailabilityByStore[$zsbmsStore] = $zsbmsAvailability;
+							}
+						}
+					}
+					foreach (explode(',', (string) $obj->zsbms_product_company) as $zsbmsStore) {
+						$zsbmsStore = trim($zsbmsStore);
+						if ($zsbmsStore !== '' && isset($zsbmsEntityLabelsByStore[$zsbmsStore])) {
+							$zsbmsLabels[$zsbmsStore] = $zsbmsEntityLabelsByStore[$zsbmsStore];
+						}
+					}
+				}
+				print '<td class="center"><div class="kreaproducts-zsbms-pills">';
+				if (empty($zsbmsLabels)) {
+					print '<span class="opacitymedium">-</span>';
+				} else {
+					foreach ($zsbmsLabels as $zsbmsStore => $zsbmsLabel) {
+						$zsbmsAvailability = isset($zsbmsAvailabilityByStore[$zsbmsStore]) ? $zsbmsAvailabilityByStore[$zsbmsStore] : 1;
+						$zsbmsPillClass = 'kreaproducts-zsbms-pill-sale';
+						$zsbmsAvailabilityLabel = $langs->trans('DoliZSynchRetalhoVendidoClienteFinal');
+						if ($zsbmsAvailability === 0) {
+							$zsbmsPillClass = 'kreaproducts-zsbms-pill-backoffice';
+							$zsbmsAvailabilityLabel = $langs->trans('DoliZSynchRetalhoSoBackOffice');
+						} elseif ($zsbmsAvailability === 2) {
+							$zsbmsPillClass = 'kreaproducts-zsbms-pill-discontinued';
+							$zsbmsAvailabilityLabel = $langs->trans('DoliZSynchRetalhoDescontinuado');
+						}
+						$zsbmsPillTitle = $zsbmsLabel . ' - ' . $zsbmsAvailabilityLabel;
+						print '<span class="badge kreaproducts-zsbms-pill ' . $zsbmsPillClass . '" title="' . dol_escape_htmltag($zsbmsPillTitle) . '" aria-label="' . dol_escape_htmltag($zsbmsPillTitle) . '">' . dol_escape_htmltag($zsbmsLabel) . '</span>';
+					}
+				}
+				print '</div></td>';
+				break;
 		case 'p.tobuy':
 			$canEditBuy = ($productstatic->type == Product::TYPE_SERVICE) ? !empty($user->rights->service->creer) : !empty($user->rights->produit->creer);
 			if ($canEditBuy) {
@@ -645,7 +741,13 @@ while ($i < min($num, $limit)) {
 }
 
 if ($num == 0) {
-	print '<tr><td colspan="' . (count($arrayfields) + 1) . '"><span class="opacitymedium">' . $langs->trans('None') . '</span></td></tr>';
+	$emptyColspan = 1;
+	foreach ($arrayfields as $val) {
+		if (!empty($val['checked'])) {
+			$emptyColspan++;
+		}
+	}
+	print '<tr><td colspan="' . $emptyColspan . '"><span class="opacitymedium">' . $langs->trans('None') . '</span></td></tr>';
 }
 
 print '</table>';

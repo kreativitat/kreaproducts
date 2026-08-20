@@ -145,6 +145,8 @@ export interface InventoryLine {
   batch_managed: number;
   counted: number;
   quantity: number | null;
+  expected_quantity?: number;
+  virtual_stock_at_business_close?: number;
 }
 
 export interface InventoryEmailNotification {
@@ -182,6 +184,8 @@ export interface InventoryDetail {
   can_reverse: number;
   correction_mode: number;
   managed: number;
+  can_view_analysis: number;
+  virtual_stock_snapshot_time: string;
   email_notification?: InventoryEmailNotification;
   lines: InventoryLine[];
 }
