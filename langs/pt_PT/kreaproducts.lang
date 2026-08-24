@@ -392,6 +392,11 @@ KREAPRODUCTS_REPLACE_PRODUCT_LIST_HELP = Usar a lista simplificada do KreaProduc
 # Associated products card
 #
 BOMExistsAndOriginProduct = MRP - Nomenclaturas que originam este produto
+KreapExactUnitsPerPackage = Unidades exatas de destino produzidas por embalagem de origem
+KreapExactVariablePurchaseWeight = Variável
+KreapExactVariablePurchaseWeightHelp = O produto de origem é comprado pelo peso real da fatura; a valorização não utiliza um peso estimado por embalagem
+KreapExactUnitCostPending = Ainda não existe uma conversão auditada de fatura de fornecedor
+KreapExactUnitCostHelp = Custo unitário exato da última conversão auditada por número de embalagens nesta entidade
 ComponentsOfProduct = MRP - Produto Final Após Desmantelamento
 OriginProductId = Componentes
 ComponentProductId = Componentes

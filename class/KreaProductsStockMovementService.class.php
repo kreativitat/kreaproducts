@@ -39,7 +39,11 @@ class KreaProductsStockMovementService
 		dol_syslog(__METHOD__, LOG_DEBUG);
 
 		$applyMovementDates = !empty($conf->global->KREAPRODUCTS_STOCK_MOVEMENT_DATA);
-		$skipDismantle = $this->isDismantleMovement($move);
+		$exactStockCorrection = $this->loadExactStockCorrection($move, $db, $conf);
+		if ($exactStockCorrection === false) {
+			return -1;
+		}
+		$skipDismantle = $this->isDismantleMovement($move) || is_array($exactStockCorrection);
 
 		// First: align timestamps (optional)
 		if ($applyMovementDates) {
@@ -74,6 +78,12 @@ class KreaProductsStockMovementService
 				}
 			}
 
+			if (is_array($exactStockCorrection) && $exactStockCorrection['direction'] === 'IN') {
+				if (!$this->persistExactStockCost($exactStockCorrection, $db, $conf, $user)) {
+					return -1;
+				}
+			}
+
 			// Dismantle routines are independent from the stock rebuild logic
 			if ($skipDismantle) {
 				dol_syslog(__METHOD__ . ' skip dismantle for movement id=' . (int) $move->id . ' label=' . (string) $move->label, LOG_DEBUG);
@@ -101,6 +111,179 @@ class KreaProductsStockMovementService
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Load and validate a DoliZSynch exact-stock correction movement.
+	 *
+	 * @param object $move Stock movement trigger object
+	 * @param DoliDB $db Database handler
+	 * @param Conf $conf Active entity configuration
+	 * @return array<string,mixed>|null|false Evidence, null when unrelated, false on invalid evidence
+	 */
+	protected function loadExactStockCorrection($move, $db, $conf)
+	{
+		$movementId = (int) ($move->id ?? $move->rowid ?? 0);
+		if (!is_object($move) || (string) ($move->origintype ?? '') !== 'invoice_supplier' || $movementId <= 0) {
+			return null;
+		}
+
+		$sql = 'SELECT sm.rowid, sm.origintype, sm.fk_origin, sm.fk_product, sm.fk_entrepot,';
+		$sql .= ' sm.value, sm.price, sm.inventorycode';
+		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'stock_mouvement sm';
+		$sql .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'product product ON product.rowid=sm.fk_product';
+		$sql .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'entrepot warehouse ON warehouse.rowid=sm.fk_entrepot';
+		$sql .= ' WHERE sm.rowid=' . $movementId;
+		$sql .= ' AND product.entity IN (' . getEntity('product') . ')';
+		$sql .= ' AND warehouse.entity IN (' . getEntity('stock') . ')';
+		$sql .= ' ' . $db->plimit(1);
+		$resql = $db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' unable to load exact-stock movement: ' . $db->lasterror(), LOG_ERR);
+			return false;
+		}
+		$row = $db->fetch_object($resql);
+		$db->free($resql);
+		if (!$row || trim((string) $row->inventorycode) === '') {
+			return null;
+		}
+		if (!preg_match('/^DZS-PROP-(IN|OUT)-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+)-([0-9]+)$/', (string) $row->inventorycode, $matches)) {
+			return null;
+		}
+
+		$direction = (string) $matches[1];
+		$entity = (int) $matches[2];
+		$invoiceId = (int) $matches[3];
+		$bomId = (int) $matches[4];
+		$inputProductId = (int) $matches[5];
+		$outputProductId = (int) $matches[6];
+		$value = (float) $row->value;
+		$price = (float) $row->price;
+		if ((string) $row->origintype !== 'invoice_supplier' || $entity !== (int) $conf->entity
+			|| $invoiceId !== (int) $row->fk_origin
+			|| $outputProductId !== (int) $row->fk_product || $price < 0
+			|| ($direction === 'IN' && $value <= 0) || ($direction === 'OUT' && $value >= 0)) {
+			dol_syslog(__METHOD__ . ' rejected inconsistent DoliZSynch exact-stock movement #' . (int) $row->rowid, LOG_ERR);
+			return false;
+		}
+		if ($direction === 'IN') {
+			$hasValuationEvidence = $this->hasExactStockValuationEvidence($db);
+			$sqlPlan = 'SELECT COUNT(*) AS plan_count, SUM(target_units) AS target_units';
+			if ($hasValuationEvidence) {
+				$sqlPlan .= ', SUM(source_stock_value) AS source_stock_value';
+			}
+			$sqlPlan .= ' FROM ' . MAIN_DB_PREFIX . 'dolizsynch_property_stock_plan';
+			$sqlPlan .= ' WHERE entity=' . $entity . ' AND fk_facture_fourn=' . $invoiceId;
+			$sqlPlan .= ' AND fk_product_input=' . $inputProductId . ' AND fk_bom=' . $bomId;
+			$sqlPlan .= ' AND fk_product_output=' . $outputProductId . ' AND status IN (0,1)';
+			$resPlan = $db->query($sqlPlan);
+			$plan = $resPlan ? $db->fetch_object($resPlan) : null;
+			if ($resPlan) {
+				$db->free($resPlan);
+			}
+			$targetUnits = $plan ? (float) $plan->target_units : 0.0;
+			$sourceStockValue = ($plan && $hasValuationEvidence) ? (float) $plan->source_stock_value : null;
+			$expectedUnitCost = ($sourceStockValue !== null && $targetUnits > 0) ? $sourceStockValue / $targetUnits : $price;
+			$expectedMovementPrice = (float) price2num($expectedUnitCost, 'MU');
+			if (!$plan || (int) $plan->plan_count <= 0 || $targetUnits <= 0
+				|| ($hasValuationEvidence && $sourceStockValue < 0)
+				|| abs($value - $targetUnits) >= 0.00000001
+				|| ($hasValuationEvidence && abs($price - $expectedMovementPrice) >= 0.00000001)) {
+				dol_syslog(__METHOD__ . ' rejected exact-stock movement without matching valuation plan #' . (int) $row->rowid, LOG_ERR);
+				return false;
+			}
+			$price = $expectedUnitCost;
+		}
+
+		return array(
+			'direction' => $direction,
+			'movement_id' => (int) $row->rowid,
+			'invoice_id' => $invoiceId,
+			'bom_id' => $bomId,
+			'input_product_id' => $inputProductId,
+			'product_id' => $outputProductId,
+			'quantity' => $value,
+			'unit_cost' => $price,
+			'inventorycode' => (string) $row->inventorycode,
+		);
+	}
+
+	/**
+	 * Check whether the installed DoliZSynch schema exposes immutable valuation evidence.
+	 *
+	 * @param DoliDB $db Database handler
+	 * @return bool True when the 1.36 valuation column exists
+	 */
+	protected function hasExactStockValuationEvidence($db)
+	{
+		static $available = null;
+		if ($available !== null) {
+			return $available;
+		}
+
+		$available = false;
+		$columns = $db->DDLInfoTable(MAIN_DB_PREFIX . 'dolizsynch_property_stock_plan');
+		foreach ($columns as $column) {
+			if ((string) ($column[0] ?? '') === 'source_stock_value') {
+				$available = true;
+				break;
+			}
+		}
+		return $available;
+	}
+
+	/**
+	 * Persist the audited exact-unit movement price as the destination product cost.
+	 *
+	 * @param array<string,mixed> $correction Validated exact-stock movement
+	 * @param DoliDB $db Database handler
+	 * @param Conf $conf Active entity configuration
+	 * @param User $user Acting user
+	 * @return bool True on success
+	 */
+	protected function persistExactStockCost(array $correction, $db, $conf, $user)
+	{
+		$productId = (int) ($correction['product_id'] ?? 0);
+		$unitCost = (float) price2num((float) ($correction['unit_cost'] ?? -1), 'MU');
+		if ($productId <= 0 || $unitCost < 0 || empty($user->id)) {
+			return false;
+		}
+
+		$product = new Product($db);
+		if ($product->fetch($productId) <= 0) {
+			dol_syslog(__METHOD__ . ' unable to load exact-stock output product #' . $productId, LOG_ERR);
+			return false;
+		}
+		if (abs((float) $product->cost_price - $unitCost) < 0.00000001) {
+			return true;
+		}
+
+		ProductUpdater::prepareProductCostUpdate($product);
+		$product->cost_price = $unitCost;
+		$product->context = (array) $product->context;
+		$hadSkipRealtimeSync = array_key_exists('skip_kreawoo_realtime_sync', $product->context);
+		$previousSkipRealtimeSync = $hadSkipRealtimeSync ? $product->context['skip_kreawoo_realtime_sync'] : null;
+		$product->context['skip_kreawoo_realtime_sync'] = true;
+		try {
+			$result = $product->update($productId, $user);
+		} finally {
+			if ($hadSkipRealtimeSync) {
+				$product->context['skip_kreawoo_realtime_sync'] = $previousSkipRealtimeSync;
+			} else {
+				unset($product->context['skip_kreawoo_realtime_sync']);
+			}
+		}
+		if ($result <= 0) {
+			dol_syslog(__METHOD__ . ' unable to persist exact-stock output cost for product #' . $productId, LOG_ERR);
+			return false;
+		}
+
+		$verify = new Product($db);
+		if ($verify->fetch($productId) <= 0 || abs((float) $verify->cost_price - $unitCost) >= 0.00000001) {
+			dol_syslog(__METHOD__ . ' exact-stock output cost verification failed for product #' . $productId, LOG_ERR);
+			return false;
+		}
+		return true;
 	}
 
 	/**

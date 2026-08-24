@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.21.0] - 2026-08-24
+
+### Added
+
+- Added exact-unit cost adoption from audited DoliZSynch package correction movements.
+
+### Changed
+
+- Displayed package output quantity, variable invoice purchase weight, and the latest audited exact unit cost for exact-stock dismantling relationships.
+
 ## [4.20.2] - 2026-08-20
 
 ### Changed

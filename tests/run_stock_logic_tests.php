@@ -226,6 +226,15 @@ assertSameValue(true, strpos((string) $stockMovementSource, 'normalizeConfigured
 assertSameValue(true, strpos((string) $stockMovementSource, 'min(1440, max(0, getDolGlobalInt(') !== false, 'Customer invoice future tolerance must remain within the setup safety bounds.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf, true)') !== false, 'Inventory reconstruction must retain the persisted movement date when a future source clock exceeds tolerance.');
 assertSameValue(true, strpos((string) $stockMovementSource, 'if (!$this->shiftCustomerInvoiceMoveToInvoiceDateTime($move, $db, $conf))') !== false, 'Live customer movement ingestion must continue to reject future source clocks beyond tolerance.');
+assertSameValue(true, strpos((string) $stockMovementSource, "DZS-PROP-(IN|OUT)") !== false, 'Exact-stock corrections must be recognized only through the deterministic DoliZSynch movement identity.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'SUM(source_stock_value) AS source_stock_value') !== false, 'Exact-stock movement prices must reconcile against the entity-owned immutable valuation plan.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'DDLInfoTable') !== false, 'Exact-stock movement handling must remain compatible with pre-valuation DoliZSynch schemas.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'persistExactStockCost') !== false, 'Validated exact-stock input movements must persist their audited destination unit cost.');
+assertSameValue(true, strpos((string) $stockMovementSource, 'ProductUpdater::prepareProductCostUpdate($product)') !== false, 'Exact unit cost persistence must preserve Dolibarr oldcopy trigger evidence.');
+$productDismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
+assertSameValue(true, strpos((string) $productDismantleSource, 'loadExactOutputCosts') !== false, 'Post-dismantle valuation must restore the audited exact cost after the MO completion trigger.');
+assertSameValue(true, strpos((string) $productDismantleSource, 'stock_plan.fk_stock_movement_in') !== false, 'Post-dismantle exact costs must remain bound to the processed entity-owned plan movement.');
+assertSameValue(true, strpos((string) $productDismantleSource, "movement.origintype='invoice_supplier'") !== false, 'Post-dismantle exact costs must validate their supplier invoice origin.');
 assertSameValue(true, substr_count((string) $stockMovementSource, 'a_any.fk_inventorydet=id.rowid') >= 3, 'Inventory anchor queries must distinguish reversed audited inventories from legacy inventory movements.');
 assertSameValue(true, substr_count((string) $stockMovementSource, '(a.rowid IS NOT NULL OR (a_any.rowid IS NULL AND sm.rowid IS NOT NULL))') >= 3, 'Reversed audited inventories must not remain eligible as stock anchors.');
 assertSameValue(true, strpos((string) $stockMovementSource, '$this->getNextInventoryAnchorAfter($db, $productId, $warehouse, $batch, $invDate)') !== false, 'Backdated inventory handling must search for the next active anchor rather than any immutable inventory movement.');
@@ -272,7 +281,7 @@ assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templ
 assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.20.2'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.21.0'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES', 'integer', '30'") !== false, 'Invoice datetime future tolerance must default to 30 minutes.');
 assertSameValue(true, strpos((string) $moduleSource, "'inventory';\n        \$this->rights[6][5] = 'expected'") !== false, 'Inventory analysis must use the dedicated expected-stock permission.');
 assertSameValue(true, strpos((string) $moduleSource, "\$this->rights[6][3] = 0") !== false, 'Inventory analysis permission must remain disabled by default.');
@@ -346,6 +355,10 @@ assertSameValue(true, strpos((string) $associatedProductsSource, 'dol_escape_htm
 assertSameValue(true, strpos((string) $associatedProductsSource, "dolMd2Html(\$value, 'parsedown')") !== false, 'Markdown display must use Dolibarr safe-mode rendering.');
 assertSameValue(false, strpos((string) $associatedProductsSource, "'ckeditor'") !== false, 'Other characteristics must not use unpredictable inline HTML editors.');
 assertSameValue(false, strpos((string) $associatedProductsSource, '$hasOptionsPost') !== false, 'The broad options POST persistence path must be removed.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'dolizsynch_property_stock_rule stock_rule') !== false, 'Reverse BOM display must detect configured exact-stock dismantling relationships.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'stock_plan.fk_stock_movement_in') !== false, 'Reverse BOM display must use the latest audited exact correction movement cost.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'KreapExactVariablePurchaseWeight') !== false, 'Exact-stock relationships must identify invoice purchase weight as variable.');
+assertSameValue(true, strpos((string) $associatedProductsSource, 'KreapExactUnitCostPending') !== false, 'Exact-stock relationships without a processed invoice must not display an estimated unit cost.');
 $ingredientsPosition = strpos((string) $associatedProductsSource, "'options_kreap_ingredients' =>");
 $brandPosition = strpos((string) $associatedProductsSource, "'options_kreap_brand' =>");
 $videoPosition = strpos((string) $associatedProductsSource, "'options_kreap_video' =>");
@@ -882,9 +895,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.20.2', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.20.2', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.20.2', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.21.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.21.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.21.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

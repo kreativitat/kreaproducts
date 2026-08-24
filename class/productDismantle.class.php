@@ -443,7 +443,14 @@ class ProductDismantleController extends CommonObject
 
         if ($applyValuationUpdates) {
             if (is_numeric($baseCostPrice) && (float) $baseCostPrice > 0) {
-				if (!$this->updateProducedCostPrices($bomData, (float) $baseCostPrice, $user)) {
+				if (!$this->updateProducedCostPrices(
+					$bomData,
+					(float) $baseCostPrice,
+					$user,
+					(int) $bomId,
+					(int) $originId,
+					(string) $originType
+				)) {
 					return -1;
 				}
             } else {
@@ -988,7 +995,14 @@ class ProductDismantleController extends CommonObject
 		return true;
 	}
 
-	private function updateProducedCostPrices(array $bomData, float $baseCostPrice, $user): bool
+	private function updateProducedCostPrices(
+		array $bomData,
+		float $baseCostPrice,
+		$user,
+		int $bomId,
+		int $originId,
+		string $originType
+	): bool
 	{
 		if (empty($bomData['lines']) || !is_array($bomData['lines'])) {
 			return false;
@@ -1016,11 +1030,16 @@ class ProductDismantleController extends CommonObject
 		}
 
 		$unitCost = $baseCostPrice / $totalProducedQty;
+		$exactOutputCosts = $this->loadExactOutputCosts($bomId, $originId, $originType);
+		if ($exactOutputCosts === false) {
+			return false;
+		}
 		foreach ($qtyPerProduct as $productId => $qty) {
 			if ($qty <= 0) {
 				continue;
 			}
-			if ($unitCost <= 0) {
+			$outputUnitCost = isset($exactOutputCosts[$productId]) ? (float) $exactOutputCosts[$productId] : $unitCost;
+			if ($outputUnitCost <= 0) {
 				return false;
             }
 			if (!$this->isProductAvailable((int) $productId)) {
@@ -1032,12 +1051,65 @@ class ProductDismantleController extends CommonObject
 				dol_syslog(__METHOD__ . " failed to load product #" . (int) $productId . " for cost update", LOG_WARNING);
 				return false;
 			}
-			if (!$this->persistCostPrice($product, $unitCost, $user, 'post-dismantle')) {
+			if (!$this->persistCostPrice($product, $outputUnitCost, $user, 'post-dismantle')) {
 				return false;
 			}
 		}
 
 		return true;
+	}
+
+	/**
+	 * Load audited exact-unit costs created while the current supplier dismantling MO closed.
+	 *
+	 * @param int $bomId Dismantling BOM ID
+	 * @param int $originId Supplier invoice ID
+	 * @param string $originType Movement origin type
+	 * @return array<int,float>|false Exact cost by output product, or false on query failure
+	 */
+	private function loadExactOutputCosts(int $bomId, int $originId, string $originType)
+	{
+		global $conf;
+
+		if ($originType !== 'invoice_supplier' || $bomId <= 0 || $originId <= 0 || empty($conf->dolizsynch->enabled)) {
+			return array();
+		}
+		static $hasPlanTable = null;
+		if ($hasPlanTable === null) {
+			$hasPlanTable = !empty($this->db->DDLInfoTable(MAIN_DB_PREFIX . 'dolizsynch_property_stock_plan'));
+		}
+		if (!$hasPlanTable) {
+			return array();
+		}
+
+		$entity = (int) $conf->entity;
+		$inventoryPrefix = 'DZS-PROP-IN-' . $entity . '-' . $originId . '-' . $bomId . '-';
+		$sql = 'SELECT stock_plan.fk_product_output, movement.price';
+		$sql .= ' FROM ' . MAIN_DB_PREFIX . 'dolizsynch_property_stock_plan stock_plan';
+		$sql .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'stock_mouvement movement';
+		$sql .= ' ON movement.rowid=stock_plan.fk_stock_movement_in';
+		$sql .= ' WHERE stock_plan.entity=' . $entity . ' AND stock_plan.fk_facture_fourn=' . $originId;
+		$sql .= ' AND stock_plan.fk_bom=' . $bomId . ' AND stock_plan.status=1';
+		$sql .= " AND movement.origintype='invoice_supplier' AND movement.fk_origin=" . $originId;
+		$sql .= ' AND movement.fk_product=stock_plan.fk_product_output';
+		$sql .= " AND movement.inventorycode LIKE '" . $this->db->escape($inventoryPrefix) . "%'";
+		$sql .= ' ORDER BY stock_plan.date_processed DESC, stock_plan.rowid DESC';
+		$resql = $this->db->query($sql);
+		if (!$resql) {
+			dol_syslog(__METHOD__ . ' unable to load exact-stock output costs: ' . $this->db->lasterror(), LOG_ERR);
+			return false;
+		}
+
+		$costs = array();
+		while ($row = $this->db->fetch_object($resql)) {
+			$productId = (int) $row->fk_product_output;
+			$unitCost = (float) $row->price;
+			if ($productId > 0 && $unitCost >= 0 && !isset($costs[$productId])) {
+				$costs[$productId] = $unitCost;
+			}
+		}
+		$this->db->free($resql);
+		return $costs;
 	}
 
 	/**

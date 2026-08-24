@@ -1618,6 +1618,47 @@ if ($id > 0 || !empty($ref)) {
 						);
 					}
 				}
+			$exactStockByBom = array();
+			if (!empty($conf->dolizsynch->enabled) && !empty($boms)) {
+				$sqlExact = 'SELECT stock_rule.fk_bom, stock_rule.fk_product, stock_rule.units_per_package,';
+				$sqlExact .= ' (SELECT movement.price';
+				$sqlExact .= ' FROM ' . MAIN_DB_PREFIX . 'dolizsynch_property_stock_plan stock_plan';
+				$sqlExact .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'stock_mouvement movement';
+				$sqlExact .= ' ON movement.rowid=stock_plan.fk_stock_movement_in';
+				$sqlExact .= ' WHERE stock_plan.entity=' . (int) $conf->entity;
+				$sqlExact .= ' AND stock_plan.fk_bom=stock_rule.fk_bom';
+				$sqlExact .= ' AND stock_plan.fk_product_input=stock_rule.fk_product';
+				$sqlExact .= ' AND stock_plan.fk_product_output=stock_rule.fk_product_output';
+				$sqlExact .= ' AND stock_plan.status=1';
+				$sqlExact .= ' ORDER BY stock_plan.date_processed DESC, stock_plan.rowid DESC ' . $db->plimit(1);
+				$sqlExact .= ') AS exact_unit_cost';
+				$sqlExact .= ' FROM ' . MAIN_DB_PREFIX . 'dolizsynch_property_stock_rule stock_rule';
+				$sqlExact .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'bom_bom bom ON bom.rowid=stock_rule.fk_bom';
+				$sqlExact .= ' INNER JOIN ' . MAIN_DB_PREFIX . 'bom_bomline bom_line';
+				$sqlExact .= ' ON bom_line.rowid=stock_rule.fk_bom_line AND bom_line.fk_bom=bom.rowid';
+				$sqlExact .= ' WHERE stock_rule.active=1 AND stock_rule.fk_product_output=' . (int) $object->id;
+				$sqlExact .= ' AND stock_rule.entity IN (0,' . (int) $conf->entity . ')';
+				$sqlExact .= ' AND bom.entity IN (0,' . getEntity('bom') . ')';
+				$sqlExact .= ' AND bom.bomtype=1 AND bom.status=1';
+				$sqlExact .= ' AND bom.fk_product=stock_rule.fk_product';
+				$sqlExact .= ' AND COALESCE(bom_line.fk_product, 0)=stock_rule.fk_product_output';
+				$sqlExact .= ' ORDER BY (stock_rule.entity=' . (int) $conf->entity . ') DESC, stock_rule.tms DESC';
+				$resExact = $db->query($sqlExact);
+				if ($resExact) {
+					while ($exact = $db->fetch_object($resExact)) {
+						$exactKey = (int) $exact->fk_bom . ':' . (int) $exact->fk_product;
+						if (!isset($exactStockByBom[$exactKey])) {
+							$exactStockByBom[$exactKey] = array(
+								'units_per_package' => price2num($exact->units_per_package, 'MS'),
+								'exact_unit_cost' => $exact->exact_unit_cost === null ? null : price2num($exact->exact_unit_cost, 'MU'),
+							);
+						}
+					}
+					$db->free($resExact);
+				} else {
+					dol_syslog(__FILE__ . ' unable to load DoliZSynch exact-stock display evidence: ' . $db->lasterror(), LOG_ERR);
+				}
+			}
 			if (count($boms) > 0) {
 
 				// Only display the table if there is at least one BOM
@@ -1652,19 +1693,33 @@ if ($id > 0 || !empty($ref)) {
 						print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['ref'] . '</a></td>';
 						print '<td><a href="' . dol_buildpath('/product/card.php?id=' . $bom['product_id'], 1) . '" target="_blank" rel="noopener noreferrer">' . $bom['label'] . '</a></td>';
 
-						// Show fraction of BOM that corresponds to 1 unit of this component (1 / qty)
-						$qtyBeforeDismantle = ((float) $bom['qty'] > 0) ? (1 / (float) $bom['qty']) : 0.0;
-						$unitWeightKg = kreaproducts_weight_to_kg($bom['weight'], $bom['weight_units']);
-						$lineWeightKg = $unitWeightKg * $qtyBeforeDismantle;
-						$unitCost = (float) $bom['cost_price'];
-						if ($unitCost <= 0 && !empty($bom['pmp'])) {
-							$unitCost = (float) $bom['pmp'];
-						}
-						$lineCost = (float) price2num($unitCost * $qtyBeforeDismantle, 'MT');
 						print '<td class="right">' . number_format((float) $bom['stock_reel'], 4, '.', '') . '</td>';
-						print '<td class="right">' . number_format((float) $qtyBeforeDismantle, 3, '.', '') . '</td>';
-						print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
-						print '<td class="right" style="white-space: nowrap;">' . ($unitCost > 0 ? price($lineCost, '', '', 0, 0, 4, $conf->currency) : '&mdash;') . '</td>';
+						$exactKey = (int) $bom['bom_id'] . ':' . (int) $bom['product_id'];
+						$exactStock = $exactStockByBom[$exactKey] ?? null;
+						if (is_array($exactStock)) {
+							$unitsDisplay = number_format((float) $exactStock['units_per_package'], 3, '.', '');
+							print '<td class="right">' . $form->textwithpicto($unitsDisplay, $langs->trans('KreapExactUnitsPerPackage')) . '</td>';
+							print '<td class="right" style="white-space: nowrap;">' . $form->textwithpicto($langs->trans('KreapExactVariablePurchaseWeight'), $langs->trans('KreapExactVariablePurchaseWeightHelp')) . '</td>';
+							if ($exactStock['exact_unit_cost'] === null) {
+								print '<td class="right opacitymedium" style="white-space: nowrap;">' . $form->textwithpicto('&mdash;', $langs->trans('KreapExactUnitCostPending')) . '</td>';
+							} else {
+								$exactCostDisplay = price((float) $exactStock['exact_unit_cost'], '', '', 0, 0, 4, $conf->currency);
+								print '<td class="right" style="white-space: nowrap;">' . $form->textwithpicto($exactCostDisplay, $langs->trans('KreapExactUnitCostHelp')) . '</td>';
+							}
+						} else {
+							// Show the fraction of the BOM parent that corresponds to one regular output unit.
+							$qtyBeforeDismantle = ((float) $bom['qty'] > 0) ? (1 / (float) $bom['qty']) : 0.0;
+							$unitWeightKg = kreaproducts_weight_to_kg($bom['weight'], $bom['weight_units']);
+							$lineWeightKg = $unitWeightKg * $qtyBeforeDismantle;
+							$unitCost = (float) $bom['cost_price'];
+							if ($unitCost <= 0 && !empty($bom['pmp'])) {
+								$unitCost = (float) $bom['pmp'];
+							}
+							$lineCost = (float) price2num($unitCost * $qtyBeforeDismantle, 'MT');
+							print '<td class="right">' . number_format((float) $qtyBeforeDismantle, 3, '.', '') . '</td>';
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
+							print '<td class="right" style="white-space: nowrap;">' . ($unitCost > 0 ? price($lineCost, '', '', 0, 0, 4, $conf->currency) : '&mdash;') . '</td>';
+						}
 						print '</tr>';
 					}
 
