@@ -538,7 +538,7 @@ class KreaProductsStockMovementService
 		$businessDayService = new KreaProductsBusinessDayService();
 		try {
 			$time = $businessDayService->normalizeConfiguredTime(
-				$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:00',
+				$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME ?? '10:30',
 				'supplier invoice movement time'
 			);
 		} catch (InvalidArgumentException $exception) {

@@ -136,7 +136,7 @@ KreaProducts can also update **selling price automatically** when the product **
 | `KREAPRODUCTS_STOCK_MOVEMENT_DATA`              | Use invoice date for stock movements.                              |
 | `KREAPRODUCTS_SUPPLIER_MOVE_TIME`               | Time applied to supplier invoice movements.                        |
 | `KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES` | Maximum accepted future offset for customer invoice datetimes. |
-| `KREAPRODUCTS_INVENTORY_DEFAULT_TIME`           | Default time when creating inventory.                              |
+| `KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME`          | Start-of-day snapshot and inventory adjustment time.               |
 | `KREAPRODUCTS_INVENTORY_CATEGORY_ROOT`          | Root category for inventory selection.                             |
 | `KREAPRODUCTS_DISMANTLE_BOMTYPE`                | BOM type used for dismantling.                                     |
 | `KREAPRODUCTS_DISMANTLE_WAREHOUSE`              | Warehouse for dismantling movements.                               |

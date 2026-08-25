@@ -1616,7 +1616,7 @@ class KreaProductsMobileInventoryService
 			$inventory->date_inventory = $businessDayService->resolveInventoryValueTimestamp(
 				$legacyEntryTimestamp > 0 ? $legacyEntryTimestamp : dol_now(),
 				$this->getOperationTimezone(),
-				getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
+				$this->getInventoryAnchorTime(),
 				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
 			);
 			$sql = 'UPDATE '.$this->db->prefix().'inventory';
@@ -2303,7 +2303,7 @@ class KreaProductsMobileInventoryService
 			$this->langs->trans(
 				'KREAPRODUCTS_ERROR_INVENTORY_COUNTS_EXPIRED',
 				dol_print_date($currentValueTimestamp, 'day'),
-				substr(getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'), 0, 5)
+				substr($this->getInventoryAnchorTime(), 0, 5)
 			),
 			409
 		);
@@ -3008,9 +3008,19 @@ class KreaProductsMobileInventoryService
 		return $businessDayService->resolveInventoryValueTimestamp(
 			(int) $entryTimestamp,
 			$this->getOperationTimezone(),
-			getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
+			$this->getInventoryAnchorTime(),
 			getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
 		);
+	}
+
+	/**
+	 * Use one authoritative start-of-day timestamp for physical counts and display reconstruction.
+	 *
+	 * @return string
+	 */
+	private function getInventoryAnchorTime()
+	{
+		return getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00');
 	}
 
 	/**
@@ -3031,7 +3041,7 @@ class KreaProductsMobileInventoryService
 			return $businessDayService->resolvePostCutoffMinimumValueTimestamp(
 				$creationTimestamp,
 				$this->getOperationTimezone(),
-				getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30'),
+				$this->getInventoryAnchorTime(),
 				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
 			);
 		} catch (InvalidArgumentException $exception) {
@@ -3052,7 +3062,7 @@ class KreaProductsMobileInventoryService
 		return $businessDayService->resolveDateTimestamp(
 			(string) $calendarDate,
 			$this->getOperationTimezone(),
-			getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30')
+			$this->getInventoryAnchorTime()
 		);
 	}
 

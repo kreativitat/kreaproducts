@@ -81,7 +81,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '4.21.0';
+		$this->version = '4.21.1';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -187,8 +187,8 @@ class modKreaProducts extends DolibarrModules
             5 => array('KREAPRODUCTS_SIM_ENABLE', 'chaine', '1', '', 0, 'allentities', 1),
             6 => array('KREAPRODUCTS_SIM_DEFAULT_MARKUP', 'chaine', '3', '', 0, 'allentities', 1),
             7 => array('KREAPRODUCTS_REPLACE_PRODUCT_LIST', 'chaine', '1', '', 0, 'allentities', 1),
-            8 => array('KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:00', '', 0, 'allentities', 1),
-            9 => array('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '10:30', '', 0, 'allentities', 1),
+            8 => array('KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:30', '', 0, 'allentities', 0),
+            9 => array('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '06:00', '', 0, 'allentities', 0),
             10 => array('KREAPRODUCTS_DISMANTLE_BOMTYPE', 'chaine', '1', '', 0, 'allentities', 1),
             11 => array('KREAPRODUCTS_ENABLE_COPY_AVG_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),
             12 => array('KREAPRODUCTS_ENABLE_COPY_ALLERGENS_TO_PRODUCT', 'chaine', '1', '', 0, 'allentities', 1),

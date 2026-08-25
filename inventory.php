@@ -432,12 +432,10 @@ if (!empty($inventory['correction_mode'])) {
 }
 
 $businessDayService = new KreaProductsBusinessDayService();
-$inventoryDefaultTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30');
 $billingCloseTime = getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00');
 $inventoryCutoffTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00');
 $automaticCloseTime = getDolGlobalString('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45');
 try {
-	$inventoryDefaultTime = substr($businessDayService->normalizeConfiguredTime($inventoryDefaultTime, 'inventory time'), 0, 5);
 	$billingCloseTime = substr($businessDayService->normalizeConfiguredTime($billingCloseTime, 'billing close time'), 0, 5);
 	$inventoryCutoffTime = substr($businessDayService->normalizeConfiguredTime($inventoryCutoffTime, 'inventory cutoff time'), 0, 5);
 	$automaticCloseTime = substr($businessDayService->normalizeConfiguredTime($automaticCloseTime, 'inventory automatic close time'), 0, 5);
@@ -464,7 +462,7 @@ if (!empty($mutationWindow['active'])) {
 	print '<div class="error">'.img_error().' '.$langs->trans(
 		'KREAPRODUCTS_ERROR_INVENTORY_COUNTS_EXPIRED',
 		dol_print_date((int) $inventory['max_value_date'], 'day'),
-		$inventoryDefaultTime
+		$billingCloseTime
 	).'</div><br>';
 } elseif (!empty($inventory['blocked_by_open_inventory'])) {
 	print '<div class="error">'.img_error().' '.$langs->trans('KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN_UNKNOWN').'</div><br>';
@@ -596,7 +594,7 @@ print '</div>';
 print '<div class="info kps-inventory-explanation">';
 print '<strong>'.img_info().' '.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_TITLE')).'</strong>';
 print '<ul>';
-print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_VALUE_DATE', $inventoryAnchorLabel, $inventoryDefaultTime, $inventoryCutoffTime)).'</li>';
+print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_VALUE_DATE', $inventoryAnchorLabel, $billingCloseTime, $inventoryCutoffTime)).'</li>';
 print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_VIRTUAL_STOCK', $billingCloseTime)).'</li>';
 print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_SAVE')).'</li>';
 print '<li>'.dol_escape_htmltag($langs->trans('KREAPRODUCTS_INVENTORY_LOGIC_EXECUTE')).'</li>';

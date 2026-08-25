@@ -28,7 +28,7 @@ class KreaProductsBusinessDayService
 	 * @return int
 	 * @throws InvalidArgumentException
 	 */
-	public function resolveInventoryValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '10:30', $entryCutoff = '20:00')
+	public function resolveInventoryValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '06:00', $entryCutoff = '20:00')
 	{
 		$inventoryTime = $this->normalizeConfiguredTime($inventoryTime, 'inventory time');
 		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'entry cutoff');
@@ -54,7 +54,7 @@ class KreaProductsBusinessDayService
 	 * @return int Zero before cutoff, otherwise the mandatory next-window timestamp
 	 * @throws InvalidArgumentException
 	 */
-	public function resolvePostCutoffMinimumValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '10:30', $entryCutoff = '20:00')
+	public function resolvePostCutoffMinimumValueTimestamp($entryTimestamp, DateTimeZone $timezone, $inventoryTime = '06:00', $entryCutoff = '20:00')
 	{
 		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'entry cutoff');
 		$entry = (new DateTimeImmutable('@'.((int) $entryTimestamp)))->setTimezone($timezone);

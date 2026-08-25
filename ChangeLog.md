@@ -1,6 +1,14 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.21.1] - 2026-08-25
+
+### Fixed
+
+- Anchored inventories at the configured start-of-day snapshot regardless of recording time.
+- Set supplier receipt movements to 10:30 by default.
+- Preserved inventory and supplier timing constants across module reactivation.
+
 ## [4.21.0] - 2026-08-24
 
 ### Added

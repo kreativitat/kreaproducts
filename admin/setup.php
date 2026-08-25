@@ -149,13 +149,13 @@ if (!isset($conf->global->KREAPRODUCTS_REPLACE_PRODUCT_LIST)) {
 }
 // Ensure default supplier move time is set
 if (!isset($conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME)) {
-	dolibarr_set_const($db, 'KREAPRODUCTS_SUPPLIER_MOVE_TIME', '10:00', 'chaine', 0, '', $conf->entity);
-	$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME = '10:00';
+	dolibarr_set_const($db, 'KREAPRODUCTS_SUPPLIER_MOVE_TIME', '10:30', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_SUPPLIER_MOVE_TIME = '10:30';
 }
-// Ensure default inventory time is set
+// Retain the legacy constant for compatibility. Managed inventories use the business-day close time.
 if (!isset($conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME)) {
-	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '10:30', 'chaine', 0, '', $conf->entity);
-	$conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME = '10:30';
+	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', '06:00', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_INVENTORY_DEFAULT_TIME = '06:00';
 }
 if (!isset($conf->global->KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45', 'chaine', 0, '', $conf->entity);
@@ -528,7 +528,7 @@ $item->defaultFieldValue = '1';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP');
 
 $item = $formSetup->newItem('KREAPRODUCTS_SUPPLIER_MOVE_TIME');
-$item->defaultFieldValue = '10:00';
+$item->defaultFieldValue = '10:30';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_SUPPLIER_MOVE_TIME_HELP');
 $item->fieldAttr = array('type' => 'time', 'step' => '1');
 
@@ -537,13 +537,8 @@ $item->setAsNumber(0, 1440, 1);
 $item->defaultFieldValue = '30';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVOICE_DATETIME_FUTURE_TOLERANCE_MINUTES_HELP');
 
-// Inventário
+// Inventory
 $formSetup->newItem('KREAPRODUCTS_INVENTORY_SETTINGS_TITLE')->setAsTitle();
-$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_DEFAULT_TIME');
-$item->defaultFieldValue = '10:30';
-$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_DEFAULT_TIME_HELP');
-$item->fieldAttr = array('type' => 'time', 'step' => '1');
-
 $item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_CATEGORY_ROOT');
 $item->setAsSelect($TInventoryCategoryRoots);
 $item->defaultFieldValue = '';
