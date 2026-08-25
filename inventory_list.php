@@ -207,10 +207,18 @@ try {
 } catch (Throwable $exception) {
 	$inventoryMutationWindow = array('active' => 1, 'start_time' => '?', 'end_time' => '?');
 }
+try {
+	$inventoryEntryWindow = $inventoryService->getInventoryEntryWindowState();
+} catch (Throwable $exception) {
+	$inventoryEntryWindow = array('active' => 1, 'start_time' => '?', 'end_time' => '?');
+}
 $inventoryMutationLocked = !empty($inventoryMutationWindow['active']);
+$inventoryEntryLocked = !empty($inventoryEntryWindow['active']);
 if ($inventoryMutationLocked) {
 	$permissiontoadd = false;
 	$permissiontodelete = false;
+} elseif ($inventoryEntryLocked) {
+	$permissiontoadd = false;
 }
 
 
@@ -487,6 +495,12 @@ if ($inventoryMutationLocked) {
 		'KREAPRODUCTS_ERROR_INVENTORY_READ_ONLY_WINDOW',
 		(string) $inventoryMutationWindow['start_time'],
 		(string) $inventoryMutationWindow['end_time']
+	).'</div><br>';
+} elseif ($inventoryEntryLocked) {
+	print '<div class="warning">'.img_warning().' '.$langs->trans(
+		'KREAPRODUCTS_ERROR_INVENTORY_ENTRY_WINDOW',
+		(string) $inventoryEntryWindow['start_time'],
+		(string) $inventoryEntryWindow['end_time']
 	).'</div><br>';
 }
 

@@ -808,12 +808,18 @@ function App() {
 			  <span>Inventários apenas para consulta entre as {templates.mutation_window.start_time} e as {templates.mutation_window.end_time}.</span>
 			</div>
 		  )}
+		  {templates?.mutation_window.active !== 1 && templates?.entry_window.active === 1 && (
+			<div className="correction-warning">
+			  <AlertCircle size={18} />
+			  <span>Não é possível criar novos inventários entre as {templates.entry_window.start_time} e as {templates.entry_window.end_time}. Pode continuar a consultar os inventários existentes.</span>
+			</div>
+		  )}
 
 		  <div className="template-grid">
             {templates?.templates.map((template, index) => {
               const open = template.open_inventory;
               return (
-				<button type="button" className={`template-card accent-${index % 4}`} key={template.id} onClick={() => handleTemplate(template)} disabled={busy || session.rights.count !== 1 || templates.mutation_window.active === 1}>
+				<button type="button" className={`template-card accent-${index % 4}`} key={template.id} onClick={() => handleTemplate(template)} disabled={busy || session.rights.count !== 1 || templates.mutation_window.active === 1 || (!open && templates.entry_window.active === 1)}>
                   <span className="template-icon"><Package size={24} /></span>
                   <span className="template-copy">
                     <strong>{template.label}</strong>

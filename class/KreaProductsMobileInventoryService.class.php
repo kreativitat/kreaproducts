@@ -109,6 +109,37 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Return the interval during which new inventory creation is blocked.
+	 *
+	 * @param int $now Timestamp to evaluate, or zero for now
+	 * @return array{active:int,start:int,end:int,start_time:string,end_time:string}
+	 */
+	public function getInventoryEntryWindowState($now = 0)
+	{
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		try {
+			$businessDayService = new KreaProductsBusinessDayService();
+			$window = $businessDayService->resolveInventoryEntryLockWindow(
+				$now,
+				$this->getOperationTimezone(),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00'),
+				getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', '23:00')
+			);
+		} catch (InvalidArgumentException $exception) {
+			throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_INVALID'), 500);
+		}
+		$timezone = $this->getOperationTimezone();
+
+		return array(
+			'active' => !empty($window['active']) ? 1 : 0,
+			'start' => (int) $window['start'],
+			'end' => (int) $window['end'],
+			'start_time' => (new DateTimeImmutable('@'.((int) $window['start'])))->setTimezone($timezone)->format('H:i'),
+			'end_time' => (new DateTimeImmutable('@'.((int) $window['end'])))->setTimezone($timezone)->format('H:i'),
+		);
+	}
+
+	/**
 	 * List configured inventory templates and their active inventory.
 	 *
 	 * @return array<string,mixed>
@@ -117,6 +148,7 @@ class KreaProductsMobileInventoryService
 	{
 		$this->requireReadAccess();
 		$mutationWindow = $this->getInventoryMutationWindowState();
+		$entryWindow = $this->getInventoryEntryWindowState();
 
 		$rootCategoryId = $this->getRootCategoryId();
 		$warehouses = $this->listWarehouses();
@@ -166,6 +198,7 @@ class KreaProductsMobileInventoryService
 			'default_warehouse_id' => $defaultWarehouseId,
 			'history_enabled' => $this->isHistoryEnabled() ? 1 : 0,
 			'mutation_window' => $mutationWindow,
+			'entry_window' => $entryWindow,
 			'blocking_open_inventory' => null,
 			'warehouses' => $warehouses,
 			'templates' => $templates,
@@ -183,6 +216,7 @@ class KreaProductsMobileInventoryService
 	{
 		$this->requireCountAccess();
 		$this->requireInventoryMutationWindowOpen();
+		$this->requireInventoryEntryWindowOpen();
 		$this->requireInventoryValueDatingEnabled();
 
 		$category = $this->fetchTemplateCategory((int) $categoryId);
@@ -1013,7 +1047,7 @@ class KreaProductsMobileInventoryService
 	 * @param int                         $inventoryId Inventory ID
 	 * @param array<int,array<string,mixed>> $counts     Count rows
 	 * @param string                      $calendarDate                Optional editable value date in YYYY-MM-DD format
-	 * @param bool                        $confirmPostCutoffCorrection Confirm replacement by the mandatory next-window date
+	 * @param bool                        $confirmPostCutoffCorrection Legacy argument retained for backward compatibility; ignored
 	 * @return array<string,mixed>
 	 */
 	public function saveCounts($inventoryId, array $counts, $calendarDate = '', $confirmPostCutoffCorrection = false)
@@ -1041,24 +1075,7 @@ class KreaProductsMobileInventoryService
 				if ($editableValueTimestamp <= 0) {
 					throw new InvalidArgumentException('Invalid inventory value date.');
 				}
-				$postCutoffMinimumValueTimestamp = $this->resolvePostCutoffMinimumValueTimestamp($inventory);
-				if ($postCutoffMinimumValueTimestamp > 0 && $editableValueTimestamp < $postCutoffMinimumValueTimestamp) {
-					if (!$confirmPostCutoffCorrection) {
-						throw new KreaProductsStockApiException(
-							$this->langs->trans(
-								'KREAPRODUCTS_INVENTORY_POST_CUTOFF_DATE_REQUIRED',
-								getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00'),
-								dol_print_date($postCutoffMinimumValueTimestamp, 'day')
-							),
-							409
-						);
-					}
-					$editableValueTimestamp = $postCutoffMinimumValueTimestamp;
-					$calendarDate = (new DateTimeImmutable('@'.$postCutoffMinimumValueTimestamp))
-						->setTimezone($this->getOperationTimezone())
-						->format('Y-m-d');
-					$hasExplicitValueDate = true;
-				}
+				$this->requireInventoryValueDateInCurrentCountingWindow($editableValueTimestamp);
 				if ($hasExplicitValueDate && $editableValueTimestamp > $this->resolveInventoryValueTimestamp(dol_now())) {
 					throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_VALUE_DATE_AFTER_WINDOW'), 400);
 				}
@@ -2285,6 +2302,27 @@ class KreaProductsMobileInventoryService
 	}
 
 	/**
+	 * Reject new inventory creation between the entry cutoff and reopening time.
+	 *
+	 * @param int $now Timestamp to evaluate, or zero for now
+	 * @return void
+	 */
+	private function requireInventoryEntryWindowOpen($now = 0)
+	{
+		$window = $this->getInventoryEntryWindowState($now);
+		if (!empty($window['active'])) {
+			throw new KreaProductsStockApiException(
+				$this->langs->trans(
+					'KREAPRODUCTS_ERROR_INVENTORY_ENTRY_WINDOW',
+					(string) $window['start_time'],
+					(string) $window['end_time']
+				),
+				409
+			);
+		}
+	}
+
+	/**
 	 * Reject counts whose value date belongs to an earlier counting window.
 	 * Old physical counts must never be shifted forward after new stock movements.
 	 *
@@ -2304,6 +2342,37 @@ class KreaProductsMobileInventoryService
 				'KREAPRODUCTS_ERROR_INVENTORY_COUNTS_EXPIRED',
 				dol_print_date($currentValueTimestamp, 'day'),
 				substr($this->getInventoryAnchorTime(), 0, 5)
+			),
+			409
+		);
+	}
+
+	/**
+	 * Reject a value date outside the current counting window.
+	 *
+	 * @param int $valueTimestamp Candidate inventory value timestamp
+	 * @param int $now            Timestamp to evaluate, or zero for now
+	 * @return void
+	 */
+	private function requireInventoryValueDateInCurrentCountingWindow($valueTimestamp, $now = 0)
+	{
+		$now = (int) $now > 0 ? (int) $now : dol_now();
+		$businessDayService = new KreaProductsBusinessDayService();
+		if ($businessDayService->isInventoryValueDateInCurrentCountingWindow(
+			(int) $valueTimestamp,
+			$now,
+			$this->getOperationTimezone(),
+			$this->getInventoryAnchorTime(),
+			getDolGlobalString('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', '20:00')
+		)) {
+			return;
+		}
+
+		$currentValueTimestamp = $this->resolveInventoryValueTimestamp($now);
+		throw new KreaProductsStockApiException(
+			$this->langs->trans(
+				'KREAPRODUCTS_ERROR_INVENTORY_VALUE_DATE_CURRENT_WINDOW',
+				dol_print_date($currentValueTimestamp, 'day')
 			),
 			409
 		);

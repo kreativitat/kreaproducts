@@ -1,6 +1,21 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.0] - 2026-08-25
+
+### Added
+
+- Added a configurable reopening time for new inventory creation, defaulting to 23:00.
+- Added the maintained inventory procedure and technical-logic document.
+
+### Changed
+
+- Blocked new inventory creation between the entry cutoff and reopening time.
+
+### Fixed
+
+- Rejected inventory value dates outside the current counting window.
+
 ## [4.21.1] - 2026-08-25
 
 ### Fixed

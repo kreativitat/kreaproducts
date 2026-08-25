@@ -130,6 +130,7 @@ export interface TemplateData {
   default_warehouse_id: number;
   history_enabled: number;
   mutation_window: InventoryMutationWindow;
+  entry_window: InventoryMutationWindow;
   blocking_open_inventory: OpenInventorySummary | null;
   warehouses: Warehouse[];
   templates: InventoryTemplate[];

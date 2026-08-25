@@ -167,6 +167,64 @@ class KreaProductsBusinessDayService
 	}
 
 	/**
+	 * Resolve the daily interval during which new inventory creation is blocked.
+	 *
+	 * Existing inventories retain their own lifecycle rules. This window only
+	 * prevents a new inventory from being created after the previous counting
+	 * window expires and before entry reopens.
+	 *
+	 * @param int          $timestamp   Timestamp to evaluate
+	 * @param DateTimeZone $timezone    Business timezone
+	 * @param string       $entryCutoff Start of the next counting window
+	 * @param string       $entryReopen Time when new inventory creation resumes
+	 * @return array{active:bool,start:int,end:int}
+	 * @throws InvalidArgumentException
+	 */
+	public function resolveInventoryEntryLockWindow($timestamp, DateTimeZone $timezone, $entryCutoff = '20:00', $entryReopen = '23:00')
+	{
+		$entryCutoff = $this->normalizeConfiguredTime($entryCutoff, 'inventory entry cutoff');
+		$entryReopen = $this->normalizeConfiguredTime($entryReopen, 'inventory entry reopening time');
+		if ($entryCutoff >= $entryReopen) {
+			throw new InvalidArgumentException('Inventory entry reopening time must be later than the entry cutoff.');
+		}
+
+		$current = (new DateTimeImmutable('@'.((int) $timestamp)))->setTimezone($timezone);
+		$lockStart = new DateTimeImmutable($current->format('Y-m-d').' '.$entryCutoff, $timezone);
+		$lockEnd = new DateTimeImmutable($current->format('Y-m-d').' '.$entryReopen, $timezone);
+
+		return array(
+			'active' => $current >= $lockStart && $current < $lockEnd,
+			'start' => $lockStart->getTimestamp(),
+			'end' => $lockEnd->getTimestamp(),
+		);
+	}
+
+	/**
+	 * Check whether a value timestamp belongs to the current counting window.
+	 *
+	 * @param int          $valueTimestamp Value timestamp selected for the inventory
+	 * @param int          $entryTimestamp Current entry timestamp
+	 * @param DateTimeZone $timezone       Business timezone
+	 * @param string       $inventoryTime  Authoritative inventory anchor time
+	 * @param string       $entryCutoff    Start of the next counting window
+	 * @return bool
+	 * @throws InvalidArgumentException
+	 */
+	public function isInventoryValueDateInCurrentCountingWindow($valueTimestamp, $entryTimestamp, DateTimeZone $timezone, $inventoryTime = '06:00', $entryCutoff = '20:00')
+	{
+		$currentValueTimestamp = $this->resolveInventoryValueTimestamp(
+			(int) $entryTimestamp,
+			$timezone,
+			(string) $inventoryTime,
+			(string) $entryCutoff
+		);
+		$valueDate = (new DateTimeImmutable('@'.((int) $valueTimestamp)))->setTimezone($timezone)->format('Y-m-d');
+		$currentValueDate = (new DateTimeImmutable('@'.$currentValueTimestamp))->setTimezone($timezone)->format('Y-m-d');
+
+		return $valueDate === $currentValueDate;
+	}
+
+	/**
 	 * @param string $time  Time value
 	 * @param string $label Parameter label
 	 * @return string

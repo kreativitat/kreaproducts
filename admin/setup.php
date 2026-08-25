@@ -161,6 +161,10 @@ if (!isset($conf->global->KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME', '19:45', 'chaine', 0, '', $conf->entity);
 	$conf->global->KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME = '19:45';
 }
+if (!isset($conf->global->KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME)) {
+	dolibarr_set_const($db, 'KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', '23:00', 'chaine', 0, '', $conf->entity);
+	$conf->global->KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME = '23:00';
+}
 // Ensure dismantle BOM type has default (was hardcoded 1)
 if (!isset($conf->global->KREAPRODUCTS_DISMANTLE_BOMTYPE)) {
 	dolibarr_set_const($db, 'KREAPRODUCTS_DISMANTLE_BOMTYPE', '1', 'chaine', 0, '', $conf->entity);
@@ -564,6 +568,11 @@ $item->defaultFieldValue = '20:00';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME_HELP');
 $item->fieldAttr = array('type' => 'time', 'step' => '60');
 
+$item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME');
+$item->defaultFieldValue = '23:00';
+$item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME_HELP');
+$item->fieldAttr = array('type' => 'time', 'step' => '60');
+
 $item = $formSetup->newItem('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME');
 $item->defaultFieldValue = '19:45';
 $item->helpText = $langs->transnoentities('KREAPRODUCTS_INVENTORY_AUTO_CLOSE_TIME_HELP');
@@ -692,11 +701,21 @@ if ($action === 'update') {
 			GETPOST('KREAPRODUCTS_INVENTORY_ENTRY_CUTOFF_TIME', 'alphanohtml'),
 			'inventory entry cutoff time'
 		);
+		$submittedEntryReopen = $businessDayService->normalizeConfiguredTime(
+			GETPOST('KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', 'alphanohtml'),
+			'inventory entry reopening time'
+		);
 		if ($submittedAutoCloseTime >= $submittedEntryCutoff) {
 			throw new InvalidArgumentException('Inventory automatic close time must be earlier than the entry cutoff.');
 		}
+		if ($submittedEntryCutoff >= $submittedEntryReopen) {
+			throw new InvalidArgumentException('Inventory entry reopening time must be later than the entry cutoff.');
+		}
 	} catch (InvalidArgumentException $exception) {
-		setEventMessages($langs->trans('KREAPRODUCTS_ERROR_INVENTORY_TIME_ORDER'), null, 'errors');
+		$errorKey = strpos($exception->getMessage(), 'reopening') !== false
+			? 'KREAPRODUCTS_ERROR_INVENTORY_ENTRY_TIME_ORDER'
+			: 'KREAPRODUCTS_ERROR_INVENTORY_TIME_ORDER';
+		setEventMessages($langs->trans($errorKey), null, 'errors');
 		$action = '';
 		$error++;
 	}
