@@ -308,7 +308,7 @@ assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templ
 assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.22.0'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.22.1'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', 'chaine', '23:00'") !== false, 'New inventory creation must reopen at 23:00 by default.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:30', '', 0, 'allentities', 0") !== false, 'Supplier receipt time must default to 10:30 and survive module reactivation.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '06:00', '', 0, 'allentities', 0") !== false, 'The legacy inventory-time constant must survive module reactivation.');
@@ -563,7 +563,7 @@ assertSameValue(false, strpos((string) $mobileInventorySource, 'findAnyOpenManag
 assertSameValue(true, strpos((string) $mobileInventorySource, 'KREAPRODUCTS_ERROR_INVENTORY_SCOPE_OPEN') !== false, 'Starting another inventory in an occupied category and warehouse must return a clear conflict.');
 assertSameValue(true, substr_count((string) $mobileInventorySource, 'requireFirstOpenInventoryOfScope(') >= 4, 'Saving, editing, and executing must recheck the first open inventory while holding the scope lock.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'ORDER BY i.date_inventory ASC, i.rowid ASC') !== false, 'The oldest open inventory must own its category and warehouse scope.');
-assertSameValue(true, strpos((string) $mobileInventorySource, "'history_locked' => (\$isRecorded && !\$isCurrentCountingWindow) ? 1 : 0") !== false, 'Recorded inventories outside the current counting window must be marked as permanent read-only history.');
+assertSameValue(true, strpos((string) $mobileInventorySource, '$historyLocked = $isKreaProductsStockInventory && $isRecorded && !$isCurrentCountingWindow;') !== false, 'Managed recorded inventories outside the current counting window must be marked as permanent read-only history.');
 assertSameValue(true, strpos((string) $mobileInventorySource, '($isLatestOfKind && $isCurrentCountingWindow && $this->canClose())') !== false, 'Recorded inventory deletion must be exposed only in the current counting window.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'closeDueInventories($now = 0)') !== false, 'Managed inventories must expose automatic due closure.');
 assertSameValue(true, strpos((string) $mobileInventorySource, 'closeDueInventoriesAsScheduler($now = 0)') !== false, 'Scheduled closure must use a dedicated administrator-only entry point.');
@@ -644,7 +644,8 @@ assertSameValue(false, strpos((string) $inventoryPageSource, 'inventoryPrepareHe
 assertSameValue(true, strpos((string) $inventoryPageSource, "dol_get_fiche_head(\$head, \$tab") !== false, 'The unified inventory detail must use the native Dolibarr fiche tab bar.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "&tab=statistics") !== false, 'The inventory detail must expose the statistics tab.');
 assertSameValue(true, strpos((string) $inventoryPageSource, "if (\$tab === 'statistics' && !\$canViewInventoryAnalysis)") !== false, 'Direct statistics-tab access must require the inventory analysis permission.');
-assertSameValue(true, substr_count((string) $inventoryPageSource, 'if ($canViewInventoryAnalysis)') >= 6, 'Expected stock, deviations, and statistics must be conditionally rendered by permission.');
+assertSameValue(true, strpos((string) $inventoryPageSource, "\$canViewInventoryDeviations = !empty(\$inventory['can_view_deviations']);") !== false, 'The inventory page must consume the server-authorized deviation visibility state.');
+assertSameValue(true, substr_count((string) $inventoryPageSource, 'if ($canViewInventoryDeviations)') >= 4, 'Expected stock and deviations must use the scoped deviation visibility state.');
 assertSameValue(true, strpos((string) $inventoryPageSource, '$service->getInventoryStatistics($id, 15)') !== false, 'The statistics tab must delegate flow calculations to the shared inventory service.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'new DolGraph()') !== false, 'The statistics tab must render native Dolibarr graphs.');
 assertSameValue(false, strpos((string) $inventoryPageSource, "array('horizontalbars', 'horizontalbars')") !== false, 'Inventory statistics must not compare totals across products with incompatible units.');
@@ -688,8 +689,10 @@ assertSameValue(true, strpos((string) $inventoryPageSource, "dol_get_fiche_head(
 assertSameValue(true, strpos((string) $inventoryPageSource, "KREAPRODUCTS_INVENTORY_VIRTUAL_STOCK") !== false, 'Inventory lines must display their virtual stock snapshot.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'data-kps-absolute-deviation') !== false, 'Inventory lines must display absolute deviation.');
 assertSameValue(true, strpos((string) $inventoryPageSource, 'data-kps-relative-deviation') !== false, 'Inventory lines must display relative deviation.');
-assertSameValue(true, strpos((string) $mobileInventorySource, "if (\$canViewInventoryAnalysis) {\n\t\t\t\t\$line['expected_quantity']") !== false, 'Inventory responses must expose expected stock only to authorized analysis users.');
+assertSameValue(true, strpos((string) $mobileInventorySource, '$canViewInventoryDeviations = $canViewInventoryAnalysis || $historyLocked;') !== false, 'Historical locked inventories must expose deviations through an explicit lifecycle-scoped exception.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "if (\$canViewInventoryDeviations) {\n\t\t\t\t\$line['expected_quantity']") !== false, 'Inventory responses must expose expected stock only when current analysis or locked-history visibility is authorized.');
 assertSameValue(true, strpos((string) $mobileInventorySource, "'can_view_analysis' => \$canViewInventoryAnalysis ? 1 : 0") !== false, 'Inventory responses must state whether analysis data is authorized.');
+assertSameValue(true, strpos((string) $mobileInventorySource, "'can_view_deviations' => \$canViewInventoryDeviations ? 1 : 0") !== false, 'Inventory responses must state whether deviations are visible.');
 $statisticsMethodStart = strpos((string) $mobileInventorySource, 'public function getInventoryStatistics');
 $statisticsMethodEnd = strpos((string) $mobileInventorySource, 'public function listInventories', $statisticsMethodStart);
 assertSameValue(true, $statisticsMethodStart !== false && $statisticsMethodEnd !== false, 'Inventory statistics service scope could not be resolved.');
@@ -937,9 +940,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.22.0', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.22.0', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.22.0', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.22.1', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.22.1', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.22.1', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

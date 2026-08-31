@@ -289,13 +289,18 @@ class KreaProductsMobileInventoryService
 	public function getInventory($inventoryId)
 	{
 		$this->requireReadAccess();
-		$canViewInventoryAnalysis = $this->canViewInventoryAnalysis();
 		$inventory = $this->fetchInventoryRecord((int) $inventoryId);
 		$this->normalizeInitiatedTechnicalReference($inventory);
-		$virtualStockAtBusinessClose = $canViewInventoryAnalysis
+		$isRecorded = (int) $inventory->status === Inventory::STATUS_RECORDED;
+		$isKreaProductsStockInventory = $this->isKreaProductsStockReference((string) $inventory->ref, (string) $inventory->import_key);
+		$isCurrentCountingWindow = $isKreaProductsStockInventory && $this->isInventoryInCurrentCountingWindow($inventory);
+		$historyLocked = $isKreaProductsStockInventory && $isRecorded && !$isCurrentCountingWindow;
+		$canViewInventoryAnalysis = $this->canViewInventoryAnalysis();
+		$canViewInventoryDeviations = $canViewInventoryAnalysis || $historyLocked;
+		$virtualStockAtBusinessClose = $canViewInventoryDeviations
 			? $this->loadVirtualStockAtBusinessDayClose($inventory)
 			: array();
-		$virtualStockSnapshotTime = $canViewInventoryAnalysis
+		$virtualStockSnapshotTime = $canViewInventoryDeviations
 			? substr((new KreaProductsBusinessDayService())->normalizeConfiguredTime(
 				getDolGlobalString('KREAPRODUCTS_BUSINESS_DAY_CLOSE_TIME', '06:00'),
 				'billing-day close time'
@@ -332,7 +337,7 @@ class KreaProductsMobileInventoryService
 				'counted' => $isCounted ? 1 : 0,
 				'quantity' => $isCounted ? (float) $obj->qty_view : null,
 			);
-			if ($canViewInventoryAnalysis) {
+			if ($canViewInventoryDeviations) {
 				$line['expected_quantity'] = (float) $obj->qty_stock;
 				$line['virtual_stock_at_business_close'] = array_key_exists((int) $obj->rowid, $virtualStockAtBusinessClose)
 					? (float) $virtualStockAtBusinessClose[(int) $obj->rowid]
@@ -346,12 +351,9 @@ class KreaProductsMobileInventoryService
 		$templateCategoryId = !empty($inventory->template_category_id) ? (int) $inventory->template_category_id : $this->extractSingleTemplateCategoryId((string) $inventory->categories_product);
 		$category = $this->fetchCategoryById($templateCategoryId);
 		$isOpen = (int) $inventory->status === Inventory::STATUS_VALIDATED;
-		$isRecorded = (int) $inventory->status === Inventory::STATUS_RECORDED;
-		$isKreaProductsStockInventory = $this->isKreaProductsStockReference((string) $inventory->ref, (string) $inventory->import_key);
 		$hasActiveAdjustmentGeneration = $isKreaProductsStockInventory && $this->hasActiveAdjustments((int) $inventory->rowid);
 		$mutationWindow = $this->getInventoryMutationWindowState();
 		$mutationLocked = !empty($mutationWindow['active']);
-		$isCurrentCountingWindow = $isKreaProductsStockInventory && $this->isInventoryInCurrentCountingWindow($inventory);
 		$isFirstOpenOfScope = !$isOpen || $this->isFirstOpenInventoryOfScope($inventory);
 		$postCutoffMinimumValueDate = ($isKreaProductsStockInventory && $isOpen && !$hasActiveAdjustmentGeneration)
 			? $this->resolvePostCutoffMinimumValueTimestamp($inventory)
@@ -387,7 +389,7 @@ class KreaProductsMobileInventoryService
 			'mutation_window' => $mutationWindow,
 			'counts_expired' => ($isOpen && !$isCurrentCountingWindow) ? 1 : 0,
 			'blocked_by_open_inventory' => ($isOpen && !$isFirstOpenOfScope) ? 1 : 0,
-			'history_locked' => ($isRecorded && !$isCurrentCountingWindow) ? 1 : 0,
+			'history_locked' => $historyLocked ? 1 : 0,
 			'counted_lines' => $counted,
 			'total_lines' => $total,
 			'complete' => ($total > 0 && $counted === $total) ? 1 : 0,
@@ -401,6 +403,7 @@ class KreaProductsMobileInventoryService
 			'correction_mode' => 0,
 			'managed' => $isKreaProductsStockInventory ? 1 : 0,
 			'can_view_analysis' => $canViewInventoryAnalysis ? 1 : 0,
+			'can_view_deviations' => $canViewInventoryDeviations ? 1 : 0,
 			'virtual_stock_snapshot_time' => $virtualStockSnapshotTime,
 			'lines' => $lines,
 		);

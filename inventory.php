@@ -206,6 +206,7 @@ try {
 	accessforbidden($exception->getMessage());
 }
 $canViewInventoryAnalysis = $service->canViewInventoryAnalysis();
+$canViewInventoryDeviations = !empty($inventory['can_view_deviations']);
 if ($tab === 'statistics' && !$canViewInventoryAnalysis) {
 	accessforbidden($langs->trans('ErrorForbidden'));
 }
@@ -513,11 +514,11 @@ print '<th>'.$langs->trans('Product').'</th>';
 if ($showBatchColumn) {
 	print '<th>'.$langs->trans('KREAPRODUCTS_INVENTORY_LOT_SERIAL').'</th>';
 }
-if ($canViewInventoryAnalysis) {
+if ($canViewInventoryDeviations) {
 	print '<th class="right nowraponall">'.$langs->trans('KREAPRODUCTS_INVENTORY_VIRTUAL_STOCK').'</th>';
 }
 print '<th class="right">'.$langs->trans('RealQty').'</th>';
-if ($canViewInventoryAnalysis) {
+if ($canViewInventoryDeviations) {
 	print '<th class="right nowraponall">'.$langs->trans('KREAPRODUCTS_INVENTORY_ABSOLUTE_DEVIATION').'</th>';
 	print '<th class="right nowraponall">'.$langs->trans('KREAPRODUCTS_INVENTORY_RELATIVE_DEVIATION').'</th>';
 }
@@ -526,9 +527,9 @@ print '</tr>';
 foreach ($inventory['lines'] as $line) {
 	$isCounted = !empty($line['counted']);
 	$value = $isCounted ? (string) $line['quantity'] : '';
-	$expectedQuantity = $canViewInventoryAnalysis ? (float) $line['virtual_stock_at_business_close'] : 0.0;
-	$absoluteDeviation = $canViewInventoryAnalysis && $isCounted ? (float) $line['quantity'] - $expectedQuantity : null;
-	$relativeDeviation = $canViewInventoryAnalysis && $isCounted && abs($expectedQuantity) >= 0.0001
+	$expectedQuantity = $canViewInventoryDeviations ? (float) $line['virtual_stock_at_business_close'] : 0.0;
+	$absoluteDeviation = $canViewInventoryDeviations && $isCounted ? (float) $line['quantity'] - $expectedQuantity : null;
+	$relativeDeviation = $canViewInventoryDeviations && $isCounted && abs($expectedQuantity) >= 0.0001
 		? $absoluteDeviation / abs($expectedQuantity) * 100
 		: null;
 	$searchText = mb_strtolower(trim((string) $line['label'].' '.(string) $line['ref'].' '.(string) $line['batch']));
@@ -539,7 +540,7 @@ foreach ($inventory['lines'] as $line) {
 	if ($showBatchColumn) {
 		print '<td>'.dol_escape_htmltag((string) $line['batch']).'</td>';
 	}
-	if ($canViewInventoryAnalysis) {
+	if ($canViewInventoryDeviations) {
 		print '<td class="right nowraponall">'.dol_escape_htmltag((string) price2num($expectedQuantity, 'MS')).'</td>';
 	}
 	print '<td class="right">';
@@ -547,7 +548,7 @@ foreach ($inventory['lines'] as $line) {
 		print '<input type="text" inputmode="decimal" class="flat right" size="12"';
 		print ' name="count_'.((int) $line['id']).'" value="'.dol_escape_htmltag($value).'"';
 		print ' data-kps-count';
-		if ($canViewInventoryAnalysis) {
+		if ($canViewInventoryDeviations) {
 			print ' data-kps-expected-quantity="'.dol_escape_htmltag((string) $expectedQuantity).'"';
 		}
 		print ' aria-label="'.dol_escape_htmltag($langs->trans('RealQty').' '.(string) $line['label']).'">';
@@ -555,7 +556,7 @@ foreach ($inventory['lines'] as $line) {
 		print $isCounted ? dol_escape_htmltag($value) : '<span class="opacitymedium">—</span>';
 	}
 	print '</td>';
-	if ($canViewInventoryAnalysis) {
+	if ($canViewInventoryDeviations) {
 		print '<td class="right nowraponall" data-kps-absolute-deviation>';
 		print $absoluteDeviation === null ? '<span class="opacitymedium">—</span>' : dol_escape_htmltag((string) price2num($absoluteDeviation, 'MS'));
 		print '</td>';

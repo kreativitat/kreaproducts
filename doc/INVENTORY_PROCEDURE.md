@@ -109,7 +109,8 @@ count rather than being absorbed by its adjustment.
 | --- | --- |
 | Read inventory | `kreaproducts->stockmobile->read` and Dolibarr `stock->lire`. |
 | Save physical counts | Read rights plus `kreaproducts->stockinventory->write`. |
-| View expected stock, deviations, and statistics | `kreaproducts->inventory->expected`. |
+| View expected stock, deviations, and statistics for the current counting window | `kreaproducts->inventory->expected`. |
+| View expected stock and deviations for a permanently locked recorded inventory from an older counting window | Inventory read rights; statistics remain protected by `kreaproducts->inventory->expected`. |
 | Execute, edit, or delete stock-affecting inventory | Count rights plus `kreaproducts->stockinventory->close`, and either advanced inventory write permission or stock-movement creation permission according to Dolibarr advanced-permission mode. |
 | Scheduled automatic close | An active internal Dolibarr administrator resolved by the cron job. |
 
@@ -221,7 +222,11 @@ Count rules:
 
 Users with analysis permission see the expected quantity, the virtual stock at
 the configured start-of-day snapshot, the absolute deviation, and the relative
-deviation. Those values are omitted when the permission is absent.
+deviation. For the current counting window, those values are omitted when the
+permission is absent so employees can count without seeing the expected result.
+Once a recorded inventory belongs to an older counting window and is
+permanently read-only, users with inventory read access may see those values;
+the Statistics tab still requires the analysis permission.
 
 ### 6.4 Execute stock movements and record
 

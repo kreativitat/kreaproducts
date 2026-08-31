@@ -186,6 +186,7 @@ export interface InventoryDetail {
   correction_mode: number;
   managed: number;
   can_view_analysis: number;
+  can_view_deviations: number;
   virtual_stock_snapshot_time: string;
   email_notification?: InventoryEmailNotification;
   lines: InventoryLine[];
