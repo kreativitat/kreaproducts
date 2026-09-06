@@ -1,6 +1,19 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.3] - 2026-09-06
+
+### Fixed
+
+- Allowed safe deletion of entirely blank recorded inventories without stock adjustments.
+- Hid Edit after closing an inventory without an active adjustment generation.
+
+## [4.22.2] - 2026-09-06
+
+### Fixed
+
+- Blocked legacy nutrition and allergen AJAX edits outside manual food mode.
+
 ## [4.22.1] - 2026-08-31
 
 ### Changed

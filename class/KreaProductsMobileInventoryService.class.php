@@ -1850,7 +1850,7 @@ class KreaProductsMobileInventoryService
 		$mutationLocked = !empty($this->getInventoryMutationWindowState()['active']);
 		$closedStillCurrent = $this->isInventoryInCurrentCountingWindow($record);
 		$closedInventory['can_delete'] = !$mutationLocked && $closedStillCurrent && $this->canClose() ? 1 : 0;
-		$closedInventory['can_edit'] = !$mutationLocked && $closedStillCurrent && $this->canClose() ? 1 : 0;
+		$closedInventory['can_edit'] = !$mutationLocked && $closedStillCurrent && $this->canClose() && $this->hasActiveAdjustments((int) $inventoryId) ? 1 : 0;
 		$closedInventory['history_locked'] = $closedStillCurrent ? 0 : 1;
 		$closedInventory['can_reverse'] = 0;
 		$closedInventory['correction_mode'] = 0;
@@ -1926,6 +1926,9 @@ class KreaProductsMobileInventoryService
 		}
 		$this->db->free($resql);
 		if (empty($rows)) {
+			if ($deleteAfter && !$stockEffectsOnly) {
+				return $this->deleteBlankRecordedInventory($inventoryId);
+			}
 			$this->db->rollback();
 			$messageKey = $this->hasReversedAdjustments((int) $inventoryId)
 				? 'KREAPRODUCTS_ERROR_INVENTORY_ALREADY_REVERSED'
@@ -2152,6 +2155,83 @@ class KreaProductsMobileInventoryService
 		return $deleteAfter
 			? array('deleted' => 1, 'inventory_id' => $inventoryId)
 			: $this->getInventory($inventoryId);
+	}
+
+	/**
+	 * Delete a never-counted recorded inventory in the caller's locked transaction.
+	 * The caller has checked close rights, current window, status and latest scope.
+	 * Missing audit alone is never proof that an inventory had no stock effects.
+	 *
+	 * @param int $inventoryId Inventory ID
+	 * @return array<string,int>
+	 */
+	private function deleteBlankRecordedInventory($inventoryId)
+	{
+		try {
+			$sql = 'SELECT d.rowid, d.qty_view, d.fk_movement';
+			$sql .= ' FROM '.$this->db->prefix().'inventorydet AS d';
+			$sql .= ' INNER JOIN '.$this->db->prefix().'inventory AS i ON i.rowid = d.fk_inventory';
+			$sql .= ' WHERE i.rowid = '.((int) $inventoryId).' AND i.entity = '.((int) $this->conf->entity);
+			$sql .= ' FOR UPDATE';
+			$resql = $this->db->query($sql);
+			if (!$resql) {
+				throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+			}
+			$hasLines = false;
+			$allBlank = true;
+			while ($line = $this->db->fetch_object($resql)) {
+				$hasLines = true;
+				if ($line->qty_view !== null || !empty($line->fk_movement)) {
+					$allBlank = false;
+				}
+			}
+			$this->db->free($resql);
+			if (!$hasLines || !$allBlank) {
+				throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSAL_AUDIT_MISSING'), 409);
+			}
+
+			$checks = array();
+			foreach (array('kreaproducts_inventory_adjustment', 'kreaproducts_inventory_correction') as $table) {
+				// Reject every historical generation, including reversed audit rows.
+				$checks[] = 'SELECT rowid FROM '.$this->db->prefix().$table
+					.' WHERE fk_inventory = '.((int) $inventoryId).' AND entity = '.((int) $this->conf->entity).' FOR UPDATE';
+			}
+			$origins = array();
+			foreach (KreaProductsInventoryLedgerCalculator::excludedMovementOrigins() as $origin) {
+				$origins[] = "'".$this->db->escape($origin)."'";
+			}
+			// Movement ownership is inherited from the locked entity-owned inventory.
+			$checks[] = 'SELECT sm.rowid FROM '.$this->db->prefix().'stock_mouvement AS sm'
+				.' INNER JOIN '.$this->db->prefix().'inventory AS i ON i.rowid = sm.fk_origin'
+				.' WHERE i.rowid = '.((int) $inventoryId).' AND i.entity = '.((int) $this->conf->entity)
+				.' AND sm.origintype IN ('.implode(', ', $origins).') FOR UPDATE';
+			foreach ($checks as $sql) {
+				$resql = $this->db->query($sql);
+				if (!$resql) {
+					throw new KreaProductsStockApiException($this->db->lasterror(), 500);
+				}
+				$hasEvidence = (bool) $this->db->fetch_object($resql);
+				$this->db->free($resql);
+				if ($hasEvidence) {
+					throw new KreaProductsStockApiException($this->langs->trans('KREAPRODUCTS_ERROR_REVERSAL_AUDIT_MISSING'), 409);
+				}
+			}
+
+			$inventory = new Inventory($this->db);
+			$inventory->context['kreaproducts_mobile_inventory'] = 1;
+			if ($inventory->fetch((int) $inventoryId) <= 0
+				|| $inventory->setDraft($this->user) <= 0
+				|| $inventory->delete($this->user) <= 0
+			) {
+				throw new KreaProductsStockApiException($this->getObjectError($inventory, $this->langs->trans('KREAPRODUCTS_ERROR_DELETE_INVENTORY')), 500);
+			}
+		} catch (Throwable $exception) {
+			$this->db->rollback();
+			throw $exception;
+		}
+		$this->commitStockTransaction();
+		dol_syslog(__METHOD__.' inventory='.$inventoryId.' user='.$this->user->id, LOG_NOTICE);
+		return array('deleted' => 1, 'inventory_id' => (int) $inventoryId);
 	}
 
 	/**

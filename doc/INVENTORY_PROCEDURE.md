@@ -3,7 +3,7 @@
 Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 
 This document describes the managed physical-inventory workflow implemented by
-KreaProducts 4.22.0. It covers the Dolibarr and mobile interfaces because both
+KreaProducts 4.22.3. It covers the Dolibarr and mobile interfaces because both
 use the same `KreaProductsMobileInventoryService` business boundary.
 
 The source code remains authoritative. This document must be updated whenever
@@ -456,26 +456,21 @@ than exposed to the client.
 | `sql/llx_kreaproducts_inventory_correction.sql` | Legacy count-correction audit schema. |
 | `tests/run_stock_logic_tests.php` | Focused inventory and stock regression assertions. |
 
-## 11. Known 4.22.0 Limitation
+## 11. Entirely Blank Recorded Inventories
 
-The scheduled close permits an entirely blank inventory to become Recorded.
-Because no line was counted, that record has no active adjustment audit rows.
-Edit is therefore unavailable. The current capability calculation may still
-show Delete for the latest current-window record, but `deleteInventory()` enters
-the compensation path and rejects the deletion because the adjustment audit is
-missing.
+Blank counts never change stock. Zero is an explicit physical count and is
+processed as a counted line, including its adjustment audit when the difference
+is zero. Scheduled closure may record an entirely blank inventory without
+creating an adjustment generation; Edit is unavailable in this case.
 
-Until that runtime edge is corrected:
-
-- do not leave an unused inventory open for automatic closure;
-- delete an unused draft before the read-only interval begins;
-- enter zero only when the product was physically counted and the observed
-  quantity is genuinely zero;
-- do not manufacture an audit row or delete the recorded row with direct SQL.
-
-The future runtime fix must align the displayed delete capability and the
-service deletion path for a legitimately all-blank recorded inventory without
-weakening audit validation for stock-affecting inventories.
+From 4.22.3, the latest current-window recorded inventory can be deleted with
+close permission outside the read-only interval when locked checks prove that
+all lines are blank, no line links a movement, and no adjustment history,
+correction history, or inventory-origin movements exist. The service uses the
+native draft/delete lifecycle in the same transaction and creates no stock
+movements. Missing lines or failed checks reject deletion. Historical records
+remain read-only. Counted inventories with missing audit evidence still fail
+closed; absence of active adjustments alone never permits deletion.
 
 ## 12. Operational Failure Procedure
 

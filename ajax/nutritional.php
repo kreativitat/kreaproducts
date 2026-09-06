@@ -151,6 +151,14 @@ if ($object->id <= 0) {
 	exit;
 }
 
+dol_include_once('/kreaproducts/class/KreaProductsNutritionEditPolicy.class.php');
+if (!KreaProductsNutritionEditPolicy::canEdit($db, (int) $object->fk_product)) {
+	http_response_code(403);
+	print json_encode(['status' => 'error', 'message' => $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MANUAL_REQUIRED')]);
+	$db->close();
+	exit;
+}
+
 $object->$field = $value;
 $result = $object->update($user);
 
