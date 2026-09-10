@@ -941,7 +941,17 @@ function App() {
           <div className="count-list">
             {filteredLines.map((line) => {
               const value = counts[line.id] ?? '';
-              const counted = parseQuantity(value) !== null;
+              const countedQuantity = parseQuantity(value);
+              const counted = countedQuantity !== null;
+              const virtualStock = inventory.can_view_deviations === 1 && typeof line.virtual_stock_at_business_close === 'number'
+                ? line.virtual_stock_at_business_close
+                : null;
+              const absoluteDeviation = countedQuantity !== null && virtualStock !== null
+                ? countedQuantity - virtualStock
+                : null;
+              const relativeDeviation = absoluteDeviation !== null && virtualStock !== null && Math.abs(virtualStock) >= 0.0001
+                ? absoluteDeviation / Math.abs(virtualStock) * 100
+                : null;
               return (
                 <article id={`line-${line.id}`} className={`count-row ${counted ? 'counted' : ''} ${highlightLine === line.id ? 'highlight' : ''}`} key={line.id}>
                   <div className="count-product">
@@ -949,9 +959,6 @@ function App() {
                     <div>
                       <strong>{line.label}</strong>
                       <span>{line.ref}{line.batch ? ` · ${line.batch}` : ''}</span>
-					  {inventory.can_view_analysis === 1 && typeof line.virtual_stock_at_business_close === 'number' && (
-						<span>Stock virtual às {inventory.virtual_stock_snapshot_time}: {formatQuantity(line.virtual_stock_at_business_close)}</span>
-					  )}
                     </div>
                   </div>
                   <div className="quantity-control">
@@ -971,6 +978,22 @@ function App() {
                       <Plus size={18} />
                     </button>
                   </div>
+                  {virtualStock !== null && (
+                    <div className="deviation-summary">
+                      <span>
+                        <small>Stock virtual às {inventory.virtual_stock_snapshot_time}</small>
+                        <strong>{formatQuantity(virtualStock)}</strong>
+                      </span>
+                      <span>
+                        <small>Desvio absoluto</small>
+                        <strong>{absoluteDeviation === null ? '—' : formatQuantity(absoluteDeviation)}</strong>
+                      </span>
+                      <span>
+                        <small>Desvio relativo</small>
+                        <strong>{relativeDeviation === null ? '—' : `${relativeDeviation.toFixed(2).replace('.', ',')}%`}</strong>
+                      </span>
+                    </div>
+                  )}
                 </article>
               );
             })}

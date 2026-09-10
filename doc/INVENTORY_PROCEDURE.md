@@ -3,7 +3,7 @@
 Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 
 This document describes the managed physical-inventory workflow implemented by
-KreaProducts 4.22.3. It covers the Dolibarr and mobile interfaces because both
+KreaProducts 4.22.4. It covers the Dolibarr and mobile interfaces because both
 use the same `KreaProductsMobileInventoryService` business boundary.
 
 The source code remains authoritative. This document must be updated whenever
@@ -225,8 +225,11 @@ the configured start-of-day snapshot, the absolute deviation, and the relative
 deviation. For the current counting window, those values are omitted when the
 permission is absent so employees can count without seeing the expected result.
 Once a recorded inventory belongs to an older counting window and is
-permanently read-only, users with inventory read access may see those values;
-the Statistics tab still requires the analysis permission.
+permanently read-only, users with inventory read access may see those values in
+both the Dolibarr and mobile interfaces; the Statistics tab still requires the
+analysis permission. The mobile interface uses the server-issued
+`can_view_deviations` capability and never derives this exception from client
+dates or status alone.
 
 ### 6.4 Execute stock movements and record
 

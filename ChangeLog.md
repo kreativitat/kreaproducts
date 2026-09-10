@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.4] - 2026-09-10
+
+### Fixed
+
+- Displayed virtual stock and deviations in the mobile view for permanently locked historical inventories.
+
 ## [4.22.3] - 2026-09-06
 
 ### Fixed

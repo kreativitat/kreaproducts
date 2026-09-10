@@ -308,7 +308,7 @@ assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templ
 assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.22.3'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.22.4'") !== false, 'The module descriptor must use the audited release version.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', 'chaine', '23:00'") !== false, 'New inventory creation must reopen at 23:00 by default.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:30', '', 0, 'allentities', 0") !== false, 'Supplier receipt time must default to 10:30 and survive module reactivation.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '06:00', '', 0, 'allentities', 0") !== false, 'The legacy inventory-time constant must survive module reactivation.');
@@ -733,8 +733,13 @@ assertSameValue(true, strpos((string) $mobileAppSource, 'inventory.can_edit_valu
 assertSameValue(true, strpos((string) $mobileAppSource, 'JSON.stringify({ counts, valueDate })') !== false, 'Offline drafts must preserve the selected value date with counts.');
 assertSameValue(true, strpos((string) $mobileApiSource, 'virtual_stock_at_business_close?: number') !== false, 'The mobile API contract must expose the authorized billing-close stock snapshot.');
 assertSameValue(true, strpos((string) $mobileApiSource, 'virtual_stock_snapshot_time: string') !== false, 'The mobile API contract must expose the configured snapshot time.');
-assertSameValue(true, strpos((string) $mobileAppSource, "inventory.can_view_analysis === 1 && typeof line.virtual_stock_at_business_close === 'number'") !== false, 'The mobile app must render stock snapshots only for authorized analysis users.');
+assertSameValue(true, strpos((string) $mobileAppSource, "inventory.can_view_deviations === 1 && typeof line.virtual_stock_at_business_close === 'number'") !== false, 'The mobile app must honor the lifecycle-scoped deviation visibility returned by the service.');
+assertSameValue(false, strpos((string) $mobileAppSource, "inventory.can_view_analysis === 1 && typeof line.virtual_stock_at_business_close === 'number'") !== false, 'The mobile app must not hide permanently locked historical deviations behind the statistics permission.');
 assertSameValue(true, strpos((string) $mobileAppSource, 'Stock virtual às {inventory.virtual_stock_snapshot_time}') !== false, 'The mobile inventory must identify the configured stock snapshot hour.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'Desvio absoluto') !== false, 'The mobile inventory must display absolute deviations when authorized.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'Desvio relativo') !== false, 'The mobile inventory must display relative deviations when authorized.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'absoluteDeviation / Math.abs(virtualStock) * 100') !== false, 'Mobile relative deviations must use the absolute virtual-stock denominator.');
+assertSameValue(true, strpos((string) $mobileAppSource, 'Math.abs(virtualStock) >= 0.0001') !== false, 'Mobile relative deviations must remain unavailable when virtual stock is zero.');
 
 $productionApiSource = file_get_contents(__DIR__.'/../class/api_kreaproducts.class.php');
 $supplierValidationStart = strpos((string) $productionApiSource, 'public function postSupplierInvoiceValidate');
@@ -940,9 +945,9 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.22.3', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.22.3', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.22.3', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+assertSameValue('4.22.4', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
+assertSameValue('4.22.4', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
+assertSameValue('4.22.4', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');
