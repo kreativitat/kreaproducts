@@ -1,6 +1,13 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.5] - 2026-09-22
+
+### Fixed
+
+- Refreshed calculated nutrition and allergens atomically before copying to another product.
+- Limited copy destinations to the current product-sharing scope.
+
 ## [4.22.4] - 2026-09-10
 
 ### Fixed

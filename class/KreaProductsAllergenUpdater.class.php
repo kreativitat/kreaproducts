@@ -55,7 +55,7 @@ class KreaProductsAllergenUpdater
      * @param int $rootProductId Root product ID to start processing
      * @param User $user User performing the update
      * @param int $forceTraces Force all allergens to trace mode (0=no, 1=yes)
-     * @param array $options Additional processing options
+     * @param array $options Additional processing options; root_only persists only the requested source
      * @return bool True on success, false on failure
      */
     public static function updateAllergenAttributes($rootProductId, $user, $forceTraces = 0, $options = array())
@@ -86,17 +86,35 @@ class KreaProductsAllergenUpdater
             $db->begin();
             
             try {
-                // Clear existing auto-calculated allergens
-                self::clearAutoCalculatedAllergens($hierarchyMap);
-                
-                // Calculate processing order (bottom-up)
-                $processingOrder = self::calculateProcessingOrder($hierarchyMap);
+                // A copy refreshes only its source; descendants remain read-only calculation inputs.
+                $writeMap = $hierarchyMap;
+                if (!empty($options['root_only'])) {
+                    $ids = implode(',', array_map('intval', array_keys($hierarchyMap)));
+                    $resScope = $db->query("SELECT rowid FROM " . MAIN_DB_PREFIX . "product WHERE rowid IN (" . $ids . ") AND entity IN (" . getEntity('product') . ")");
+                    if (!$resScope) {
+                        throw new Exception("Unable to validate allergen calculation product scope");
+                    }
+                    $allVisible = (int) $db->num_rows($resScope) === count($hierarchyMap);
+                    $db->free($resScope);
+                    if (!$allVisible) {
+                        throw new Exception("Allergen calculation contains inaccessible products");
+                    }
+                    $writeMap = array($rootProductId => $hierarchyMap[$rootProductId]);
+                }
+                self::clearAutoCalculatedAllergens($writeMap);
+
+                // Keep the complete graph for recursive resolution, but limit persistence when requested.
+                $processingOrder = !empty($options['root_only'])
+                    ? array($rootProductId) : self::calculateProcessingOrder($hierarchyMap);
                 
                 // Process each product in order
                 $processedCount = self::processProductsInOrder($processingOrder, $hierarchyMap, $user, $forceTraces);
                 
+                if (self::hasErrors()) {
+                    throw new Exception("Allergen calculation failed");
+                }
                 $db->commit();
-                
+
                 self::logProcessingStats($rootProductId, $processedCount, count($hierarchyMap));
                 return true;
                 

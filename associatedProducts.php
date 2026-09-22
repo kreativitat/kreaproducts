@@ -1180,6 +1180,48 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 		$targetProductId = GETPOSTINT('target_product_id');
 	}
 	if ($targetProductId > 0) {
+		$sqlTarget = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product";
+		$sqlTarget .= " WHERE rowid = " . (int) $targetProductId;
+		$sqlTarget .= " AND entity IN (" . getEntity('product') . ")";
+		$sqlTarget .= " LIMIT 1";
+		$resTarget = $db->query($sqlTarget);
+		if (!$resTarget || $db->num_rows($resTarget) <= 0) {
+			if ($resTarget) {
+				$db->free($resTarget);
+			}
+			dol_syslog("Blocked allergen and nutritional copy to inaccessible product ID " . $targetProductId, LOG_WARNING);
+			setEventMessages($langs->trans("Error"), null, 'errors');
+			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
+			exit;
+		}
+		$db->free($resTarget);
+
+		if ($nutritionAllergenMode === 2 || $db->begin() <= 0) {
+			setEventMessages($langs->trans('ErrorUpdatingData'), null, 'errors');
+			header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id);
+			exit;
+		}
+
+		// Refresh calculated source data before taking the snapshot, in the same transaction as the copy.
+		$calculationFailed = false;
+		if ((string) ($object->array_options['options_kreap_calc_nut'] ?? '') === '1') {
+			dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
+			KreaProductsNutritionalCalculator::clearCache();
+			$calculationFailed = KreaProductsNutritionalCalculator::saveCalculation($object->id, $user) <= 0
+				|| KreaProductsNutritionalCalculator::hasErrors();
+		}
+		if (!$calculationFailed && (string) ($object->array_options['options_kreap_calc_allergens'] ?? '') === '1') {
+			KreaProductsAllergenUpdater::clearCache();
+			$calculationFailed = !KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0, array('root_only' => true))
+				|| KreaProductsAllergenUpdater::hasErrors();
+		}
+		if ($calculationFailed) {
+			$db->rollback();
+			setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR'), null, 'errors');
+			header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id);
+			exit;
+		}
+
 		$allergensToCopy = array();
 		$sql = "SELECT pa.fk_allergen, pa.traces";
 		$sql .= " FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens AS pa";
@@ -1199,32 +1241,16 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 			}
 			$db->free($resql);
 		} else {
+			$db->rollback();
 			dol_syslog("Error reading source allergens: " . $db->lasterror(), LOG_ERR);
-			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+			setEventMessages($langs->trans("ErrorUpdatingData"), null, 'errors');
 			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
 			exit;
 		}
-
-		$sqlTarget = "SELECT rowid FROM " . MAIN_DB_PREFIX . "product";
-		$sqlTarget .= " WHERE rowid = " . (int) $targetProductId;
-		$sqlTarget .= " AND entity IN (" . getEntity('product') . ")";
-		$sqlTarget .= " LIMIT 1";
-		$resTarget = $db->query($sqlTarget);
-		if (!$resTarget || $db->num_rows($resTarget) <= 0) {
-			if ($resTarget) {
-				$db->free($resTarget);
-			}
-			dol_syslog("Blocked allergen and nutritional copy to inaccessible product ID " . $targetProductId, LOG_WARNING);
-			setEventMessages($langs->trans("Error"), null, 'errors');
-			header("Location: " . $_SERVER["PHP_SELF"] . '?id=' . $object->id);
-			exit;
-		}
-		$db->free($resTarget);
 
 		$error = 0;
 		$messages = array($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPIED'));
 		$nutritionCopyResult = 0;
-		$db->begin();
 
 		$sqlDelete = "DELETE FROM " . MAIN_DB_PREFIX . "kreaproducts_productallergens";
 		$sqlDelete .= " WHERE fk_product = " . (int) $targetProductId;
@@ -1256,8 +1282,7 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 			}
 		}
 
-		if (!$error) {
-			$db->commit();
+		if (!$error && $db->commit() > 0) {
 			if ($nutritionCopyResult > 0) {
 				$result = KreaProductsNutrientUpdater::updateNutrientAttributes($targetProductId, $user);
 				if (!$result) {
@@ -1267,7 +1292,7 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 			setEventMessages('', $messages, 'mesgs');
 		} else {
 			$db->rollback();
-			setEventMessages($langs->trans("ErrorUpdatingData") . ": " . $db->lasterror(), null, 'errors');
+			setEventMessages($langs->trans("ErrorUpdatingData"), null, 'errors');
 		}
 	} else {
 		setEventMessages($langs->trans("Error"), null, 'errors');
@@ -3093,7 +3118,7 @@ if ($id > 0 || !empty($ref)) {
 
 		if ($showCopyProductDataModal) {
 			$targetFieldName = 'target_product_id_allergens';
-			$entityList = kreaproducts_get_accessible_entities();
+			$entityList = array_map('intval', explode(',', getEntity('product')));
 			$selectHtml = kreaproducts_select_produits_with_entities($form, 0, $targetFieldName, $entityList, $langs, 'minwidth300');
 			print '<div id="kreaproducts-copy-product-data-modal" style="display:none;">';
 			print '<p>'.$langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_COPY_HELP').'</p>';
