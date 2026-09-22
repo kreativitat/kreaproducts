@@ -971,3 +971,7 @@ KREAPRODUCTS_STATS_SOURCE_INVENTORY = Ajuste de inventário
 
 KREAPRODUCTS_COPY_SCOPE_COMPONENT = O componente bloqueado é %s (%s), pertencente à empresa %s.
 KREAPRODUCTS_COPY_SCOPE_HELP = Cópia cancelada: a empresa atual não tem acesso à receita completa. Muda para uma empresa onde tenhas acesso aos dois produtos e a todos os componentes da receita e tenta novamente. Se não existir, pede a um administrador para rever a partilha de produtos. Não foram copiados valores nutricionais nem alergénios.
+
+KREAPRODUCTS_COPY_EMPTY_NUTRITION = Cópia cancelada: o produto de origem não tem valores nutricionais guardados. Introduz ou recalcula primeiro a nutrição da origem. Não foram copiados valores nutricionais nem alergénios.
+KREAPRODUCTS_COPY_TARGET_MANUAL = Cópia cancelada: escolhe um destino diferente com nutrição e alergénios inseridos. Os destinos calculados mostram os valores da própria receita; altera a origem dos dados do destino para valores inseridos antes de copiar.
+KREAPRODUCTS_COPY_SOURCE = Copiar DE: %s (%s)

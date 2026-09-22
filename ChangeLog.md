@@ -1,6 +1,14 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.7] - 2026-09-22
+
+### Fixed
+
+- Stopped nutrition copies from launching a broad recalculation and overwriting copied values.
+- Rejected empty nutrition sources and calculated destinations with recovery instructions.
+- Identified the source product explicitly in the copy dialog.
+
 ## [4.22.6] - 2026-09-22
 
 ### Fixed

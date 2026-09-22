@@ -961,3 +961,7 @@ KREAPRODUCTS_STATS_SOURCE_INVENTORY = Inventory adjustment
 
 KREAPRODUCTS_COPY_SCOPE_COMPONENT = The blocked component is %s (%s), owned by %s.
 KREAPRODUCTS_COPY_SCOPE_HELP = Copy cancelled: the current company cannot access the full recipe. Switch to a company where you have access to both products and all recipe components, then retry. If none is available, ask an administrator to review product sharing. No nutrition or allergens were copied.
+
+KREAPRODUCTS_COPY_EMPTY_NUTRITION = Copy cancelled: the source has no saved nutrition values. Enter or recalculate its nutrition first. No nutrition or allergens were copied.
+KREAPRODUCTS_COPY_TARGET_MANUAL = Copy cancelled: choose a different destination using entered nutrition and allergens. Calculated destinations display their own recipe values; change the destination data origin to entered values before copying.
+KREAPRODUCTS_COPY_SOURCE = Copy FROM: %s (%s)

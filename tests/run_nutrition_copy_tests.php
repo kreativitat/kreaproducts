@@ -73,6 +73,7 @@ if (isset($argv[1])) {
             return $GLOBALS['case'] === 'nutrition-failure' ? -1 : 1;
         }
     }
+    class KreaProductsNutritionEditPolicy { public static function canEdit($db, $id) { return $GLOBALS['case'] !== 'calculated-target'; } }
     class KreaProductsAllergenUpdater {
         public static function getScopeWarning($langs, $user) { return ""; }
         public static function clearCache() {}
@@ -83,7 +84,7 @@ if (isset($argv[1])) {
             return $GLOBALS['case'] !== 'allergen-failure';
         }
     }
-    class KreaProductsNutrientUpdater { public static function updateNutrientAttributes($id, $user) { return true; } }
+    class KreaProductsNutrientUpdater { public static function updateNutrientAttributes($id, $user) { throw new Exception('Copy must not launch a nutrition cascade'); } }
     class ProductAllergens {
         public $fk_product; public $fk_allergen; public $traces; public $error = 'injected failure';
         public function __construct($db) {}
@@ -94,7 +95,7 @@ if (isset($argv[1])) {
     }
     function kreaproducts_copy_nutritional_values_to_product($db, $source, $target, $user) {
         $db->state['target_nutrition'] = $db->state['source_nutrition'];
-        return $GLOBALS['case'] === 'copy-failure' ? -1 : 1;
+        return $GLOBALS['case'] === 'copy-failure' ? -1 : ($GLOBALS['case'] === 'empty-nutrition' ? 0 : 1);
     }
     class CopyLangs { public function trans($key) { return $key; } }
     $db = new CopyDb(); $langs = new CopyLangs(); $user = (object) array('id' => 1);
@@ -109,7 +110,7 @@ if (isset($argv[1])) {
     eval(substr($source, $start, $end - $start));
     exit;
 }
-$cases = array('calculated', 'manual', 'nutrition-failure', 'allergen-failure', 'allergen-reported-error', 'source-read-failure', 'insert-failure', 'copy-failure', 'commit-failure', 'begin-failure', 'inaccessible', 'nonfood');
+$cases = array('calculated', 'manual', 'empty-nutrition', 'calculated-target', 'nutrition-failure', 'allergen-failure', 'allergen-reported-error', 'source-read-failure', 'insert-failure', 'copy-failure', 'commit-failure', 'begin-failure', 'inaccessible', 'nonfood');
 foreach ($cases as $case) {
     $raw = shell_exec(escapeshellarg(PHP_BINARY).' '.escapeshellarg(__FILE__).' '.escapeshellarg($case));
     $out = json_decode($raw, true);
