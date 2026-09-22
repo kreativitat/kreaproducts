@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.8] - 2026-09-22
+
+### Changed
+
+- Renamed nutrition and allergen copy actions and messages to export in Portuguese and English.
+
 ## [4.22.7] - 2026-09-22
 
 ### Fixed
