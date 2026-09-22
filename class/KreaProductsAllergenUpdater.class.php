@@ -40,6 +40,7 @@ class KreaProductsAllergenUpdater
     // Error handling
     private static $errors = array();
     private static $lastError = null;
+    private static $blockedProductIds = array();
     
     // Performance tracking
     private static $processStats = array();
@@ -94,7 +95,12 @@ class KreaProductsAllergenUpdater
                     if (!$resScope) {
                         throw new Exception("Unable to validate allergen calculation product scope");
                     }
-                    $allVisible = (int) $db->num_rows($resScope) === count($hierarchyMap);
+                    $visibleIds = array();
+                    while ($visible = $db->fetch_object($resScope)) {
+                        $visibleIds[] = (int) $visible->rowid;
+                    }
+                    self::$blockedProductIds = array_values(array_diff(array_keys($hierarchyMap), $visibleIds));
+                    $allVisible = empty(self::$blockedProductIds);
                     $db->free($resScope);
                     if (!$allVisible) {
                         throw new Exception("Allergen calculation contains inaccessible products");
@@ -1188,6 +1194,41 @@ class KreaProductsAllergenUpdater
     {
         self::$errors = array();
         self::$lastError = null;
+        self::$blockedProductIds = array();
+    }
+
+    /**
+     * Explain a sharing-scope failure without exposing inaccessible data to non-administrators.
+     *
+     * @param Translate $langs Translation service
+     * @param User $user Current user
+     * @return string Escaped user-facing warning, or an empty string for other failures
+     */
+    public static function getScopeWarning($langs, $user)
+    {
+        global $db;
+
+        if (empty(self::$blockedProductIds)) {
+            return '';
+        }
+        $message = $langs->trans('KREAPRODUCTS_COPY_SCOPE_HELP');
+        // Entity and product identity are diagnostic metadata available only to administrators.
+        if (!empty($user->admin)) {
+            $sql = 'SELECT p.ref, p.label, e.label AS entity_label FROM '.MAIN_DB_PREFIX.'product p';
+            $sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'entity e ON e.rowid = p.entity';
+            $sql .= ' WHERE p.rowid = '.(int) self::$blockedProductIds[0];
+            $resql = $db->query($sql);
+            if ($resql) {
+                $row = $db->fetch_object($resql);
+                if ($row) {
+                    $message = $langs->trans('KREAPRODUCTS_COPY_SCOPE_COMPONENT',
+                        dol_escape_htmltag($row->ref), dol_escape_htmltag($row->label),
+                        dol_escape_htmltag($row->entity_label)).' '.$message;
+                }
+                $db->free($resql);
+            }
+        }
+        return $message;
     }
 
     public static function getLastError()

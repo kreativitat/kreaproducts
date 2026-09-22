@@ -74,6 +74,7 @@ if (isset($argv[1])) {
         }
     }
     class KreaProductsAllergenUpdater {
+        public static function getScopeWarning($langs, $user) { return ""; }
         public static function clearCache() {}
         public static function hasErrors() { return $GLOBALS['case'] === 'allergen-reported-error'; }
         public static function updateAllergenAttributes($id, $user, $traces, $options) {

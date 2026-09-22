@@ -968,3 +968,6 @@ KREAPRODUCTS_STATS_SOURCE_CUSTOMER = Procura de clientes
 KREAPRODUCTS_STATS_SOURCE_SUPPLIER = Entrada de fornecedor
 KREAPRODUCTS_STATS_SOURCE_PRODUCTION = Produção
 KREAPRODUCTS_STATS_SOURCE_INVENTORY = Ajuste de inventário
+
+KREAPRODUCTS_COPY_SCOPE_COMPONENT = O componente bloqueado é %s (%s), pertencente à empresa %s.
+KREAPRODUCTS_COPY_SCOPE_HELP = Cópia cancelada: a empresa atual não tem acesso à receita completa. Muda para uma empresa onde tenhas acesso aos dois produtos e a todos os componentes da receita e tenta novamente. Se não existir, pede a um administrador para rever a partilha de produtos. Não foram copiados valores nutricionais nem alergénios.

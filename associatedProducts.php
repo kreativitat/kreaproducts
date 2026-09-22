@@ -1204,6 +1204,7 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 
 		// Refresh calculated source data before taking the snapshot, in the same transaction as the copy.
 		$calculationFailed = false;
+		$scopeWarning = '';
 		if ((string) ($object->array_options['options_kreap_calc_nut'] ?? '') === '1') {
 			dol_include_once('/kreaproducts/class/KreaProductsNutritionalCalculator.class.php');
 			KreaProductsNutritionalCalculator::clearCache();
@@ -1214,10 +1215,11 @@ if ($action === 'copy_nutrition_allergens_to_product' && $canManageNutritionAlle
 			KreaProductsAllergenUpdater::clearCache();
 			$calculationFailed = !KreaProductsAllergenUpdater::updateAllergenAttributes($object->id, $user, 0, array('root_only' => true))
 				|| KreaProductsAllergenUpdater::hasErrors();
+			$scopeWarning = KreaProductsAllergenUpdater::getScopeWarning($langs, $user);
 		}
 		if ($calculationFailed) {
 			$db->rollback();
-			setEventMessages($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR'), null, 'errors');
+			setEventMessages($scopeWarning !== '' ? $scopeWarning : $langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_UPDATE_ERROR'), null, 'errors');
 			header('Location: '.$_SERVER['PHP_SELF'].'?id='.(int) $object->id);
 			exit;
 		}

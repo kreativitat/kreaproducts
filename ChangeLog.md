@@ -1,6 +1,12 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.22.6] - 2026-09-22
+
+### Fixed
+
+- Explained blocked recipe components and company switching when nutrition and allergen copying fails.
+
 ## [4.22.5] - 2026-09-22
 
 ### Fixed
