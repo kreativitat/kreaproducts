@@ -49,7 +49,13 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 					if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
 						return -1;
 					}
-					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
+					$this->syncSellPriceFromCostIfEnabled(
+						(int) $object->id,
+						$user,
+						$conf,
+						false,
+						!empty($object->context['skip_kreawoo_realtime_sync'])
+					);
 				}
 				return 1;
 
@@ -58,7 +64,13 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 					if ($this->syncCostPriceIfEnabled((int) $object->id, $user, $conf) < 0) {
 						return -1;
 					}
-					$this->syncSellPriceFromCostIfEnabled((int) $object->id, $user, $conf);
+					$this->syncSellPriceFromCostIfEnabled(
+						(int) $object->id,
+						$user,
+						$conf,
+						false,
+						!empty($object->context['skip_kreawoo_realtime_sync'])
+					);
 				}
 				$this->syncAliasToDolizsynchShortDescription($object, $conf);
 				if (($object->array_options['options_kreap_calc_nut'] ?? 0) == 1) {
@@ -87,7 +99,13 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 					return 0;
 				}
 				$stockService = new KreaProductsStockMovementService();
-				return $stockService->handleStockMovement($object, $db, $conf, $user);
+				$result = $stockService->handleStockMovement($object, $db, $conf, $user);
+				if ($result < 0) {
+					$langs->load('kreaproducts@kreaproducts');
+					$this->error = !empty($object->error) ? $object->error : $langs->trans('KREAPRODUCTS_STOCK_PROCESSING_FAILED', (int) $object->product_id);
+					$this->errors = array($this->error);
+				}
+				return $result;
 
 			case 'INVENTORY_RECORDED':
 			case 'INVENTORY_MODIFY':
@@ -148,7 +166,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 		return 1;
 	}
 
-	private function syncSellPriceFromCostIfEnabled(int $productId, User $user, Conf $conf, bool $failOnError = false): void
+	private function syncSellPriceFromCostIfEnabled(int $productId, User $user, Conf $conf, bool $failOnError = false, bool $skipRealtimeSync = false): void
 	{
 		static $inProgress = false;
 
@@ -231,6 +249,10 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		$inProgress = true;
 		try {
+			// This fresh Product must retain the enclosing stock transaction's sync guard.
+			if ($skipRealtimeSync) {
+				$product->context['skip_kreawoo_realtime_sync'] = true;
+			}
 			$resUpdate = $product->updatePrice($targetPrice, $baseType, $user, $vatTx, $currentMinPrice, $priceLevel);
 			if ($resUpdate <= 0) {
 				$message = 'Unable to update the selling price for product ' . $productId . ': ' . ($product->error ?: $this->db->lasterror());
@@ -304,6 +326,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 				ProductUpdater::prepareProductCostUpdate($product);
 				$product->cost_price = $newUnitCost;
+				$product->context['skip_kreawoo_realtime_sync'] = true;
 				$resUpdate = $product->update($product->id, $user);
 				if ($resUpdate <= 0) {
 					throw new RuntimeException(
@@ -331,7 +354,7 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 			if (!empty($changedProductIds) && !empty($conf->global->KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST)) {
 				foreach (array_values($changedProductIds) as $changedProductId) {
-					$this->syncSellPriceFromCostIfEnabled((int) $changedProductId, $user, $conf, true);
+					$this->syncSellPriceFromCostIfEnabled((int) $changedProductId, $user, $conf, true, true);
 				}
 			}
 		} finally {

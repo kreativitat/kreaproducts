@@ -711,7 +711,7 @@ class KreaProductsStockMovementService
 			return 1;
 		}
 
-		return (int) $d->produceAndConsume(
+		$result = (int) $d->produceAndConsume(
 			$bom,
 			$move->qty,
 			$move->price,
@@ -722,6 +722,11 @@ class KreaProductsStockMovementService
 			$user,
 			(int) $move->id
 		);
+		if ($result < 0 && !empty($d->error)) {
+			$move->error = $d->error;
+			$move->errors[] = $d->error;
+		}
+		return $result;
 	}
 
 	protected function recalculateAfterInventory($move, $db)

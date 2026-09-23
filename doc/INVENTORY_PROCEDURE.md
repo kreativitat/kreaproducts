@@ -3,7 +3,7 @@
 Copyright (C) 2026 Kreativität Works <mail@kreativitat.com>
 
 This document describes the managed physical-inventory workflow implemented by
-KreaProducts 4.22.4. It covers the Dolibarr and mobile interfaces because both
+KreaProducts 4.22.9. It covers the Dolibarr and mobile interfaces because both
 use the same `KreaProductsMobileInventoryService` business boundary.
 
 The source code remains authoritative. This document must be updated whenever
@@ -522,3 +522,16 @@ Before releasing an inventory change, verify:
 - cron closure is enabled, entity-correct, and auditable;
 - `tests/run_stock_logic_tests.php`, PHP lint, frontend build, translation
   parity, and a rendered/authenticated workflow pass.
+
+### Supplier validation and automatic dismantling (4.22.9)
+
+Supplier validation keeps cost and nested selling-price updates inside its
+existing transaction. These internal updates preserve the KreaWoo synchronization
+suppression context so remote product imports cannot change stock-management
+settings before dismantling movements are created. Ordinary product edits keep
+their existing synchronization behavior.
+
+Every dismantling movement still requires a positive native movement ID. Failure
+propagates a translated product/warehouse error through the stock trigger to the
+invoice card and leaves validation rolled back. Stock quantities, valuation,
+entity scope, and inventory timing rules are unchanged.

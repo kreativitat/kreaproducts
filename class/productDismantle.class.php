@@ -405,7 +405,7 @@ class ProductDismantleController extends CommonObject
 
                 // Check for errors
                 if ($result <= 0) {
-                    dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $stockmove->error, LOG_ERR);
+                    dol_syslog("Stock movement failed for product ID " . $item['objectid'] . " with error " . $this->error . " Native error: " . $stockmove->error, LOG_ERR);
                     $error++;
                     break;
                 }
@@ -482,7 +482,7 @@ class ProductDismantleController extends CommonObject
 	 */
 	private function createDismantleStockMovement($stockmove, $product, $user, $warehouseId, $quantity, $price, $label, $movementDate)
 	{
-		global $conf;
+		global $conf, $langs;
 
 		$isKitParent = getDolGlobalInt('PRODUIT_SOUSPRODUITS') && (int) $product->hasFatherOrChild(1) > 0;
 		$restoreParentSetting = false;
@@ -494,7 +494,7 @@ class ProductDismantleController extends CommonObject
 		}
 
 		try {
-			return $stockmove->_create(
+			$result = $stockmove->_create(
 				$user,
 				(int) $product->id,
 				(int) $warehouseId,
@@ -511,6 +511,12 @@ class ProductDismantleController extends CommonObject
 				0,
 				1
 			);
+			if ($result <= 0) {
+				$langs->load('kreaproducts@kreaproducts');
+				$this->error = $langs->trans('KREAPRODUCTS_DISMANTLE_MOVEMENT_FAILED', $product->ref, (int) $warehouseId);
+				$this->errors = array($this->error);
+			}
+			return $result;
 		} finally {
 			if ($restoreParentSetting) {
 				if ($parentSettingExisted) {

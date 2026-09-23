@@ -965,3 +965,6 @@ KREAPRODUCTS_COPY_SCOPE_HELP = Export cancelled: the current company cannot acce
 KREAPRODUCTS_COPY_EMPTY_NUTRITION = Export cancelled: the source has no saved nutrition values. Enter or recalculate its nutrition first. No nutrition or allergens were exported.
 KREAPRODUCTS_COPY_TARGET_MANUAL = Export cancelled: choose a different destination using entered nutrition and allergens. Calculated destinations display their own recipe values; change the destination data origin to entered values before exporting.
 KREAPRODUCTS_COPY_SOURCE = Export FROM: %s (%s)
+
+KREAPRODUCTS_DISMANTLE_MOVEMENT_FAILED=Automatic dismantling could not create a stock movement for product %s in warehouse %s. Validation was cancelled; check the product stock settings and synchronization rules.
+KREAPRODUCTS_STOCK_PROCESSING_FAILED=Stock processing failed for product ID %s. Validation was cancelled; check the application log.
