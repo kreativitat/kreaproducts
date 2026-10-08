@@ -56,7 +56,7 @@ $useMultiprices = !empty($conf->global->PRODUIT_MULTIPRICES);
 $showMarginColumn = !empty($conf->global->KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED);
 $zsbmsIntegrationEnabled = isModEnabled('dolizsynch');
 if ($zsbmsIntegrationEnabled) {
-	$langs->load('dolizsynch@dolizsynch');
+	$langs->load('dolizsynch@kreaflow');
 }
 $searchCategoryProductOperator = 1; // Default to OR between categories
 $searchCategoryProductList = GETPOST('search_category_product_list', 'array');

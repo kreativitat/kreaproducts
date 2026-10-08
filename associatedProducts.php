@@ -44,7 +44,7 @@ dol_include_once('/kreaproducts/class/ProductViewer.class.php');
 dol_include_once('/kreaproducts/lib/kreaproducts.lib.php');
 
 // Load translation files required by the page
-$langs->loadLangs(array('bills', 'products', 'stocks', 'other', 'dolizsynch@dolizsynch', 'kreaproducts@kreaproducts'));
+$langs->loadLangs(array('bills', 'products', 'stocks', 'other', 'dolizsynch@kreaflow', 'kreaproducts@kreaproducts'));
 
 if (!function_exists('kreaproducts_debug_log')) {
 	function kreaproducts_debug_log($message)

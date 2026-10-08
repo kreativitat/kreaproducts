@@ -58,7 +58,7 @@ if (!empty($conf->global->PRODUIT_CUSTOMER_PRICES)) {
 }
 
 // Load translation files required by the page
-$langs->loadLangs(array('products', 'bills', 'companies', 'other', 'dolizsynch@dolizsynch'));
+$langs->loadLangs(array('products', 'bills', 'companies', 'other', 'dolizsynch@kreaflow'));
 
 $error = 0;
 $errors = array();
@@ -492,7 +492,7 @@ if (empty($reshook)) {
 			}
 
 			// Load ZS Product Synch class
-			dol_include_once('/dolizsynch/class/zsprodsynch.class.php');
+			dol_include_once('/kreaflow/class/zsprodsynch.class.php');
 			$zsProductSync = new ZSProductSynch($db);
 
 		// Update variable prices in llx_dolizsynch_zsproduct table
@@ -794,7 +794,7 @@ if (empty($reshook)) {
 		$conf->global->bypass_product_modify_trigger = 1;
 		dol_syslog("bypass_product_modify_trigger: " . $conf->global->bypass_product_modify_trigger);
 
-		require_once DOL_DOCUMENT_ROOT . '/custom/dolizsynch/class/zsprodsynch.class.php';
+		require_once DOL_DOCUMENT_ROOT . '/custom/kreaflow/class/zsprodsynch.class.php';
 		$zsProductSync = new ZSProductSynch($db);
 
 		// Get external product details
