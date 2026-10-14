@@ -978,3 +978,6 @@ KREAPRODUCTS_COPY_SOURCE = Exportar DE: %s (%s)
 
 KREAPRODUCTS_DISMANTLE_MOVEMENT_FAILED=O desmantelamento automático não conseguiu criar um movimento de stock para o produto %s no armazém %s. A validação foi cancelada; verifique as definições de stock e as regras de sincronização do produto.
 KREAPRODUCTS_STOCK_PROCESSING_FAILED=O processamento de stock falhou para o produto com ID %s. A validação foi cancelada; consulte o registo da aplicação.
+
+KreapPrice2WithoutVat = Preço 2 S/IVA
+KreapPrice2WithVat = Preço 2 C/IVA

@@ -167,6 +167,8 @@ $arrayfields = array(
 	'cost_price' => array('label' => $langs->trans('KreapCostWithoutVat'), 'checked' => 1, 'position' => 3),
 	'sell_price' => array('label' => $langs->trans('KreapPriceWithoutVat'), 'checked' => 1, 'position' => 5),
 	'sell_price_ttc' => array('label' => $langs->trans('KreapPriceWithVat'), 'checked' => 1, 'position' => 6),
+	'sell_price_2' => array('label' => $langs->trans('KreapPrice2WithoutVat'), 'enabled' => $useMultiprices, 'checked' => 0, 'position' => 6.1),
+	'sell_price_2_ttc' => array('label' => $langs->trans('KreapPrice2WithVat'), 'enabled' => $useMultiprices, 'checked' => 0, 'position' => 6.2),
 	'vat_rate' => array('label' => $langs->trans('VAT'), 'checked' => 1, 'position' => 7),
 	'p.entity' => array('label' => $langs->trans('Entity'), 'checked' => 1, 'position' => 8),
 	'zsbms_entities' => array('label' => 'ZSBMS', 'enabled' => $zsbmsIntegrationEnabled, 'checked' => 1, 'position' => 9),
@@ -524,14 +526,14 @@ print_liste_field_titre($selectedfields, $_SERVER['PHP_SELF'], '', '', '', '', $
 foreach ($arrayfields as $key => $val) {
 	if (!empty($val['checked'])) {
 		$align = '';
-		if ($key === 'cost_price' || $key === 'margin_without_vat' || $key === 'sell_price' || $key === 'sell_price_ttc' || $key === 'vat_rate') {
+		if ($key === 'cost_price' || $key === 'margin_without_vat' || $key === 'sell_price' || $key === 'sell_price_ttc' || $key === 'sell_price_2' || $key === 'sell_price_2_ttc' || $key === 'vat_rate') {
 			$align = 'right ';
 		} elseif ($key === 'p.entity') {
 			$align = 'center nowrap ';
 		} elseif ($key === 'p.tobuy' || $key === 'p.tosell' || $key === 'kreap_hideproduct') {
 			$align = 'center ';
 		}
-		if ($key === 'margin_without_vat' || $key === 'zsbms_entities') {
+		if ($key === 'margin_without_vat' || $key === 'zsbms_entities' || $key === 'sell_price_2' || $key === 'sell_price_2_ttc') {
 			print '<th class="' . trim($align . 'liste_titre') . '">' . dol_escape_htmltag($val['label']) . '</th>';
 			continue;
 		}
@@ -600,6 +602,13 @@ while ($i < min($num, $limit)) {
 				break;
 			case 'sell_price_ttc':
 				print '<td class="right">' . price($priceInclVat) . '</td>';
+				break;
+			case 'sell_price_2':
+			case 'sell_price_2_ttc':
+				// Read the explicit second level; missing prices must not fall back to level 1.
+				$levelPrices = ($key === 'sell_price_2') ? $productstatic->multiprices : $productstatic->multiprices_ttc;
+				$levelPrice = ($useMultiprices && $fetchRes > 0 && isset($levelPrices[2]) && $levelPrices[2] !== '') ? price($levelPrices[2]) : '-';
+				print '<td class="right">' . $levelPrice . '</td>';
 				break;
 			case 'vat_rate':
 				print '<td class="right">' . vatrate($vatRate, true) . '</td>';

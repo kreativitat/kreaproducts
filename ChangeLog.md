@@ -1,6 +1,25 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.23.0] - 2026-10-14
+
+### Added
+
+- Added optional Price 2 columns with and without VAT, hidden by default.
+
+## [4.22.10] - 2026-10-08
+
+### Fixed
+
+- Resolve synchronization dependencies from custom/kreaflow so the retired custom/dolizsynch folder can be removed.
+
+## [4.22.9] - 2026-09-23
+
+### Fixed
+
+- Preserved WooCommerce synchronization suppression during transactional cost and selling-price updates.
+- Reported dismantling stock failures instead of silently returning supplier invoices to draft.
+
 ## [4.22.8] - 2026-09-22
 
 ### Changed
