@@ -971,3 +971,15 @@ KREAPRODUCTS_STOCK_PROCESSING_FAILED=Stock processing failed for product ID %s. 
 
 KreapPrice2WithoutVat = Price 2 (excl. VAT)
 KreapPrice2WithVat = Price 2 (incl. VAT)
+
+# Label barcode registration and synchronization
+KREAPRODUCTS_LABELS_BARCODE_TEMPLATE_ERROR=The selected label template could not be loaded.
+KREAPRODUCTS_LABELS_BARCODE_SAVE_ERROR=The label and barcode could not be saved. No local changes were kept. Try again.
+KREAPRODUCTS_LABELS_BARCODE_BUSY=Another barcode operation is in progress. Try saving again.
+KREAPRODUCTS_LABELS_BARCODE_METADATA_ERROR=The existing KreaFlow barcode data is invalid or ambiguous. Review the product in KreaFlow before saving.
+KREAPRODUCTS_LABELS_BARCODE_MODULE_DISABLED=Label saved. Barcode registration requires KreaFlow and its ZSBMS integration to be enabled.
+KREAPRODUCTS_LABELS_BARCODE_INVALID=The label barcode must contain 1 to 20 printable characters without spaces.
+KREAPRODUCTS_LABELS_BARCODE_CONFLICT=This barcode is already assigned to another product in the product-sharing scope. The label was not saved.
+KREAPRODUCTS_LABELS_BARCODE_LIMIT=The KreaFlow barcode list has reached its storage limit. The label was not saved.
+KREAPRODUCTS_LABELS_BARCODE_SYNC_DISABLED=Label and barcode saved locally. ZSBMS synchronization is disabled for this product; enable it in KreaFlow to publish the barcode.
+KREAPRODUCTS_LABELS_BARCODE_SYNC_FAILED=Label and barcode saved locally, but ZSBMS synchronization failed. Save the label again to retry without creating duplicates.

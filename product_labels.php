@@ -59,6 +59,7 @@ require_once DOL_DOCUMENT_ROOT . '/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT . '/core/class/html.formfile.class.php';
 require_once DOL_DOCUMENT_ROOT . '/product/class/product.class.php';
 dol_include_once('/kreaproducts/class/KreaProductsLabelService.class.php');
+dol_include_once('/kreaproducts/class/KreaProductsLabelBarcodeService.class.php');
 
 $langs->loadLangs(array('main', 'products', 'other', 'kreaproducts@kreaproducts'));
 
@@ -479,6 +480,17 @@ function kreaProductsParseLabelStoragePayload($rawValue)
 		}
 	}
 
+	$payload['barcode_links'] = array();
+	$payload['managed_barcodes'] = array();
+	foreach (isset($decoded['barcode_links']) && is_array($decoded['barcode_links']) ? $decoded['barcode_links'] : array() as $code => $barcodes) {
+		if (($code === '_standard' || kreaProductsSanitizeTemplateCode($code) !== '') && is_array($barcodes)) {
+			$payload['barcode_links'][$code] = array_values(array_filter($barcodes, 'is_string'));
+		}
+	}
+	if (isset($decoded['managed_barcodes']) && is_array($decoded['managed_barcodes'])) {
+		$payload['managed_barcodes'] = array_values(array_filter($decoded['managed_barcodes'], 'is_string'));
+	}
+
 	return $payload;
 }
 
@@ -542,6 +554,10 @@ function kreaProductsEncodeLabelStoragePayload($storagePayload)
 			}
 		}
 	}
+
+	$tracking = kreaProductsParseLabelStoragePayload(json_encode($storagePayload));
+	$normalized['barcode_links'] = isset($tracking['barcode_links']) ? $tracking['barcode_links'] : array();
+	$normalized['managed_barcodes'] = isset($tracking['managed_barcodes']) ? $tracking['managed_barcodes'] : array();
 
 	return json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
@@ -610,44 +626,63 @@ function kreaProductsEnsureLabelStorageColumnCapacity($db, $outputlangs)
  * @param Translate $outputlangs   Output language
  * @return array
  */
-function kreaProductsPersistLabelStoragePayload($product, $storagePayload, $outputlangs)
+function kreaProductsPersistLabelStoragePayload($product, $storagePayload, $outputlangs, $templateCode = null, $inputValues = array(), $singleSource = '', $saveDefault = false)
 {
+	global $user, $conf;
+
 	if (!is_object($product) || empty($product->id) || !is_object($product->db)) {
 		return array('error' => $outputlangs->trans('ErrorBadParameters'));
 	}
-
-	$columnCapacityResult = kreaProductsEnsureLabelStorageColumnCapacity($product->db, $outputlangs);
-	if (!empty($columnCapacityResult['error'])) {
-		return array('error' => $columnCapacityResult['error']);
+	$capacity = kreaProductsEnsureLabelStorageColumnCapacity($product->db, $outputlangs);
+	if (!empty($capacity['error'])) {
+		return $capacity;
 	}
-
-	$encodedPayload = kreaProductsEncodeLabelStoragePayload($storagePayload);
-	if ($encodedPayload === false) {
-		return array('error' => $outputlangs->trans('Error'));
-	}
-
-	require_once DOL_DOCUMENT_ROOT . '/core/class/extrafields.class.php';
-	$extrafields = new ExtraFields($product->db);
-	$extrafields->fetch_name_optionals_label($product->table_element);
-	$product->fetch_optionals($product->id, $extrafields);
-	$product->array_options['options_kreap_default_label_layout'] = $encodedPayload;
-	$saveResult = $product->insertExtraFields();
-	if ($saveResult < 0) {
-		$saveErrors = (!empty($product->errors) && is_array($product->errors) ? $product->errors : array());
-		if (empty($saveErrors) && !empty($product->error)) {
-			$saveErrors[] = $product->error;
+	$service = new KreaProductsLabelBarcodeService($product->db, $user, $conf, $outputlangs);
+	$result = $service->save($product, function ($barcodeService) use ($product, $storagePayload, $outputlangs, $templateCode, $inputValues, $singleSource, $saveDefault, $conf) {
+		// fetch_optionals() was refreshed under the product lock: merge only the requested change.
+		$latest = kreaProductsParseLabelStoragePayload($product->array_options['options_kreap_default_label_layout'] ?? '');
+		$alias = trim((string) ($product->array_options['options_kreap_alias'] ?? ''));
+		if ($alias !== '') {
+			$product->label = $alias;
 		}
-		if (empty($saveErrors)) {
-			$saveErrors[] = $outputlangs->trans('Error');
+		if ($templateCode === null || $saveDefault) {
+			$latest['default_label_layout'] = $storagePayload['default_label_layout'];
 		}
-
-		return array('error' => implode(', ', $saveErrors));
+		if ($templateCode !== null) {
+			$values = $saveDefault ? ($latest['template_values'][$templateCode] ?? array()) : $inputValues;
+			if ($singleSource !== '') {
+				$values = $latest['template_values'][$templateCode] ?? array();
+				$values[$singleSource] = $inputValues[$singleSource] ?? '';
+			}
+			$values = array_filter($values, function ($value) { return (string) $value !== ''; });
+			if ($templateCode !== '' && !$saveDefault) {
+				$latest['template_values'][$templateCode] = $values;
+				$latest['template_descriptions'][$templateCode] = $storagePayload['template_descriptions'][$templateCode] ?? '';
+			}
+			$lifetime = kreaProductsSyncProductLifetimeFromTemplateValues($product->db, $product, $saveDefault ? array() : $inputValues, $outputlangs);
+			if (!empty($lifetime['error'])) {
+				return $lifetime;
+			}
+			if (!empty($lifetime['updated'])) {
+				$product->lifetime = $lifetime['value'];
+			}
+			$codes = KreaProductsLabelService::getLabelBarcodes($product, $outputlangs, (int) $conf->entity, $templateCode, $values);
+			$barcodeService->update($product, $latest, $templateCode === '' ? '_standard' : $templateCode, $codes);
+		}
+		$encoded = kreaProductsEncodeLabelStoragePayload($latest);
+		if ($encoded === false) {
+			return array('error' => $outputlangs->trans('Error'));
+		}
+		$product->array_options['options_kreap_default_label_layout'] = $encoded;
+		if ($product->insertExtraFields() < 0) {
+			return array('error' => $outputlangs->trans('ErrorFailedToUpdateRecord'));
+		}
+		return array('success' => true, 'value' => $encoded);
+	});
+	if (!empty($result['warning'])) {
+		setEventMessages($result['warning'], null, 'warnings');
 	}
-
-	return array(
-		'success' => true,
-		'value' => $encodedPayload,
-	);
+	return $result;
 }
 
 /**
@@ -948,6 +983,15 @@ $urlSource = $_SERVER['PHP_SELF'] . '?id=' . $object->id;
 $selectedTemplateUrlParam = '&label_template=' . urlencode((string) $selectedTemplate);
 $urlSourceWithTemplate = $urlSource . $selectedTemplateUrlParam;
 
+if (in_array($action, array('save_default_label_layout', 'save_template_values', 'generate_labels'), true)) {
+	$token = (string) GETPOST('token', 'alpha');
+	if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $token === ''
+		|| (!hash_equals((string) ($_SESSION['token'] ?? ''), $token)
+			&& !hash_equals((string) ($_SESSION['newtoken'] ?? ''), $token))) {
+		accessforbidden();
+	}
+}
+
 if ($action === 'save_default_label_layout') {
 	if (!$permissiontowrite) {
 		accessforbidden();
@@ -958,7 +1002,10 @@ if ($action === 'save_default_label_layout') {
 		setEventMessages('', array($langs->trans('ErrorBadValueForParameter', 'label_template')), 'errors');
 	} else {
 		$labelStoragePayload['default_label_layout'] = kreaProductsSanitizeTemplateCode($defaultLabelLayoutToSave);
-		$saveStorageResult = kreaProductsPersistLabelStoragePayload($object, $labelStoragePayload, $langs);
+		$saveStorageResult = kreaProductsPersistLabelStoragePayload(
+			$object, $labelStoragePayload, $langs, $defaultLabelLayoutToSave,
+			$labelStoragePayload['template_values'][$defaultLabelLayoutToSave] ?? array(), '', true
+		);
 		if (!empty($saveStorageResult['error'])) {
 			setEventMessages('', array($saveStorageResult['error']), 'errors');
 		} else {
@@ -978,67 +1025,22 @@ if ($action === 'save_default_label_layout') {
 		setEventMessages('', array($langs->trans('KREAPRODUCTS_LABELS_NO_FORMATS')), 'errors');
 	} else {
 		$templateInputValuesToGenerate = $templateInputValues;
-		$allowGenerate = true;
+		$uploadErrors = array();
 		if (!$isStandardMode) {
-			$uploadErrors = array();
 			$templateInputValuesToGenerate = kreaProductsMergeTemplateUploadedFiles($currentEntityId, $templateInputValuesToGenerate, $uploadErrors);
-			if (!empty($uploadErrors)) {
-				setEventMessages('', $uploadErrors, 'errors');
-			}
-
-			$sanitizedTemplateInputValues = KreaProductsLabelService::sanitizeTemplateInputValues(
-				$templateInputValuesToGenerate,
-				array_keys($templateSourceMetaBySource),
-				$templateSourceMetaBySource
+			$templateInputValuesToGenerate = KreaProductsLabelService::sanitizeTemplateInputValues(
+				$templateInputValuesToGenerate, array_keys($templateSourceMetaBySource), $templateSourceMetaBySource
 			);
-			$templateInputValuesToGenerate = $sanitizedTemplateInputValues;
-			$storageTemplateInputValues = array();
-			foreach ($sanitizedTemplateInputValues as $source => $value) {
-				if ((string) $value !== '') {
-					$storageTemplateInputValues[$source] = (string) $value;
-				}
-			}
-
-			$lifetimeSyncResult = kreaProductsSyncProductLifetimeFromTemplateValues($db, $object, $sanitizedTemplateInputValues, $langs);
-			if (!empty($lifetimeSyncResult['error'])) {
-				setEventMessages('', array($lifetimeSyncResult['error']), 'errors');
+			$labelStoragePayload['template_descriptions'][$selectedTemplate] = trim((string) $selectedTemplateDescription);
+		}
+		$allowGenerate = empty($uploadErrors);
+		if (!$allowGenerate) {
+			setEventMessages('', $uploadErrors, 'errors');
+		} else {
+			$saveStorageResult = kreaProductsPersistLabelStoragePayload($object, $labelStoragePayload, $langs, $selectedTemplate, $templateInputValuesToGenerate);
+			if (!empty($saveStorageResult['error'])) {
+				setEventMessages('', array($saveStorageResult['error']), 'errors');
 				$allowGenerate = false;
-			} elseif (!empty($lifetimeSyncResult['updated'])) {
-				$object->lifetime = $lifetimeSyncResult['value'];
-			}
-
-			if ($allowGenerate) {
-				$selectedTemplateStorageCode = kreaProductsSanitizeTemplateCode($selectedTemplate);
-				if ($selectedTemplateStorageCode === '') {
-					setEventMessages('', array($langs->trans('ErrorBadValueForParameter', 'label_template')), 'errors');
-					$allowGenerate = false;
-				} else {
-					if (!isset($labelStoragePayload['template_values']) || !is_array($labelStoragePayload['template_values'])) {
-						$labelStoragePayload['template_values'] = array();
-					}
-					if (!isset($labelStoragePayload['template_descriptions']) || !is_array($labelStoragePayload['template_descriptions'])) {
-						$labelStoragePayload['template_descriptions'] = array();
-					}
-
-					if (!empty($storageTemplateInputValues)) {
-						$labelStoragePayload['template_values'][$selectedTemplateStorageCode] = $storageTemplateInputValues;
-					} else {
-						unset($labelStoragePayload['template_values'][$selectedTemplateStorageCode]);
-					}
-
-					$sanitizedTemplateDescriptionForStorage = trim((string) $selectedTemplateDescription);
-					if ($sanitizedTemplateDescriptionForStorage !== '') {
-						$labelStoragePayload['template_descriptions'][$selectedTemplateStorageCode] = $sanitizedTemplateDescriptionForStorage;
-					} else {
-						unset($labelStoragePayload['template_descriptions'][$selectedTemplateStorageCode]);
-					}
-
-					$saveStorageResult = kreaProductsPersistLabelStoragePayload($object, $labelStoragePayload, $langs);
-					if (!empty($saveStorageResult['error'])) {
-						setEventMessages('', array($saveStorageResult['error']), 'errors');
-						$allowGenerate = false;
-					}
-				}
 			}
 		}
 
@@ -1070,7 +1072,7 @@ if ($action === 'save_default_label_layout') {
 			setEventMessages('', $uploadErrors, 'errors');
 		}
 		$singleTemplateSourceToSave = kreaProductsSanitizeTemplateSource(GETPOST('label_template_single_source', 'alphanohtml'));
-		$canSaveTemplateValues = true;
+		$canSaveTemplateValues = empty($uploadErrors);
 		if ($singleTemplateSourceToSave !== '') {
 			$allowedEditableSourceMap = array();
 			foreach ($selectedTemplateEditableFields as $editableField) {
@@ -1099,63 +1101,14 @@ if ($action === 'save_default_label_layout') {
 				array_keys($templateSourceMetaBySource),
 				$templateSourceMetaBySource
 			);
-			$storageTemplateInputValues = array();
-			foreach ($sanitizedTemplateInputValues as $source => $value) {
-				if ((string) $value !== '') {
-					$storageTemplateInputValues[$source] = (string) $value;
-				}
-			}
-
-			$lifetimeSyncResult = kreaProductsSyncProductLifetimeFromTemplateValues($db, $object, $sanitizedTemplateInputValues, $langs);
-			if (!empty($lifetimeSyncResult['error'])) {
-				setEventMessages('', array($lifetimeSyncResult['error']), 'errors');
+			$labelStoragePayload['template_descriptions'][$selectedTemplate] = trim((string) $selectedTemplateDescription);
+			$saveStorageResult = kreaProductsPersistLabelStoragePayload(
+				$object, $labelStoragePayload, $langs, $selectedTemplate, $sanitizedTemplateInputValues, $singleTemplateSourceToSave
+			);
+			if (!empty($saveStorageResult['error'])) {
+				setEventMessages('', array($saveStorageResult['error']), 'errors');
 			} else {
-				if (!empty($lifetimeSyncResult['updated'])) {
-					$object->lifetime = $lifetimeSyncResult['value'];
-				}
-
-				$selectedTemplateStorageCode = kreaProductsSanitizeTemplateCode($selectedTemplate);
-				if ($selectedTemplateStorageCode === '') {
-					setEventMessages('', array($langs->trans('ErrorBadValueForParameter', 'label_template')), 'errors');
-				} else {
-					if (!isset($labelStoragePayload['template_values']) || !is_array($labelStoragePayload['template_values'])) {
-						$labelStoragePayload['template_values'] = array();
-					}
-					if (!isset($labelStoragePayload['template_descriptions']) || !is_array($labelStoragePayload['template_descriptions'])) {
-						$labelStoragePayload['template_descriptions'] = array();
-					}
-
-					$currentStoredTemplateValues = (!empty($labelStoragePayload['template_values'][$selectedTemplateStorageCode]) && is_array($labelStoragePayload['template_values'][$selectedTemplateStorageCode]) ? $labelStoragePayload['template_values'][$selectedTemplateStorageCode] : array());
-					if ($singleTemplateSourceToSave !== '') {
-						if (array_key_exists($singleTemplateSourceToSave, $sanitizedTemplateInputValues) && (string) $sanitizedTemplateInputValues[$singleTemplateSourceToSave] !== '') {
-							$currentStoredTemplateValues[$singleTemplateSourceToSave] = (string) $sanitizedTemplateInputValues[$singleTemplateSourceToSave];
-						} else {
-							unset($currentStoredTemplateValues[$singleTemplateSourceToSave]);
-						}
-					} else {
-						$currentStoredTemplateValues = $storageTemplateInputValues;
-					}
-
-					if (!empty($currentStoredTemplateValues)) {
-						$labelStoragePayload['template_values'][$selectedTemplateStorageCode] = $currentStoredTemplateValues;
-					} else {
-						unset($labelStoragePayload['template_values'][$selectedTemplateStorageCode]);
-					}
-
-					$sanitizedTemplateDescriptionForStorage = trim((string) $selectedTemplateDescription);
-					if ($sanitizedTemplateDescriptionForStorage !== '') {
-						$labelStoragePayload['template_descriptions'][$selectedTemplateStorageCode] = $sanitizedTemplateDescriptionForStorage;
-					} else {
-						unset($labelStoragePayload['template_descriptions'][$selectedTemplateStorageCode]);
-					}
-
-					$saveStorageResult = kreaProductsPersistLabelStoragePayload($object, $labelStoragePayload, $langs);
-					if (!empty($saveStorageResult['error'])) {
-						setEventMessages('', array($saveStorageResult['error']), 'errors');
-					} else {
-						setEventMessages($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_VALUES_SAVED'), null, 'mesgs');
-					}
-				}
+				setEventMessages($langs->trans('KREAPRODUCTS_LABELS_TEMPLATE_VALUES_SAVED'), null, 'mesgs');
 			}
 		}
 	}

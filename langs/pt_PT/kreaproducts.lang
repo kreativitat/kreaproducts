@@ -981,3 +981,15 @@ KREAPRODUCTS_STOCK_PROCESSING_FAILED=O processamento de stock falhou para o prod
 
 KreapPrice2WithoutVat = Preço 2 S/IVA
 KreapPrice2WithVat = Preço 2 C/IVA
+
+# Label barcode registration and synchronization
+KREAPRODUCTS_LABELS_BARCODE_TEMPLATE_ERROR=Não foi possível carregar o modelo de etiqueta selecionado.
+KREAPRODUCTS_LABELS_BARCODE_SAVE_ERROR=Não foi possível guardar a etiqueta e o código de barras. Nenhuma alteração local foi mantida. Tente novamente.
+KREAPRODUCTS_LABELS_BARCODE_BUSY=Está em curso outra operação de códigos de barras. Tente guardar novamente.
+KREAPRODUCTS_LABELS_BARCODE_METADATA_ERROR=Os códigos de barras existentes no KreaFlow são inválidos ou ambíguos. Reveja a ficha do produto no KreaFlow antes de guardar.
+KREAPRODUCTS_LABELS_BARCODE_MODULE_DISABLED=Etiqueta guardada. O registo do código de barras requer o KreaFlow e a integração ZSBMS ativos.
+KREAPRODUCTS_LABELS_BARCODE_INVALID=O código de barras da etiqueta deve ter entre 1 e 20 caracteres imprimíveis, sem espaços.
+KREAPRODUCTS_LABELS_BARCODE_CONFLICT=Este código de barras já está associado a outro produto no âmbito de partilha de produtos. A etiqueta não foi guardada.
+KREAPRODUCTS_LABELS_BARCODE_LIMIT=A lista de códigos de barras do KreaFlow atingiu o limite de armazenamento. A etiqueta não foi guardada.
+KREAPRODUCTS_LABELS_BARCODE_SYNC_DISABLED=Etiqueta e código de barras guardados localmente. A sincronização ZSBMS está desativada para este produto; ative-a no KreaFlow para publicar o código.
+KREAPRODUCTS_LABELS_BARCODE_SYNC_FAILED=Etiqueta e código de barras guardados localmente, mas a sincronização ZSBMS falhou. Guarde novamente a etiqueta para repetir sem criar duplicados.
