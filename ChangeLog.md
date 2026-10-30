@@ -1,6 +1,16 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.24.0] - 2026-10-30
+
+### Added
+
+- Save label barcodes in KreaFlow and synchronize enabled products with ZSBMS.
+
+### Fixed
+
+- Update label-owned barcodes without duplicates and roll back failed local saves.
+
 ## [4.23.0] - 2026-10-14
 
 ### Added

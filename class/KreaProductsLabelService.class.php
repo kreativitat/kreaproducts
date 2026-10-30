@@ -27,6 +27,41 @@ class KreaProductsLabelService
 	 */
 	const DEFAULT_MAX_LABEL_COUNT = 1000;
 
+	/** Resolve persisted barcodes with the same context and computed fields as printing. */
+	public static function getLabelBarcodes($product, $outputlangs, $entityId, $templateCode, $values = array())
+	{
+		if ($templateCode === '') {
+			$barcode = self::resolveBarcode($product->db, $product);
+			return ($barcode['value'] !== '' ? array($barcode['value']) : array());
+		}
+		$template = self::loadLabelTemplate($templateCode, $entityId);
+		if (!$template) {
+			throw new RuntimeException('KREAPRODUCTS_LABELS_BARCODE_TEMPLATE_ERROR');
+		}
+		$context = self::buildTemplatePreviewContext($product, $outputlangs, $template, $values);
+		$codes = array();
+		foreach ($template['pages'] as $page) {
+			if (self::shouldSkipTemplateCompositionBackPage($context) && self::isTemplateCompositionBackPage($page)) {
+				continue;
+			}
+			foreach ($page['blocks'] as $block) {
+				if (empty($block['type']) || $block['type'] !== 'barcode') {
+					continue;
+				}
+				// Placeholder/source names are display fallbacks, never product identifiers.
+				if (isset($block['content_mode']) && $block['content_mode'] === 'dynamic'
+					&& (!isset($context[$block['source']]) || (string) $context[$block['source']] === '')) {
+					continue;
+				}
+				$value = self::resolveTemplateBlockValue($block, $context);
+				if ($value !== '' && !in_array($value, $codes, true)) {
+					$codes[] = $value;
+				}
+			}
+		}
+		return $codes;
+	}
+
 	/**
 	 * Return the configured label generation ceiling.
 	 *
