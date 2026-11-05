@@ -40,3 +40,21 @@ Current bundled example:
   - Includes editable DB-backed ingredients, allergens, and nutrition sections
 - `degema_normal.json`
   - Same generic schema with typed inputs for another DeGema model
+
+## Barcode rendering
+
+SVG previews, PDF labels, and TSPL bitmaps share EAN/UPC validation. Non-numeric,
+oversized, or incorrect-check-digit values use Code128 without changing the value.
+Short EAN/UPC-A values retain TCPDF's zero padding and calculated check digit.
+UPC-E requires a compressible 11-digit UPC-A payload or its 12-digit form including
+the check digit. Unsupported number systems, lossy compression, and compact UPC-E
+inputs use Code128. This fallback does not turn the value into a retail EAN/UPC.
+An encoding failure never produces decorative barcode bars in template previews.
+
+Run the regression suite with an installed Dolibarr/TCPDF tree; it uses no business
+database or network. The optional second argument saves synthetic PDF/SVG fixtures:
+
+```sh
+php tests/run_label_rendering_tests.php /path/to/dolibarr/htdocs
+php tests/run_label_rendering_tests.php /path/to/dolibarr/htdocs --failing-encoder
+```

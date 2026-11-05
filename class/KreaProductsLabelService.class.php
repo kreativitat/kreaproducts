@@ -3641,9 +3641,11 @@ class KreaProductsLabelService
 			$map = array(
 				'EAN13' => array('encoding' => 'EAN13', 'is2d' => false),
 				'EAN8' => array('encoding' => 'EAN8', 'is2d' => false),
-				'UPC' => array('encoding' => 'UPC-A', 'is2d' => false),
-				'UPC-A' => array('encoding' => 'UPC-A', 'is2d' => false),
-				'UPC-E' => array('encoding' => 'UPC-E', 'is2d' => false),
+				'UPC' => array('encoding' => 'UPCA', 'is2d' => false),
+				'UPC-A' => array('encoding' => 'UPCA', 'is2d' => false),
+				'UPCA' => array('encoding' => 'UPCA', 'is2d' => false),
+				'UPC-E' => array('encoding' => 'UPCE', 'is2d' => false),
+				'UPCE' => array('encoding' => 'UPCE', 'is2d' => false),
 				'C39' => array('encoding' => 'C39', 'is2d' => false),
 				'CODE39' => array('encoding' => 'C39', 'is2d' => false),
 				'C128' => array('encoding' => 'C128', 'is2d' => false),
@@ -3660,7 +3662,7 @@ class KreaProductsLabelService
 
 		return array(
 			'value' => $value,
-			'encoding' => $encoding,
+			'encoding' => ($is2d ? $encoding : self::resolveSafeLinearBarcodeEncoding($value, $encoding)),
 			'is2d' => $is2d,
 		);
 	}
@@ -5992,23 +5994,10 @@ class KreaProductsLabelService
 				}
 				$currentX += $segmentWidth;
 			}
-		} else {
-			$pattern = self::buildPreviewBarcodePattern($value);
-			$patternLength = max(1, strlen($pattern));
-			$barWidth = $w / $patternLength;
-
-			for ($i = 0; $i < $patternLength; $i++) {
-				if ($pattern[$i] !== '1') {
-					continue;
-				}
-
-				$currentX = $x + ($i * $barWidth);
-				$svg[] = '<rect x="' . self::formatSvgNumber($currentX) . '" y="' . self::formatSvgNumber($y) . '" width="' . self::formatSvgNumber($barWidth + 0.02) . '" height="' . self::formatSvgNumber($barHeight) . '" fill="#101828"/>';
-			}
 		}
 
 		if ($showHumanReadable) {
-			$svg[] = '<text x="' . self::formatSvgNumber($x + ($w / 2)) . '" y="' . self::formatSvgNumber($y + $barHeight + 0.2) . '" fill="#101828" font-family="Helvetica" font-size="' . self::formatSvgNumber($textHeight * 0.82) . '" text-anchor="middle" dominant-baseline="text-before-edge">' . self::escapeSvgText($value) . '</text>';
+			$svg[] = '<text x="' . self::formatSvgNumber($x + ($w / 2)) . '" y="' . self::formatSvgNumber($y + $barHeight + 0.2 + ($textHeight * 0.82)) . '" fill="#101828" font-family="Helvetica" font-size="' . self::formatSvgNumber($textHeight * 0.82) . '" text-anchor="middle">' . self::escapeSvgText($value) . '</text>';
 		}
 
 		$svg[] = '</g>';
@@ -6029,7 +6018,9 @@ class KreaProductsLabelService
 			'EAN8' => 'EAN8',
 			'UPC' => 'UPCA',
 			'UPC-A' => 'UPCA',
+			'UPCA' => 'UPCA',
 			'UPC-E' => 'UPCE',
+			'UPCE' => 'UPCE',
 			'C39' => 'C39',
 			'CODE39' => 'C39',
 			'C128' => 'C128',
@@ -6048,6 +6039,19 @@ class KreaProductsLabelService
 	 */
 	private static function buildPreviewBarcodeArrayFromTcpdf($value, $encoding)
 	{
+		$prepared = self::prepareLinearBarcode($value, $encoding);
+		return (!empty($prepared['barcode']) ? $prepared['barcode'] : array());
+	}
+
+	/**
+	 * Encode before drawing: TCPDF can destroy its PDF object on invalid barcode input.
+	 *
+	 * @param string $value Barcode value
+	 * @param string $encoding Requested linear encoding
+	 * @return array Empty on failure, otherwise encoding and barcode array
+	 */
+	public static function prepareLinearBarcode($value, $encoding)
+	{
 		if (!class_exists('TCPDFBarcode')) {
 			$barcodeClassPath = DOL_DOCUMENT_ROOT . '/includes/tecnickcom/tcpdf/tcpdf_barcodes_1d.php';
 			if (is_readable($barcodeClassPath)) {
@@ -6058,44 +6062,94 @@ class KreaProductsLabelService
 			return array();
 		}
 
-		try {
-			$barcode = new TCPDFBarcode((string) $value, (string) $encoding);
-			$barcodeArray = $barcode->getBarcodeArray();
-			if (is_array($barcodeArray) && !empty($barcodeArray['bcode']) && !empty($barcodeArray['maxw'])) {
-				return $barcodeArray;
+		$value = (string) $value;
+		if ($value === '') {
+			return array();
+		}
+		$encoding = self::resolveSafeLinearBarcodeEncoding($value, $encoding);
+		$encodings = ($encoding === 'C128' ? array('C128') : array($encoding, 'C128'));
+		foreach ($encodings as $candidate) {
+			try {
+				$barcode = new TCPDFBarcode($value, $candidate);
+				$barcodeArray = $barcode->getBarcodeArray();
+				if (is_array($barcodeArray) && !empty($barcodeArray['bcode']) && !empty($barcodeArray['maxw'])) {
+					return array('encoding' => $candidate, 'barcode' => $barcodeArray);
+				}
+			} catch (Throwable $e) {
+				dol_syslog(__METHOD__ . ' could not encode preview barcode as ' . $candidate, LOG_DEBUG);
 			}
-		} catch (Exception $e) {
-			dol_syslog(__METHOD__ . ' tcpdf preview barcode fallback: ' . $e->getMessage(), LOG_DEBUG);
 		}
 
 		return array();
 	}
 
 	/**
-	 * Build a deterministic preview barcode pattern.
+	 * Select a safe TCPDF encoding without changing the barcode value.
 	 *
-	 * @param string $value Source value
+	 * TCPDF pads short EAN/UPC-A inputs and computes an omitted check digit.
+	 * Its UPC-E encoder expects an expanded UPC-A value, not a compact UPC-E code.
+	 *
+	 * @param string $value Barcode value
+	 * @param string $encoding Requested linear encoding
 	 * @return string
 	 */
-	private static function buildPreviewBarcodePattern($value)
+	public static function resolveSafeLinearBarcodeEncoding($value, $encoding)
 	{
-		$value = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $value));
-		if ($value === '') {
-			$value = '0';
+		$encoding = strtoupper(trim((string) $encoding));
+		$aliases = array('UPC' => 'UPCA', 'UPC-A' => 'UPCA', 'UPC-E' => 'UPCE');
+		if (isset($aliases[$encoding])) {
+			$encoding = $aliases[$encoding];
+		}
+		$lengths = array('EAN8' => 8, 'EAN13' => 13, 'UPCA' => 12, 'UPCE' => 12);
+		if (!isset($lengths[$encoding])) {
+			return $encoding;
 		}
 
-		$pattern = '101001';
-		$chars = str_split($value);
-		foreach ($chars as $index => $char) {
-			$seed = ord($char) + $index;
-			for ($bit = 0; $bit < 7; $bit++) {
-				$pattern .= ((($seed >> ($bit % 6)) & 1) ? '11' : '1') . '0';
+		$value = (string) $value;
+		$length = strlen($value);
+		$valid = preg_match('/\A[0-9]+\z/', $value) === 1 && $length <= $lengths[$encoding];
+		if ($valid && $length === $lengths[$encoding]) {
+			$sum = 0;
+			for ($i = $length - 2, $weight = 3; $i >= 0; $i--, $weight = 4 - $weight) {
+				$sum += ((int) $value[$i]) * $weight;
 			}
-			$pattern .= '10';
+			$valid = (10 - ($sum % 10)) % 10 === (int) $value[$length - 1];
 		}
-		$pattern .= '101011';
+		if ($valid && $encoding === 'UPCE') {
+			$valid = $length >= 11 && self::isUpcaPayloadCompressibleToUpce(substr($value, 0, 11));
+		}
+		if (!$valid) {
+			dol_syslog(__METHOD__ . ' invalid ' . $encoding . ' value; using C128', LOG_WARNING);
+			return 'C128';
+		}
 
-		return $pattern;
+		return $encoding;
+	}
+
+	/**
+	 * Check the digits TCPDF would discard when compressing an 11-digit UPC-A payload.
+	 *
+	 * @param string $payload UPC-A data without its check digit
+	 * @return bool
+	 */
+	private static function isUpcaPayloadCompressibleToUpce($payload)
+	{
+		if ($payload[0] !== '0' && $payload[0] !== '1') {
+			return false;
+		}
+		$manufacturer = substr($payload, 1, 5);
+		$product = substr($payload, 6, 5);
+		if (in_array(substr($manufacturer, 2), array('000', '100', '200'), true)) {
+			return substr($product, 0, 2) === '00';
+		}
+		if (substr($manufacturer, 3) === '00') {
+			return substr($product, 0, 3) === '000';
+		}
+		if ($manufacturer[4] === '0') {
+			return substr($product, 0, 4) === '0000';
+		}
+
+		return substr($product, 0, 4) === '0000' && (int) $product[4] >= 5;
 	}
 
 	/**

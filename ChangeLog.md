@@ -1,6 +1,14 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [4.23.1] - 2026-11-05
+
+### Fixed
+
+- Prevent invalid EAN/UPC values from crashing label previews and PDF generation.
+- Correct UPC encoder names and reject lossy UPC-E compression.
+- Keep template barcode text below the bars in PDF labels.
+
 ## [4.23.0] - 2026-10-14
 
 ### Added

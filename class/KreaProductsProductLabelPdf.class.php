@@ -19,6 +19,7 @@
  */
 
 require_once DOL_DOCUMENT_ROOT . '/core/modules/printsheet/doc/pdf_tcpdflabel.class.php';
+require_once __DIR__ . '/KreaProductsLabelService.class.php';
 
 /**
  * PDF generator for KreaProducts product labels.
@@ -828,9 +829,11 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 		$map = array(
 			'EAN13' => array('encoding' => 'EAN13', 'is2d' => false),
 			'EAN8' => array('encoding' => 'EAN8', 'is2d' => false),
-			'UPC' => array('encoding' => 'UPC-A', 'is2d' => false),
-			'UPC-A' => array('encoding' => 'UPC-A', 'is2d' => false),
-			'UPC-E' => array('encoding' => 'UPC-E', 'is2d' => false),
+			'UPC' => array('encoding' => 'UPCA', 'is2d' => false),
+			'UPC-A' => array('encoding' => 'UPCA', 'is2d' => false),
+			'UPCA' => array('encoding' => 'UPCA', 'is2d' => false),
+			'UPC-E' => array('encoding' => 'UPCE', 'is2d' => false),
+			'UPCE' => array('encoding' => 'UPCE', 'is2d' => false),
 			'C39' => array('encoding' => 'C39', 'is2d' => false),
 			'CODE39' => array('encoding' => 'C39', 'is2d' => false),
 			'C128' => array('encoding' => 'C128', 'is2d' => false),
@@ -894,16 +897,25 @@ class KreaProductsProductLabelPdf extends pdf_tcpdflabel
 				return;
 			}
 
-			$pdf->write1DBarcode($value, $encoding, $x, $y, $w, $h, 0.4, $style1d);
-		} catch (Exception $e) {
+			$prepared = KreaProductsLabelService::prepareLinearBarcode($value, $encoding);
+			if (!empty($prepared)) {
+				$pdf->write1DBarcode($value, $prepared['encoding'], $x, $y, $w, $h, 0.4, $style1d);
+				return;
+			}
+		} catch (Throwable $e) {
 			try {
-				$pdf->write1DBarcode($value, 'C128', $x, $y, $w, $h, 0.4, $style1d);
-			} catch (Exception $fallbackException) {
-				$pdf->SetFont('', '', ($isCompact ? 6 : 7));
-				$pdf->SetXY($x, $y + max(0, ($h / 2) - 1.5));
-				$pdf->MultiCell($w, 3, $outputlangs->convToOutputCharset($value), 0, 'C', false, 1);
+				$fallback = KreaProductsLabelService::prepareLinearBarcode($value, 'C128');
+				if (!empty($fallback)) {
+					$pdf->write1DBarcode($value, 'C128', $x, $y, $w, $h, 0.4, $style1d);
+					return;
+				}
+			} catch (Throwable $fallbackException) {
+				dol_syslog(__METHOD__ . ' could not draw barcode; using text', LOG_WARNING);
 			}
 		}
+		$pdf->SetFont('', '', ($isCompact ? 6 : 7));
+		$pdf->SetXY($x, $y + max(0, ($h / 2) - 1.5));
+		$pdf->MultiCell($w, 3, $outputlangs->convToOutputCharset($value), 0, 'C', false, 1);
 	}
 
 	/**
