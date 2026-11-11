@@ -1,6 +1,26 @@
 <!-- Copyright (C) 2024-2026       Kreativität Works       <mail@kreativitat.com> -->
 # CHANGELOG MODULE KREAPRODUCTS FOR DOLIBARR ERP CRM
 
+## [Unreleased]
+
+### Added
+
+- Add versioned GET/PUT `kreaproductsapi/production/products/{id}/food-setup`
+  for saved per-100-g nutrition and explicit contains/traces allergen patches.
+  Preserve omitted values, missing declarations and unrelated links; require
+  native rights, manual mode, direct product ownership, explicit confirmation,
+  preview by default, reviewed revision, row locks, atomic native persistence
+  and readback. No schema migration or production writes are part of this change.
+- Cover food-setup API planning, ownership, permissions, duplicates, decimal
+  encoding, revision conflicts, native failures and rollback with offline tests.
+- Add versioned supplier purchase-price detail/create/update endpoints with
+  explicit owner/confirmation, native previews, reviewed revisions, namespace
+  collision checks, consistent current-row locking and bound-ID native history
+  and trigger execution. Preserve ancillary terms with atomic readback; reject
+  unsupported rounding, dynamic, multicurrency or normalization cases before
+  invoking native price updates. No destructive upsert fallback is used.
+
+
 ## [4.23.1] - 2026-11-05
 
 ### Fixed

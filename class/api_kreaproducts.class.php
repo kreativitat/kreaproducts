@@ -58,6 +58,95 @@ class KreaProductsApi extends DolibarrApi
 	}
 
 	/**
+	 * Read saved per-100-g nutrition and explicitly declared allergens.
+	 *
+	 * Missing nutrition remains null. This does not render or generate labels.
+	 *
+	 * @param int $product_id Parent product ID
+	 * @return array
+	 * @url GET production/products/{product_id}/food-setup
+	 */
+	public function getProductionProductFoodSetup($product_id)
+	{
+		$service = $this->foodSetupService();
+		return $service->read($product_id);
+	}
+
+	/**
+	 * Patch owned manual food declarations, with preview and revision checking.
+	 *
+	 * Apply requires explicit entity_id, confirm=true, dry_run=false and the
+	 * expected_revision from GET. Omitted nutrients/allergens are preserved.
+	 *
+	 * @param int $product_id Parent product ID
+	 * @param array $request_data Narrow patch and explicit write controls
+	 * @return array
+	 * @url PUT production/products/{product_id}/food-setup
+	 */
+	public function putProductionProductFoodSetup($product_id, $request_data = null)
+	{
+		$service = $this->foodSetupService();
+		return $service->save($product_id, $request_data);
+	}
+
+	/** Load food declarations only for this endpoint, preserving unrelated API bootstrap. */
+	protected function foodSetupService()
+	{
+		global $conf;
+		dol_include_once('/kreaproducts/class/nutritional.class.php');
+		dol_include_once('/kreaproducts/class/productallergens.class.php');
+		dol_include_once('/kreaproducts/class/KreaProductsNutritionEditPolicy.class.php');
+		dol_include_once('/kreaproducts/class/KreaProductsFoodSetupService.class.php');
+		return new KreaProductsFoodSetupService($this->db, DolibarrApiAccess::$user, $conf->entity);
+	}
+
+	/**
+	 * Read one owned supplier price including preserved native ancillary fields.
+	 * @param int $product_id Parent product ID
+	 * @param int $price_id Supplier-price row ID
+	 * @return array
+	 * @url GET production/products/{product_id}/purchase-prices/{price_id}
+	 */
+	public function getProductionProductPurchasePrice($product_id, $price_id)
+	{
+		return $this->purchasePriceService()->read($product_id, $price_id);
+	}
+
+	/**
+	 * Patch one bound supplier-price identity; preview by default.
+	 * @param int $product_id Parent product ID
+	 * @param int $price_id Supplier-price row ID
+	 * @param array $request_data Price patch and explicit write controls
+	 * @return array
+	 * @url PUT production/products/{product_id}/purchase-prices/{price_id}
+	 */
+	public function putProductionProductPurchasePrice($product_id, $price_id, $request_data = null)
+	{
+		return $this->purchasePriceService()->update($product_id, $price_id, $request_data);
+	}
+
+	/**
+	 * Create a scoped supplier-price identity without the legacy DELETE/upsert.
+	 * @param int $product_id Parent product ID
+	 * @param array $request_data Price identity, values and explicit write controls
+	 * @return array
+	 * @url POST production/products/{product_id}/purchase-prices
+	 */
+	public function postProductionProductPurchasePrice($product_id, $request_data = null)
+	{
+		return $this->purchasePriceService()->create($product_id, $request_data);
+	}
+
+	/** Load native supplier classes only for the narrow purchase-price workflow. */
+	protected function purchasePriceService()
+	{
+		global $conf;
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
+		dol_include_once('/kreaproducts/class/KreaProductsPurchasePriceService.class.php');
+		return new KreaProductsPurchasePriceService($this->db, DolibarrApiAccess::$user, $conf->entity);
+	}
+
+	/**
 	 * List product categories that contain producible products.
 	 *
 	 * @return array
