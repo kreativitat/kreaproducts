@@ -11,15 +11,17 @@ class KreaProductsPurchasePriceService
     private $db;
     private $user;
     private $entityId;
+    private $checkAccess;
     const COLUMNS = 'rowid, entity, fk_product, fk_soc, ref_fourn, desc_fourn, fk_availability, price, quantity, unitprice, charges, remise_percent, remise, default_vat_code, tva_tx, localtax1_tx, localtax1_type, localtax2_tx, localtax2_type, info_bits, fk_supplier_price_expression, delivery_time_days, supplier_reputation, packaging, fk_multicurrency, multicurrency_code, multicurrency_tx, multicurrency_unitprice, multicurrency_price, barcode, fk_barcode_type, import_key, status';
     const DECIMALS = array('price', 'quantity', 'unitprice', 'charges', 'remise_percent', 'remise', 'tva_tx', 'localtax1_tx', 'localtax2_tx', 'packaging', 'multicurrency_tx', 'multicurrency_unitprice', 'multicurrency_price');
     const INTEGERS = array('rowid', 'entity', 'fk_product', 'fk_soc', 'fk_availability', 'info_bits', 'fk_supplier_price_expression', 'delivery_time_days', 'fk_multicurrency', 'fk_barcode_type', 'status');
 
-    public function __construct($db, $user, $entityId)
+    public function __construct($db, $user, $entityId, callable $checkAccess)
     {
         $this->db = $db;
         $this->user = $user;
         $this->entityId = $this->id($entityId);
+        $this->checkAccess = $checkAccess;
     }
 
     /** Stable saved row, including fields omitted by the core collection API. */
@@ -384,7 +386,7 @@ class KreaProductsPurchasePriceService
         if ($product->fetch($productId) <= 0) {
             throw new RestException(404, 'Product not found');
         }
-        if ((int) $product->entity !== $this->entityId || !DolibarrApi::_checkAccessToResource('product', $productId)
+        if ((int) $product->entity !== $this->entityId || !call_user_func($this->checkAccess, 'product', $productId)
             || !$this->user->hasRight('produit', $write ? 'creer' : 'lire')) {
             throw new RestException(403, 'Owned product and native product rights are required');
         }
@@ -399,7 +401,7 @@ class KreaProductsPurchasePriceService
             throw new RestException(404, 'Supplier not found');
         }
         if ((int) $supplier->entity !== $this->entityId || empty($supplier->fournisseur)
-            || !DolibarrApi::_checkAccessToResource('societe', $supplierId)
+            || !call_user_func($this->checkAccess, 'societe', $supplierId)
             || (!empty($this->user->socid) && (int) $this->user->socid !== $supplierId)) {
             throw new RestException(403, 'Owned supplier access is required');
         }

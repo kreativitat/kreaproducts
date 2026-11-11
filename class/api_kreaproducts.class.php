@@ -97,7 +97,7 @@ class KreaProductsApi extends DolibarrApi
 		dol_include_once('/kreaproducts/class/productallergens.class.php');
 		dol_include_once('/kreaproducts/class/KreaProductsNutritionEditPolicy.class.php');
 		dol_include_once('/kreaproducts/class/KreaProductsFoodSetupService.class.php');
-		return new KreaProductsFoodSetupService($this->db, DolibarrApiAccess::$user, $conf->entity);
+		return new KreaProductsFoodSetupService($this->db, DolibarrApiAccess::$user, $conf->entity, $this->resourceAccessChecker());
 	}
 
 	/**
@@ -141,9 +141,19 @@ class KreaProductsApi extends DolibarrApi
 	protected function purchasePriceService()
 	{
 		global $conf;
-		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
+		if (!class_exists('ProductFournisseur')) {
+			require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.product.class.php';
+		}
 		dol_include_once('/kreaproducts/class/KreaProductsPurchasePriceService.class.php');
-		return new KreaProductsPurchasePriceService($this->db, DolibarrApiAccess::$user, $conf->entity);
+		return new KreaProductsPurchasePriceService($this->db, DolibarrApiAccess::$user, $conf->entity, $this->resourceAccessChecker());
+	}
+
+	/** Keep Dolibarr's protected resource authorization inside the API scope. */
+	protected function resourceAccessChecker()
+	{
+		return static function ($resource, $id) {
+			return self::_checkAccessToResource($resource, $id);
+		};
 	}
 
 	/**

@@ -15,11 +15,21 @@ namespace {
     function getDolGlobalString($name) { return $GLOBALS['settings'][$name] ?? ''; }
     function getEntity($name) { return '1,8'; }
     function dol_syslog($message, $level = 0) {}
+    function dol_include_once($path) {}
     function price2num($value, $mode = '') { return round((float) $value, $GLOBALS['precision'][$mode] ?? 8); }
     class DolibarrApi {
         public static $allowed = true;
-        public static function _checkAccessToResource($type, $id) { return self::$allowed; }
+        public static $deniedResources = array();
+        public static $accessChecks = array();
+        protected static function _checkAccessToResource($type, $id) {
+            self::$accessChecks[] = array($type, $id);
+            return self::$allowed && !in_array($type, self::$deniedResources, true);
+        }
     }
+    class PriceTestAccess extends DolibarrApi {
+        public static function checker() { return static function ($kind, $id) { return self::_checkAccessToResource($kind, $id); }; }
+    }
+    class DolibarrApiAccess { public static $user; }
     class PriceUser {
         public $socid = 0;
         public $denied = array();
@@ -170,7 +180,8 @@ namespace {
         $GLOBALS['modules'] = array(); $GLOBALS['settings'] = array(); $GLOBALS['precision'] = array();
         $db = new PriceDB(); $user = new PriceUser();
         if ($existing) { $db->prices[12] = defaultPrice(); }
-        return array($db, $user, new KreaProductsPurchasePriceService($db, $user, 8));
+        DolibarrApi::$allowed = true; DolibarrApi::$deniedResources = array();
+        return array($db, $user, new KreaProductsPurchasePriceService($db, $user, 8, PriceTestAccess::checker()));
     }
     function controls($extra = array()) { return array_merge(array('entity_id' => 8, 'confirm' => true), $extra); }
     function creation($extra = array()) { return controls(array_merge(array('fourn_id' => 5, 'ref_fourn' => 'NEW-42', 'qty' => '10', 'buyprice' => '20', 'availability' => 0, 'tva_tx' => '23'), $extra)); }
@@ -295,5 +306,26 @@ namespace {
     list($db, $user, $service) = fixture(false);
     expectError(400, function () use ($service) { $service->create(42, creation(array('buyprice' => 1.123456789))); });
     check($db->nativeCalls === array(), 'Direct JSON floating inputs never silently lose extra fractional places');
+    $source = file_get_contents(__DIR__.'/../class/api_kreaproducts.class.php');
+    $start = strpos($source, "\nclass KreaProductsApi extends DolibarrApi");
+    if ($start === false) { throw new \RuntimeException('API class boundary missing'); }
+    eval(substr($source, $start));
+    list($db, $user, $service) = fixture();
+    $conf = (object) array('entity' => 8); DolibarrApiAccess::$user = $user;
+    $api = new KreaProductsApi();
+    check($api->getProductionProductPurchasePrice(42, 12)['price_id'] === 12, 'Real API GET wires protected inherited access into price service');
+    check($api->putProductionProductPurchasePrice(42, 12, controls(array('buyprice' => '15')))['status'] === 'dry_run', 'Real API PUT wires protected inherited access into preview');
+    check($api->postProductionProductPurchasePrice(42, creation())['status'] === 'dry_run', 'Real API POST wires protected inherited access into preview');
+    check((new \ReflectionMethod('DolibarrApi', '_checkAccessToResource'))->isProtected(), 'Resource helper retains actual Dolibarr protected visibility');
+    check((new \ReflectionMethod('KreaProductsPurchasePriceService', '__construct'))->getNumberOfRequiredParameters() === 4,
+        'Price service requires its scoped authorization callback with no permissive default');
+    DolibarrApi::$accessChecks = array(); DolibarrApi::$deniedResources = array('societe');
+    expectError(403, function () use ($api) { $api->getProductionProductPurchasePrice(42, 12); });
+    check(DolibarrApi::$accessChecks === array(array('product', 42), array('societe', 5)), 'API scope forwards product and supplier resource identities to protected helper');
+    DolibarrApi::$deniedResources = array(); DolibarrApi::$allowed = false;
+    expectError(403, function () use ($api) { $api->getProductionProductPurchasePrice(42, 12); });
+    expectError(403, function () use ($api) { $api->putProductionProductPurchasePrice(42, 12, controls(array('buyprice' => '15'))); });
+    expectError(403, function () use ($api) { $api->postProductionProductPurchasePrice(42, creation()); });
+    check($db->nativeCalls === array() && $db->prices[12] === defaultPrice(), 'Denied real API resource callbacks never invoke native price mutations');
     echo 'PASS '.$checks." purchase-price API assertions\n";
 }

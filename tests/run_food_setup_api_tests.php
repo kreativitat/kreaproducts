@@ -17,7 +17,14 @@ namespace {
     function dol_include_once($path) {}
     class DolibarrApi {
         public static $access = true;
-        public static function _checkAccessToResource($kind, $id) { return self::$access; }
+        public static $accessChecks = array();
+        protected static function _checkAccessToResource($kind, $id) {
+            self::$accessChecks[] = array($kind, $id);
+            return self::$access;
+        }
+    }
+    class FoodTestAccess extends DolibarrApi {
+        public static function checker() { return static function ($kind, $id) { return self::_checkAccessToResource($kind, $id); }; }
     }
     class DolibarrApiAccess { public static $user; }
     class FoodResult {
@@ -161,7 +168,8 @@ namespace {
     }
     function fixture() {
         $db = new FoodDB(); $user = new FoodUser();
-        return array($db, $user, new KreaProductsFoodSetupService($db, $user, 8));
+        DolibarrApi::$access = true;
+        return array($db, $user, new KreaProductsFoodSetupService($db, $user, 8, FoodTestAccess::checker()));
     }
     function patch($service, $values) {
         return array_merge(array('entity_id' => 8, 'confirm' => true, 'dry_run' => false, 'expected_revision' => $service->read(42)['revision']), $values);
@@ -246,5 +254,15 @@ namespace {
     check($api->getProductionProductFoodSetup(42)['nutrition'] === null, 'API GET delegates to actual food setup service');
     $result = $api->putProductionProductFoodSetup(42, array('entity_id' => 8, 'confirm' => true, 'nutrition' => array('protein' => '1')));
     check($result['status'] === 'dry_run' && $db->writes === array(), 'API PUT defaults to a write-free preview');
+    check((new \ReflectionMethod('DolibarrApi', '_checkAccessToResource'))->isProtected(), 'Resource helper retains actual Dolibarr protected visibility');
+    check((new \ReflectionMethod('KreaProductsFoodSetupService', '__construct'))->getNumberOfRequiredParameters() === 4,
+        'Food service requires its scoped authorization callback with no permissive default');
+    $revision = $api->getProductionProductFoodSetup(42)['revision'];
+    DolibarrApi::$accessChecks = array(); DolibarrApi::$access = false;
+    expectError(403, function () use ($api) { $api->getProductionProductFoodSetup(42); });
+    expectError(403, function () use ($api) { $api->putProductionProductFoodSetup(42, array('entity_id' => 8, 'confirm' => true, 'nutrition' => array('protein' => '1'))); });
+    expectError(403, function () use ($api, $revision) { $api->putProductionProductFoodSetup(42, array('entity_id' => 8, 'confirm' => true, 'dry_run' => false, 'expected_revision' => $revision, 'nutrition' => array('protein' => '1'))); });
+    check(DolibarrApi::$accessChecks === array(array('product', 42), array('product', 42), array('product', 42)), 'Real API factory forwards every resource check to the protected native helper');
+    check($db->writes === array() && $db->rollbacks === 1, 'Denied protected resource checks never mutate and applying denial rolls back');
     echo 'PASS '.$checks." food-setup API assertions\n";
 }

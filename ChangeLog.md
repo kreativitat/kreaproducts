@@ -22,6 +22,13 @@
   unsupported rounding, dynamic, multicurrency or normalization cases before
   invoking native price updates. No destructive upsert fallback is used.
 
+### Fixed
+
+- Invoke Dolibarr's protected resource authorization through an API-scoped
+  callback for food setup and supplier prices. Regression tests exercise the
+  actual API factories with protected visibility and denied product/supplier
+  access, preventing a production-only PHP visibility error.
+
 
 ## [4.23.1] - 2026-11-05
 

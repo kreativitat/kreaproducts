@@ -19,14 +19,16 @@ class KreaProductsFoodSetupService
     private $db;
     private $user;
     private $entityId;
+    private $checkAccess;
     private $nutritionObjects = array();
     private $allergenObjects = array();
 
-    public function __construct($db, $user, $entityId)
+    public function __construct($db, $user, $entityId, callable $checkAccess)
     {
         $this->db = $db;
         $this->user = $user;
         $this->entityId = (int) $entityId;
+        $this->checkAccess = $checkAccess;
         if ($this->entityId < 1) {
             throw new RestException(500, 'A selected company is required for food setup');
         }
@@ -64,7 +66,7 @@ class KreaProductsFoodSetupService
         if ($product->fetch($productId) <= 0) {
             throw new RestException(404, 'Product not found');
         }
-        if (!DolibarrApi::_checkAccessToResource('product', $productId)) {
+        if (!call_user_func($this->checkAccess, 'product', $productId)) {
             throw new RestException(403, 'Product access denied');
         }
         $family = ((int) $product->type === 1 ? 'service' : 'produit');
