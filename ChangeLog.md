@@ -3,6 +3,8 @@
 
 ## [Unreleased]
 
+## [4.24.0] - 2026-11-11
+
 ### Added
 
 - Add versioned GET/PUT `kreaproductsapi/production/products/{id}/food-setup`
