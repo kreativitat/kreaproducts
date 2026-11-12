@@ -2073,25 +2073,26 @@ if ($id > 0 || !empty($ref)) {
 			$recursiveBuyingPrice = $nbofsubproducts > 0 ? ProductHierarchyTree::getRecursiveComponentCost($id) : false;
 			print load_fiche_titre($langs->trans("ProductAssociationList"), '', '');
 			print '<style>
-				#tablelines .krea-label-col.tdoverflowmax150 { max-width: 560px; }
+				#tablelines { table-layout: auto; width: 100%; }
+				#tablelines > tbody > tr > td { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+				#tablelines .liste_titre > td { width: 1%; line-height: 1.3; }
+				#tablelines .liste_titre > .krea-label-col { width: auto; }
+				#tablelines .krea-label-col { min-width: 14em; white-space: normal; overflow-wrap: anywhere; }
+				#tablelines .krea-pos-col { padding-left: 6px; padding-right: 6px; }
+				#tablelines .krea-qty-input { width: 6.5em; box-sizing: border-box; }
 				#tablelines .krea-kreaplot-cell { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
 				#tablelines .krea-recursive-cost { display: inline-flex; align-items: center; gap: 3px; }
 				#tablelines .krea-recursive-cost img { display: block; }
 				@media (max-width: 768px) {
-					.krea-tablelines-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-					#tablelines { table-layout: auto !important; }
-					#tablelines .krea-pos-col { width: 34px !important; min-width: 28px !important; max-width: 40px !important; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
-					#tablelines .krea-label-col { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
-					#tablelines .krea-label-col.tdoverflowmax150 { max-width: none !important; }
+					#tablelines .krea-label-col { min-width: 12em; }
 				}
 			</style>';
 			print '<form name="formComposedProduct" action="' . $_SERVER['PHP_SELF'] . '" method="post">';
 			print '<input type="hidden" name="token" value="' . newToken() . '" />';
 			print '<input type="hidden" name="action" value="save_composed_product" />';
 			print '<input type="hidden" name="id" value="' . $id . '" />';
-			print '<div class="krea-tablelines-wrap">';
-			print '<table id="tablelines" class="ui-sortable liste nobottom" style="table-layout: fixed; width: 100%;">';
-			$headerCellStyle = 'white-space: nowrap; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;';
+			print '<div class="div-table-responsive-no-min krea-tablelines-wrap">';
+			print '<table id="tablelines" class="ui-sortable liste nobottom">';
 			$getShortLabel = function ($key, $fallback) use ($langs) {
 				$translated = $langs->trans($key);
 				return ($translated === $key) ? $fallback : $translated;
@@ -2105,33 +2106,19 @@ if ($id > 0 || !empty($ref)) {
 			$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
 			$headerParentStockLabel = $getShortLabel('KreapParentStockAdjustShort', 'Stock +/-');
 			$showKreaProductionLotColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
-			$componentTableWidths = array(
-				'pos' => '44px',
-				'ref' => '104px',
-				'name_min' => '320px',
-				'ingredient_cost' => '116px',
-				'stock' => '88px',
-				'qty' => '76px',
-				'qty_input' => '68px',
-				'weight_kg' => '96px',
-				'component_cost' => '122px',
-				'kreap_lot' => '88px',
-				'parent_stock_adjust' => '88px',
-				'move' => '18px',
-			);
 			print '<tr class="liste_titre nodrag nodrop">';
 			// Rank
-			print '<td class="krea-pos-col" style="width:' . $componentTableWidths['pos'] . '; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
+			print '<td class="krea-pos-col">' . $headerPosLabel . '</td>';
 			// Product ref
-			print '<td style="width:' . $componentTableWidths['ref'] . '; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
+			print '<td>' . $headerChildLabel . '</td>';
 			// Product label
-			print '<td class="krea-label-col" style="min-width:' . $componentTableWidths['name_min'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
+			print '<td class="krea-label-col">' . $headerNameLabel . '</td>';
 			// ZS Menu column removed in list view
 			// Ingredient cost (single column)
-			print '<td class="right" style="width:' . $componentTableWidths['ingredient_cost'] . '; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
+			print '<td class="right">' . $headerIngredientCostLabel . '</td>';
 			// Stock
 			if (isModEnabled('stock')) {
-				print '<td class="right" style="width:' . $componentTableWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
+				print '<td class="right">' . $langs->trans('Stock') . '</td>';
 			}
 			// Hook fields
 			$parameters = array();
@@ -2143,20 +2130,20 @@ if ($id > 0 || !empty($ref)) {
 			}
 			print $hookTitle;
 			// Qty in kit
-			print '<td class="center" style="width:' . $componentTableWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
+			print '<td class="center">' . $headerQtyLabel . '</td>';
 			// Weight in kg
-			print '<td class="right" style="width:' . $componentTableWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
+			print '<td class="right">' . $headerWeightKgLabel . '</td>';
 			// Valor por componente
-			print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+			print '<td class="right">' . $headerComponentCostLabel . '</td>';
 			if ($showKreaProductionLotColumn) {
 				$headerKreaLotShort = $getShortLabel('KreapHeaderShowInMoWord', 'Lote');
 				$headerKreaLot = $form->textwithpicto($headerKreaLotShort, $langs->trans('kreap_lot_help'));
-				print '<td class="center" style="width:' . $componentTableWidths['kreap_lot'] . '; ' . $headerCellStyle . '">' . $headerKreaLot . '</td>';
+				print '<td class="center">' . $headerKreaLot . '</td>';
 			}
 			// Stoc inc/dev
-			print '<td class="center" style="width:' . $componentTableWidths['parent_stock_adjust'] . '; ' . $headerCellStyle . '">' . $headerParentStockLabel . '</td>';
+			print '<td class="center">' . $headerParentStockLabel . '</td>';
 			// Move
-			print '<td class="linecolmove" style="width:' . $componentTableWidths['move'] . ';"></td>';
+			print '<td class="linecolmove"></td>';
 			print '</tr>' . "\n";
 
 			$totalsell = 0;
@@ -2174,7 +2161,7 @@ if ($id > 0 || !empty($ref)) {
 						// Product ref
 						print '<td>' . $productstatic->getNomUrl(1, 'auto') . '</td>';
 						// Product label
-						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="krea-label-col tdoverflowmax150">' . dol_escape_htmltag($productstatic->label) . '</td>';
+						print '<td title="' . dol_escape_htmltag($productstatic->label) . '" class="krea-label-col">' . dol_escape_htmltag($productstatic->label) . '</td>';
 						// For avoid a non-numeric value
 						$fourn_unitprice = !empty($productstatic->cost_price) ? $productstatic->cost_price : (!empty($product_fourn->fourn_unitprice) ? $product_fourn->fourn_unitprice : $product_fourn->pmp);
 						$fourn_remise_percent = (!empty($product_fourn->fourn_remise_percent) ? $product_fourn->fourn_remise_percent : 0);
@@ -2193,7 +2180,7 @@ if ($id > 0 || !empty($ref)) {
 						);
 						$total +=  $totalline;
 						$totalWeightKg += $lineWeightKg;
-						print '<td class="right nowraponall" style="width:' . $componentTableWidths['ingredient_cost'] . ';">';
+						print '<td class="right nowraponall">';
 						print ($notdefined ? '' : ($value['nb'] > 1 ? $value['nb'] . 'x ' : '') . '<span class="amount">' . price($unitline, '', '', 0, 0, 4, $conf->currency)) . '</span>';
 						print '</td>';
 						// Stock
@@ -2207,9 +2194,9 @@ if ($id > 0 || !empty($ref)) {
 						// Qty + IncDec
 						$custo_ingrediente = $fourn_unitprice * $nb_of_subproduct;
 						if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
-							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right" style="width:' . $componentTableWidths['qty_input'] . ';" /></td>';
+							print '<td class="center"><input type="text" value="' . number_format((float) $nb_of_subproduct, 3, '.', '') . '" name="TProduct[' . $productstatic->id . '][qty]" class="right krea-qty-input" /></td>';
 							print '<td class="right" style="white-space: nowrap;">' . number_format((float) $lineWeightKg, 3, '.', '') . ' kg</td>';
-							print '<td class="right" style="width:' . $componentTableWidths['component_cost'] . '; white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
+							print '<td class="right" style="white-space: nowrap;">' . number_format((float)$custo_ingrediente, 4, '.', '') . " €" . '</td>';
 							if ($showKreaProductionLotColumn) {
 								print '<td class="center"><span class="krea-kreaplot-cell"><input type="checkbox" name="TProduct[' . (int) $productstatic->id . '][kreap_lot]" value="1" ' . ($isMoInputEnabled ? 'checked' : '') . ' /></span></td>';
 							}
@@ -2297,15 +2284,12 @@ if ($id > 0 || !empty($ref)) {
 				}
 				print($atleastonenotdefined ? '' : price($total, '', '', 0, 0, 4, $conf->currency));
 				print '</td>';
-				if ($showKreaProductionLotColumn) {
-					print '<td></td>';
-				}
-				print '<td class="center">'; // Inc/dec col
+				// Span the control columns so the Save button does not widen Stock +/-.
+				print '<td class="right" colspan="' . ($showKreaProductionLotColumn ? 3 : 2) . '">';
 				if ($user->hasRight('produit', 'creer') || $user->hasRight('service', 'creer')) {
 					print '<input type="submit" class="button button-save" value="' . $langs->trans("Save") . '">';
 				}
 				print '</td>';
-				print '<td></td>'; // Move col
 				print '</tr>' . "\n";
 			} else {
 				// Show an empty state row when no components exist but the table is displayed.

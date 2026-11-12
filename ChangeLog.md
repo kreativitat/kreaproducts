@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.1] - 2026-11-12
+
+### Fixed
+
+- Balance kit component columns and keep names, amounts and quantity fields readable.
+
 ## [4.24.0] - 2026-11-11
 
 ### Added
