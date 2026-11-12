@@ -1519,6 +1519,27 @@ if ($id > 0 || !empty($ref)) {
 
 		if ($object->type != Product::TYPE_SERVICE || getDolGlobalString('STOCK_SUPPORTS_SERVICES') || !getDolGlobalString('PRODUIT_MULTIPRICES')) {
 			$showWeightForm = $usercancreate && $object->type != Product::TYPE_SERVICE && !getDolGlobalString('PRODUCT_DISABLE_WEIGHT');
+			// Keep Dolibarr's form contract while adapting its hardcoded text submit controls.
+			$renderCompactInlineEditor = static function ($fieldHtml) use ($langs) {
+				$fieldHtml = preg_replace_callback(
+					'/<input\b(?=[^>]*\btype="submit")(?=[^>]*\bname="(modify|cancel)")([^>]*)>/i',
+					static function ($matches) use ($langs) {
+						$isCancel = ($matches[1] === 'cancel');
+						$label = dol_escape_htmltag($langs->trans($isCancel ? 'Cancel' : 'Save'));
+						$attributes = rtrim($matches[2], "/ \t\n\r");
+						return '<button' . $attributes . ' title="' . $label . '" aria-label="' . $label . '">'
+							. '<span class="fas fa-' . ($isCancel ? 'times' : 'check') . '" aria-hidden="true"></span></button>';
+					},
+					$fieldHtml
+				);
+				return '<div class="kreaproducts-inline-editor">' . $fieldHtml . '</div>';
+			};
+			print '<style>
+				.kreaproducts-inline-editor form { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; max-width: 100%; margin: 0; }
+				.kreaproducts-inline-editor input:not([type=hidden]):not([type=submit]) { box-sizing: border-box; min-width: 0; max-width: 100%; flex-shrink: 1; }
+				.kreaproducts-inline-editor button.button[type=submit] { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; box-sizing: border-box; width: 28px; min-width: 28px; height: 28px; margin: 0 !important; padding: 0 !important; font-size: 1em; line-height: 1; }
+				.kreaproducts-inline-editor button.button[type=submit]:focus-visible { outline: auto; outline-offset: 2px; }
+			</style>';
 			print '<div class="fichecenter">';
 			print '<div class="fichehalfleft">';
 			print '<div class="underbanner clearboth"></div>';
@@ -1529,7 +1550,7 @@ if ($id > 0 || !empty($ref)) {
 				print '<tr><td class="titlefield">';
 				print (!getDolGlobalString('PRODUCT_DENY_CHANGE_PRODUCT_TYPE')) ? $form->editfieldkey("Type", 'fk_product_type', $object->type, $object, $usercancreate, $typeformat) : $langs->trans('Type');
 				print '</td><td>';
-				print $form->editfieldval("Type", 'fk_product_type', $object->type, $object, $usercancreate, $typeformat);
+				print $renderCompactInlineEditor($form->editfieldval("Type", 'fk_product_type', $object->type, $object, $usercancreate, $typeformat));
 				print '</td></tr>';
 			}
 			// Dismantle toggle (only if product has a BOM)
@@ -1555,7 +1576,7 @@ if ($id > 0 || !empty($ref)) {
 				print '<tr><td class="titlefield">';
 				print $form->editfieldkey("Weight", 'weight', $object->weight, $object, $usercancreate, 'asis');
 				print '</td><td>';
-				print $form->editfieldval("Weight", 'weight', $weightDisplay, $object, $usercancreate, 'asis', $weightEdit);
+				print $renderCompactInlineEditor($form->editfieldval("Weight", 'weight', $weightDisplay, $object, $usercancreate, 'asis', $weightEdit));
 				print '</td></tr>';
 			}
 			print '</table>';
@@ -1570,7 +1591,7 @@ if ($id > 0 || !empty($ref)) {
 					print '<tr><td class="titlefield">';
 					print $form->editfieldkey("NatureOfProductShort", 'finished', $object->finished, $object, $usercancreate, 'asis', '', 0, 0, 'id', $langs->trans("NatureOfProductDesc"));
 					print '</td><td>';
-					print $form->editfieldval("NatureOfProductShort", 'finished', $object->getLibFinished(), $object, $usercancreate, 'asis', $natureEdit);
+					print $renderCompactInlineEditor($form->editfieldval("NatureOfProductShort", 'finished', $object->getLibFinished(), $object, $usercancreate, 'asis', $natureEdit));
 					print '</td></tr>';
 				}
 			}

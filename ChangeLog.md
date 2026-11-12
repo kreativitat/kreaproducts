@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.7] - 2026-11-12
+
+### Changed
+
+- Use compact, accessible icon buttons for Type, Weight and Nature inline editors.
+
 ## [4.24.6] - 2026-11-12
 
 ### Fixed
