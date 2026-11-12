@@ -1,5 +1,37 @@
 # KreaProducts production acceptance — 2026-11-12
 
+## 4.24.9
+
+Authorized deployment installed pinned source
+[`ccf52c68d6ba25e86d1e682da0a0f063f28f8faa`](https://github.com/kreativitat/kreaproducts/commit/ccf52c68d6ba25e86d1e682da0a0f063f28f8faa)
+on `fin.degema.pt`. The four-file overlay contains `product_list.php`,
+`product_labels.php`, `ChangeLog.md` and the descriptor, installed last. It includes
+the completed 4.24.8 label layout and 4.24.9 product-row spacing changes.
+
+All four files matched the expected deployed 4.24.7 baseline before replacement.
+Installed SHA-256 hashes match the pinned source; the descriptor reports 4.24.9.
+All three PHP files passed staged and installed production PHP 8.1.34 lint.
+Atomic replacement preserved ownership and permissions. The existing dirty
+production checkout and Git HEAD were preserved. `associatedProducts.php` already
+matched the pinned source and was verified without replacement.
+
+Authenticated internal-browser acceptance confirmed 5px vertical cell padding.
+The same ten DG01 search results increased from 37.796875px to 41.796875px per
+row; text and purchase/sale filters remained present. A DG99 list check also
+confirmed the new padding. The DG99 label page used two columns at a 1280px
+viewport with 937px available content width. At 390px it used one column, ordered
+preview, settings, then documents/uploads. Both technical-sheet search filters
+retained their 10px bottom spacing. No console errors were reported on these
+pages. Live rendering confirmed the new source without a cache reset or restart.
+
+A protected four-file backup, before/after manifests and guarded rollback script
+remain at `/home/degemapt/backups/kreaproducts-4.24.9-20261112T191531Z`, outside the
+webroot. Backup SHA-256:
+`b2aaf1111a0d6bc638f1fe1f3b8d4d88e3e4245c134dd31a57fd35ef9e5f7f05`.
+Rollback refuses concurrent file changes. No migration, module reactivation,
+configuration/permission change, form save, label generation or business-record
+mutation was performed.
+
 ## 4.24.7
 
 Authorized deployment installed pinned source
