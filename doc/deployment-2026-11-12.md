@@ -1,5 +1,33 @@
 # KreaProducts production acceptance — 2026-11-12
 
+## 4.24.7
+
+Authorized deployment installed pinned source
+[`9f51c73c339c35bb86090d2034513b79c2a57049`](https://github.com/kreativitat/kreaproducts/commit/9f51c73c339c35bb86090d2034513b79c2a57049)
+on `fin.degema.pt`. The three-file overlay contains `associatedProducts.php`,
+`ChangeLog.md` and `core/modules/modKreaProducts.class.php`, installed last.
+It includes the 4.24.6 search-filter spacing fix.
+
+All three files matched their expected deployed baselines before replacement,
+and installed SHA-256 hashes match the pinned release. Both PHP files passed
+staged and installed production PHP 8.1.34 lint. Atomic replacement preserved
+file ownership and permissions; the existing dirty checkout and Git HEAD were
+preserved.
+
+Authenticated Chrome acceptance in DG99 confirmed 28px Save/Cancel icon buttons
+for Type, Weight and Nature. Buttons remained on one row, retained translated
+tooltips and accessible labels, and the weight selector did not overlap them.
+View mode contained no inline edit forms. Both search filters had the expected
+10px bottom spacing. No browser console errors were reported. This confirms
+web PHP served the new source without a cache reset or service restart.
+
+A protected three-file backup, manifests and guarded rollback script remain
+outside the webroot. Backup SHA-256:
+`4c4d46d4768dbf8cd1ce545eddc65a87d844001f354da85a5cdfaa362cd898ae`.
+No migration, module reactivation, form save or business-record mutation was
+performed. Live phone rendering was not exercised; isolated 390px rendering and
+native Save/Cancel/Enter submission checks passed before deployment.
+
 ## 4.24.5
 
 Authorized deployment installed pinned source
