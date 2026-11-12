@@ -1256,6 +1256,14 @@ if ($currentDefaultLabelLayout !== '') {
 llxHeader('', $title, $helpurl, '', 0, 0, '', '', '', 'mod-kreaproducts page-product-labels');
 
 print '<style nonce="' . getNonce() . '">';
+print '.kreaLabelsContainer{container-type:inline-size;}';
+print '.kreaLabelsLayout{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"preview" "settings" "library";gap:20px 40px;align-items:start;}';
+print '.kreaLabelsLayout>div{min-width:0;}';
+print '.kreaLabelSettings{grid-area:settings;}';
+print '.kreaLabelPreview{grid-area:preview;}';
+print '.kreaLabelLibrary{grid-area:library;}';
+print '@container(min-width:900px){.kreaLabelsLayout{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto 1fr;grid-template-areas:"settings preview" "settings library";}}';
+print '@supports not (container-type:inline-size){@media(min-width:1200px){.kreaLabelsLayout{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto 1fr;grid-template-areas:"settings preview" "settings library";}}}';
 print '.kreaLabelViewerPage{margin-top:12px;}';
 print '.kreaLabelViewerPage:first-child{margin-top:0;}';
 print '.kreaLabelViewerPageMeta{margin-bottom:6px;}';
@@ -1306,7 +1314,21 @@ $object->label = $productCardLabel;
 dol_banner_tab($object, 'ref', $linkback, $shownav, 'ref');
 $object->label = $labelGenerationLabel;
 
-print '<div class="fichecenter kreaLabelsLayout"><div class="fichehalfleft fichehalfleft-lg">';
+print '<div class="fichecenter kreaLabelsContainer"><div class="kreaLabelsLayout">';
+print '<div class="kreaLabelPreview">';
+print load_fiche_titre($langs->trans('KREAPRODUCTS_LABELS_PREVIEW'));
+print '<div id="krea-label-template-preview-box" class="border" style="padding: 12px; margin-bottom: 18px;">';
+print '<div id="krea-label-template-preview-empty"' . ($previewHasContent ? ' style="display:none;"' : '') . '>';
+print '<span class="warning" id="krea-label-template-preview-empty-message">' . dol_escape_htmltag($previewEmptyMessage) . '</span>';
+print '</div>';
+print '<div id="krea-label-template-preview-content"' . (!$previewHasContent ? ' style="display:none;"' : '') . '>';
+print '<div class="small opacitymedium" id="krea-label-template-preview-name">' . dol_escape_htmltag($previewName) . '</div>';
+print '<div class="opacitymedium small" id="krea-label-template-preview-description" style="margin-top: 6px;">' . dol_escape_htmltag($previewDescription) . '</div>';
+print '<div class="opacitymedium small" id="krea-label-template-preview-size" style="margin-top: 4px;">' . dol_escape_htmltag($previewSizeText) . '</div>';
+print '<div id="krea-label-template-preview-pages" style="margin-top: 12px;">' . (!$isStandardMode ? kreaProductsRenderTemplateViewerPages($selectedTemplateViewer) : '') . '</div>';
+print '</div>';
+print '</div>';
+print '</div><div class="kreaLabelSettings">';
 print '<form method="POST" enctype="multipart/form-data" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . $object->id . '">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<input type="hidden" id="krea-label-form-action" name="action" value="generate_labels">';
@@ -1393,20 +1415,7 @@ if ($permissiontowrite && (!$isStandardMode || !empty($formatOptions))) {
 }
 print '</div>';
 print '</form>';
-print '</div><div class="fichehalfright fichehalfright-lg">';
-
-print load_fiche_titre($langs->trans('KREAPRODUCTS_LABELS_PREVIEW'));
-print '<div id="krea-label-template-preview-box" class="border" style="padding: 12px; margin-bottom: 18px;">';
-print '<div id="krea-label-template-preview-empty"' . ($previewHasContent ? ' style="display:none;"' : '') . '>';
-print '<span class="warning" id="krea-label-template-preview-empty-message">' . dol_escape_htmltag($previewEmptyMessage) . '</span>';
-print '</div>';
-print '<div id="krea-label-template-preview-content"' . (!$previewHasContent ? ' style="display:none;"' : '') . '>';
-print '<div class="small opacitymedium" id="krea-label-template-preview-name">' . dol_escape_htmltag($previewName) . '</div>';
-print '<div class="opacitymedium small" id="krea-label-template-preview-description" style="margin-top: 6px;">' . dol_escape_htmltag($previewDescription) . '</div>';
-print '<div class="opacitymedium small" id="krea-label-template-preview-size" style="margin-top: 4px;">' . dol_escape_htmltag($previewSizeText) . '</div>';
-print '<div id="krea-label-template-preview-pages" style="margin-top: 12px;">' . (!$isStandardMode ? kreaProductsRenderTemplateViewerPages($selectedTemplateViewer) : '') . '</div>';
-print '</div>';
-print '</div>';
+print '</div><div class="kreaLabelLibrary">';
 
 print load_fiche_titre($langs->trans('KREAPRODUCTS_LABELS_DOCUMENTS'));
 $delallowed = $permissiontowrite;
@@ -1448,7 +1457,7 @@ print $formfile->showdocuments('kreaproducts', $templateModuleSubdir, $templateD
 print load_fiche_titre($langs->trans('KREAPRODUCTS_LABELS_ASSET_DOCUMENTS'));
 print $formfile->showdocuments('kreaproducts', $templateAssetModuleSubdir, $templateAssetDir, $urlSourceWithTemplate, 0, $delallowed, '', 0, 1, 0, 48, 1, '', '');
 
-print '</div></div>';
+print '</div></div></div>';
 
 if (!empty($templateOptions) || !empty($formatDetails)) {
 	print '<script nonce="' . getNonce() . '">';

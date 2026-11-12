@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.8] - 2026-11-12
+
+### Changed
+
+- Keep label settings and preview side by side, with preview first on narrow screens.
+
 ## [4.24.7] - 2026-11-12
 
 ### Changed
