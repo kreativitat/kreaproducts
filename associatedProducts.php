@@ -2333,14 +2333,14 @@ if ($id > 0 || !empty($ref)) {
 			print '<form action="' . DOL_URL_ROOT . '/custom/kreaproducts/associatedProducts.php?id=' . $id . '" method="POST">';
 			print '<input type="hidden" name="action" value="search">';
 			print '<input type="hidden" name="id" value="' . $id . '">';
-			print '<div class="inline-block">';
+			print '<div class="inline-block marginbottomonly">';
 			print '<input type="hidden" name="token" value="' . newToken() . '">';
 			print $langs->trans("KeywordFilter") . ': ';
 			print '<input type="text" name="key" value="' . $key . '"> &nbsp; ';
 			print '</div>';
 			if (isModEnabled('categorie')) {
 				require_once DOL_DOCUMENT_ROOT . '/categories/class/categorie.class.php';
-				print '<div class="inline-block">' . $langs->trans("CategoryFilter") . ': ';
+				print '<div class="inline-block marginbottomonly">' . $langs->trans("CategoryFilter") . ': ';
 				print $form->select_all_categories(Categorie::TYPE_PRODUCT, $parent, 'parent') . ' &nbsp; </div>';
 				print ajax_combobox('parent');
 			}

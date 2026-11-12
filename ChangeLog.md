@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.6] - 2026-11-12
+
+### Fixed
+
+- Add spacing between the keyword and category search filters on technical sheets.
+
 ## [4.24.5] - 2026-11-12
 
 ### Changed
