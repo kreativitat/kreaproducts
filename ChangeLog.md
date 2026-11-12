@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.4] - 2026-11-12
+
+### Fixed
+
+- Prevent label settings from overlapping the preview and fit controls on narrow screens.
+
 ## [4.24.3] - 2026-11-12
 
 ### Removed

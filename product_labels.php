@@ -1261,20 +1261,31 @@ print '.kreaLabelViewerPage:first-child{margin-top:0;}';
 print '.kreaLabelViewerPageMeta{margin-bottom:6px;}';
 print '.kreaLabelViewerCanvas{border:1px solid #d8dee9;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);padding:10px;border-radius:6px;}';
 print '.kreaLabelViewerCanvas svg{display:block;width:100%;height:auto;max-width:320px;margin:0 auto;}';
-print '.kreaLabelConfigTable td{vertical-align:top;}';
+print '.kreaLabelConfigTable{table-layout:fixed;}';
+print '.kreaLabelConfigTable td{vertical-align:top;overflow-wrap:anywhere;}';
 print '.kreaLabelConfigTable .titlefield{vertical-align:top;padding-top:10px;}';
+print '.kreaLabelConfigTable .minwidth300{box-sizing:border-box;min-width:0;width:100%;max-width:100%;}';
+print '.kreaLabelConfigTable .select2-container{min-width:0;max-width:100%;}';
 print '.kreaLabelTemplateSelectorWrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}';
+print '.kreaLabelTemplateSelectorWrap>select,.kreaLabelTemplateSelectorWrap>.select2-container{flex:1 1 200px;}';
 print '.kreaLabelRefreshButton{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 8px;border:1px solid #d8dee9;border-radius:6px;background:#ffffff;cursor:pointer;}';
 print '.kreaLabelRefreshButton:hover{background:#f3f5f8;border-color:#c5cfda;}';
 print '.kreaLabelRefreshButton:focus{outline:2px solid #87b4ff;outline-offset:1px;}';
 print '.kreaLabelRefreshButton .fa,.kreaLabelRefreshButton .fas,.kreaLabelRefreshButton .far{font-size:14px;line-height:1;}';
 print '.kreaTemplateFieldsList{display:flex;flex-direction:column;gap:10px;}';
 print '.kreaTemplateFieldCard{border:1px solid #d8dee9;border-radius:6px;padding:10px;background:#fafbfd;}';
-print '.kreaTemplateFieldHeader{display:flex;align-items:center;gap:8px;}';
+print '.kreaTemplateFieldHeader{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}';
+print '.kreaTemplateFieldSave,.kreaTemplateFieldReset{flex-shrink:0;}';
 print '.kreaTemplateFieldSave,.kreaTemplateFieldReset{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 5px;border:1px solid #d8dee9;border-radius:4px;background:#ffffff;cursor:pointer;}';
 print '.kreaTemplateFieldSave:hover,.kreaTemplateFieldReset:hover{background:#f3f5f8;border-color:#c5cfda;}';
-print '.kreaTemplateImagePreviewWrap{margin-top:6px;}';
-print '.kreaTemplateImagePreview{display:block;max-width:180px;max-height:90px;border:1px solid #d8dee9;border-radius:4px;background:#fff;padding:2px;}';
+print '.kreaTemplateImagePreviewWrap{margin-top:6px;max-width:180px;}';
+print '.kreaTemplateImagePreview{display:block;box-sizing:border-box;max-width:100%;max-height:90px;border:1px solid #d8dee9;border-radius:4px;background:#fff;padding:2px;}';
+print '.kreaLabelsLayout input[type=file]{box-sizing:border-box;min-width:0;max-width:100%;}';
+print '@media(max-width:600px){';
+print '.kreaLabelConfigTable,.kreaLabelConfigTable tbody,.kreaLabelConfigTable tr,.kreaLabelConfigTable td{display:block;box-sizing:border-box;width:100%;}';
+// Override the native mobile theme's fixed 40px row height so stacked fields remain in flow.
+print 'div.tabBar table.kreaLabelConfigTable tr,div.tabBar table.kreaLabelConfigTable tr td{height:auto!important;}';
+print '.kreaLabelConfigTable .titlefield{min-width:0;}}';
 print '</style>';
 
 $head = product_prepare_head($object);
@@ -1295,7 +1306,7 @@ $object->label = $productCardLabel;
 dol_banner_tab($object, 'ref', $linkback, $shownav, 'ref');
 $object->label = $labelGenerationLabel;
 
-print '<div class="fichecenter"><div class="fichehalfleft">';
+print '<div class="fichecenter kreaLabelsLayout"><div class="fichehalfleft fichehalfleft-lg">';
 print '<form method="POST" enctype="multipart/form-data" action="' . dol_escape_htmltag($_SERVER['PHP_SELF']) . '?id=' . $object->id . '">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<input type="hidden" id="krea-label-form-action" name="action" value="generate_labels">';
@@ -1382,7 +1393,7 @@ if ($permissiontowrite && (!$isStandardMode || !empty($formatOptions))) {
 }
 print '</div>';
 print '</form>';
-print '</div><div class="fichehalfright">';
+print '</div><div class="fichehalfright fichehalfright-lg">';
 
 print load_fiche_titre($langs->trans('KREAPRODUCTS_LABELS_PREVIEW'));
 print '<div id="krea-label-template-preview-box" class="border" style="padding: 12px; margin-bottom: 18px;">';
