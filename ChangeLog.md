@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.9] - 2026-11-12
+
+### Changed
+
+- Increase product-list row spacing for better readability.
+
 ## [4.24.8] - 2026-11-12
 
 ### Changed

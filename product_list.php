@@ -358,7 +358,7 @@ llxHeader('', $title);
 
 print '<style>
 #kreaproducts-product-list { width: 100%; table-layout: auto; }
-#kreaproducts-product-list > tbody > tr.oddeven > td { height: auto; padding: 3px 5px; line-height: 1.25; vertical-align: middle; }
+#kreaproducts-product-list > tbody > tr.oddeven > td { height: auto; padding: 5px 5px; line-height: 1.25; vertical-align: middle; }
 #kreaproducts-product-list > tbody > tr.oddeven > td:not(.krea-product-label):not(.krea-product-stores) { width: 1%; white-space: nowrap; }
 #kreaproducts-product-list > tbody > tr.liste_titre > th { height: auto; padding: 6px 5px; line-height: 1.2; white-space: normal; max-width: none; overflow: visible; text-overflow: clip; }
 #kreaproducts-product-list > tbody > tr.liste_titre > th:not(.krea-product-label):not(.krea-product-stores) { width: 1%; }
