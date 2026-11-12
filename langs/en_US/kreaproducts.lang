@@ -699,11 +699,8 @@ spreadCostPrice = Propagate cost
 #
 # Product list and setup
 #
-KREAPRODUCTS_PRODUCT_REF_SUFFIXES = Product suffix filters
-KREAPRODUCTS_PRODUCT_REF_SUFFIXES_HELP = Comma-separated suffixes shown as checkboxes on the product list. Matching uses the last characters of the product label (example: RV,CF,IL). Leave empty to hide these filters.
 KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED = Show product margin column
 KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED_HELP = Show the margin percentage on the product list, calculated as selling price excluding VAT minus cost excluding VAT, divided by selling price excluding VAT.
-KREAPRODUCTS_PRODUCT_SUFFIX = Product suffix
 KREAPRODUCTS_PRODUCT_MARGIN_FORMULA = Margin percentage = (Price excl. VAT - Cost excl. VAT) / Price excl. VAT
 KREAPRODUCTS_TOTAL_STOCK = Total stock
 

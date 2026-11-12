@@ -65,36 +65,6 @@ $type = (string) GETPOST('type', 'int');
 if ($type !== '0' && $type !== '1') {
 	$type = '';
 }
-$configuredSuffixesCsv = isset($conf->global->KREAPRODUCTS_PRODUCT_REF_SUFFIXES) ? (string) $conf->global->KREAPRODUCTS_PRODUCT_REF_SUFFIXES : '';
-$configuredSuffixesCsv = trim($configuredSuffixesCsv);
-$availableProductSuffixes = array();
-if ($configuredSuffixesCsv !== '') {
-	foreach (explode(',', $configuredSuffixesCsv) as $rawSuffix) {
-		$suffix = strtolower(trim((string) $rawSuffix));
-		if ($suffix === '') {
-			continue;
-		}
-		if (!preg_match('/^[a-z0-9._-]+$/', $suffix)) {
-			continue;
-		}
-		$availableProductSuffixes[$suffix] = $suffix;
-	}
-	$availableProductSuffixes = array_values($availableProductSuffixes);
-}
-$search_product_suffixes = GETPOSTISARRAY('search_product_suffixes') ? GETPOST('search_product_suffixes', 'array') : array();
-$selectedProductSuffixes = array();
-if (!empty($search_product_suffixes) && !empty($availableProductSuffixes)) {
-	$availableSuffixLookup = array_fill_keys($availableProductSuffixes, true);
-	foreach ($search_product_suffixes as $rawSuffix) {
-		$suffix = strtolower(trim((string) $rawSuffix));
-		if ($suffix === '' || empty($availableSuffixLookup[$suffix])) {
-			continue;
-		}
-		$selectedProductSuffixes[$suffix] = $suffix;
-	}
-	$selectedProductSuffixes = array_values($selectedProductSuffixes);
-}
-
 $limit = GETPOSTINT('limit') ? GETPOSTINT('limit') : $conf->liste_limit;
 $sortfield = GETPOST('sortfield', 'aZ09comma');
 $sortorder = GETPOST('sortorder', 'aZ09comma');
@@ -119,7 +89,6 @@ if (GETPOST('button_removefilter', 'alpha') || GETPOST('button_removefilter_x', 
 	$search_tobuy = '';
 	$search_tosell = '';
 	$searchCategoryProductList = array();
-	$selectedProductSuffixes = array();
 	$searchCategoryProductOperator = 1;
 }
 
@@ -128,11 +97,6 @@ $param .= ($search_ref !== '' ? '&search_ref=' . urlencode($search_ref) : '');
 $param .= ($search_label !== '' ? '&search_label=' . urlencode($search_label) : '');
 $param .= ($search_tobuy !== '' ? '&search_tobuy=' . urlencode($search_tobuy) : '');
 $param .= ($search_tosell !== '' ? '&search_tosell=' . urlencode($search_tosell) : '');
-if (!empty($selectedProductSuffixes)) {
-	foreach ($selectedProductSuffixes as $suffixIndex => $suffixValue) {
-		$param .= '&search_product_suffixes[' . ((int) $suffixIndex) . ']=' . urlencode((string) $suffixValue);
-	}
-}
 if (!empty($searchCategoryProductList)) {
 	foreach ($searchCategoryProductList as $key => $valcat) {
 		$param .= '&search_category_product_list[' . $key . ']=' . urlencode((string) $valcat);
@@ -247,19 +211,6 @@ if ($search_tobuy !== '' && $search_tobuy !== '-1') {
 if ($search_tosell !== '' && $search_tosell !== '-1') {
 	$sql .= " AND p.tosell = " . ((int) $search_tosell);
 }
-if (!empty($selectedProductSuffixes)) {
-	$searchProductSuffixSqlList = array();
-	foreach ($selectedProductSuffixes as $suffix) {
-		$suffixLength = dol_strlen($suffix);
-		if ($suffixLength <= 0) {
-			continue;
-		}
-		$searchProductSuffixSqlList[] = "LOWER(RIGHT(TRIM(p.label), " . ((int) $suffixLength) . ")) = '" . $db->escape($suffix) . "'";
-	}
-	if (!empty($searchProductSuffixSqlList)) {
-		$sql .= " AND (" . implode(' OR ', $searchProductSuffixSqlList) . ")";
-	}
-}
 if (!empty($searchCategoryProductList)) {
 	$listofcategoryid = implode(',', array_map('intval', $searchCategoryProductList));
 	$searchCategoryProductSqlList = array();
@@ -357,9 +308,6 @@ $toggleParams = array(
 if (!empty($searchCategoryProductList)) {
 	$toggleParams['search_category_product_list'] = $searchCategoryProductList;
 }
-if (!empty($selectedProductSuffixes)) {
-	$toggleParams['search_product_suffixes'] = $selectedProductSuffixes;
-}
 $toggleUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleParams, '', '&', PHP_QUERY_RFC3986);
 $toggleLabel = $show_hidden ? $langs->trans('KreapHideHiddenProducts') : $langs->trans('KreapShowHiddenProducts');
 $toggleIcon = 'fa fa-toggle-' . ($show_hidden ? 'on' : 'off');
@@ -380,9 +328,6 @@ $toggleHideBackParams = array(
 );
 if (!empty($searchCategoryProductList)) {
 	$toggleHideBackParams['search_category_product_list'] = $searchCategoryProductList;
-}
-if (!empty($selectedProductSuffixes)) {
-	$toggleHideBackParams['search_product_suffixes'] = $selectedProductSuffixes;
 }
 $toggleHideBackUrl = $_SERVER['PHP_SELF'] . '?' . http_build_query($toggleHideBackParams, '', '&', PHP_QUERY_RFC3986);
 
@@ -409,20 +354,6 @@ if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
 	$moreforfilter .= Form::multiselectarray('search_category_product_list', $categoryArray, $searchCategoryProductList, 0, 0, 'minwidth300', 0, 0, '', '', $tmptitle);
 	$moreforfilter .= '</div>';
 }
-if (!empty($availableProductSuffixes)) {
-	$moreforfilter .= '<div class="divsearchfield">';
-	$moreforfilter .= img_picto($langs->transnoentitiesnoconv('Label'), 'filter', 'class="pictofixedwidth"');
-	$moreforfilter .= '<span class="opacitymedium marginrightonly">' . $langs->trans('KREAPRODUCTS_PRODUCT_SUFFIX') . '</span>';
-	foreach ($availableProductSuffixes as $suffix) {
-		$inputId = 'search_product_suffix_' . preg_replace('/[^a-z0-9_]/', '_', $suffix);
-		$checked = in_array($suffix, $selectedProductSuffixes, true) ? ' checked' : '';
-		$moreforfilter .= '<label class="nowrap marginrightonly" for="' . dol_escape_htmltag($inputId) . '">';
-		$moreforfilter .= '<input class="flat valignmiddle" type="checkbox" id="' . dol_escape_htmltag($inputId) . '" name="search_product_suffixes[]" value="' . dol_escape_htmltag($suffix) . '"' . $checked . '>';
-		$moreforfilter .= ' ' . dol_escape_htmltag(strtoupper($suffix)) . '</label>';
-	}
-	$moreforfilter .= '</div>';
-}
-
 llxHeader('', $title);
 
 print '<style>
@@ -468,8 +399,8 @@ if (!empty($leftmenu)) {
 
 
 
-// Categories/variants row just before filters
-if (!empty($moreforfilter)) {
+// Category filter and hidden-product toggle remain available independently.
+if (!empty($moreforfilter) || !empty($toggleUrl)) {
 	$colspan = 1;
 	foreach ($arrayfields as $val) {
 		if (!empty($val['checked'])) {

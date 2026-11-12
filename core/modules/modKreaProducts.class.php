@@ -81,7 +81,7 @@ class modKreaProducts extends DolibarrModules
         $this->editor_url = 'http://kreativitat.com';
 
         // Possible values for version are: 'development', 'experimental', 'dolibarr', 'dolibarr_deprecated', 'experimental_deprecated' or a version string like 'x.y.z'
-		$this->version = '4.24.2';
+		$this->version = '4.24.3';
         // Url to the file with your last numberversion of this module
         //$this->url_last_version = 'http://www.example.com/versionmodule.txt';
 
@@ -197,7 +197,6 @@ class modKreaProducts extends DolibarrModules
             15 => array('KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE', 'chaine', '1', '', 0, 'allentities', 1),
             16 => array('KREAPRODUCTION_ENABLE', 'chaine', '0', '', 0, 'allentities', 0),
             17 => array('KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS', 'chaine', '1', '', 0, 'allentities', 1),
-            18 => array('KREAPRODUCTS_PRODUCT_REF_SUFFIXES', 'chaine', '', '', 0, 'allentities', 0),
             19 => array('KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED', 'chaine', '0', '', 0, 'allentities', 0),
             20 => array('KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST', 'chaine', '0', '', 0, 'allentities', 0),
             21 => array('KREAPRODUCTS_STOCK_DEFAULT_WAREHOUSE_ID', 'integer', '0', 'Default warehouse used by the mobile counting application.', 0, 'current', 0),

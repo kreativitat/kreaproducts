@@ -710,11 +710,8 @@ MyPageName = Nome da minha página
 #
 # Lista de produtos e configuração
 #
-KREAPRODUCTS_PRODUCT_REF_SUFFIXES = Filtros de sufixo do produto
-KREAPRODUCTS_PRODUCT_REF_SUFFIXES_HELP = Lista de sufixos separados por vírgulas, apresentada como caixas de seleção na lista de produtos. A correspondência usa os últimos caracteres da designação do produto (exemplo: RV,CF,IL). Deixe em branco para ocultar estes filtros.
 KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED = Mostrar coluna de margem do produto
 KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED_HELP = Mostrar a percentagem de margem na lista de produtos, calculada como o preço de venda sem IVA menos o custo sem IVA, dividido pelo preço de venda sem IVA.
-KREAPRODUCTS_PRODUCT_SUFFIX = Sufixo do produto
 KREAPRODUCTS_PRODUCT_MARGIN_FORMULA = Percentagem de margem = (Preço s/ IVA - Custo s/ IVA) / Preço s/ IVA
 KREAPRODUCTS_TOTAL_STOCK = Stock total
 

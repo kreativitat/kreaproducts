@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.3] - 2026-11-12
+
+### Removed
+
+- Remove unused product suffix filters and their setup option.
+
 ## [4.24.2] - 2026-11-12
 
 ### Changed

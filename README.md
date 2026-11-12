@@ -102,7 +102,6 @@ KreaProducts can also update **selling price automatically** when the product **
 ### Productivity and lists
 
 - Simplified product list with an option to hide items.
-- Configurable product suffix filters on the product list using setup constant `KREAPRODUCTS_PRODUCT_REF_SUFFIXES`.
 - Optional product list margin column controlled by `KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED`.
 - Price simulator (Metrics and Markup) with test markup.
 - Stock movement list by product shows **total stock**.
@@ -143,7 +142,6 @@ KreaProducts can also update **selling price automatically** when the product **
 | `KREAPRODUCTS_SIM_ENABLE`                       | Enable the price simulator.                                        |
 | `KREAPRODUCTS_SIM_DEFAULT_MARKUP`               | Default simulator markup.                                          |
 | `KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST`   | Enable automatic selling-price update when cost changes.           |
-| `KREAPRODUCTS_PRODUCT_REF_SUFFIXES`             | Comma-separated suffixes used by product list filters.             |
 | `KREAPRODUCTS_PRODUCT_LIST_MARGIN_ENABLED`      | Show margin percentage column in product list.                     |
 | `KREAPRODUCTS_REPLACE_PRODUCT_LIST`             | Replace the standard product list.                                 |
 | `KREAPRODUCTS_DEBUG_LOG`                        | Enable KreaProducts debug logs.                                    |
