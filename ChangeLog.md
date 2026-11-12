@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.2] - 2026-11-12
+
+### Changed
+
+- Reduce product-name font size in the kit component table.
+
 ## [4.24.1] - 2026-11-12
 
 ### Fixed

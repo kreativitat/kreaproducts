@@ -2078,6 +2078,7 @@ if ($id > 0 || !empty($ref)) {
 				#tablelines .liste_titre > td { width: 1%; line-height: 1.3; }
 				#tablelines .liste_titre > .krea-label-col { width: auto; }
 				#tablelines .krea-label-col { min-width: 14em; white-space: normal; overflow-wrap: anywhere; }
+				#tablelines tr:not(.liste_titre) > .krea-label-col { font-size: 0.9em; }
 				#tablelines .krea-pos-col { padding-left: 6px; padding-right: 6px; }
 				#tablelines .krea-qty-input { width: 6.5em; box-sizing: border-box; }
 				#tablelines .krea-kreaplot-cell { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
