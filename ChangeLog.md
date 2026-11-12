@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.5] - 2026-11-12
+
+### Changed
+
+- Compact product-list rows and balance name, amount and status columns.
+
 ## [4.24.4] - 2026-11-12
 
 ### Fixed

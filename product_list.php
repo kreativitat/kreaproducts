@@ -357,6 +357,17 @@ if (isModEnabled('category') && $user->hasRight('categorie', 'read')) {
 llxHeader('', $title);
 
 print '<style>
+#kreaproducts-product-list { width: 100%; table-layout: auto; }
+#kreaproducts-product-list > tbody > tr.oddeven > td { height: auto; padding: 3px 5px; line-height: 1.25; vertical-align: middle; }
+#kreaproducts-product-list > tbody > tr.oddeven > td:not(.krea-product-label):not(.krea-product-stores) { width: 1%; white-space: nowrap; }
+#kreaproducts-product-list > tbody > tr.liste_titre > th { height: auto; padding: 6px 5px; line-height: 1.2; white-space: normal; max-width: none; overflow: visible; text-overflow: clip; }
+#kreaproducts-product-list > tbody > tr.liste_titre > th:not(.krea-product-label):not(.krea-product-stores) { width: 1%; }
+#kreaproducts-product-list > tbody > tr.liste_titre_filter > td { height: auto; padding-left: 5px; padding-right: 5px; }
+#kreaproducts-product-list .krea-product-label { width: auto; min-width: 16em; white-space: normal; overflow-wrap: anywhere; }
+#kreaproducts-product-list .krea-product-stores { width: 7em; min-width: 7em; }
+#kreaproducts-product-list .krea-product-status-filter { width: 4.5em; max-width: 4.5em; }
+#kreaproducts-product-list .kreaproducts-zsbms-pill { border-width: 0; }
+#kreaproducts-product-list .multicompany-entity-card-container { margin: 0; padding-top: 0; }
 .kreaproducts-zsbms-pills { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 2px; max-width: 150px; }
 .kreaproducts-zsbms-pill { border-radius: 999px; font-size: 0.62em; line-height: 1.1; padding: 0 4px; white-space: nowrap; }
 .kreaproducts-zsbms-pill-sale { background: #dff3e4 !important; color: #17652d !important; }
@@ -375,7 +386,7 @@ print_barre_liste($title, $page, $_SERVER["PHP_SELF"], $param, $sortfield, $sort
 print '<form id="searchFormList" action="' . $_SERVER["PHP_SELF"] . '" method="GET" name="formulaire">';
 
 print '<div class="div-table-responsive">';
-print '<table class="tagtable nobottomiftotal liste' . (!empty($moreforfilter) ? ' ' : '') . '">';
+print '<table id="kreaproducts-product-list" class="tagtable nobottomiftotal liste' . (!empty($moreforfilter) ? ' ' : '') . '">';
 
 if ($optioncss != '') {
 	print '<input type="hidden" name="optioncss" value="' . $optioncss . '">';
@@ -432,18 +443,18 @@ foreach ($arrayfields as $key => $val) {
 	}
 	switch ($key) {
 		case 'p.ref':
-			print '<td class="liste_titre left"><input class="flat width75" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
+			print '<td class="liste_titre left"><input class="flat width50" type="text" name="search_ref" value="' . dol_escape_htmltag($search_ref) . '"></td>';
 			break;
 		case 'p.label':
-			print '<td class="liste_titre left"><input class="flat" style="width: 100%; box-sizing: border-box;" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
+			print '<td class="liste_titre left krea-product-label"><input class="flat" style="width: 100%; box-sizing: border-box;" type="text" name="search_label" value="' . dol_escape_htmltag($search_label) . '"></td>';
 			break;
 		case 'p.tobuy':
-			$selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
-			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+			$selectBuy = array('-1' => '&nbsp;', '0' => $langs->trans('No'), '1' => $langs->trans('Yes'));
+			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tobuy', $selectBuy, $search_tobuy, 0, 0, 0, '', 0, 0, 0, '', 'maxwidth75 onrightofpage krea-product-status-filter', 1) . '</td>';
 			break;
 		case 'p.tosell':
-			$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('Status') . ' (OFF)', '1' => $langs->trans('Status') . ' (ON)');
-			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', '', 1) . '</td>';
+			$selectSell = array('-1' => '&nbsp;', '0' => $langs->trans('No'), '1' => $langs->trans('Yes'));
+			print '<td class="liste_titre center parentonrightofpage">' . $form->selectarray('search_tosell', $selectSell, $search_tosell, 0, 0, 0, '', 0, 0, 0, '', 'maxwidth75 onrightofpage krea-product-status-filter', 1) . '</td>';
 			break;
 		default:
 			print '<td class="liste_titre">&nbsp;</td>';
@@ -463,6 +474,11 @@ foreach ($arrayfields as $key => $val) {
 			$align = 'center nowrap ';
 		} elseif ($key === 'p.tobuy' || $key === 'p.tosell' || $key === 'kreap_hideproduct') {
 			$align = 'center ';
+		}
+		if ($key === 'p.label') {
+			$align .= 'krea-product-label ';
+		} elseif ($key === 'zsbms_entities') {
+			$align .= 'krea-product-stores ';
 		}
 		if ($key === 'margin_without_vat' || $key === 'zsbms_entities' || $key === 'sell_price_2' || $key === 'sell_price_2_ttc') {
 			print '<th class="' . trim($align . 'liste_titre') . '">' . dol_escape_htmltag($val['label']) . '</th>';
@@ -526,7 +542,7 @@ while ($i < min($num, $limit)) {
 				print '<td>' . $link . '</td>';
 				break;
 			case 'p.label':
-				print '<td>' . dol_escape_htmltag($obj->label) . '</td>';
+				print '<td class="krea-product-label">' . dol_escape_htmltag($obj->label) . '</td>';
 				break;
 			case 'sell_price':
 				print '<td class="right">' . price($priceExclVat) . '</td>';
@@ -577,7 +593,7 @@ while ($i < min($num, $limit)) {
 						}
 					}
 				}
-				print '<td class="center"><div class="kreaproducts-zsbms-pills">';
+				print '<td class="center krea-product-stores"><div class="kreaproducts-zsbms-pills">';
 				if (empty($zsbmsLabels)) {
 					print '<span class="opacitymedium">-</span>';
 				} else {
