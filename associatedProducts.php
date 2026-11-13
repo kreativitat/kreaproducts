@@ -2564,11 +2564,15 @@ if ($id > 0 || !empty($ref)) {
 			if (count($componentsByBom) > 0) {
 				if (empty($GLOBALS['KREAPRODUCTS_MRP_COMPONENTS_TABLE_STYLE_PRINTED'])) {
 					print '<style>
+							.krea-mrp-components-table { table-layout: auto; width: 100%; }
+							.krea-mrp-components-table > tbody > tr > td { padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+							.krea-mrp-components-table .liste_titre > td { width: 1%; line-height: 1.3; }
+							.krea-mrp-components-table .liste_titre > .krea-label-col { width: auto; }
+							.krea-mrp-components-table .krea-label-col { min-width: 14em; white-space: normal; overflow-wrap: anywhere; }
+							.krea-mrp-components-table tr:not(.liste_titre) > .krea-label-col { font-size: 0.9em; }
+							.krea-mrp-components-table .krea-pos-col { padding-left: 6px; padding-right: 6px; }
 							@media (max-width: 768px) {
-								.krea-mrp-components-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-								.krea-mrp-components-table { table-layout: auto !important; }
-								.krea-mrp-components-table .krea-pos-col { width: 34px !important; min-width: 28px !important; max-width: 40px !important; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
-								.krea-mrp-components-table .krea-label-col { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; word-break: break-word; }
+								.krea-mrp-components-table .krea-label-col { min-width: 12em; }
 							}
 							.krea-bom-title-link,
 							.krea-bom-title-link:link,
@@ -2609,7 +2613,6 @@ if ($id > 0 || !empty($ref)) {
 					$translated = $langs->trans($key);
 					return ($translated === $key) ? $fallback : $translated;
 				};
-				$headerCellStyle = 'white-space: nowrap; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;';
 				$headerPosLabel = $getShortLabel('KreapHeaderPosShort', 'Pos.');
 				$headerChildLabel = $getShortLabel('KreapHeaderChildShort', 'Ref.');
 				$headerNameLabel = $getShortLabel('KreapHeaderLabelShort', 'Nome');
@@ -2619,23 +2622,6 @@ if ($id > 0 || !empty($ref)) {
 				$headerComponentCostLabel = $getShortLabel('KreapComponentCostShort', 'Custo comp.');
 				$showKreaProductionMoColumn = (!empty($conf->global->KREAPRODUCTION_ENABLE));
 				$hasStockColumn = isModEnabled('stock');
-				$mrpNameMinWidth = '300px';
-				if ($showKreaProductionMoColumn && $hasStockColumn) {
-					$mrpNameMinWidth = '240px';
-				} elseif ($showKreaProductionMoColumn || $hasStockColumn) {
-					$mrpNameMinWidth = '270px';
-				}
-				$mrpWidths = array(
-					'pos' => '44px',
-					'ref' => '104px',
-					'name_min' => $mrpNameMinWidth,
-					'ingredient_cost' => '116px',
-					'stock' => '88px',
-					'qty' => '76px',
-					'weight_kg' => '96px',
-					'component_cost' => '122px',
-					'kreap_lot' => '88px',
-				);
 
 				foreach ($componentsByBom as $bomData) {
 					$bomId = (int) $bomData['bom_id'];
@@ -2649,23 +2635,23 @@ if ($id > 0 || !empty($ref)) {
 					$title .= ' <a class="krea-bom-title-link" href="' . $bomUrl . '" target="_blank" rel="noopener noreferrer">' . dol_escape_htmltag($bomLabelForTitle) . '</a>';
 					print load_fiche_titre($title, '', '');
 
-					print '<div class="krea-mrp-components-wrap">';
-					print '<table class="krea-mrp-components-table liste nobottom" style="table-layout: fixed; width: 100%;">';
+					print '<div class="div-table-responsive-no-min krea-mrp-components-wrap">';
+					print '<table id="krea-mrp-components-' . $bomId . '" class="krea-mrp-components-table liste nobottom">';
 					print '<tr class="liste_titre">';
-					print '<td class="krea-pos-col" style="width:' . $mrpWidths['pos'] . '; ' . $headerCellStyle . '">' . $headerPosLabel . '</td>';
-					print '<td style="width:' . $mrpWidths['ref'] . '; ' . $headerCellStyle . '">' . $headerChildLabel . '</td>';
-					print '<td class="krea-label-col" style="min-width:' . $mrpWidths['name_min'] . '; ' . $headerCellStyle . '">' . $headerNameLabel . '</td>';
-					print '<td class="right" style="width:' . $mrpWidths['ingredient_cost'] . '; ' . $headerCellStyle . '">' . $headerIngredientCostLabel . '</td>';
+					print '<td class="krea-pos-col">' . $headerPosLabel . '</td>';
+					print '<td>' . $headerChildLabel . '</td>';
+					print '<td class="krea-label-col">' . $headerNameLabel . '</td>';
+					print '<td class="right">' . $headerIngredientCostLabel . '</td>';
 					if ($hasStockColumn) {
-						print '<td class="right" style="width:' . $mrpWidths['stock'] . '; ' . $headerCellStyle . '">' . $langs->trans('Stock') . '</td>';
+						print '<td class="right">' . $langs->trans('Stock') . '</td>';
 					}
-						print '<td class="center" style="width:' . $mrpWidths['qty'] . '; ' . $headerCellStyle . '">' . $headerQtyLabel . '</td>';
-						print '<td class="right" style="width:' . $mrpWidths['weight_kg'] . '; ' . $headerCellStyle . '">' . $headerWeightKgLabel . '</td>';
-						print '<td class="right" style="width:' . $mrpWidths['component_cost'] . '; ' . $headerCellStyle . '">' . $headerComponentCostLabel . '</td>';
+						print '<td class="center">' . $headerQtyLabel . '</td>';
+						print '<td class="right">' . $headerWeightKgLabel . '</td>';
+						print '<td class="right">' . $headerComponentCostLabel . '</td>';
 						if ($showKreaProductionMoColumn) {
 							$headerKreaLotShort = $getShortLabel('KreapHeaderShowInMoWord', 'Lote');
 							$headerKreaLot = $form->textwithpicto($headerKreaLotShort, $langs->trans('kreap_lot_help'));
-							print '<td class="center" style="width:' . $mrpWidths['kreap_lot'] . '; ' . $headerCellStyle . '">' . $headerKreaLot . '</td>';
+							print '<td class="center">' . $headerKreaLot . '</td>';
 						}
 						print '</tr>';
 

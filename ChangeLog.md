@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [4.24.10] - 2026-11-13
+
+### Changed
+
+- Match MRP component column widths and name text size to the kit table.
+
 ## [4.24.9] - 2026-11-12
 
 ### Changed

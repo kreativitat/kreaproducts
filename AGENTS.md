@@ -5,6 +5,10 @@ the module root, `class/`, `lib/` and `core/`; the stock PWA lives in `stockapp/
 The descriptor declares PHP 7.3+ / Dolibarr 19+. Verify API behavior against the
 target installation; current integration work targets Dolibarr 24.0.2.
 
+- Technical-sheet MRP tables follow the kit components table in
+  `associatedProducts.php`: content-sized numeric columns, flexible names at
+  90% body text size, and native responsive wrappers. Follow the installed
+  [Dolibarr table guidance](https://fin.degema.pt/admin/tools/ui/content/tables.php).
 - Preserve native Product, Nutritional, ProductAllergens, supplier-price and MRP
   lifecycles, triggers, permissions and parent-based entity sharing. Never treat
   visibility of a shared catalog product as permission to modify its owner.
