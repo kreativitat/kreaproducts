@@ -3,6 +3,8 @@
 
 ## [Unreleased]
 
+## [4.24.11] - 2026-11-15
+
 ### Fixed
 
 - Supplier-invoice price sync now binds and verifies the native supplier-price ID, locks the supplier before its price rows, keeps the saved reference, VAT flags, barcode and currency metadata, and reads the row back.
