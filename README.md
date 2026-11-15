@@ -6,6 +6,18 @@ KreaProducts is an advanced product management module for [Dolibarr ERP/CRM](htt
 
 KreaProducts also provides optional AI-assisted nutrition and allergen suggestions through OpenAI, Anthropic, OpenRouter, or private Ollama. Suggestions remain reviewable, allergen declarations are based only on product evidence, and nothing is saved without explicit user confirmation.
 
+## Product tour
+
+**Recipes, costs and nutrition in one workspace.** See the components behind each product, understand its food cost, and review nutrition and allergens alongside the recipe.
+
+![KreaProducts technical sheet with component costs, calculated nutrition and allergens](img/screenshot_1.png)
+
+**Turn product information into ready-to-print labels.** Configure the label fields and review both sides of the label before generating output.
+
+![KreaProducts label settings beside front and back label previews](img/screenshot_2.png)
+
+*Current interface excerpts with illustrative demo data. The module follows your Dolibarr theme and permissions.*
+
 ## Recent release highlights
 
 - One coherent Nutrition and allergens workspace with a shared selector for entered data, calculated data, or non-food products.
@@ -200,9 +212,3 @@ The batch endpoint accepts the same optional `warehouse_id`. It validates each i
 ## Disclaimer
 
 Nutrition and allergen data is entered by the user or derived from their inputs and is not verified. It is provided for informational purposes only and does not constitute medical, dietary, or regulatory advice. The user is solely responsible for accuracy, labeling, and compliance with applicable laws. This module is provided "as is", without warranties of any kind, express or implied, including merchantability and fitness for a particular purpose. To the maximum extent permitted by law, the authors and distributors are not liable for any direct or indirect damages arising from the use of the data or the software.
-
-## Screenshots
-
-![KreaProducts - Screen 1](img/screenshot_1.png)
-
-![KreaProducts - Screen 2](img/screenshot_2.png)

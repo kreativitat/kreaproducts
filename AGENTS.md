@@ -5,6 +5,8 @@ the module root, `class/`, `lib/` and `core/`; the stock PWA lives in `stockapp/
 The descriptor declares PHP 7.3+ / Dolibarr 19+. Verify API behavior against the
 target installation; current integration work targets Dolibarr 24.0.2.
 
+- Keep root `VERSION`, the module descriptor and released changelog version aligned.
+
 - Technical-sheet MRP tables follow the kit components table in
   `associatedProducts.php`: content-sized numeric columns, flexible names at
   90% body text size, and native responsive wrappers. Follow the installed

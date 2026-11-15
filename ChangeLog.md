@@ -20,6 +20,8 @@
 ### Added
 
 - Add isolated hide-product regressions and PHP lint, test and stock-app build CI.
+- Include a root VERSION file in release packages.
+- Refresh README product images with the current interface and illustrative demo data.
 
 ### Notes
 

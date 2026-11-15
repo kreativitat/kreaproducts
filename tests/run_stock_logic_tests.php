@@ -310,6 +310,7 @@ assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.hist
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
 assertSameValue(1, preg_match('/\$this->version\s*=\s*[\'\"]([^\'\"]+)[\'\"]\s*;/', (string) $moduleSource, $moduleVersion), 'The module descriptor must declare its version.');
 assertSameValue(1, preg_match('/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/D', $moduleVersion[1]), 'The module version must be valid x.y.z.');
+assertSameValue($moduleVersion[1], trim((string) file_get_contents(__DIR__.'/../VERSION')), 'The distributed VERSION file must match the module descriptor.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', 'chaine', '23:00'") !== false, 'New inventory creation must reopen at 23:00 by default.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:30', '', 0, 'allentities', 0") !== false, 'Supplier receipt time must default to 10:30 and survive module reactivation.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '06:00', '', 0, 'allentities', 0") !== false, 'The legacy inventory-time constant must survive module reactivation.');

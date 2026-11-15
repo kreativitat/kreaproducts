@@ -1,0 +1,147 @@
+<!doctype html>
+<!-- Copyright (C) 2026 Kreativität Works <mail@kreativitat.com> — GPL-3.0-or-later -->
+<html lang="en" data-view="workspace">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KreaProducts — product showcase</title>
+  <script>
+    document.documentElement.dataset.view = new URLSearchParams(location.search).get('view') === 'labels' ? 'labels' : 'workspace';
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #112b35;
+      --muted: #526c73;
+      --teal: #087f72;
+      --paper: #f1f5f2;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #dce6e2; overflow: hidden; }
+    .showcase {
+      position: relative;
+      width: 1600px;
+      height: 1160px;
+      padding: 42px 58px 28px;
+      overflow: hidden;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .showcase::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 8px;
+      background: var(--teal);
+    }
+    .workspace, .labels { display: none; }
+    html[data-view="workspace"] .workspace,
+    html[data-view="labels"] .labels { display: block; }
+    .brand-row { display: flex; align-items: center; justify-content: space-between; height: 45px; }
+    .brand { display: flex; align-items: center; gap: 13px; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      border-radius: 11px;
+    }
+    .brand-mark img { width: 31px; height: 26px; object-fit: contain; }
+    .brand-name { font-size: 29px; font-weight: 730; letter-spacing: -.9px; }
+    .brand-name span { color: var(--teal); }
+    .platform {
+      padding: 10px 17px;
+      border: 1px solid #c5d6ce;
+      border-radius: 30px;
+      color: #355c57;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .1px;
+    }
+    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 45px; margin: 29px 0 27px; }
+    h1 { margin: 0; font-size: 51px; line-height: 1.075; letter-spacing: -2px; font-weight: 720; }
+    h1 em { color: var(--teal); font-style: normal; }
+    .intro-copy { width: 480px; padding-bottom: 3px; }
+    .intro-copy p { margin: 0 0 16px; font-size: 19px; line-height: 1.45; color: var(--muted); }
+    .features { display: flex; flex-wrap: wrap; gap: 7px 18px; margin: 0; padding: 0; list-style: none; }
+    .features li { color: #335b55; font-size: 13px; font-weight: 650; white-space: nowrap; }
+    .features li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 7px 2px 0; border-radius: 50%; background: var(--teal); }
+    .app-window {
+      margin: 0;
+      height: 821px;
+      background: white;
+      border: 1px solid #c9d6d0;
+      border-radius: 15px;
+      box-shadow: 0 15px 38px #113b2c12, 0 2px 7px #113b2c08;
+      overflow: hidden;
+    }
+    .window-bar { height: 39px; padding: 0 16px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #e2e8e4; background: #fbfcfb; }
+    .window-dots { display: flex; align-items: center; gap: 5px; }
+    .window-dots i { width: 7px; height: 7px; border-radius: 50%; background: #b9ccc2; }
+    .window-dots i:first-child { background: #87b5a3; }
+    .window-title { color: #5c736a; font-size: 11px; font-weight: 600; letter-spacing: .25px; }
+    .capture-stage { height: 780px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff; }
+    .capture { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+    .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 19px; font-size: 11px; color: #6a7e74; letter-spacing: .25px; }
+    .maker { color: #3e5c4e; font-weight: 700; letter-spacing: 1.5px; }
+    .footer-note { display: flex; align-items: center; gap: 15px; }
+    .footer-note span + span::before { content: "·"; margin-right: 15px; }
+    .labels { background: #eff4f5; }
+    .labels::before { background: #214b61; }
+    .labels h1 em { color: #214b61; }
+    .labels .brand-name span { color: #214b61; }
+    .labels .features li::before { background: #214b61; }
+    .labels .platform { border-color: #c8d6dc; color: #365d70; }
+    .labels .features li { color: #365d70; }
+    @media print {
+      @page { size: 1600px 1160px; margin: 0; }
+      body { background: white; }
+      .showcase { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="showcase workspace" aria-labelledby="workspace-title">
+      <header class="brand-row">
+        <div class="brand"><span class="brand-mark"><img src="../../img/kreaproducts.png" alt=""></span><div class="brand-name">Krea<span>Products</span></div></div>
+        <div class="platform">Built for Dolibarr ERP/CRM</div>
+      </header>
+      <div class="intro">
+        <h1 id="workspace-title">Your product knowledge.<br><em>One connected workspace.</em></h1>
+        <div class="intro-copy">
+          <p>Bring recipes, nutrition and product costs together, where your team works.</p>
+          <ul class="features" aria-label="Workspace features"><li>Recipes &amp; components</li><li>Nutrition &amp; allergens</li><li>Food cost visibility</li></ul>
+        </div>
+      </div>
+      <figure class="app-window">
+        <figcaption class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">KreaProducts / Product workspace</span></figcaption>
+        <div class="capture-stage"><img class="capture" src="capture-workspace.jpg" alt="KreaProducts technical sheet showing components, costs, nutrition and allergens with illustrative demo data."></div>
+      </figure>
+      <footer class="footer"><span class="maker">KREATIVITÄT WORKS</span><span class="footer-note"><span>Native Dolibarr workflow</span><span>Illustrative demo data</span></span></footer>
+    </section>
+    <section class="showcase labels" aria-labelledby="labels-title">
+      <header class="brand-row">
+        <div class="brand"><span class="brand-mark"><img src="../../img/kreaproducts.png" alt=""></span><div class="brand-name">Krea<span>Products</span></div></div>
+        <div class="platform">Built for Dolibarr ERP/CRM</div>
+      </header>
+      <div class="intro">
+        <h1 id="labels-title">From product data<br><em>to labels ready to print.</em></h1>
+        <div class="intro-copy">
+          <p>Set up your product label and see its preview in the same workspace.</p>
+          <ul class="features" aria-label="Label features"><li>Visual label previews</li><li>Product information</li><li>PDF &amp; thermal output</li></ul>
+        </div>
+      </div>
+      <figure class="app-window">
+        <figcaption class="window-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="window-title">KreaProducts / Product labels</span></figcaption>
+        <div class="capture-stage"><img class="capture" src="capture-labels.jpg" alt="KreaProducts label workspace with settings and label preview, using illustrative demo data."></div>
+      </figure>
+      <footer class="footer"><span class="maker">KREATIVITÄT WORKS</span><span class="footer-note"><span>Preview before printing</span><span>Illustrative demo data</span></span></footer>
+    </section>
+  </main>
+</body>
+</html>
