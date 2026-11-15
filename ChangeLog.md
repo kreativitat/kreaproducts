@@ -12,6 +12,16 @@
 - Invoice cost uses exact line totals instead of a re-multiplied rounded unit cost.
 - Cost cascades started directly (stock dismantling, purchase-price page) no longer restart themselves while saving a dependent, which skipped other branches of the tree.
 - Large cost cascades (100+ products or 5+ seconds) are logged with their size and duration.
+- Scope hide-product writes to visible shared products and reject external redirects.
+- Remove stale stock-test version pins and support external Dolibarr label-test roots.
+
+### Added
+
+- Add isolated hide-product regressions and PHP lint, test and stock-app build CI.
+
+### Notes
+
+- The food-setup API remains owner-entity-only, unlike UI/AJAX shared-catalogue edits, pending an owner decision.
 
 ## [4.24.10] - 2026-11-13
 
