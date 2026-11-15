@@ -5,7 +5,11 @@
 
 // Uses the installed TCPDF and native label parent, without bootstrapping Dolibarr.
 // Usage: php tests/run_label_rendering_tests.php [Dolibarr document root] [artifact directory]
-define('DOL_DOCUMENT_ROOT', isset($argv[1]) ? $argv[1] : dirname(__DIR__, 3));
+define('DOL_DOCUMENT_ROOT', isset($argv[1]) ? $argv[1] : (getenv('DOL_DOCUMENT_ROOT') ?: dirname(__DIR__, 3)));
+if (!is_file(DOL_DOCUMENT_ROOT.'/core/modules/printsheet/doc/pdf_tcpdflabel.class.php')) {
+    fwrite(STDERR, 'Dolibarr label core not found at '.DOL_DOCUMENT_ROOT.'. Pass the htdocs path as argv[1] or set DOL_DOCUMENT_ROOT.'.PHP_EOL);
+    exit(1);
+}
 define('MAIN_DB_PREFIX', 'test_');
 define('K_TCPDF_EXTERNAL_CONFIG', true);
 define('K_TCPDF_THROW_EXCEPTION_ERROR', true);

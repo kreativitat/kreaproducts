@@ -308,7 +308,8 @@ assertSameValue(false, strpos((string) $mobileInventoryAppSource, 'Boolean(templ
 assertSameValue(true, strpos((string) $mobileInventoryAppSource, 'inventory.history_locked === 1') !== false, 'Mobile must explain permanently locked recorded history.');
 
 $moduleSource = file_get_contents(__DIR__.'/../core/modules/modKreaProducts.class.php');
-assertSameValue(true, strpos((string) $moduleSource, "\$this->version = '4.22.9'") !== false, 'The module descriptor must use the audited release version.');
+assertSameValue(1, preg_match('/\$this->version\s*=\s*[\'\"]([^\'\"]+)[\'\"]\s*;/', (string) $moduleSource, $moduleVersion), 'The module descriptor must declare its version.');
+assertSameValue(1, preg_match('/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/D', $moduleVersion[1]), 'The module version must be valid x.y.z.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_ENTRY_REOPEN_TIME', 'chaine', '23:00'") !== false, 'New inventory creation must reopen at 23:00 by default.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_SUPPLIER_MOVE_TIME', 'chaine', '10:30', '', 0, 'allentities', 0") !== false, 'Supplier receipt time must default to 10:30 and survive module reactivation.');
 assertSameValue(true, strpos((string) $moduleSource, "'KREAPRODUCTS_INVENTORY_DEFAULT_TIME', 'chaine', '06:00', '', 0, 'allentities', 0") !== false, 'The legacy inventory-time constant must survive module reactivation.');
@@ -945,9 +946,11 @@ assertSameValue(true, strpos((string) $inventoryRunnerSource, "c.objectname = 'K
 
 $mobilePackage = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package.json'), true);
 $mobilePackageLock = json_decode((string) file_get_contents(__DIR__.'/../stockapp/package-lock.json'), true);
-assertSameValue('4.22.9', $mobilePackage['version'] ?? '', 'The mobile package version must match the module release.');
-assertSameValue('4.22.9', $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the module release.');
-assertSameValue('4.22.9', $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the module release.');
+$mobileVersion = $mobilePackage['version'] ?? '';
+$semverPattern = '/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/D';
+assertSameValue(1, preg_match($semverPattern, $mobileVersion), 'The independently versioned mobile package must use valid semver.');
+assertSameValue($mobileVersion, $mobilePackageLock['version'] ?? '', 'The mobile lockfile version must match the mobile package.');
+assertSameValue($mobileVersion, $mobilePackageLock['packages']['']['version'] ?? '', 'The mobile lockfile root package must match the mobile package.');
 
 $dismantleSource = file_get_contents(__DIR__.'/../class/productDismantle.class.php');
 assertSameValue(true, strpos((string) $dismantleSource, 'createDismantleStockMovement') !== false, 'Dismantling must use its dedicated stock movement boundary.');

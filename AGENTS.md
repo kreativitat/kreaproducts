@@ -10,8 +10,10 @@ target installation; current integration work targets Dolibarr 24.0.2.
   90% body text size, and native responsive wrappers. Follow the installed
   [Dolibarr table guidance](https://fin.degema.pt/admin/tools/ui/content/tables.php).
 - Preserve native Product, Nutritional, ProductAllergens, supplier-price and MRP
-  lifecycles, triggers, permissions and parent-based entity sharing. Never treat
-  visibility of a shared catalog product as permission to modify its owner.
+  lifecycles, triggers, permissions and parent-based entity sharing. The Degema
+  group shares one product catalogue across almost all entities: shared products
+  may be edited from any entity that sees them via `getEntity('product')`.
+  A write path must never skip entity scoping entirely.
 - REST routes live in `class/api_kreaproducts.class.php`. The food-setup workflow
   is isolated in `class/KreaProductsFoodSetupService.class.php`; it preserves
   missing declarations, saved decimal text and omitted values/relationships.

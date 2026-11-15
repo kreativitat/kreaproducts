@@ -58,8 +58,14 @@ $langs->load('kreaproducts@kreaproducts');
 $action = GETPOST('action', 'aZ09');
 $id = GETPOSTINT('id');
 $value = GETPOSTINT('value');
-$backtopage = dol_sanitizeUrl(GETPOST('backtopage', 'alphanohtml'), 1);
-$backtopage = ($backtopage !== '' && strpos($backtopage, '/') === 0) ? $backtopage : '';
+$backtopage = GETPOST('backtopage', 'alphanohtml');
+$isInternalPath = static function ($path) {
+	return strlen($path) > 1 && $path[0] === '/' && $path[1] !== '/' && $path[1] !== '\\'
+		&& !preg_match('/[a-z][a-z0-9+.-]*:/i', $path);
+};
+// Validate before sanitizing, which can erase schemes or normalize backslashes.
+$backtopage = $isInternalPath($backtopage) ? dol_sanitizeUrl($backtopage, 1) : '';
+$backtopage = $isInternalPath($backtopage) ? $backtopage : '';
 $token = GETPOST('token', 'alpha');
 
 if (empty($token) || (!hash_equals(currentToken(), $token) && !hash_equals(newToken(), $token))) {
@@ -80,7 +86,9 @@ if ($action !== 'set' || $id <= 0 || ($value !== 0 && $value !== 1)) {
 
 $product = new Product($db);
 $fetchRes = $product->fetch($id);
-if ($fetchRes <= 0) {
+$entityIds = preg_split('/\s*,\s*/', (string) getEntity('product'), -1, PREG_SPLIT_NO_EMPTY);
+$entityIds = array_map('intval', $entityIds);
+if ($fetchRes <= 0 || !in_array((int) $product->entity, $entityIds, true)) {
 	top_httphead('application/json');
 	http_response_code(404);
 	print json_encode(array('status' => 'error', 'message' => $langs->trans('KreapProductNotFound', $id)));

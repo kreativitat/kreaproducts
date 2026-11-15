@@ -3,6 +3,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Scope hide-product writes to visible shared products and reject external redirects.
+- Remove stale stock-test version pins and support external Dolibarr label-test roots.
+
+### Added
+
+- Add isolated hide-product regressions and PHP lint, test and stock-app build CI.
+
+### Notes
+
+- The food-setup API remains owner-entity-only, unlike UI/AJAX shared-catalogue edits, pending an owner decision.
+
 ## [4.24.10] - 2026-11-13
 
 ### Changed
