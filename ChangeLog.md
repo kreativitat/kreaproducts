@@ -10,6 +10,8 @@
 - Automatic selling-price updates keep the saved NPR flag, VAT code, local taxes, price label and quantity-price flag.
 - A failed automatic selling-price update is now shown to the user as a warning.
 - Invoice cost uses exact line totals instead of a re-multiplied rounded unit cost.
+- Cost cascades started directly (stock dismantling, purchase-price page) no longer restart themselves while saving a dependent, which skipped other branches of the tree.
+- Large cost cascades (100+ products or 5+ seconds) are logged with their size and duration.
 
 ## [4.24.10] - 2026-11-13
 

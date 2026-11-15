@@ -37,7 +37,9 @@ target installation; current integration work targets Dolibarr 24.0.2.
   never provide live ERP credentials or exercise fiscal/stock records as tests.
   Run `php tests/run_purchase_price_api_tests.php` for supplier-price contracts.
   Run `php tests/run_supplier_price_sync_tests.php` and
-  `php tests/run_transactional_price_sync_tests.php` for trigger price syncs.
+  `php tests/run_transactional_price_sync_tests.php` for trigger price syncs;
+  `php tests/run_price_cascade_chain_tests.php [mids] [tops] [depth]` runs the
+  whole cost/selling-price chain and accepts larger tree sizes.
 - Record unreleased behavior in `ChangeLog.md`; a source push is not a release
   or deployment. Deploy native endpoint source before enabling dependent MCP
   tools; preserve the current module/configuration and rollback source. Read
