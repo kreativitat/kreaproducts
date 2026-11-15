@@ -230,13 +230,9 @@ check(abs(Product::$rows[7087]['cost'] - round(20 / 6, 8)) < 0.000000001, 'invoi
 $conf->entity = 1;
 $invoice->entity = 1;
 $invoice->lines = array((object) array('fk_product' => 7087, 'qty' => 16, 'total_ht' => 400));
-$before = Product::$rows;
 $count = Product::$priceCalls;
 $method->invoke($trigger, $invoice, $user, $conf);
-$sell = new ReflectionMethod($trigger, 'syncSellPriceFromCostIfEnabled');
-$sell->setAccessible(true);
-$sell->invoke($trigger, 7087, $user, $conf, true, true);
-check(Product::$rows === $before && Product::$priceCalls === $count, 'shared product owned by another entity is not modified');
+check(Product::$rows[7087]['cost'] == 25 && Product::$priceCalls > $count, 'child-entity purchase updates shared product cost and selling prices');
 $conf->entity = 8;
 $invoice->entity = 2;
 $before = Product::$rows;

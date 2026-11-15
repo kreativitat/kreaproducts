@@ -185,11 +185,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			}
 			return;
 		}
-		if (!$this->isProductOwnedByCurrentEntity($product, $conf)) {
-			// A visible shared product stays under its owner entity's control.
-			dol_syslog(__METHOD__ . ' product=' . $productId . ' skipped: owned by another entity', LOG_INFO);
-			return;
-		}
 		if (!$this->shouldSyncSellPriceForProduct($product, $failOnError)) {
 			return;
 		}
@@ -352,11 +347,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				}
 				if (!$this->isProductInCurrentEntityScope($product, $conf)) {
 					throw new RuntimeException('Product ' . $productId . ' is outside the active product entity scope');
-				}
-				if (!$this->isProductOwnedByCurrentEntity($product, $conf)) {
-					// Visibility of a shared catalog product is not permission to modify its owner.
-					dol_syslog(__METHOD__ . ' product=' . $productId . ' cost left unchanged: owned by another entity', LOG_INFO);
-					continue;
 				}
 				if (!$this->shouldSyncCostPriceForProduct($product, true)) {
 					continue;
@@ -547,6 +537,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	/**
 	 * Ensure updates are limited to products reachable from current entity scope.
+	 *
+	 * Shared catalog products are included on purpose: a child entity's purchases
+	 * must propagate cost and selling prices through the whole product tree.
 	 */
 	private function isProductInCurrentEntityScope(Product $product, Conf $conf): bool
 	{
@@ -567,14 +560,6 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 		$entities = array_map('intval', array_filter(array_map('trim', explode(',', $entityList)), 'strlen'));
 		return in_array($productEntity, $entities, true);
-	}
-
-	/**
-	 * Writes are limited to products owned by the active entity.
-	 */
-	private function isProductOwnedByCurrentEntity(Product $product, Conf $conf): bool
-	{
-		return isset($product->entity) && $product->entity !== '' && (int) $product->entity === (int) $conf->entity;
 	}
 
 	/**

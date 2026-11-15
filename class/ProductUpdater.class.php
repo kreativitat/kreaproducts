@@ -1015,13 +1015,6 @@ class ProductUpdater
             return false;
         }
 
-		// Visibility of a shared catalog product is not permission to modify its owner.
-		global $conf;
-		if (!isset($product->entity) || (int) $product->entity !== (int) $conf->entity) {
-			self::debug("Cost price left unchanged for product " . $product->ref . " (owned by another entity)");
-			return false;
-		}
-
 		// Calculate new cost price from children.
 		try {
 			$newCostPrice = self::calculateCostPriceFromChildren($productId);

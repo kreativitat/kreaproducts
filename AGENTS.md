@@ -12,6 +12,9 @@ target installation; current integration work targets Dolibarr 24.0.2.
 - Preserve native Product, Nutritional, ProductAllergens, supplier-price and MRP
   lifecycles, triggers, permissions and parent-based entity sharing. Never treat
   visibility of a shared catalog product as permission to modify its owner.
+  Owner-approved exception: trigger-driven cost and selling-price propagation
+  (invoice cost sync, `ProductUpdater` cascade, selling-price sync) writes every
+  product in the visible tree, including shared products owned by a parent entity.
 - REST routes live in `class/api_kreaproducts.class.php`. The food-setup workflow
   is isolated in `class/KreaProductsFoodSetupService.class.php`; it preserves
   missing declarations, saved decimal text and omitted values/relationships.
