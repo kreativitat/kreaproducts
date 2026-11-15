@@ -84,6 +84,16 @@ class ProductUpdater
 	private static $selectedManufacturingBomIds = null;
 
 	/**
+	 * @var array<int, bool>|null Products covered by the running cascade; null when idle.
+	 */
+	private static $activeCascadeProductIds = null;
+
+	/**
+	 * @var array<int, int> Products requested by nested calls that the running cascade does not cover.
+	 */
+	private static $deferredProductIds = [];
+
+	/**
 	 * Return errors collected by the latest batch cascade.
 	 *
 	 * @return array<int, string>
@@ -184,6 +194,45 @@ class ProductUpdater
             return [];
         }
 
+		// Saving a dependent fires PRODUCT_MODIFY, which asks for that product's
+		// cascade again. The running cascade already covers its dependents, and a
+		// nested run would wipe the shared hierarchy state, so never re-enter.
+		if (self::$activeCascadeProductIds !== null) {
+			foreach ($productIds as $nestedProductId) {
+				if (empty(self::$activeCascadeProductIds[$nestedProductId])) {
+					self::$deferredProductIds[$nestedProductId] = $nestedProductId;
+				}
+			}
+			return [];
+		}
+
+		self::$activeCascadeProductIds = array_fill_keys($productIds, true);
+		self::$deferredProductIds = [];
+		try {
+			$results = self::runBatchCostPriceUpdate($productIds, $useWholeSalePriceSync);
+		} finally {
+			self::$activeCascadeProductIds = null;
+		}
+
+		// Products changed outside the covered tree get their own cascade afterwards.
+		$deferredProductIds = array_values(self::$deferredProductIds);
+		self::$deferredProductIds = [];
+		if (!empty($deferredProductIds) && empty(self::$lastErrors)) {
+			$results += self::batchUpdateCostPrices($deferredProductIds, $useWholeSalePriceSync);
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Run one non-reentrant cascade.
+	 *
+	 * @param array<int, int> $productIds Normalized product IDs that changed
+	 * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+	 * @return array<int, array{updated: bool, ref: string, is_original: bool}>
+	 */
+	private static function runBatchCostPriceUpdate(array $productIds, bool $useWholeSalePriceSync): array
+	{
         self::debug("Starting batch cost price update for product IDs: " . implode(',', $productIds));
 
 		self::resetMap();
@@ -202,6 +251,7 @@ class ProductUpdater
 		}
 
 		$processingOrder = self::createProcessingOrder($productIds);
+		self::$activeCascadeProductIds = array_fill_keys($processingOrder, true);
 		self::preloadSyncFlagsForProductIds($processingOrder);
 		if (!empty(self::$lastErrors)) {
 			return array();
@@ -209,6 +259,7 @@ class ProductUpdater
 
         $results = [];
         $originalProductIds = array_fill_keys($productIds, true);
+		$cascadeStartedAt = microtime(true);
 
         foreach ($processingOrder as $currentProductId) {
             $mapProduct = self::getProductFromMap($currentProductId);
@@ -242,6 +293,17 @@ class ProductUpdater
                 }
             }
         }
+
+		// Leave a measurable trace of large cascades so slow trees can be spotted.
+		$cascadeSeconds = microtime(true) - $cascadeStartedAt;
+		if (count($processingOrder) >= 100 || $cascadeSeconds >= 5) {
+			dol_syslog(
+				'[ProductUpdater] cost cascade from product(s) ' . implode(',', array_slice($productIds, 0, 20))
+				. ': ' . count($processingOrder) . ' products in tree, ' . count(array_filter(array_column($results, 'updated')))
+				. ' updated, ' . round($cascadeSeconds, 2) . 's',
+				LOG_WARNING
+			);
+		}
 
         return $results;
     }

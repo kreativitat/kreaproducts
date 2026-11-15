@@ -233,6 +233,22 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			$baseType = 'HT';
 		}
 
+		// Native updatePrice() rewrites these columns, so pass the saved values back.
+		$npr = (int) ($product->tva_npr ?? 0);
+		$defaultVatCode = (string) ($product->default_vat_code ?? '');
+		if ($hasMultiprices) {
+			$npr = (int) ($product->multiprices_recuperableonly[$priceLevel] ?? $npr);
+			$defaultVatCode = (string) ($product->multiprices_default_vat_code[$priceLevel] ?? $defaultVatCode);
+		}
+		$priceByQty = (int) ($product->prices_by_qty[$priceLevel] ?? 0);
+		$localTaxes = array(
+			(string) ($product->localtax1_type ?? '0'),
+			(float) ($product->localtax1_tx ?? 0),
+			(string) ($product->localtax2_type ?? '0'),
+			(float) ($product->localtax2_tx ?? 0),
+		);
+		$priceLabel = (string) ($product->price_label ?? '');
+
 		$targetPriceHt = (float) price2num($costPrice * (1 + ($syncPercent / 100)), 'MU');
 		if ($targetPriceHt < 0) {
 			return;
@@ -253,13 +269,30 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 			if ($skipRealtimeSync) {
 				$product->context['skip_kreawoo_realtime_sync'] = true;
 			}
-			$resUpdate = $product->updatePrice($targetPrice, $baseType, $user, $vatTx, $currentMinPrice, $priceLevel);
+			$resUpdate = $product->updatePrice(
+				$targetPrice,
+				$baseType,
+				$user,
+				$vatTx,
+				$currentMinPrice,
+				$priceLevel,
+				$npr,
+				$priceByQty,
+				0,
+				$localTaxes,
+				$defaultVatCode,
+				$priceLabel
+			);
 			if ($resUpdate <= 0) {
 				$message = 'Unable to update the selling price for product ' . $productId . ': ' . ($product->error ?: $this->db->lasterror());
 				if ($failOnError) {
 					throw new RuntimeException($message);
 				}
-				dol_syslog(__METHOD__ . ' ' . $message, LOG_WARNING);
+				dol_syslog(__METHOD__ . ' ' . $message, LOG_ERR);
+				// The cost is saved; make the missed selling price visible to the user.
+				if (function_exists('setEventMessages')) {
+					setEventMessages($message, null, 'warnings');
+				}
 			}
 		} finally {
 			$inProgress = false;
@@ -460,8 +493,11 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 				$productTotals[$productId] = array('qty' => 0.0, 'amount' => 0.0);
 			}
 
+			// Prefer the exact line total: a rounded unit cost times quantity drifts.
+			$lineTotalHt = $this->normalizeCostValue($line->total_ht ?? null);
+
 			$productTotals[$productId]['qty'] += $qty;
-			$productTotals[$productId]['amount'] += (float) price2num($unitCost * $qty, 'MU');
+			$productTotals[$productId]['amount'] += ($lineTotalHt !== null ? $lineTotalHt : (float) price2num($unitCost * $qty, 'MU'));
 		}
 
 		return $productTotals;
@@ -501,6 +537,9 @@ class InterfaceKreaProductsTriggers extends DolibarrTriggers
 
 	/**
 	 * Ensure updates are limited to products reachable from current entity scope.
+	 *
+	 * Shared catalog products are included on purpose: a child entity's purchases
+	 * must propagate cost and selling prices through the whole product tree.
 	 */
 	private function isProductInCurrentEntityScope(Product $product, Conf $conf): bool
 	{

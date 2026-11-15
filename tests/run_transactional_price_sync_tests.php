@@ -89,9 +89,19 @@ class Product
         $this->simulateRemoteSync();
         return 1;
     }
+    public static $lastPriceArgs = array();
+    public $tva_npr = 1;
+    public $default_vat_code = 'NOR';
+    public $localtax1_type = '3';
+    public $localtax1_tx = 1.5;
+    public $localtax2_type = '0';
+    public $localtax2_tx = 0;
+    public $price_label = 'Shelf';
+    public $prices_by_qty = array(0 => 1);
     public function updatePrice($price, ...$args)
     {
         self::$priceCalls++;
+        self::$lastPriceArgs = $args;
         if (self::$throwOnPrice) { throw new RuntimeException('Injected price failure'); }
         $this->simulateRemoteSync();
         self::$rows[$this->id]['price'] = $price;
@@ -212,6 +222,18 @@ $method->setAccessible(true);
 $method->invoke($trigger, $invoice, $user, $conf);
 check(Product::$remoteCalls === 0 && Product::$rows[7087]['stockable'] === 1, 'supplier cost and selling-price writes suppress remote sync');
 check(isset(Product::$rows[9000]['price']), 'supplier cascade price still calculated');
+check(array_slice(Product::$lastPriceArgs, 5) === array(1, 1, 0, array('3', 1.5, '0', 0.0), 'NOR', 'Shelf'), 'selling-price sync preserves NPR, quantity flag, local taxes, VAT code and label');
+Product::$rows[7087] = array('cost' => 10, 'stockable' => 1);
+$invoice->lines = array((object) array('fk_product' => 7087, 'qty' => 3, 'total_ht' => 10), (object) array('fk_product' => 7087, 'qty' => 3, 'total_ht' => 10));
+$method->invoke($trigger, $invoice, $user, $conf);
+check(abs(Product::$rows[7087]['cost'] - round(20 / 6, 8)) < 0.000000001, 'invoice cost uses exact line totals');
+$conf->entity = 1;
+$invoice->entity = 1;
+$invoice->lines = array((object) array('fk_product' => 7087, 'qty' => 16, 'total_ht' => 400));
+$count = Product::$priceCalls;
+$method->invoke($trigger, $invoice, $user, $conf);
+check(Product::$rows[7087]['cost'] == 25 && Product::$priceCalls > $count, 'child-entity purchase updates shared product cost and selling prices');
+$conf->entity = 8;
 $invoice->entity = 2;
 $before = Product::$rows;
 $method->invoke($trigger, $invoice, $user, $conf);
