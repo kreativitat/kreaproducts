@@ -27,6 +27,11 @@ require_once DOL_DOCUMENT_ROOT . '/fourn/class/fournisseur.product.class.php';
  * - supplier
  * - product
  * - supplier product code (`ref_fourn`)
+ *
+ * Writes always use the verified bound native price ID (never the unbound
+ * `update_buyprice` DELETE/INSERT fallback), lock the supplier before its price
+ * rows, pass the saved ancillary fields from the locked row and read the row
+ * back. Foreign-currency and dynamic-expression rows are left untouched.
  */
 class KreaProductsSupplierPriceSyncService
 {
@@ -58,12 +63,21 @@ class KreaProductsSupplierPriceSyncService
 			throw new RuntimeException('Unable to load supplier ' . $supplierId . ' for invoice ' . (int) $invoice->id);
 		}
 
-		$updated = 0;
+		$eligibleLines = array();
 		foreach ($invoiceLines as $line) {
-			if (!$this->isLineEligible($line)) {
-				continue;
+			if ($this->isLineEligible($line)) {
+				$eligibleLines[] = $line;
 			}
+		}
+		if (empty($eligibleLines)) {
+			return 0;
+		}
 
+		// Supplier lock always precedes supplier-price row locks.
+		$this->lockSupplier($db, $supplierId);
+
+		$updated = 0;
+		foreach ($eligibleLines as $line) {
 			$productId = (int) $line->fk_product;
 			$supplierRef = $this->extractSupplierRef($line);
 			$lineQty = (float) price2num($line->qty, 'MS');
@@ -74,7 +88,7 @@ class KreaProductsSupplierPriceSyncService
 				continue;
 			}
 
-			$ret = $this->updateSupplierPriceRow($db, $conf, $user, $supplier, $pfpId, $supplierRef, $lineUnitPrice);
+			$ret = $this->updateSupplierPriceRow($db, $conf, $user, $supplier, $pfpId, $supplierRef, $lineUnitPrice, $productId, $supplierId);
 			if ($ret > 0) {
 				$updated++;
 			}
@@ -207,6 +221,7 @@ class KreaProductsSupplierPriceSyncService
 		$sql .= " AND pfp.ref_fourn = '" . $db->escape($supplierRef) . "'";
 		$sql .= " ORDER BY CASE WHEN ABS(pfp.quantity - " . ((float) price2num($lineQty, 'MS')) . ") < 0.0000001 THEN 0 ELSE 1 END, pfp.datec DESC, pfp.rowid DESC";
 		$sql .= " LIMIT 1";
+		$sql .= " FOR UPDATE";
 
 		$resql = $db->query($sql);
 		if (!$resql) {
@@ -218,6 +233,71 @@ class KreaProductsSupplierPriceSyncService
 	}
 
 	/**
+	 * Saved columns that the native bound update must preserve.
+	 */
+	const ROW_COLUMNS = 'rowid, entity, fk_product, fk_soc, ref_fourn, desc_fourn, fk_availability, price, quantity, unitprice, charges, remise_percent, remise, default_vat_code, tva_tx, localtax1_tx, localtax1_type, localtax2_tx, localtax2_type, info_bits, fk_supplier_price_expression, delivery_time_days, supplier_reputation, packaging, fk_multicurrency, multicurrency_code, multicurrency_tx, multicurrency_unitprice, multicurrency_price, barcode, fk_barcode_type, import_key, status';
+
+	/**
+	 * @param DoliDB $db
+	 * @param int $supplierId
+	 * @return void
+	 */
+	private function lockSupplier($db, $supplierId)
+	{
+		$resql = $db->query('SELECT rowid FROM ' . MAIN_DB_PREFIX . 'societe WHERE rowid = ' . ((int) $supplierId) . ' FOR UPDATE');
+		if (!$resql || !$db->fetch_object($resql)) {
+			throw new RuntimeException('Unable to lock supplier ' . (int) $supplierId . ': ' . $db->lasterror());
+		}
+	}
+
+	/**
+	 * @param DoliDB $db
+	 * @param int $pfpId
+	 * @param bool $lock Current (locking) read instead of a snapshot read
+	 * @return object|null
+	 */
+	private function readSupplierPriceRow($db, $pfpId, $lock)
+	{
+		$sql = 'SELECT ' . self::ROW_COLUMNS . ' FROM ' . MAIN_DB_PREFIX . 'product_fournisseur_price WHERE rowid = ' . ((int) $pfpId);
+		if ($lock) {
+			$sql .= ' FOR UPDATE';
+		}
+		$resql = $db->query($sql);
+		if (!$resql) {
+			throw new RuntimeException('Unable to read supplier price row ' . (int) $pfpId . ': ' . $db->lasterror());
+		}
+		$row = $db->fetch_object($resql);
+		return $row ? $row : null;
+	}
+
+	/**
+	 * @param mixed $value
+	 * @return bool
+	 */
+	private function isBlank($value)
+	{
+		return $value === null || $value === '' || (is_numeric($value) && (float) $value == 0.0);
+	}
+
+	/**
+	 * Native-equivalent comparison: NULL, '' and 0 are the same saved value.
+	 *
+	 * @param mixed $before
+	 * @param mixed $after
+	 * @return bool
+	 */
+	private function sameSavedValue($before, $after)
+	{
+		if ($this->isBlank($before) && $this->isBlank($after)) {
+			return true;
+		}
+		if (is_numeric($before) && is_numeric($after)) {
+			return abs((float) $before - (float) $after) < 0.000001;
+		}
+		return (string) $before === (string) $after;
+	}
+
+	/**
 	 * @param DoliDB $db
 	 * @param Conf $conf
 	 * @param User $user
@@ -225,43 +305,69 @@ class KreaProductsSupplierPriceSyncService
 	 * @param int $pfpId
 	 * @param string $supplierRef
 	 * @param float $lineUnitPrice
-	 * @return int
+	 * @param int $productId Product of the invoice line
+	 * @param int $supplierId Supplier of the invoice
+	 * @return int 1 when updated, 0 when the row is intentionally left untouched
 	 */
-	private function updateSupplierPriceRow($db, $conf, $user, $supplier, $pfpId, $supplierRef, $lineUnitPrice)
+	private function updateSupplierPriceRow($db, $conf, $user, $supplier, $pfpId, $supplierRef, $lineUnitPrice, $productId = 0, $supplierId = 0)
 	{
+		$pfpId = (int) $pfpId;
+
+		// Current locked values: an earlier snapshot of the transaction may be stale.
+		$raw = $this->readSupplierPriceRow($db, $pfpId, true);
+		if (!$raw) {
+			throw new RuntimeException('Unable to load supplier price row ' . $pfpId);
+		}
+		if (
+			($productId > 0 && (int) $raw->fk_product !== (int) $productId)
+			|| ($supplierId > 0 && (int) $raw->fk_soc !== (int) $supplierId)
+			|| (int) $raw->entity !== (int) $conf->entity
+		) {
+			throw new RuntimeException('Supplier price row ' . $pfpId . ' changed identity while it was being locked');
+		}
+
+		// Dynamic prices and foreign currencies need their dedicated native workflow.
+		if (!empty($raw->fk_supplier_price_expression)) {
+			dol_syslog(__METHOD__ . ' supplier price row ' . $pfpId . ' skipped: price is controlled by a dynamic expression', LOG_WARNING);
+			return 0;
+		}
+		$companyCurrency = (string) ($conf->currency ?? '');
+		$rowCurrency = trim((string) ($raw->multicurrency_code ?? ''));
+		$rowRate = ($raw->multicurrency_tx === null || $raw->multicurrency_tx === '') ? 1.0 : (float) $raw->multicurrency_tx;
+		if (($rowCurrency !== '' && strcasecmp($rowCurrency, $companyCurrency) !== 0) || abs($rowRate - 1.0) > 0.00000001) {
+			dol_syslog(__METHOD__ . ' supplier price row ' . $pfpId . ' skipped: foreign-currency price (' . $rowCurrency . ' @ ' . $rowRate . ')', LOG_WARNING);
+			return 0;
+		}
+
 		$productFourn = new ProductFournisseur($db);
 		$resultFetch = $productFourn->fetch_product_fournisseur_price($pfpId, 1);
-		if ($resultFetch <= 0) {
+		if ($resultFetch <= 0 || (int) $productFourn->id !== (int) $raw->fk_product) {
 			throw new RuntimeException('Unable to load supplier price row ' . $pfpId);
 		}
 
-		$rowQty = (float) price2num($productFourn->fourn_qty, 'MS');
+		$rowQty = (float) price2num($raw->quantity, 'MS');
 		if ($rowQty <= 0) {
 			throw new RuntimeException('Supplier price row ' . $pfpId . ' has an invalid quantity');
 		}
 
 		$newBuyPrice = (float) price2num($lineUnitPrice * $rowQty, 'MU');
-		$newVat = (float) price2num($productFourn->fourn_tva_tx, 'MU');
-		$newCharges = (float) price2num($productFourn->fourn_charges, 'MU');
-		$newRemisePercent = (float) price2num($productFourn->fourn_remise_percent, 'MU');
-		$newRemise = (float) price2num($productFourn->fourn_remise, 'MU');
-		$newNpr = empty($productFourn->fourn_tva_npr) ? 0 : 1;
-		$newDeliveryTime = ($productFourn->delivery_time_days === '' || $productFourn->delivery_time_days === null) ? '' : (int) $productFourn->delivery_time_days;
-		$newSupplierReputation = empty($productFourn->supplier_reputation) ? '' : (string) $productFourn->supplier_reputation;
-		$newDefaultVatCode = empty($productFourn->default_vat_code) ? '' : (string) $productFourn->default_vat_code;
-		$newDescription = empty($productFourn->desc_supplier) ? '' : (string) $productFourn->desc_supplier;
-		$newBarcode = (isset($productFourn->supplier_barcode) && $productFourn->supplier_barcode !== null) ? (string) $productFourn->supplier_barcode : '';
-		$newBarcodeType = (isset($productFourn->supplier_fk_barcode_type) && $productFourn->supplier_fk_barcode_type !== null) ? (int) $productFourn->supplier_fk_barcode_type : 0;
+		$newDeliveryTime = ($raw->delivery_time_days === '' || $raw->delivery_time_days === null) ? '' : (int) $raw->delivery_time_days;
+		$newSupplierReputation = (empty($raw->supplier_reputation) || $raw->supplier_reputation == -1) ? '' : (string) $raw->supplier_reputation;
 
-		$multicurrencyTx = (float) price2num($productFourn->fourn_multicurrency_tx, 'MU');
-		if ($multicurrencyTx <= 0) {
-			$multicurrencyTx = 1;
+		if (isModEnabled('multicurrency')) {
+			// Same-currency row: native derives the price from the currency price at rate 1.
+			$multicurrencyCode = ($rowCurrency !== '' ? (string) $raw->multicurrency_code : $companyCurrency);
+			$multicurrencyBuyPrice = $newBuyPrice;
+		} else {
+			// Keep the saved currency metadata untouched.
+			$multicurrencyCode = $raw->multicurrency_code;
+			$multicurrencyBuyPrice = $this->isBlank($raw->multicurrency_price) ? $raw->multicurrency_price : $newBuyPrice;
 		}
-		$multicurrencyCode = !empty($productFourn->fourn_multicurrency_code) ? (string) $productFourn->fourn_multicurrency_code : (string) ($conf->currency ?? '');
-		$multicurrencyBuyPrice = (float) price2num($newBuyPrice * $multicurrencyTx, 'MU');
 
+		// Binding the verified ID prevents update_buyprice's fallback DELETE.
+		$productFourn->product_fourn_price_id = $pfpId;
 		// Preserve existing packaging on update_buyprice().
-		$productFourn->product_fourn_packaging = (float) price2num($productFourn->packaging, 'MS');
+		$productFourn->product_fourn_packaging = (float) price2num($raw->packaging, 'MS');
 
 		$resultUpdate = $productFourn->update_buyprice(
 			$rowQty,
@@ -269,34 +375,78 @@ class KreaProductsSupplierPriceSyncService
 			$user,
 			'HT',
 			$supplier,
-			(int) $productFourn->fk_availability,
-			$supplierRef,
-			$newVat,
-			$newCharges,
-			$newRemisePercent,
-			$newRemise,
-			$newNpr,
+			(int) $raw->fk_availability,
+			(string) $raw->ref_fourn,
+			(float) $raw->tva_tx,
+			(float) $raw->charges,
+			(float) $raw->remise_percent,
+			(float) $raw->remise,
+			(int) $raw->info_bits,
 			$newDeliveryTime,
 			$newSupplierReputation,
-			array(),
-			$newDefaultVatCode,
+			array((string) $raw->localtax1_type, (float) $raw->localtax1_tx, (string) $raw->localtax2_type, (float) $raw->localtax2_tx),
+			empty($raw->default_vat_code) ? '' : (string) $raw->default_vat_code,
 			$multicurrencyBuyPrice,
 			'HT',
-			$multicurrencyTx,
+			1,
 			$multicurrencyCode,
-			$newDescription,
-			$newBarcode,
-			$newBarcodeType
+			(string) $raw->desc_fourn,
+			empty($raw->barcode) ? '' : (string) $raw->barcode,
+			empty($raw->fk_barcode_type) ? 0 : (int) $raw->fk_barcode_type
 		);
 
-		if ($resultUpdate <= 0) {
+		if ($resultUpdate <= 0 || (int) $productFourn->product_fourn_price_id !== $pfpId) {
 			throw new RuntimeException(
 				'Unable to update supplier price row ' . $pfpId
-				. ' for product ' . (int) $productFourn->id
+				. ' for product ' . (int) $raw->fk_product
 				. ': ' . ($productFourn->error ?: $db->lasterror())
 			);
 		}
 
+		$this->assertRowPreserved($db, $conf, $pfpId, $raw, $newBuyPrice);
+
 		return 1;
+	}
+
+	/**
+	 * Read the row back: identity and ancillary fields must be intact.
+	 *
+	 * @param DoliDB $db
+	 * @param Conf $conf
+	 * @param int $pfpId
+	 * @param object $raw Locked row before the native update
+	 * @param float $newBuyPrice
+	 * @return void
+	 */
+	private function assertRowPreserved($db, $conf, $pfpId, $raw, $newBuyPrice)
+	{
+		$saved = $this->readSupplierPriceRow($db, $pfpId, false);
+		if (!$saved) {
+			throw new RuntimeException('Supplier price row ' . $pfpId . ' disappeared during its update');
+		}
+		if (abs((float) $saved->price - (float) $newBuyPrice) > 0.000001) {
+			throw new RuntimeException('Supplier price row ' . $pfpId . ' was not saved with the invoice price');
+		}
+
+		$fields = array(
+			'entity', 'fk_product', 'fk_soc', 'ref_fourn', 'quantity', 'desc_fourn', 'fk_availability', 'charges',
+			'remise_percent', 'remise', 'default_vat_code', 'tva_tx', 'localtax1_tx', 'localtax1_type', 'localtax2_tx',
+			'localtax2_type', 'info_bits', 'fk_supplier_price_expression', 'delivery_time_days', 'supplier_reputation',
+			'barcode', 'fk_barcode_type', 'import_key', 'status',
+		);
+		// Native fills an empty packaging with the minimum quantity when supplier packaging is enabled.
+		if (!$this->isBlank($raw->packaging) || !getDolGlobalString('PRODUCT_USE_SUPPLIER_PACKAGING')) {
+			$fields[] = 'packaging';
+		}
+		foreach ($fields as $field) {
+			$before = $raw->$field ?? null;
+			$after = $saved->$field ?? null;
+			if ($field === 'supplier_reputation' && $before == -1) {
+				$before = null;
+			}
+			if (!$this->sameSavedValue($before, $after)) {
+				throw new RuntimeException('Supplier price row ' . $pfpId . ' did not preserve its saved ' . $field);
+			}
+		}
 	}
 }

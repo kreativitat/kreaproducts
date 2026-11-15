@@ -3,6 +3,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Supplier-invoice price sync now binds and verifies the native supplier-price ID, locks the supplier before its price rows, keeps the saved reference, VAT flags, barcode and currency metadata, and reads the row back.
+- Supplier-invoice price sync leaves foreign-currency and dynamic-expression supplier prices untouched.
+- Automatic cost and selling-price updates only write products owned by the active company; shared catalog products of another company are skipped.
+- Automatic selling-price updates keep the saved NPR flag, VAT code, local taxes, price label and quantity-price flag.
+- A failed automatic selling-price update is now shown to the user as a warning.
+- Invoice cost uses exact line totals instead of a re-multiplied rounded unit cost.
+
 ## [4.24.10] - 2026-11-13
 
 ### Changed

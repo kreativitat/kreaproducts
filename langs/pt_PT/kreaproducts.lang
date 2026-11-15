@@ -68,7 +68,7 @@ KREAPRODUCTS_AUTO_SYNC_SELL_PRICE_FROM_COST_HELP = Recalcular o preço de venda 
 KREAPRODUCTS_AUTO_SYNCH_NUT_TABLE = Propagar automaticamente a tabela nutricional
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Aplicar datas de valor comercial aos movimentos de faturas
 KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE = Atualizar preço de compra do fornecedor ao validar faturas
-KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP = Atualiza automaticamente os preços de fornecedor ao validar faturas de fornecedor (mesmo fornecedor, produto e código de fornecedor)
+KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP = Atualiza automaticamente os preços de fornecedor ao validar faturas de fornecedor (mesmo fornecedor, produto e código de fornecedor). Atualiza também o custo dos produtos com "Atualizar Preço de Custo Automaticamente" ativo. Só são alterados preços e produtos da empresa atual
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = Converter automaticamente as unidades da receita (kg/l <-> g/ml)
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP = Para visualização da receita/componentes, mantém quantidades >= 1 em kg/l e converte quantidades < 1 para g/ml. As quantidades base usadas em produção/stock não são alteradas.
 KREAPRODUCTS_SUPPLIER_MOVE_TIME = Hora para movimentos de fatura de fornecedor

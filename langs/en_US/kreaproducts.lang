@@ -593,7 +593,7 @@ KREAPRODUCTS_NUTRITIONAL_TABLE_TAB = Nutrition table in technical sheet tab
 KREAPRODUCTS_DEFAULT_WEIGHT_LABEL = Configure the weight unit class in the "Units of measure" dictionary
 KREAPRODUCTS_STOCK_MOVEMENT_DATA = Apply business value dates to invoice stock movements
 KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE = Auto update supplier purchase price from supplier invoices
-KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP = Update product supplier prices automatically when validating supplier invoices (matching supplier, product, and supplier code)
+KREAPRODUCTS_AUTO_SYNC_SUPPLIER_PRICE_FROM_PURCHASE_HELP = Update product supplier prices automatically when validating supplier invoices (matching supplier, product, and supplier code). Also updates the cost of products with "Auto Update Buy Price" enabled. Only prices and products owned by the current company are changed
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS = Auto-scale recipe units (kg/l <-> g/ml)
 KREAPRODUCTS_AUTO_SCALE_RECIPE_UNITS_HELP = For recipe/component display, keep quantities >= 1 in kg/l and convert quantities < 1 to g/ml. Base quantities used in production/stock remain unchanged.
 KREAPRODUCTS_SUPPLIER_MOVE_TIME = Time for supplier invoice movements

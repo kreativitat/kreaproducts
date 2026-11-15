@@ -33,6 +33,8 @@ target installation; current integration work targets Dolibarr 24.0.2.
   `php tests/run_nutrition_scope_warning_tests.php`. Tests use isolated doubles;
   never provide live ERP credentials or exercise fiscal/stock records as tests.
   Run `php tests/run_purchase_price_api_tests.php` for supplier-price contracts.
+  Run `php tests/run_supplier_price_sync_tests.php` and
+  `php tests/run_transactional_price_sync_tests.php` for trigger price syncs.
 - Record unreleased behavior in `ChangeLog.md`; a source push is not a release
   or deployment. Deploy native endpoint source before enabling dependent MCP
   tools; preserve the current module/configuration and rollback source. Read
