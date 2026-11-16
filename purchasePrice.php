@@ -394,16 +394,19 @@ if ($action == 'save_price' && $usercancreate) {
 
 if ($action === 'updateProductAttributes' && $usercancreate) {
 	$token = GETPOST('token', 'alpha');
-	if (empty($token) || (!hash_equals((string) currentToken(), (string) $token) && !hash_equals((string) newToken(), (string) $token))) {
+	if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($token) || (!hash_equals((string) currentToken(), (string) $token) && !hash_equals((string) newToken(), (string) $token))) {
 		setEventMessages($langs->trans("ErrorBadToken"), null, 'errors');
 	} else {
-		$db->begin();
 		try {
-			if (ProductHierarchy::updateProductAttributes($object->id, $user) < 0) {
-				throw new RuntimeException('Manufacturing BOM cost cascade failed');
+			if (!$db->begin()) {
+				throw new RuntimeException('Unable to start product cost recalculation');
+			}
+			ProductUpdater::recalculateProductCostTree((int) $object->id);
+			if (!empty(ProductUpdater::getLastErrors())) {
+				throw new RuntimeException('Manufacturing BOM cost recalculation failed: '.implode('; ', ProductUpdater::getLastErrors()));
 			}
 			$dismantle = new ProductDismantleController($db);
-			if ($dismantle->refreshDismantleOutputCostPrices($object->id, $user) < 0) {
+			if ($dismantle->refreshDismantleOutputCostPrices($object->id, $user, true) < 0) {
 				throw new RuntimeException('Dismantle output cost update failed');
 			}
 			if (!$db->commit()) {

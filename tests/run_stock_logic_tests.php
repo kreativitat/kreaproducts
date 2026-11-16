@@ -829,7 +829,7 @@ $impactedMapEnd = strpos((string) $productUpdaterSource, 'private static functio
 $impactedMapSource = substr((string) $productUpdaterSource, $impactedMapStart, $impactedMapEnd - $impactedMapStart);
 assertSameValue(true, strpos((string) $impactedMapSource, 'loadProductAssociations(null, $lookupIds, true)') !== false, 'Cost cascades must include association recipes as dependent-product fallbacks.');
 assertSameValue(true, strpos((string) $productUpdaterSource, 'active_bom.fk_product = pa.fk_product_pere') !== false, 'Active manufacturing BOMs must take precedence over association recipes.');
-assertSameValue(true, strpos((string) $productUpdaterSource, 'if (!empty($originalProductIds[$currentProductId]))') !== false, 'Changed source products must not be recalculated over their persisted costs.');
+assertSameValue(true, strpos((string) $productUpdaterSource, 'if ($preserveSourceCosts && !empty($originalProductIds[$currentProductId]))') !== false, 'Automatic cascades must not recalculate changed source products over their persisted costs.');
 assertSameValue(true, strpos((string) $productUpdaterSource, 'self::$sourceProductIds[(int) $child[\'id\']]') !== false, 'Changed source costs must remain authoritative during recursive dependent calculations.');
 assertSameValue(true, strpos((string) $productUpdaterSource, 'validateProductMapIsAcyclic()') !== false, 'Cost cascades must validate the full product graph before product writes.');
 assertSameValue(true, strpos((string) $productUpdaterSource, "throw new RuntimeException('Cyclic product cost graph detected") !== false, 'Recursive cost calculation must fail closed on an association or BOM cycle.');
@@ -839,7 +839,7 @@ assertSameValue(true, strpos((string) $productUpdaterSource, 'catch (Throwable $
 $purchasePriceSource = file_get_contents(__DIR__.'/../purchasePrice.php');
 assertSameValue(false, strpos((string) $purchasePriceSource, 'function kreaUpdateDismantleBomChildren') !== false, 'The unsafe standalone dismantling helper must remain removed.');
 assertSameValue(true, substr_count((string) $purchasePriceSource, 'refreshDismantleOutputCostPrices') >= 2, 'Manual parent-cost actions must use the shared dismantling valuation service.');
-assertSameValue(true, substr_count((string) $purchasePriceSource, '$db->begin();') >= 3, 'Manual product and supplier-price writes must retain transaction boundaries.');
+assertSameValue(true, substr_count((string) $purchasePriceSource, '$db->begin()') >= 3, 'Manual product and supplier-price writes must retain transaction boundaries, including checked transaction starts.');
 assertSameValue(true, strpos((string) $purchasePriceSource, "trans('KreapCostPriceUpdateFailed')") !== false, 'Manual cost failures must expose a generic translated error.');
 assertSameValue(true, strpos((string) $purchasePriceSource, 'ProductUpdater::prepareProductCostUpdate($object);') !== false, 'Manual cost changes must preserve oldcopy before changing cost_price.');
 

@@ -31,6 +31,7 @@ require_once __DIR__ . '/KreaProductsBomCostCalculator.class.php';
  * - When no active BOM has production history, the newest validated BOM is selected automatically
  * - Product associations are the recipe fallback when no active manufacturing BOM exists
  * - Explicitly changed products remain authoritative source costs for every transitive dependent
+ * - Manual recalculation refreshes the connected recipe tree regardless of purchase-sync settings
  * - Cost cascades reject cyclic product graphs before updating any product
  * - Supports manufacturing BOMs (bomtype = 0) that are validated (status = 1)
  * - Buy price updates are controlled by the product extrafield kreap_updatebuyprice (fallback to kreap_syncprice for legacy installs)
@@ -185,9 +186,30 @@ class ProductUpdater
      *
      * @param array<int, int> $productIds Product IDs that changed
      * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+     * @param bool $forceCostSync Explicit manual propagation, preserving the supplied source costs
      * @return array<int, array{updated: bool, ref: string, is_original: bool}>
      */
-    public static function batchUpdateCostPrices(array $productIds, bool $useWholeSalePriceSync = true): array
+    public static function batchUpdateCostPrices(array $productIds, bool $useWholeSalePriceSync = true, bool $forceCostSync = false): array
+    {
+        return self::executeCostPriceUpdate($productIds, $useWholeSalePriceSync, $forceCostSync, true);
+    }
+
+    /**
+     * Recalculate the selected product, its children and every connected parent.
+     *
+     * Purchase-sync settings control automatic updates only. Leaves retain their
+     * saved costs; recipes, including the selected product, are rebuilt bottom-up.
+     * The caller owns the transaction covering this command and dismantle outputs.
+     *
+     * @param int $productId Selected product ID
+     * @return array<int, array{updated: bool, ref: string, is_original: bool}>
+     */
+    public static function recalculateProductCostTree(int $productId): array
+    {
+        return self::executeCostPriceUpdate([$productId], true, true, false);
+    }
+
+    private static function executeCostPriceUpdate(array $productIds, bool $useWholeSalePriceSync, bool $forceCostSync, bool $preserveSourceCosts): array
     {
         $productIds = self::normalizeProductIds($productIds);
         if (empty($productIds)) {
@@ -209,7 +231,7 @@ class ProductUpdater
 		self::$activeCascadeProductIds = array_fill_keys($productIds, true);
 		self::$deferredProductIds = [];
 		try {
-			$results = self::runBatchCostPriceUpdate($productIds, $useWholeSalePriceSync);
+			$results = self::runBatchCostPriceUpdate($productIds, $useWholeSalePriceSync, $forceCostSync, $preserveSourceCosts);
 		} finally {
 			self::$activeCascadeProductIds = null;
 		}
@@ -229,15 +251,17 @@ class ProductUpdater
 	 *
 	 * @param array<int, int> $productIds Normalized product IDs that changed
 	 * @param bool $useWholeSalePriceSync Use global wholesale price sync setting
+	 * @param bool $forceCostSync Rebuild the connected tree without automatic sync gates
+	 * @param bool $preserveSourceCosts Keep explicitly saved input costs authoritative
 	 * @return array<int, array{updated: bool, ref: string, is_original: bool}>
 	 */
-	private static function runBatchCostPriceUpdate(array $productIds, bool $useWholeSalePriceSync): array
+	private static function runBatchCostPriceUpdate(array $productIds, bool $useWholeSalePriceSync, bool $forceCostSync, bool $preserveSourceCosts): array
 	{
         self::debug("Starting batch cost price update for product IDs: " . implode(',', $productIds));
 
 		self::resetMap();
-		self::$sourceProductIds = array_fill_keys($productIds, true);
-		self::loadImpactedProductMap($productIds);
+		self::$sourceProductIds = $preserveSourceCosts ? array_fill_keys($productIds, true) : [];
+		self::loadImpactedProductMap($productIds, $forceCostSync);
 		if (!empty(self::$lastErrors)) {
 			return array();
 		}
@@ -250,9 +274,11 @@ class ProductUpdater
 			return array();
 		}
 
-		$processingOrder = self::createProcessingOrder($productIds);
+		$processingOrder = self::createProcessingOrder($forceCostSync ? array_keys(self::$productMap) : $productIds);
 		self::$activeCascadeProductIds = array_fill_keys($processingOrder, true);
-		self::preloadSyncFlagsForProductIds($processingOrder);
+		if (!$forceCostSync) {
+			self::preloadSyncFlagsForProductIds($processingOrder);
+		}
 		if (!empty(self::$lastErrors)) {
 			return array();
 		}
@@ -264,9 +290,9 @@ class ProductUpdater
         foreach ($processingOrder as $currentProductId) {
             $mapProduct = self::getProductFromMap($currentProductId);
 
-            // The products that initiated the cascade are authoritative inputs.
-            // Recalculating them here would overwrite the cost that must propagate.
-            if (!empty($originalProductIds[$currentProductId])) {
+            // Changed costs are authoritative in automatic/allocated-output cascades.
+            // Manual recipe recalculation also rebuilds the selected product.
+            if ($preserveSourceCosts && !empty($originalProductIds[$currentProductId])) {
                 continue;
             }
 
@@ -278,14 +304,17 @@ class ProductUpdater
 
             self::debug("Processing product ID: " . $currentProductId . " (ref: " . $mapProduct['ref'] . ")");
 
-            // Update cost price if sync is enabled via product extrafield (kreap_updatebuyprice/kreap_syncprice)
-			if (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync) {
-				$updated = self::updateCostPriceFromChildren($currentProductId, null);
+            // Only explicit manual commands bypass the automatic purchase-sync flags.
+			if ($forceCostSync || (self::isCostPriceSyncEnabled($currentProductId) && $useWholeSalePriceSync)) {
+				$updated = self::updateCostPriceFromChildren($currentProductId, null, $forceCostSync);
                 $results[$currentProductId] = [
                     'updated' => $updated,
                     'ref' => $mapProduct['ref'] ?? 'Unknown',
                     'is_original' => !empty($originalProductIds[$currentProductId])
                 ];
+				if (!empty(self::$lastErrors)) {
+					break;
+				}
 
 				if ($updated) {
                     self::debug("Cost price updated for product: " . $mapProduct['ref'] .
@@ -688,8 +717,9 @@ class ProductUpdater
      * Load only the hierarchy needed to recalculate every dependent of the changed products.
      *
      * @param array<int, int> $productIds
+     * @param bool $includeConnectedProducts Also discover other parents of recalculated descendants
      */
-    private static function loadImpactedProductMap(array $productIds): void
+    private static function loadImpactedProductMap(array $productIds, bool $includeConnectedProducts = false): void
     {
         $productIds = self::normalizeProductIds($productIds);
         if (empty($productIds)) {
@@ -717,14 +747,19 @@ class ProductUpdater
 
 			self::loadProductAssociations(null, $lookupIds, true);
 			self::loadBOMRelationships(null, $lookupIds);
+			if ($includeConnectedProducts) {
+				self::loadProductAssociations($lookupIds, null, true);
+				self::loadBOMRelationships($lookupIds, null);
+			}
 
             $frontier = [];
             foreach ($lookupIds as $childId) {
                 $child = self::getProductFromMap((int) $childId);
-                if (!$child || empty($child['parents'])) {
+                if (!$child) {
                     continue;
                 }
-                foreach ($child['parents'] as $parent) {
+                $neighbors = $includeConnectedProducts ? array_merge($child['parents'], $child['children']) : $child['parents'];
+                foreach ($neighbors as $parent) {
                     $parentId = (int) $parent['id'];
                     if ($parentId > 0 && empty($candidateIds[$parentId])) {
                         $candidateIds[$parentId] = true;
@@ -733,6 +768,11 @@ class ProductUpdater
                 }
             }
         }
+
+		if ($includeConnectedProducts) {
+			self::$mapLoaded = true;
+			return;
+		}
 
         $frontier = array_map('intval', array_keys($candidateIds));
         $visitedParentLookups = [];
@@ -1064,9 +1104,10 @@ class ProductUpdater
      *
      * @param int $productId Product to update
      * @param int $originalProductId The original product that was modified (for warning messages)
+     * @param bool $checkWritePermission Check each product's native write permission for a manual command
      * @return bool True if updated, false otherwise
      */
-    private static function updateCostPriceFromChildren(int $productId, ?int $originalProductId = null): bool
+    private static function updateCostPriceFromChildren(int $productId, ?int $originalProductId = null, bool $checkWritePermission = false): bool
     {
         global $db, $user;
 
@@ -1076,6 +1117,14 @@ class ProductUpdater
 			self::addError("Failed to load product: " . $productId);
             return false;
         }
+		if (!in_array((int) $product->entity, array_map('intval', explode(',', getEntity('product'))), true)) {
+			self::addError('Product '.$productId.' is outside the active product entity scope');
+			return false;
+		}
+		if ($checkWritePermission && !$user->hasRight($product->type == Product::TYPE_SERVICE ? 'service' : 'produit', 'creer')) {
+			self::addError('Permission denied while recalculating product '.$productId);
+			return false;
+		}
 
 		// Calculate new cost price from children.
 		try {

@@ -32,6 +32,13 @@ target installation; current integration work targets Dolibarr 24.0.2.
   FX/rounding/native-normalization cases before calling the mutator. Lock supplier
   before price rows consistently; no plain reads may establish a stale snapshot
   before current locks in an applying transaction.
+- Manual cost propagation uses `ProductUpdater::recalculateProductCostTree()`:
+  recalculate the connected effective recipe graph bottom-up without buy-sync
+  flags, retain purchased leaf costs and keep automatic changed-source costs
+  authoritative. Dismantling remains a separate allocation followed by forced
+  propagation of its saved outputs; never treat it as a manufacturing sum.
+  Run `php tests/run_price_cascade_chain_tests.php` and
+  `php tests/run_manual_cost_controller_tests.php` for this path.
 - Run PHP lint on changed files and `php tests/run_food_setup_api_tests.php` for
   the food API. Existing nutrition checks are
   `php tests/run_nutrition_ajax_policy_tests.php`,

@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Make the manual cost propagation button recalculate the selected product, descendant recipes and connected parents from the leaves upward, even with purchase synchronization disabled and manufacturing BOM/MO links in between.
+- Preserve automatic synchronization settings and purchased leaf costs; force propagation after manual dismantling allocation without replacing its output costs or creating manufacturing orders.
+- Fix manual dismantling refresh arguments and roll back the manual command on recalculation, allocation or transaction failures.
+
 ## [4.24.12] - 2026-11-16
 
 ### Fixed

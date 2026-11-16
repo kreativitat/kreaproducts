@@ -118,9 +118,10 @@ class ProductDismantleController extends CommonObject
 	 *
 	 * @param int  $productId Dismantled parent product ID
 	 * @param User $user      User performing the update
+	 * @param bool $forceCostSync Explicit manual propagation through disabled purchase-sync flags
 	 * @return int 1 when updated, 0 when not applicable, -1 on failure
 	 */
-	public function refreshDismantleOutputCostPrices($productId, $user)
+	public function refreshDismantleOutputCostPrices($productId, $user, bool $forceCostSync = false)
 	{
 		$productId = (int) $productId;
 		if ($productId <= 0) {
@@ -160,7 +161,17 @@ class ProductDismantleController extends CommonObject
 		if ($baseCostPrice <= 0) {
 			return 0;
 		}
-		if (!$this->updateProducedCostPrices($bomData, $baseCostPrice, $user)) {
+		if ($forceCostSync) {
+			foreach ($bomData['lines'] as $line) {
+				$output = new Product($this->db);
+				if ($output->fetch((int) $line->fk_product) <= 0
+					|| !$user->hasRight($output->type == Product::TYPE_SERVICE ? 'service' : 'produit', 'creer')) {
+					dol_syslog(__METHOD__.' permission denied for dismantle output '.((int) $line->fk_product), LOG_ERR);
+					return -1;
+				}
+			}
+		}
+		if (!$this->updateProducedCostPrices($bomData, $baseCostPrice, $user, (int) $bomId, 0, '')) {
 			return -1;
 		}
 
@@ -172,7 +183,7 @@ class ProductDismantleController extends CommonObject
 			}
 		}
 		if (!empty($outputProductIds)) {
-			ProductUpdater::batchUpdateCostPrices(array_values($outputProductIds), true);
+			ProductUpdater::batchUpdateCostPrices(array_values($outputProductIds), true, $forceCostSync);
 			$cascadeErrors = ProductUpdater::getLastErrors();
 			if (!empty($cascadeErrors)) {
 				dol_syslog(__METHOD__.' output cascade failed: '.implode('; ', $cascadeErrors), LOG_ERR);

@@ -102,6 +102,15 @@ In practice:
 
 This feature is especially relevant in operations with many recipes and frequent purchasing, where small cost variations must be reflected immediately in finished products.
 
+The **Propagate cost** button on the purchase-price tab explicitly recalculates the
+selected product, its descendant recipes and every connected consuming parent,
+even when automatic purchase synchronization is disabled. It follows product
+associations and the active manufacturing BOM selected from production history,
+saving children before parents. Purchased leaves keep their saved cost; manual
+dismantling retains its allocated output costs and propagates them onward. This
+command creates no manufacturing orders or stock movements. Shared ingredients
+can connect several recipe branches, all of which are recalculated together.
+
 ### Automatic sell price sync from cost (product-level)
 
 KreaProducts can also update **selling price automatically** when the product **cost price** changes.
