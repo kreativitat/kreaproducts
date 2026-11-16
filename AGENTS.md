@@ -37,7 +37,9 @@ target installation; current integration work targets Dolibarr 24.0.2.
   `php tests/run_nutrition_ajax_policy_tests.php`,
   `php tests/run_nutrition_copy_tests.php`,
   `php tests/run_nutrition_copy_values_tests.php` and
-  `php tests/run_nutrition_scope_warning_tests.php`. Tests use isolated doubles;
+  `php tests/run_nutrition_scope_warning_tests.php`.
+  `php tests/run_nutrition_save_tests.php` covers the unified form's save policy.
+  Tests use isolated doubles;
   never provide live ERP credentials or exercise fiscal/stock records as tests.
   Run `php tests/run_purchase_price_api_tests.php` for supplier-price contracts.
   Run `php tests/run_supplier_price_sync_tests.php` and

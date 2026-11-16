@@ -3,6 +3,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow nutrition and allergen form saves for legacy entered-data products with empty calculation flags, using the shared manual-edit policy while preserving food status, product visibility and access checks.
+
 ## [4.24.11] - 2026-11-15
 
 ### Fixed

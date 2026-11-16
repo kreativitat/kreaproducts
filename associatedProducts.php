@@ -918,9 +918,8 @@ if ($action === 'save_nutrition_allergens_mode') {
 }
 
 if ($action === 'save_nutrition_allergens') {
-	$currentNutritionMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_nut', $object->entity);
-	$currentAllergenMode = kreaproducts_get_product_extrafield_value($db, $object->id, 'kreap_calc_allergens', $object->entity);
-	if ((string) $currentNutritionMode !== '0' || (string) $currentAllergenMode !== '0') {
+	dol_include_once('/kreaproducts/class/KreaProductsNutritionEditPolicy.class.php');
+	if (!KreaProductsNutritionEditPolicy::canEdit($db, $object->id)) {
 		accessforbidden($langs->trans('KREAPRODUCTS_NUTRITION_ALLERGENS_MANUAL_REQUIRED'));
 	}
 
