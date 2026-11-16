@@ -3,6 +3,8 @@
 
 ## [Unreleased]
 
+## [4.24.13] - 2026-11-16
+
 ### Fixed
 
 - Make the manual cost propagation button recalculate the selected product, descendant recipes and connected parents from the leaves upward, even with purchase synchronization disabled and manufacturing BOM/MO links in between.
